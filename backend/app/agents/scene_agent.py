@@ -30,6 +30,8 @@ class SceneReconstructionAgent:
         self.current_elements: List[SceneElement] = []
         self.scene_description: str = ""
         self.needs_image_generation: bool = False
+        self.contradictions: List[Dict[str, Any]] = []
+        self.key_facts: Dict[str, Any] = {}
         self._initialize_model()
     
     def _initialize_model(self):
@@ -184,12 +186,62 @@ class SceneReconstructionAgent:
                     self.current_elements.append(element)
                 
                 logger.info(f"Extracted {len(self.current_elements)} scene elements")
+                
+                # Detect contradictions
+                await self._detect_contradictions(scene_data)
             
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to parse scene extraction JSON: {e}")
         
         except Exception as e:
             logger.error(f"Error extracting scene information: {e}")
+    
+    async def _detect_contradictions(self, scene_data: Dict[str, Any]):
+        """
+        Detect contradictions between current and previous statements.
+        
+        Args:
+            scene_data: Newly extracted scene data
+        """
+        try:
+            # Extract new facts
+            new_facts = {}
+            for elem in scene_data.get("elements", []):
+                elem_type = elem.get("type", "")
+                desc = elem.get("description", "")
+                
+                # Track key attributes
+                key = f"{elem_type}_{desc[:30]}"
+                new_facts[key] = {
+                    "color": elem.get("color"),
+                    "position": elem.get("position"),
+                    "size": elem.get("size"),
+                }
+            
+            # Compare with previous facts
+            for key, new_value in new_facts.items():
+                if key in self.key_facts:
+                    old_value = self.key_facts[key]
+                    
+                    # Check for contradictions
+                    for attr in ["color", "position", "size"]:
+                        if (old_value.get(attr) and new_value.get(attr) and 
+                            old_value[attr] != new_value[attr]):
+                            contradiction = {
+                                "element": key,
+                                "attribute": attr,
+                                "old_value": old_value[attr],
+                                "new_value": new_value[attr],
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                            self.contradictions.append(contradiction)
+                            logger.info(f"Contradiction detected: {contradiction}")
+            
+            # Update key facts
+            self.key_facts.update(new_facts)
+        
+        except Exception as e:
+            logger.error(f"Error detecting contradictions: {e}")
     
     async def generate_clarifying_question(
         self,
@@ -207,14 +259,64 @@ class SceneReconstructionAgent:
             "description": self.scene_description,
             "elements": [elem.model_dump() for elem in self.current_elements],
             "statement_count": len([m for m in self.conversation_history if m["role"] == "user"]),
-            "conversation_history": self.conversation_history
+            "conversation_history": self.conversation_history,
+            "contradictions": self.contradictions,
+            "key_facts": self.key_facts,
+            "complexity_score": self._calculate_complexity_score()
         }
+    
+    def _calculate_complexity_score(self) -> float:
+        """
+        Calculate scene complexity score (0-1).
+        
+        Based on:
+        - Number of elements
+        - Number of statements
+        - Number of contradictions
+        - Attribute completeness
+        """
+        try:
+            score = 0.0
+            
+            # Element count (up to 20 elements = max)
+            element_score = min(len(self.current_elements) / 20.0, 1.0) * 0.3
+            
+            # Statement count (up to 10 statements = max)
+            statement_count = len([m for m in self.conversation_history if m["role"] == "user"])
+            statement_score = min(statement_count / 10.0, 1.0) * 0.3
+            
+            # Attribute completeness (how many elements have color, position, size)
+            if self.current_elements:
+                complete_attrs = 0
+                total_attrs = len(self.current_elements) * 3  # color, position, size
+                for elem in self.current_elements:
+                    if elem.color:
+                        complete_attrs += 1
+                    if elem.position:
+                        complete_attrs += 1
+                    if elem.size:
+                        complete_attrs += 1
+                completeness_score = (complete_attrs / total_attrs) * 0.3 if total_attrs > 0 else 0.0
+            else:
+                completeness_score = 0.0
+            
+            # Contradictions (reduce score slightly)
+            contradiction_penalty = min(len(self.contradictions) * 0.02, 0.1)
+            
+            score = element_score + statement_score + completeness_score - contradiction_penalty
+            return max(0.0, min(1.0, score))
+        
+        except Exception as e:
+            logger.error(f"Error calculating complexity score: {e}")
+            return 0.0
     
     def reset(self):
         """Reset the agent state."""
         self.conversation_history = []
         self.current_elements = []
         self.scene_description = ""
+        self.contradictions = []
+        self.key_facts = {}
         if self.client:
             self.chat = self.client.chats.create(
                 model=settings.gemini_model,

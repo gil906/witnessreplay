@@ -100,6 +100,43 @@ async def add_request_id(request, call_next):
     return response
 
 
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all HTTP requests and responses."""
+    import time
+    
+    # Start timer
+    start_time = time.time()
+    
+    # Get request details
+    request_id = getattr(request.state, 'request_id', 'unknown')
+    method = request.method
+    url = str(request.url)
+    client_ip = request.client.host if request.client else "unknown"
+    
+    logger.info(f"Request started: {method} {url} | IP: {client_ip} | ID: {request_id}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Calculate duration
+    duration = time.time() - start_time
+    
+    # Log response
+    logger.info(
+        f"Request completed: {method} {url} | "
+        f"Status: {response.status_code} | "
+        f"Duration: {duration:.3f}s | "
+        f"ID: {request_id}"
+    )
+    
+    # Add timing header
+    response.headers["X-Process-Time"] = str(duration)
+    
+    return response
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

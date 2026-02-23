@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 from fpdf import FPDF
@@ -244,4 +244,148 @@ async def export_session(session_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to export session"
+        )
+
+
+@router.get("/sessions/{session_id}/export/json")
+async def export_session_json(session_id: str):
+    """Export a session as JSON data."""
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        from fastapi.responses import Response
+        import json
+        
+        # Convert to JSON with proper datetime handling
+        session_data = session.model_dump(mode='json')
+        json_str = json.dumps(session_data, indent=2, default=str)
+        
+        return Response(
+            content=json_str,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=session_{session_id}.json"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting session as JSON: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to export session as JSON"
+        )
+
+
+@router.get("/analytics/stats")
+async def get_analytics_stats():
+    """Get analytics statistics across all sessions."""
+    try:
+        sessions = await firestore_service.list_sessions(limit=1000)
+        
+        if not sessions:
+            return {
+                "total_sessions": 0,
+                "total_statements": 0,
+                "total_reconstructions": 0,
+                "avg_statements_per_session": 0.0,
+                "avg_reconstructions_per_session": 0.0,
+                "most_common_elements": [],
+                "session_statuses": {}
+            }
+        
+        # Calculate statistics
+        total_sessions = len(sessions)
+        total_statements = sum(len(s.witness_statements) for s in sessions)
+        total_reconstructions = sum(len(s.scene_versions) for s in sessions)
+        
+        # Track element types
+        element_counts = {}
+        for session in sessions:
+            for elem in session.current_scene_elements:
+                elem_type = elem.type
+                element_counts[elem_type] = element_counts.get(elem_type, 0) + 1
+        
+        # Sort by most common
+        most_common_elements = sorted(
+            [{"type": k, "count": v} for k, v in element_counts.items()],
+            key=lambda x: x["count"],
+            reverse=True
+        )[:10]
+        
+        # Session statuses
+        status_counts = {}
+        for session in sessions:
+            status = session.status
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        return {
+            "total_sessions": total_sessions,
+            "total_statements": total_statements,
+            "total_reconstructions": total_reconstructions,
+            "avg_statements_per_session": total_statements / total_sessions if total_sessions > 0 else 0.0,
+            "avg_reconstructions_per_session": total_reconstructions / total_sessions if total_sessions > 0 else 0.0,
+            "most_common_elements": most_common_elements,
+            "session_statuses": status_counts
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting analytics stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get analytics statistics"
+        )
+
+
+@router.get("/analytics/elements/search")
+async def search_sessions_by_element(
+    element_type: Optional[str] = None,
+    element_description: Optional[str] = None,
+    color: Optional[str] = None,
+    limit: int = 50
+):
+    """Search sessions by scene elements."""
+    try:
+        all_sessions = await firestore_service.list_sessions(limit=1000)
+        matching_sessions = []
+        
+        for session in all_sessions:
+            match = False
+            for elem in session.current_scene_elements:
+                # Check if element matches criteria
+                type_match = not element_type or elem.type.lower() == element_type.lower()
+                desc_match = not element_description or element_description.lower() in elem.description.lower()
+                color_match = not color or (elem.color and color.lower() in elem.color.lower())
+                
+                if type_match and desc_match and color_match:
+                    match = True
+                    break
+            
+            if match:
+                matching_sessions.append(SessionResponse(
+                    id=session.id,
+                    title=session.title,
+                    created_at=session.created_at,
+                    updated_at=session.updated_at,
+                    status=session.status,
+                    statement_count=len(session.witness_statements),
+                    version_count=len(session.scene_versions)
+                ))
+                
+                if len(matching_sessions) >= limit:
+                    break
+        
+        return matching_sessions
+    
+    except Exception as e:
+        logger.error(f"Error searching sessions by element: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to search sessions"
         )
