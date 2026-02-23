@@ -333,6 +333,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         "timestamp": "ISO8601"
     }
     """
+    # Validate session exists before accepting connection
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        logger.warning(f"WebSocket connection rejected: session {session_id} not found")
+        await websocket.close(code=4004, reason="Session not found")
+        return
+    
     handler = WebSocketHandler(websocket, session_id)
     
     try:

@@ -142,7 +142,13 @@ class UsageTracker:
             )
         
         # Save to disk asynchronously after recording (outside lock)
-        asyncio.create_task(self._save_to_disk_async())
+        # Use try/except to handle case when called outside async context
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._save_to_disk_async())
+        except RuntimeError:
+            # No event loop running - skip async save (will save on next async call)
+            logger.debug("No event loop available for async save, skipping")
     
     def _get_usage_unlocked(self, model_name: str) -> Dict:
         """
@@ -190,6 +196,45 @@ class UsageTracker:
                 "reset_time": "Midnight Pacific Time (approximate)",
                 "note": "Usage tracking is approximate and based on local counting"
             }
+    
+    def check_rate_limit(self, model_name: str, estimated_tokens: int = 0) -> tuple[bool, str]:
+        """
+        Check if a request would exceed rate limits.
+        
+        Args:
+            model_name: Model identifier
+            estimated_tokens: Estimated tokens for the request
+            
+        Returns:
+            Tuple of (allowed: bool, reason: str)
+        """
+        with self._lock:
+            self._check_reset()
+            
+            limits = self.RATE_LIMITS.get(model_name, {
+                "rpm": 15,
+                "rpd": 1500,
+                "tpd": 15000000,
+                "tier": "unknown"
+            })
+            
+            requests_today = self._requests_today.get(model_name, 0)
+            requests_minute = len(self._requests_minute.get(model_name, []))
+            tokens_today = self._tokens_today.get(model_name, 0)
+            
+            # Check RPM limit
+            if requests_minute >= limits["rpm"]:
+                return False, f"Rate limit exceeded: {requests_minute}/{limits['rpm']} requests per minute"
+            
+            # Check RPD limit
+            if requests_today >= limits["rpd"]:
+                return False, f"Daily quota exceeded: {requests_today}/{limits['rpd']} requests per day"
+            
+            # Check token limit
+            if tokens_today + estimated_tokens > limits["tpd"]:
+                return False, f"Token quota exceeded: {tokens_today + estimated_tokens}/{limits['tpd']} tokens per day"
+            
+            return True, "OK"
     
     def get_usage(self, model_name: str) -> Dict:
         """

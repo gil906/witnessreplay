@@ -156,6 +156,48 @@ async def log_requests(request, call_next):
     return response
 
 
+# Rate limiting middleware (optional - can be disabled via env var)
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """
+    Rate limiting middleware using usage tracker.
+    Only enforces limits if ENFORCE_RATE_LIMITS=true in env.
+    """
+    from app.services.usage_tracker import usage_tracker
+    
+    # Skip rate limiting for health checks and static files
+    if request.url.path in ["/api/health", "/", "/docs", "/openapi.json"] or \
+       request.url.path.startswith("/static"):
+        return await call_next(request)
+    
+    # Check if enforcement is enabled
+    enforce_limits = os.getenv("ENFORCE_RATE_LIMITS", "false").lower() == "true"
+    
+    if enforce_limits:
+        # Get current model from settings
+        current_model = settings.gemini_model
+        
+        # Check rate limit before processing request
+        allowed, reason = usage_tracker.check_rate_limit(current_model)
+        
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for {current_model}: {reason}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": reason,
+                    "model": current_model,
+                    "retry_after": "60"  # Retry after 1 minute
+                },
+                headers={
+                    "Retry-After": "60"
+                }
+            )
+    
+    return await call_next(request)
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

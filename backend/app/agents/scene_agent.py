@@ -102,10 +102,9 @@ class SceneReconstructionAgent:
             
             agent_response = response.text
             
-            # Track usage (estimate tokens - Gemini API doesn't always provide exact counts)
-            # Rough estimate: 1 token ≈ 4 characters for English text
-            input_tokens = len(statement) // 4
-            output_tokens = len(agent_response) // 4
+            # Track usage (estimate tokens with improved approximation)
+            input_tokens = self._estimate_tokens(statement)
+            output_tokens = self._estimate_tokens(agent_response)
             usage_tracker.record_request(
                 model_name=settings.gemini_model,
                 input_tokens=input_tokens,
@@ -355,6 +354,37 @@ class SceneReconstructionAgent:
         except Exception as e:
             logger.error(f"Error calculating complexity score: {e}")
             return 0.0
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count for text.
+        
+        Uses a better approximation than simple character division:
+        - Splits on whitespace to count words
+        - Accounts for punctuation and special characters
+        - Roughly: 1 token = 0.75 words for English
+        
+        Args:
+            text: Input text
+            
+        Returns:
+            Estimated token count
+        """
+        if not text:
+            return 0
+        
+        # Split into words (whitespace-separated)
+        words = text.split()
+        word_count = len(words)
+        
+        # Count special characters that typically become separate tokens
+        special_chars = sum(1 for c in text if c in "{}[]()<>.,;:!?\"'`@#$%^&*")
+        
+        # Estimate: ~0.75 tokens per word + special chars
+        # This is more accurate than the 1 token per 4 characters rule
+        estimated = int(word_count * 0.75 + special_chars * 0.5)
+        
+        return max(1, estimated)  # Minimum 1 token
     
     def reset(self):
         """Reset the agent state."""

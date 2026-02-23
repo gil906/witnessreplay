@@ -37,12 +37,26 @@ async def health_check():
         "firestore": await firestore_service.health_check(),
         "storage": storage_service.health_check(),
         "image_generation": image_service.health_check(),
+        "usage_tracker": _check_usage_tracker_health(),
     }
     
     return HealthResponse(
         status="healthy" if all(services.values()) else "degraded",
         services=services
     )
+
+
+def _check_usage_tracker_health() -> bool:
+    """Check if usage tracker is functional."""
+    try:
+        # Try to get usage for a known model
+        usage = usage_tracker.get_usage("gemini-2.5-flash")
+        # If we got a response with expected structure, it's healthy
+        return "model" in usage and "requests" in usage
+    except Exception as e:
+        logger.error(f"Usage tracker health check failed: {e}")
+        return False
+
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
