@@ -206,5 +206,4 @@ class EnhancedAudioVisualizer {
 
 // Export to global scope
 window.AudioRecorder = AudioRecorder;
-window.AudioVisualizer = AudioVisualizer;
 window.EnhancedAudioVisualizer = EnhancedAudioVisualizer;
