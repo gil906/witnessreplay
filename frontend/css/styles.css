@@ -2180,7 +2180,12 @@ body.forensic-mode {
     transition: all var(--transition-fast);
 }
 
-.model-select:hover {
+.model-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.model-select:hover:not(:disabled) {
     border-color: var(--accent-blue);
     box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.1);
 }
@@ -2208,6 +2213,12 @@ body.forensic-mode {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: var(--spacing-lg);
+    transition: opacity var(--transition-base);
+}
+
+.quota-dashboard.loading {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .quota-dashboard h3 {
@@ -2495,5 +2506,61 @@ body.forensic-mode {
         stroke-dashoffset: -150;
         transform: rotate(360deg);
     }
+}
+
+/* Error state for quota dashboard */
+.quota-error-state {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-secondary);
+}
+
+.quota-error-state .error-icon {
+    font-size: 3rem;
+    margin-bottom: var(--spacing-md);
+    opacity: 0.5;
+}
+
+.quota-error-state p {
+    margin: var(--spacing-sm) 0;
+}
+
+/* Enhanced loading indicator */
+.quota-loading {
+    text-align: center;
+    padding: var(--spacing-xl);
+}
+
+.quota-loading .spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(0, 212, 255, 0.2);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+    to { transform: rotate(360deg); }
+}
+
+/* Smooth opacity transitions */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-out;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
 }
 

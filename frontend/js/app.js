@@ -19,10 +19,38 @@ class WitnessReplayApp {
         this.maxReconnectAttempts = 5;
         this.reconnectTimer = null;
         this.hasReceivedGreeting = false;
+        this.fetchTimeout = 10000; // 10 second timeout for API calls
         
         this.initializeUI();
         this.initializeAudio();
         this.initializeModals();
+    }
+    
+    /**
+     * Fetch with timeout to prevent hanging requests
+     * @param {string} url - The URL to fetch
+     * @param {object} options - Fetch options
+     * @param {number} timeout - Timeout in milliseconds
+     * @returns {Promise<Response>}
+     */
+    async fetchWithTimeout(url, options = {}, timeout = this.fetchTimeout) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Request timeout - the server took too long to respond');
+            }
+            throw error;
+        }
     }
     
     initializeUI() {
@@ -176,7 +204,7 @@ class WitnessReplayApp {
             this.ui.setStatus('Creating session...', 'processing');
             
             // Call API to create session
-            const response = await fetch('/api/sessions', {
+            const response = await this.fetchWithTimeout('/api/sessions', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -666,7 +694,7 @@ class WitnessReplayApp {
         this.ui.showLoading('session-list');
         
         try {
-            const response = await fetch('/api/sessions');
+            const response = await this.fetchWithTimeout('/api/sessions');
             if (!response.ok) throw new Error('Failed to load sessions');
             
             const sessions = await response.json();
@@ -709,7 +737,7 @@ class WitnessReplayApp {
         this.ui.showToast('Loading session...', 'info');
         
         try {
-            const response = await fetch(`/api/sessions/${sessionId}`);
+            const response = await this.fetchWithTimeout(`/api/sessions/${sessionId}`);
             if (!response.ok) throw new Error('Failed to load session');
             
             const session = await response.json();
@@ -731,7 +759,7 @@ class WitnessReplayApp {
         }
         
         try {
-            const response = await fetch(`/api/sessions/${sessionId}`, {
+            const response = await this.fetchWithTimeout(`/api/sessions/${sessionId}`, {
                 method: 'DELETE'
             });
             
@@ -833,7 +861,7 @@ class WitnessReplayApp {
         
         try {
             this.ui.showToast('Generating PDF...', 'info');
-            const response = await fetch(`/api/sessions/${this.sessionId}/export/pdf`);
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/export/pdf`, {}, 30000); // 30s for PDF generation
             
             if (!response.ok) throw new Error('Export failed');
             
@@ -862,7 +890,7 @@ class WitnessReplayApp {
         
         try {
             this.ui.showToast('Exporting JSON...', 'info');
-            const response = await fetch(`/api/sessions/${this.sessionId}/export/json`);
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/export/json`);
             
             if (!response.ok) throw new Error('Export failed');
             
@@ -931,23 +959,61 @@ class WitnessReplayApp {
     
     async showQuotaModal() {
         this.ui.showModal('quota-modal');
-        await this.loadModels();
-        await this.loadCurrentModel();
-        await this.refreshQuota();
+        
+        // Show loading state
+        const modelSelect = document.getElementById('model-select');
+        const quotaContainer = document.querySelector('.quota-dashboard');
+        
+        if (modelSelect) {
+            modelSelect.disabled = true;
+            modelSelect.innerHTML = '<option>Loading models...</option>';
+        }
+        
+        if (quotaContainer) {
+            quotaContainer.style.opacity = '0.5';
+        }
+        
+        // Load data with error handling
+        try {
+            await Promise.all([
+                this.loadModels(),
+                this.loadCurrentModel(),
+                this.refreshQuota()
+            ]);
+        } catch (error) {
+            console.error('Error loading quota modal data:', error);
+            this.ui.showToast('Some data failed to load. Check console for details.', 'warning');
+        } finally {
+            if (modelSelect) {
+                modelSelect.disabled = false;
+            }
+            if (quotaContainer) {
+                quotaContainer.style.opacity = '1';
+            }
+        }
     }
     
     async loadModels() {
+        const modelSelect = document.getElementById('model-select');
+        
         try {
-            const response = await fetch('/api/models');
-            if (!response.ok) throw new Error('Failed to fetch models');
+            const response = await this.fetchWithTimeout('/api/models');
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
             
             const data = await response.json();
-            const modelSelect = document.getElementById('model-select');
             
             if (!modelSelect) return;
             
             // Clear existing options
             modelSelect.innerHTML = '';
+            
+            if (!data.models || data.models.length === 0) {
+                modelSelect.innerHTML = '<option>No models available</option>';
+                return;
+            }
             
             // Add models to dropdown
             data.models.forEach(model => {
@@ -965,14 +1031,28 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('Error loading models:', error);
-            this.ui.showToast('Failed to load models', 'error');
+            
+            // Provide fallback UI
+            if (modelSelect) {
+                modelSelect.innerHTML = '<option>Error loading models</option>';
+            }
+            
+            // Show user-friendly error message
+            const errorMsg = error.message.includes('timeout') 
+                ? 'Server timeout - models are unavailable right now'
+                : 'Failed to load models from server';
+            
+            this.ui.showToast(errorMsg, 'error', 5000);
         }
     }
     
     async loadCurrentModel() {
         try {
-            const response = await fetch('/api/models/current');
-            if (!response.ok) throw new Error('Failed to fetch current model');
+            const response = await this.fetchWithTimeout('/api/models/current');
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
             
             const data = await response.json();
             const modelSelect = document.getElementById('model-select');
@@ -983,6 +1063,9 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('Error loading current model:', error);
+            
+            // Don't show toast for this - it's not critical
+            // The model selector will just not have a pre-selected value
         }
     }
     
@@ -998,13 +1081,16 @@ class WitnessReplayApp {
             applyBtn.disabled = true;
             applyBtn.textContent = 'Applying...';
             
-            const response = await fetch('/api/models/config', {
+            const response = await this.fetchWithTimeout('/api/models/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model_name: newModel })
             });
             
-            if (!response.ok) throw new Error('Failed to update model');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Server returned ${response.status}`);
+            }
             
             const data = await response.json();
             
@@ -1026,7 +1112,12 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('Error applying model change:', error);
-            this.ui.showToast('Failed to change model', 'error');
+            
+            const errorMsg = error.message.includes('timeout')
+                ? 'Server timeout - please try again'
+                : `Failed to change model: ${error.message}`;
+            
+            this.ui.showToast(errorMsg, 'error', 5000);
             applyBtn.textContent = 'Apply';
             applyBtn.disabled = false;
         }
@@ -1034,8 +1125,11 @@ class WitnessReplayApp {
     
     async refreshQuota() {
         try {
-            const response = await fetch('/api/models/quota');
-            if (!response.ok) throw new Error('Failed to fetch quota');
+            const response = await this.fetchWithTimeout('/api/models/quota');
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
             
             const data = await response.json();
             
@@ -1044,7 +1138,19 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('Error refreshing quota:', error);
-            this.ui.showToast('Failed to refresh quota', 'error');
+            
+            // Show placeholder/error state in quota dashboard
+            this.updateQuotaDisplay({
+                requests_per_minute: { used: 0, limit: 0, remaining: 0 },
+                requests_per_day: { used: 0, limit: 0, remaining: 0 },
+                tokens_per_day: { used: 0, limit: 0, remaining: 0 }
+            });
+            
+            const errorMsg = error.message.includes('timeout')
+                ? 'Server timeout - quota data unavailable'
+                : 'Failed to refresh quota data';
+            
+            this.ui.showToast(errorMsg, 'error', 5000);
         }
     }
     
