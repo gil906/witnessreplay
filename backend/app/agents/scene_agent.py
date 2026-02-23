@@ -1,5 +1,6 @@
 import logging
 import json
+import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from google import genai
@@ -82,8 +83,8 @@ class SceneReconstructionAgent:
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
             
-            # Send to Gemini
-            response = self.chat.send_message(statement)
+            # Send to Gemini (wrapped in thread pool to avoid blocking event loop)
+            response = await asyncio.to_thread(self.chat.send_message, statement)
             agent_response = response.text
             
             # Track usage (estimate tokens - Gemini API doesn't always provide exact counts)
@@ -161,8 +162,9 @@ class SceneReconstructionAgent:
             # Ask Gemini to extract structured information
             extraction_prompt = f"{SCENE_EXTRACTION_PROMPT}\n\nConversation:\n{conversation_text}"
             
-            # Use client to generate content
-            response = self.client.models.generate_content(
+            # Use client to generate content (wrapped in thread pool)
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=settings.gemini_model,
                 contents=extraction_prompt
             )

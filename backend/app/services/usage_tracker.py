@@ -1,9 +1,12 @@
 """
 Usage tracking service for Gemini API quota management.
 Since Gemini API doesn't provide programmatic quota endpoints,
-we track usage locally.
+we track usage locally with JSON file persistence.
 """
 import logging
+import json
+import os
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Optional
 from collections import defaultdict
@@ -56,7 +59,7 @@ class UsageTracker:
         },
     }
     
-    def __init__(self):
+    def __init__(self, persistence_file: Optional[str] = None):
         self._lock = threading.Lock()
         # Track requests per model
         self._requests_today: Dict[str, int] = defaultdict(int)
@@ -65,6 +68,17 @@ class UsageTracker:
         self._tokens_today: Dict[str, int] = defaultdict(int)
         # Track last reset
         self._last_reset = datetime.now(timezone.utc).date()
+        
+        # Persistence
+        if persistence_file:
+            self._persistence_file = Path(persistence_file)
+        else:
+            # Default to a file in /tmp or project data directory
+            data_dir = Path("/tmp/witnessreplay_data")
+            data_dir.mkdir(exist_ok=True)
+            self._persistence_file = data_dir / "usage_tracker.json"
+        
+        self._load_from_disk()
     
     def _check_reset(self):
         """Reset counters if it's a new day (Pacific Time)."""
@@ -113,6 +127,9 @@ class UsageTracker:
             total_tokens = input_tokens + output_tokens
             self._tokens_today[model_name] += total_tokens
             
+            # Save to disk after recording
+            self._save_to_disk()
+            
             logger.debug(
                 f"Recorded usage for {model_name}: "
                 f"+1 req, +{total_tokens} tokens "
@@ -120,9 +137,9 @@ class UsageTracker:
                 f"{self._tokens_today[model_name]} tokens)"
             )
     
-    def get_usage(self, model_name: str) -> Dict:
+    def _get_usage_unlocked(self, model_name: str) -> Dict:
         """
-        Get current usage stats for a model.
+        Get current usage stats for a model (internal, assumes lock is held).
         
         Args:
             model_name: Model identifier
@@ -130,32 +147,29 @@ class UsageTracker:
         Returns:
             Dict with usage stats and limits
         """
-        with self._lock:
-            self._check_reset()
-            
-            limits = self.RATE_LIMITS.get(model_name, {
-                "rpm": 15,
-                "rpd": 1500,
-                "tpd": 15000000,
-                "tier": "unknown"
-            })
-            
-            requests_today = self._requests_today.get(model_name, 0)
-            requests_minute = len(self._requests_minute.get(model_name, []))
-            tokens_today = self._tokens_today.get(model_name, 0)
-            
-            return {
-                "model": model_name,
-                "tier": limits["tier"],
-                "requests": {
-                    "minute": {
-                        "used": requests_minute,
-                        "limit": limits["rpm"],
-                        "remaining": max(0, limits["rpm"] - requests_minute)
-                    },
-                    "day": {
-                        "used": requests_today,
-                        "limit": limits["rpd"],
+        limits = self.RATE_LIMITS.get(model_name, {
+            "rpm": 15,
+            "rpd": 1500,
+            "tpd": 15000000,
+            "tier": "unknown"
+        })
+        
+        requests_today = self._requests_today.get(model_name, 0)
+        requests_minute = len(self._requests_minute.get(model_name, []))
+        tokens_today = self._tokens_today.get(model_name, 0)
+        
+        return {
+            "model": model_name,
+            "tier": limits["tier"],
+            "requests": {
+                "minute": {
+                    "used": requests_minute,
+                    "limit": limits["rpm"],
+                    "remaining": max(0, limits["rpm"] - requests_minute)
+                },
+                "day": {
+                    "used": requests_today,
+                    "limit": limits["rpd"],
                         "remaining": max(0, limits["rpd"] - requests_today)
                     }
                 },
@@ -170,6 +184,62 @@ class UsageTracker:
                 "note": "Usage tracking is approximate and based on local counting"
             }
     
+    def get_usage(self, model_name: str) -> Dict:
+        """
+        Get current usage stats for a model (public API with locking).
+        
+        Args:
+            model_name: Model identifier
+        
+        Returns:
+            Dict with usage stats and limits
+        """
+        with self._lock:
+            self._check_reset()
+            return self._get_usage_unlocked(model_name)
+    
+    def _load_from_disk(self):
+        """Load usage data from disk."""
+        try:
+            if self._persistence_file.exists():
+                with open(self._persistence_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Check if data is from today
+                saved_date = datetime.fromisoformat(data.get("date", "")).date()
+                today = datetime.now(timezone.utc).date()
+                
+                if saved_date == today:
+                    # Restore today's data
+                    self._requests_today = defaultdict(int, data.get("requests_today", {}))
+                    self._tokens_today = defaultdict(int, data.get("tokens_today", {}))
+                    self._last_reset = saved_date
+                    logger.info(f"Loaded usage data from {self._persistence_file}")
+                else:
+                    logger.info(f"Usage data is from {saved_date}, starting fresh for {today}")
+        except Exception as e:
+            logger.warning(f"Could not load usage data from disk: {e}")
+    
+    def _save_to_disk(self):
+        """Save usage data to disk."""
+        try:
+            data = {
+                "date": self._last_reset.isoformat(),
+                "requests_today": dict(self._requests_today),
+                "tokens_today": dict(self._tokens_today),
+                "saved_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Atomic write: write to temp file, then rename
+            temp_file = self._persistence_file.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            temp_file.replace(self._persistence_file)
+            
+            logger.debug(f"Saved usage data to {self._persistence_file}")
+        except Exception as e:
+            logger.error(f"Failed to save usage data to disk: {e}")
+    
     def get_all_usage(self) -> Dict:
         """Get usage stats for all tracked models."""
         with self._lock:
@@ -180,7 +250,7 @@ class UsageTracker:
             all_models = set(self._requests_today.keys()) | set(self.RATE_LIMITS.keys())
             
             for model in all_models:
-                result[model] = self.get_usage(model)
+                result[model] = self._get_usage_unlocked(model)
             
             return result
 

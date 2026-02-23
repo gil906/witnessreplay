@@ -15,6 +15,7 @@ class ImageGenerationService:
     """Service for generating scene images using Gemini."""
     
     def __init__(self):
+        self.client = None
         self.model = None
         self._initialize_client()
     
