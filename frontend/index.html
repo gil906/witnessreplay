@@ -52,6 +52,9 @@
                     <button id="sessions-list-btn" class="btn btn-secondary" data-tooltip="View all sessions">
                         📋 Sessions
                     </button>
+                    <button id="quota-btn" class="btn btn-secondary" data-tooltip="Model & Quota">
+                        🤖 Model
+                    </button>
                 </div>
             </div>
         </header>
@@ -195,6 +198,89 @@
                 <p class="empty-state">Loading sessions...</p>
             </div>
             <button class="btn btn-secondary" id="modal-close-btn-2">Close</button>
+        </div>
+    </div>
+
+    <!-- Model & Quota Modal -->
+    <div id="quota-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="quota-modal-title">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h2 id="quota-modal-title">🤖 Gemini Model & Quota</h2>
+                <button class="modal-close" id="close-quota-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            
+            <!-- Model Selector -->
+            <div class="model-selector-section">
+                <h3>Active Model</h3>
+                <div class="model-select-group">
+                    <select id="model-select" class="model-select" aria-label="Select Gemini model">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <button id="apply-model-btn" class="btn btn-primary" disabled>Apply</button>
+                </div>
+                <p class="model-help-text">
+                    💡 Free tier recommended: <strong>gemini-2.5-flash</strong> (15 RPM, 15M tokens/day)
+                </p>
+            </div>
+
+            <!-- Quota Dashboard -->
+            <div class="quota-dashboard">
+                <h3>Usage & Quota</h3>
+                
+                <div class="quota-grid">
+                    <!-- Requests Per Minute -->
+                    <div class="quota-card">
+                        <div class="quota-header">
+                            <h4>Requests / Minute</h4>
+                            <span class="quota-badge" id="rpm-badge">--</span>
+                        </div>
+                        <div class="quota-bar-container">
+                            <div class="quota-bar" id="rpm-bar" style="width: 0%"></div>
+                        </div>
+                        <p class="quota-label">
+                            <span id="rpm-used">0</span> / <span id="rpm-limit">--</span> requests
+                        </p>
+                    </div>
+
+                    <!-- Requests Per Day -->
+                    <div class="quota-card">
+                        <div class="quota-header">
+                            <h4>Requests / Day</h4>
+                            <span class="quota-badge" id="rpd-badge">--</span>
+                        </div>
+                        <div class="quota-bar-container">
+                            <div class="quota-bar" id="rpd-bar" style="width: 0%"></div>
+                        </div>
+                        <p class="quota-label">
+                            <span id="rpd-used">0</span> / <span id="rpd-limit">--</span> requests
+                        </p>
+                    </div>
+
+                    <!-- Tokens Per Day -->
+                    <div class="quota-card">
+                        <div class="quota-header">
+                            <h4>Tokens / Day</h4>
+                            <span class="quota-badge" id="tpd-badge">--</span>
+                        </div>
+                        <div class="quota-bar-container">
+                            <div class="quota-bar" id="tpd-bar" style="width: 0%"></div>
+                        </div>
+                        <p class="quota-label">
+                            <span id="tpd-used">0</span> / <span id="tpd-limit">--</span> tokens
+                        </p>
+                    </div>
+                </div>
+
+                <div class="quota-footer">
+                    <p class="quota-disclaimer">
+                        ⚠️ <strong>Local tracking</strong>: Gemini API does not provide programmatic quota endpoints. 
+                        Usage is tracked locally and resets at midnight UTC. Counts are approximate.
+                    </p>
+                    <button id="refresh-quota-btn" class="btn btn-secondary">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <button class="btn btn-secondary" id="modal-close-quota-btn-2">Close</button>
         </div>
     </div>
 

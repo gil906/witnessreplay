@@ -67,6 +67,12 @@ class WitnessReplayApp {
         document.getElementById('export-pdf-btn')?.addEventListener('click', () => this.exportPDF());
         document.getElementById('export-json-btn')?.addEventListener('click', () => this.exportJSON());
         
+        // Model & Quota button
+        const quotaBtn = document.getElementById('quota-btn');
+        if (quotaBtn) {
+            quotaBtn.addEventListener('click', () => this.showQuotaModal());
+        }
+        
         // Start with a new session
         this.createNewSession();
     }
@@ -96,6 +102,42 @@ class WitnessReplayApp {
                 this.ui.hideModal('session-modal');
             }
         });
+        
+        // Quota modal close buttons
+        document.getElementById('close-quota-modal-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('quota-modal');
+        });
+        document.getElementById('modal-close-quota-btn-2')?.addEventListener('click', () => {
+            this.ui.hideModal('quota-modal');
+        });
+        
+        // Click outside quota modal to close
+        document.getElementById('quota-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'quota-modal') {
+                this.ui.hideModal('quota-modal');
+            }
+        });
+        
+        // Model selector and quota controls
+        const modelSelect = document.getElementById('model-select');
+        const applyModelBtn = document.getElementById('apply-model-btn');
+        const refreshQuotaBtn = document.getElementById('refresh-quota-btn');
+        
+        if (modelSelect) {
+            modelSelect.addEventListener('change', () => {
+                if (applyModelBtn) {
+                    applyModelBtn.disabled = false;
+                }
+            });
+        }
+        
+        if (applyModelBtn) {
+            applyModelBtn.addEventListener('click', () => this.applyModelChange());
+        }
+        
+        if (refreshQuotaBtn) {
+            refreshQuotaBtn.addEventListener('click', () => this.refreshQuota());
+        }
     }
     
     async createNewSession() {
@@ -239,6 +281,11 @@ class WitnessReplayApp {
                 const statusMsg = message.data.message || message.data.status;
                 const state = this.getStatusState(statusMsg);
                 this.ui.setStatus(statusMsg, state);
+                
+                // Show loading skeleton when generating scene
+                if (state === 'generating' && !this.sceneDisplay.querySelector('.scene-image')) {
+                    this.showSceneLoadingSkeleton();
+                }
                 break;
             
             case 'error':
@@ -422,6 +469,22 @@ class WitnessReplayApp {
         
         // Add to timeline
         this.addTimelineVersion(data);
+    }
+    
+    showSceneLoadingSkeleton() {
+        // Show loading skeleton before scene generation
+        const skeleton = document.createElement('div');
+        skeleton.className = 'scene-skeleton';
+        skeleton.innerHTML = `
+            <svg class="progress-ring" viewBox="0 0 60 60">
+                <circle cx="30" cy="30" r="26"></circle>
+            </svg>
+        `;
+        
+        this.sceneDisplay.innerHTML = '';
+        this.sceneDisplay.appendChild(skeleton);
+        
+        this.sceneDescription.innerHTML = '<p class="text-muted">Detective Ray is generating the scene...</p>';
     }
     
     setSceneImage(data) {
@@ -780,6 +843,216 @@ class WitnessReplayApp {
             });
         } else {
             document.exitFullscreen();
+        }
+    }
+    
+    // ======================================
+    // Model Selector & Quota Dashboard
+    // ======================================
+    
+    async showQuotaModal() {
+        this.ui.showModal('quota-modal');
+        await this.loadModels();
+        await this.loadCurrentModel();
+        await this.refreshQuota();
+    }
+    
+    async loadModels() {
+        try {
+            const response = await fetch('/api/models');
+            if (!response.ok) throw new Error('Failed to fetch models');
+            
+            const data = await response.json();
+            const modelSelect = document.getElementById('model-select');
+            
+            if (!modelSelect) return;
+            
+            // Clear existing options
+            modelSelect.innerHTML = '';
+            
+            // Add models to dropdown
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = `${model.display_name || model.name}`;
+                
+                // Add info about capabilities
+                if (model.input_token_limit) {
+                    option.textContent += ` (${(model.input_token_limit / 1000).toFixed(0)}k tokens)`;
+                }
+                
+                modelSelect.appendChild(option);
+            });
+            
+        } catch (error) {
+            console.error('Error loading models:', error);
+            this.ui.showToast('Failed to load models', 'error');
+        }
+    }
+    
+    async loadCurrentModel() {
+        try {
+            const response = await fetch('/api/models/current');
+            if (!response.ok) throw new Error('Failed to fetch current model');
+            
+            const data = await response.json();
+            const modelSelect = document.getElementById('model-select');
+            
+            if (modelSelect && data.gemini_model) {
+                modelSelect.value = data.gemini_model;
+            }
+            
+        } catch (error) {
+            console.error('Error loading current model:', error);
+        }
+    }
+    
+    async applyModelChange() {
+        const modelSelect = document.getElementById('model-select');
+        const applyBtn = document.getElementById('apply-model-btn');
+        
+        if (!modelSelect || !modelSelect.value) return;
+        
+        const newModel = modelSelect.value;
+        
+        try {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            
+            const response = await fetch('/api/models/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_name: newModel })
+            });
+            
+            if (!response.ok) throw new Error('Failed to update model');
+            
+            const data = await response.json();
+            
+            this.ui.showToast(
+                `Model changed: ${data.previous_model} → ${data.new_model}`, 
+                'success', 
+                3000
+            );
+            
+            applyBtn.textContent = 'Applied ✓';
+            
+            // Refresh quota after model change
+            await this.refreshQuota();
+            
+            setTimeout(() => {
+                applyBtn.textContent = 'Apply';
+                applyBtn.disabled = true;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error applying model change:', error);
+            this.ui.showToast('Failed to change model', 'error');
+            applyBtn.textContent = 'Apply';
+            applyBtn.disabled = false;
+        }
+    }
+    
+    async refreshQuota() {
+        try {
+            const response = await fetch('/api/models/quota');
+            if (!response.ok) throw new Error('Failed to fetch quota');
+            
+            const data = await response.json();
+            
+            // Update UI elements
+            this.updateQuotaDisplay(data);
+            
+        } catch (error) {
+            console.error('Error refreshing quota:', error);
+            this.ui.showToast('Failed to refresh quota', 'error');
+        }
+    }
+    
+    updateQuotaDisplay(quotaData) {
+        // Requests Per Minute
+        const rpmUsed = quotaData.requests_per_minute?.used || 0;
+        const rpmLimit = quotaData.requests_per_minute?.limit || 0;
+        const rpmRemaining = quotaData.requests_per_minute?.remaining || 0;
+        const rpmPercent = rpmLimit > 0 ? (rpmUsed / rpmLimit) * 100 : 0;
+        
+        document.getElementById('rpm-used').textContent = rpmUsed;
+        document.getElementById('rpm-limit').textContent = rpmLimit;
+        
+        const rpmBar = document.getElementById('rpm-bar');
+        const rpmBadge = document.getElementById('rpm-badge');
+        
+        if (rpmBar) {
+            rpmBar.style.width = `${rpmPercent}%`;
+            rpmBar.className = 'quota-bar';
+            if (rpmPercent > 80) rpmBar.classList.add('danger');
+            else if (rpmPercent > 60) rpmBar.classList.add('warning');
+        }
+        
+        if (rpmBadge) {
+            rpmBadge.textContent = `${rpmRemaining} left`;
+            rpmBadge.className = 'quota-badge';
+            if (rpmPercent > 80) rpmBadge.classList.add('danger');
+            else if (rpmPercent > 60) rpmBadge.classList.add('warning');
+        }
+        
+        // Requests Per Day
+        const rpdUsed = quotaData.requests_per_day?.used || 0;
+        const rpdLimit = quotaData.requests_per_day?.limit || 0;
+        const rpdRemaining = quotaData.requests_per_day?.remaining || 0;
+        const rpdPercent = rpdLimit > 0 ? (rpdUsed / rpdLimit) * 100 : 0;
+        
+        document.getElementById('rpd-used').textContent = rpdUsed;
+        document.getElementById('rpd-limit').textContent = rpdLimit;
+        
+        const rpdBar = document.getElementById('rpd-bar');
+        const rpdBadge = document.getElementById('rpd-badge');
+        
+        if (rpdBar) {
+            rpdBar.style.width = `${rpdPercent}%`;
+            rpdBar.className = 'quota-bar';
+            if (rpdPercent > 80) rpdBar.classList.add('danger');
+            else if (rpdPercent > 60) rpdBar.classList.add('warning');
+        }
+        
+        if (rpdBadge) {
+            rpdBadge.textContent = `${rpdRemaining} left`;
+            rpdBadge.className = 'quota-badge';
+            if (rpdPercent > 80) rpdBadge.classList.add('danger');
+            else if (rpdPercent > 60) rpdBadge.classList.add('warning');
+        }
+        
+        // Tokens Per Day
+        const tpdUsed = quotaData.tokens_per_day?.used || 0;
+        const tpdLimit = quotaData.tokens_per_day?.limit || 0;
+        const tpdRemaining = quotaData.tokens_per_day?.remaining || 0;
+        const tpdPercent = tpdLimit > 0 ? (tpdUsed / tpdLimit) * 100 : 0;
+        
+        // Format large numbers (e.g., 15000000 -> 15M)
+        const formatNumber = (num) => {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        };
+        
+        document.getElementById('tpd-used').textContent = formatNumber(tpdUsed);
+        document.getElementById('tpd-limit').textContent = formatNumber(tpdLimit);
+        
+        const tpdBar = document.getElementById('tpd-bar');
+        const tpdBadge = document.getElementById('tpd-badge');
+        
+        if (tpdBar) {
+            tpdBar.style.width = `${tpdPercent}%`;
+            tpdBar.className = 'quota-bar';
+            if (tpdPercent > 80) tpdBar.classList.add('danger');
+            else if (tpdPercent > 60) tpdBar.classList.add('warning');
+        }
+        
+        if (tpdBadge) {
+            tpdBadge.textContent = `${formatNumber(tpdRemaining)} left`;
+            tpdBadge.className = 'quota-badge';
+            if (tpdPercent > 80) tpdBadge.classList.add('danger');
+            else if (tpdPercent > 60) tpdBadge.classList.add('warning');
         }
     }
 }
