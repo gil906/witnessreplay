@@ -61,6 +61,11 @@ async def websocket_handler(websocket, session_id: str):
 
 # Serve static files (frontend)
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "frontend")
+# Also check Docker path where frontend is at /app/frontend
+if not os.path.exists(frontend_path):
+    frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+if not os.path.exists(frontend_path):
+    frontend_path = "/app/frontend"
 if os.path.exists(frontend_path):
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
     

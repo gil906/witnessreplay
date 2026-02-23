@@ -1,0 +1,19 @@
+services:
+  witnessreplay:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: witnessreplay
+    ports:
+      - "8088:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+    volumes:
+      - wr-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  wr-data:

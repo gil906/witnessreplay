@@ -17,12 +17,21 @@ class Settings(BaseSettings):
     # Application Configuration
     environment: str = "development"
     debug: bool = True
+    from pydantic import field_validator
+
     allowed_origins: List[str] = [
         "http://localhost:3000",
         "http://localhost:8080",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:8080",
     ]
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_origins(cls, v):
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
     
     # Server Configuration
     port: int = 8080
