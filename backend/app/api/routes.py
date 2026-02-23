@@ -304,6 +304,209 @@ async def export_session_json(session_id: str):
         )
 
 
+@router.get("/sessions/{session_id}/export/evidence")
+async def export_session_evidence(session_id: str):
+    """
+    Export session as structured evidence report for law enforcement systems.
+    
+    Returns a standardized JSON format compatible with evidence management systems,
+    including chain of custody, witness credibility, and scene reconstruction data.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        from fastapi.responses import Response
+        import json
+        
+        # Build structured evidence report
+        evidence_report = {
+            "case_metadata": {
+                "case_id": session.id,
+                "case_title": session.title,
+                "date_created": session.created_at.isoformat() if session.created_at else None,
+                "date_updated": session.updated_at.isoformat() if session.updated_at else None,
+                "status": session.status,
+                "generated_by": "WitnessReplay AI Reconstruction System v1.0",
+                "generated_at": datetime.utcnow().isoformat(),
+            },
+            "witness_statements": [
+                {
+                    "statement_id": stmt.id,
+                    "timestamp": stmt.timestamp.isoformat() if stmt.timestamp else None,
+                    "text": stmt.text,
+                    "is_correction": stmt.is_correction,
+                    "audio_available": bool(stmt.audio_url),
+                    "audio_url": stmt.audio_url,
+                }
+                for stmt in session.witness_statements
+            ],
+            "scene_elements": [
+                {
+                    "element_id": elem.id,
+                    "type": elem.type,
+                    "description": elem.description,
+                    "position": elem.position,
+                    "color": elem.color,
+                    "size": elem.size,
+                    "confidence": elem.confidence,
+                    "first_mentioned": elem.timestamp.isoformat() if elem.timestamp else None,
+                }
+                for elem in session.current_scene_elements
+            ],
+            "scene_reconstructions": [
+                {
+                    "version": ver.version,
+                    "description": ver.description,
+                    "timestamp": ver.timestamp.isoformat() if ver.timestamp else None,
+                    "image_url": ver.image_url,
+                    "changes_from_previous": ver.changes_from_previous,
+                    "element_count": len(ver.elements),
+                }
+                for ver in session.scene_versions
+            ],
+            "timeline": [
+                {
+                    "event_id": evt.id,
+                    "sequence": evt.sequence,
+                    "description": evt.description,
+                    "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
+                    "image_url": evt.image_url,
+                }
+                for evt in session.timeline
+            ],
+            "summary": {
+                "total_statements": len(session.witness_statements),
+                "total_corrections": sum(1 for stmt in session.witness_statements if stmt.is_correction),
+                "total_scene_elements": len(session.current_scene_elements),
+                "total_reconstructions": len(session.scene_versions),
+                "timeline_events": len(session.timeline),
+            },
+            "notes": [
+                "This report was generated using AI-assisted witness interview and scene reconstruction technology.",
+                "All scene reconstructions are based on witness statements and should be verified with physical evidence.",
+                "Confidence scores indicate the AI's certainty based on statement consistency and detail.",
+            ]
+        }
+        
+        json_str = json.dumps(evidence_report, indent=2, default=str)
+        
+        return Response(
+            content=json_str,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=evidence_report_{session_id}.json"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting evidence report: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to export evidence report"
+        )
+
+
+@router.get("/sessions/export/bulk")
+async def export_all_sessions_bulk(
+    limit: int = 100,
+    status_filter: Optional[str] = None,
+    format: str = "json"
+):
+    """
+    Export multiple sessions in bulk for backup or analysis.
+    
+    Args:
+        limit: Maximum number of sessions to export (default 100)
+        status_filter: Optional filter by status (active, completed, archived)
+        format: Export format - "json" (default) or "csv"
+    
+    Returns:
+        JSON array of all sessions or CSV file
+    """
+    try:
+        # Get sessions
+        all_sessions = await firestore_service.list_sessions(limit=limit)
+        
+        # Filter by status if requested
+        if status_filter:
+            all_sessions = [s for s in all_sessions if s.status == status_filter]
+        
+        from fastapi.responses import Response
+        import json
+        
+        if format == "csv":
+            # CSV export for spreadsheet analysis
+            import io
+            import csv
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow([
+                "Session ID", "Title", "Created", "Updated", "Status",
+                "Statements", "Corrections", "Scene Elements", "Reconstructions"
+            ])
+            
+            # Data rows
+            for session in all_sessions:
+                writer.writerow([
+                    session.id,
+                    session.title,
+                    session.created_at.isoformat() if session.created_at else "",
+                    session.updated_at.isoformat() if session.updated_at else "",
+                    session.status,
+                    len(session.witness_statements),
+                    sum(1 for stmt in session.witness_statements if stmt.is_correction),
+                    len(session.current_scene_elements),
+                    len(session.scene_versions),
+                ])
+            
+            csv_content = output.getvalue()
+            
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=sessions_export.csv"
+                }
+            )
+        else:
+            # JSON export (default)
+            sessions_data = [s.model_dump(mode='json') for s in all_sessions]
+            export_data = {
+                "export_timestamp": datetime.utcnow().isoformat(),
+                "total_sessions": len(sessions_data),
+                "status_filter": status_filter,
+                "sessions": sessions_data
+            }
+            
+            json_str = json.dumps(export_data, indent=2, default=str)
+            
+            return Response(
+                content=json_str,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename=sessions_bulk_export.json"
+                }
+            )
+    
+    except Exception as e:
+        logger.error(f"Error exporting sessions in bulk: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export sessions: {str(e)}"
+        )
+
+
+
 @router.get("/analytics/stats")
 async def get_analytics_stats():
     """Get analytics statistics across all sessions."""
