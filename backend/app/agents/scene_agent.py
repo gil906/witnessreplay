@@ -6,6 +6,7 @@ from google import genai
 
 from app.config import settings
 from app.models.schemas import SceneElement, WitnessStatement, SceneVersion
+from app.services.usage_tracker import usage_tracker
 from app.agents.prompts import (
     SYSTEM_PROMPT,
     INITIAL_GREETING,
@@ -85,6 +86,16 @@ class SceneReconstructionAgent:
             response = self.chat.send_message(statement)
             agent_response = response.text
             
+            # Track usage (estimate tokens - Gemini API doesn't always provide exact counts)
+            # Rough estimate: 1 token ≈ 4 characters for English text
+            input_tokens = len(statement) // 4
+            output_tokens = len(agent_response) // 4
+            usage_tracker.record_request(
+                model_name=settings.gemini_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+            
             # Store in history
             self.conversation_history.append({
                 "role": "user",
@@ -154,6 +165,15 @@ class SceneReconstructionAgent:
             response = self.client.models.generate_content(
                 model=settings.gemini_model,
                 contents=extraction_prompt
+            )
+            
+            # Track usage for extraction
+            extraction_tokens_in = len(extraction_prompt) // 4
+            extraction_tokens_out = len(response.text) // 4
+            usage_tracker.record_request(
+                model_name=settings.gemini_model,
+                input_tokens=extraction_tokens_in,
+                output_tokens=extraction_tokens_out
             )
             
             # Try to parse JSON from the response

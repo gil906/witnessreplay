@@ -11,11 +11,17 @@ from app.models.schemas import (
     SessionUpdate,
     SessionResponse,
     HealthResponse,
+    ModelInfo,
+    UsageQuota,
+    ModelConfigUpdate,
 )
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
 from app.services.image_gen import image_service
+from app.services.usage_tracker import usage_tracker
 from app.agents.scene_agent import get_agent, remove_agent
+from app.config import settings
+from google import genai
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -388,4 +394,182 @@ async def search_sessions_by_element(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to search sessions"
+        )
+
+
+# ==================== Model Management Endpoints ====================
+
+@router.get("/models", response_model=List[ModelInfo])
+async def list_models():
+    """
+    List available Gemini models with their capabilities.
+    
+    Returns information about models that can be used for scene reconstruction.
+    """
+    try:
+        if not settings.google_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google API key not configured"
+            )
+        
+        client = genai.Client(api_key=settings.google_api_key)
+        
+        # List models from Gemini API
+        models_list = []
+        try:
+            for model in client.models.list():
+                # Filter for generation models only
+                if hasattr(model, 'supported_generation_methods') and \
+                   'generateContent' in model.supported_generation_methods:
+                    
+                    model_info = ModelInfo(
+                        name=model.name,
+                        display_name=model.display_name if hasattr(model, 'display_name') else model.name,
+                        description=model.description if hasattr(model, 'description') else None,
+                        version=model.version if hasattr(model, 'version') else None,
+                        input_token_limit=model.input_token_limit if hasattr(model, 'input_token_limit') else None,
+                        output_token_limit=model.output_token_limit if hasattr(model, 'output_token_limit') else None,
+                        supported_generation_methods=list(model.supported_generation_methods) if hasattr(model, 'supported_generation_methods') else [],
+                        temperature=model.temperature if hasattr(model, 'temperature') else None,
+                        top_p=model.top_p if hasattr(model, 'top_p') else None,
+                        top_k=model.top_k if hasattr(model, 'top_k') else None,
+                    )
+                    models_list.append(model_info)
+        except Exception as e:
+            logger.warning(f"Error listing models from API: {e}")
+            # Fall back to known models if API call fails
+            known_models = [
+                "gemini-2.5-pro",
+                "gemini-2.5-flash", 
+                "gemini-2.5-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-lite",
+                "gemini-2.0-flash-exp",
+            ]
+            for model_name in known_models:
+                models_list.append(ModelInfo(
+                    name=model_name,
+                    display_name=model_name.replace("-", " ").title(),
+                    description=f"Gemini model: {model_name}",
+                    supported_generation_methods=["generateContent"],
+                ))
+        
+        logger.info(f"Returning {len(models_list)} available models")
+        return models_list
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list models"
+        )
+
+
+@router.get("/models/quota", response_model=dict)
+async def get_quota_info(model: Optional[str] = None):
+    """
+    Get quota and usage information for Gemini models.
+    
+    Args:
+        model: Optional specific model name. If not provided, returns all.
+    
+    Returns:
+        Usage and quota information with rate limits.
+        
+    Note:
+        Gemini API does not provide programmatic quota endpoints.
+        This tracks usage locally by counting API calls and tokens.
+        Counts are approximate and reset at midnight Pacific Time.
+    """
+    try:
+        if model:
+            # Get specific model usage
+            usage = usage_tracker.get_usage(model)
+            return usage
+        else:
+            # Get all models usage
+            all_usage = usage_tracker.get_all_usage()
+            return {
+                "models": all_usage,
+                "current_model": settings.gemini_model,
+                "note": "Usage tracking is approximate and based on local counting"
+            }
+    
+    except Exception as e:
+        logger.error(f"Error getting quota info: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get quota information"
+        )
+
+
+@router.post("/models/config")
+async def update_model_config(config: ModelConfigUpdate):
+    """
+    Update the model configuration (which model to use).
+    
+    Args:
+        config: New model configuration
+    
+    Returns:
+        Success message with new model name
+        
+    Note:
+        This updates the runtime configuration. To persist across restarts,
+        update the GEMINI_MODEL environment variable.
+    """
+    try:
+        # Validate model name format
+        if not config.model_name or not config.model_name.startswith("gemini-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid model name. Must be a Gemini model (e.g., gemini-2.5-flash)"
+            )
+        
+        # Update runtime configuration
+        old_model = settings.gemini_model
+        settings.gemini_model = config.model_name
+        
+        logger.info(f"Model configuration updated: {old_model} -> {config.model_name}")
+        
+        return {
+            "success": True,
+            "previous_model": old_model,
+            "current_model": config.model_name,
+            "note": "Configuration updated for current runtime. Update GEMINI_MODEL env var to persist."
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating model config: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update model configuration"
+        )
+
+
+@router.get("/models/current")
+async def get_current_model():
+    """
+    Get the currently configured model.
+    
+    Returns:
+        Current model name and configuration
+    """
+    try:
+        return {
+            "model": settings.gemini_model,
+            "vision_model": settings.gemini_vision_model,
+            "environment": settings.environment,
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting current model: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get current model"
         )

@@ -94,3 +94,32 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     version: str = "1.0.0"
     services: Dict[str, bool] = {}
+
+
+class ModelInfo(BaseModel):
+    """Information about a Gemini model."""
+    name: str
+    display_name: str
+    description: Optional[str] = None
+    version: Optional[str] = None
+    input_token_limit: Optional[int] = None
+    output_token_limit: Optional[int] = None
+    supported_generation_methods: List[str] = []
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+
+
+class UsageQuota(BaseModel):
+    """Quota and usage information for a model."""
+    model: str
+    tier: str
+    requests: Dict[str, Dict[str, int]]
+    tokens: Dict[str, Dict[str, int]]
+    reset_time: str
+    note: str
+
+
+class ModelConfigUpdate(BaseModel):
+    """Request to update model configuration."""
+    model_name: str
