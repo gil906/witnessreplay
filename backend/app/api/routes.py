@@ -366,8 +366,8 @@ async def search_sessions_by_element(
             match = False
             for elem in session.current_scene_elements:
                 # Check if element matches criteria
-                type_match = not element_type or elem.type.lower() == element_type.lower()
-                desc_match = not element_description or element_description.lower() in elem.description.lower()
+                type_match = not element_type or (elem.type and elem.type.lower() == element_type.lower())
+                desc_match = not element_description or (elem.description and element_description.lower() in elem.description.lower())
                 color_match = not color or (elem.color and color.lower() in elem.color.lower())
                 
                 if type_match and desc_match and color_match:
@@ -464,6 +464,17 @@ async def list_models():
                 models_list.append(model_info)
             
             logger.info(f"Fetched {len(models_list)} models from Gemini API")
+            
+            # If API returned empty (rate limited or no results), use fallback
+            if not models_list:
+                logger.info("API returned no models, falling back to known models")
+                for model_name in known_models:
+                    models_list.append(ModelInfo(
+                        name=model_name,
+                        display_name=model_name.replace("-", " ").title(),
+                        description=f"Gemini model: {model_name}",
+                        supported_generation_methods=["generateContent"],
+                    ))
         except Exception as e:
             logger.warning(f"Error listing models from API, falling back to known models: {e}")
             # Fall back to known models if API call fails

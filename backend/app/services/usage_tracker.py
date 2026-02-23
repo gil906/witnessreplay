@@ -206,7 +206,10 @@ class UsageTracker:
                     data = json.load(f)
                 
                 # Check if data is from today
-                saved_date = datetime.fromisoformat(data.get("date", "")).date()
+                date_str = data.get("date", "")
+                if not date_str:
+                    return
+                saved_date = datetime.fromisoformat(date_str).date()
                 today = datetime.now(timezone.utc).date()
                 
                 if saved_date == today:

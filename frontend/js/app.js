@@ -778,7 +778,7 @@ class WitnessReplayApp {
     
     // Scene controls
     downloadScene() {
-        const img = document.getElementById('scene-image');
+        const img = this.sceneDisplay?.querySelector('.scene-image');
         if (img) {
             const link = document.createElement('a');
             link.href = img.src;

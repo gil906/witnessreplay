@@ -2,7 +2,7 @@ import logging
 import json
 import asyncio
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 import uuid
 
@@ -194,7 +194,7 @@ class WebSocketHandler:
                 return
             
             # Upload to GCS
-            filename = f"scene_v{self.version_counter}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png"
+            filename = f"scene_v{self.version_counter}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.png"
             image_url = await storage_service.upload_image(
                 image_data=image_bytes,
                 filename=filename,
@@ -267,7 +267,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from session {session_id}")
+    except json.JSONDecodeError as e:
+        logger.warning(f"Invalid JSON from client in session {session_id}: {e}")
+        try:
+            await handler.send_message("error", {"message": "Invalid message format"})
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+        try:
+            await handler.send_message("error", {"message": "Internal server error"})
+        except Exception:
+            pass
     finally:
         await handler.disconnect()
