@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-02-23T19:56:00Z",
+  "tester": "tester_agent",
+  "cycle": 2,
+  "bugs": [
+    {
+      "id": 10,
+      "title": "CRITICAL: API server enters deadlock state after first request",
+      "description": "The FastAPI server on port 8088 becomes completely unresponsive after processing the first request. All subsequent requests timeout after 3-5 seconds, including simple endpoints like /api/health. The health endpoint works on first call but then all endpoints hang indefinitely. Port 8088 is OPEN (TCP connection succeeds) but HTTP requests timeout. Services on other ports (9099) continue to work normally.",
+      "severity": "critical",
+      "steps_to_reproduce": "1. Start the backend server on port 8088\n2. Send first request: curl http://localhost:8088/api/health (succeeds)\n3. Send second request to ANY endpoint: curl http://localhost:8088/api/models\n4. Observe request hangs and times out\n5. Try health endpoint again: curl http://localhost:8088/api/health (now hangs)",
+      "expected_behavior": "All API endpoints should respond within 1-2 seconds consistently across multiple requests",
+      "actual_behavior": "After first successful health check, ALL endpoints hang indefinitely:\n- GET /api/models - timeout after 5s\n- GET /api/models/quota - timeout after 5s\n- GET /api/sessions - timeout after 5s\n- POST /api/sessions - timeout after 5s\n- GET /api/models/current - timeout after 15s\n- Even GET /api/health now times out after working once\n\nTCP connection establishes (port is OPEN) but HTTP response never arrives.",
+      "affected_files": [
+        "backend/app/main.py",
+        "backend/app/api/routes.py",
+        "backend/app/services/usage_tracker.py",
+        "backend/app/services/firestore.py"
+      ],
+      "investigation": "1. Direct testing shows UsageTracker.get_all_usage() works fine (0.00s)\n2. Direct testing shows firestore_service.list_sessions() works fine (0.00s)\n3. Port 8088 is listening and accepts TCP connections\n4. Server process (PID 1) is running uvicorn on port 9099 (different service)\n5. Server process (PID 243) is running on port 8089\n6. Likely culprits: Middleware deadlock, threading.Lock contention in usage_tracker during request processing, or asyncio.to_thread() blocking the event loop\n\nMiddleware stack suspicious:\n- add_request_id middleware\n- log_requests middleware\n- Both middlewares call await call_next(request) which could cause lock reentry if usage_tracker is accessed in both request and response paths",
+      "recommended_fix": "1. Check if usage_tracker._lock is being held across await boundaries\n2. Verify asyncio.to_thread() calls are not nested or blocking\n3. Add request timeout middleware (10s max)\n4. Add thread pool monitoring/debugging\n5. Consider async file I/O for usage_tracker persistence instead of synchronous writes\n6. Add deadlock detection and logging"
+    },
+    {
+      "id": 11,
+      "title": "MEDIUM: Usage tracker performs synchronous file I/O while holding lock",
+      "description": "The UsageTracker._save_to_disk() method performs synchronous file I/O operations (open, json.dump, file.replace) while holding self._lock. This lock is acquired in record_request(), get_usage(), and get_all_usage(). When called from async context, this blocks the entire thread and can cause deadlocks if multiple requests try to access the tracker.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Make concurrent API requests that trigger usage tracking\n2. Each request calls usage_tracker.record_request() which holds _lock\n3. _save_to_disk() is called while lock is held\n4. File I/O blocks the thread\n5. Other requests waiting for lock are blocked",
+      "expected_behavior": "File I/O should be non-blocking or performed outside the lock to prevent blocking concurrent requests",
+      "actual_behavior": "Synchronous file writes block the event loop and cause lock contention",
+      "affected_files": [
+        "backend/app/services/usage_tracker.py"
+      ],
+      "recommended_fix": "1. Use aiofiles for async file I/O\n2. OR move _save_to_disk() outside the lock (copy data, release lock, then save)\n3. OR debounce saves (save every N requests or every X seconds)\n4. OR use a write queue with background thread"
+    },
+    {
+      "id": 12,
+      "title": "MEDIUM: No request timeout protection in FastAPI",
+      "description": "The FastAPI application has no timeout middleware to prevent requests from hanging indefinitely. When a deadlock or blocking call occurs, requests can hang forever instead of returning 504 Gateway Timeout.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Trigger any blocking operation in an endpoint\n2. Request hangs indefinitely\n3. No timeout or circuit breaker kicks in",
+      "expected_behavior": "Requests should timeout after 30-60 seconds with 504 status code",
+      "actual_behavior": "Requests can hang forever, blocking resources",
+      "affected_files": [
+        "backend/app/main.py"
+      ],
+      "recommended_fix": "Add timeout middleware:\n@app.middleware('http')\nasync def timeout_middleware(request, call_next):\n    try:\n        return await asyncio.wait_for(call_next(request), timeout=30.0)\n    except asyncio.TimeoutError:\n        return JSONResponse({'error': 'Request timeout'}, status_code=504)"
+    },
+    {
+      "id": 13,
+      "title": "LOW: Middleware order may cause duplicate request processing",
+      "description": "Two middleware functions (add_request_id and log_requests) are defined separately and both call await call_next(request). The order of middleware execution in FastAPI can cause unexpected behavior if request.state modifications in one middleware aren't visible in the other.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Check middleware execution order\n2. Verify request.state.request_id is set before log_requests uses it\n3. Check if both middlewares are adding headers correctly",
+      "expected_behavior": "Middleware should execute in predictable order: add_request_id → log_requests → handler",
+      "actual_behavior": "Middleware order is based on registration order, but log_requests has fallback getattr(request.state, 'request_id', 'unknown')",
+      "affected_files": [
+        "backend/app/main.py"
+      ],
+      "recommended_fix": "Combine into single middleware or explicitly control execution order with numbered decorators"
+    },
+    {
+      "id": 14,
+      "title": "LOW: No health check for usage_tracker service",
+      "description": "The /api/health endpoint checks firestore, storage, and image_generation services, but doesn't check if usage_tracker is functional. If the tracker enters a deadlock state, the health check still reports 'degraded' or 'ok'.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Check /api/health response\n2. Note it doesn't include usage_tracker status",
+      "expected_behavior": "Health endpoint should verify all critical services including usage_tracker",
+      "actual_behavior": "Usage tracker health is not monitored",
+      "affected_files": [
+        "backend/app/api/routes.py"
+      ],
+      "recommended_fix": "Add to health check:\n'usage_tracker': usage_tracker is not None and hasattr(usage_tracker, '_lock')"
+    },
+    {
+      "id": 15,
+      "title": "LOW: Frontend lacks WebSocket connection test in bug workflow",
+      "description": "While testing the frontend, I found no automated way to verify WebSocket connectivity works. The frontend UI depends on WebSocket for real-time communication, but there's no test fixture or endpoint to validate this.",
+      "severity": "low",
+      "steps_to_reproduce": "Manual testing required - no automated test exists",
+      "expected_behavior": "Should have a WebSocket echo test or connection health check endpoint",
+      "actual_behavior": "No automated WebSocket testing capability",
+      "affected_files": [
+        "frontend/js/app.js",
+        "tests/"
+      ],
+      "recommended_fix": "Add WebSocket test endpoint: /ws/test that echoes messages for testing"
+    }
+  ],
+  "tests_passed": [
+    "✓ Python syntax validation - all .py files compile successfully",
+    "✓ Audio test fixtures exist (10s, 20s, 60s WAV files)",
+    "✓ UsageTracker direct test - get_all_usage() completes in 0.00s",
+    "✓ Firestore service direct test - list_sessions() completes in 0.00s",
+    "✓ Port 8088 is listening (TCP connection succeeds)",
+    "✓ Port 9099 monitor service responds correctly",
+    "✓ Usage tracker persistence file exists and is valid JSON",
+    "✓ GET /api/health works on first request (but then fails)"
+  ],
+  "tests_failed": [
+    "✗ GET /api/health - works once, then times out on subsequent requests",
+    "✗ GET /api/models - timeout after 5 seconds",
+    "✗ GET /api/models/quota - timeout after 5 seconds",
+    "✗ GET /api/models/current - timeout after 15 seconds",
+    "✗ GET /api/sessions - timeout after 5 seconds",
+    "✗ POST /api/sessions - timeout after 5 seconds",
+    "✗ GET / (frontend) - timeout after 10 seconds",
+    "✗ Any request after first health check - all hang indefinitely",
+    "✗ JavaScript syntax check - node command not available (can't verify)",
+    "✗ WebSocket connection test - no test available",
+    "✗ Model selector frontend test - blocked by backend hanging",
+    "✗ Quota dashboard frontend test - blocked by backend hanging"
+  ],
+  "summary": "APPLICATION STATUS: CRITICAL - Non-functional\n\nThe WitnessReplay backend has a critical deadlock bug that makes it completely unusable after the first API request. While individual services (UsageTracker, Firestore) work fine in isolation, the FastAPI server enters a deadlock state that blocks ALL endpoints indefinitely.\n\nRoot cause analysis points to lock contention in the middleware or usage tracker, where synchronous file I/O is performed while holding threading.Lock during request processing. The server accepts TCP connections but never sends HTTP responses.\n\nPrevious bugs (#3, #4, #6, #7) were reportedly fixed but the core issue persists. The application worked briefly (health endpoint succeeded once) but then became permanently unresponsive.\n\nCritical fixes needed:\n1. Fix deadlock in request processing pipeline (Bug #10)\n2. Make usage tracker file I/O non-blocking (Bug #11)\n3. Add request timeout protection (Bug #12)\n\nUntil these are fixed, the application cannot process user requests and is effectively offline.\n\nPositive notes:\n- Code quality is good (all Python compiles)\n- Individual services work correctly in isolation\n- Firestore in-memory fallback works\n- Frontend code appears well-structured (can't fully test due to backend issues)\n\nRecommendation: Feature Agent should focus exclusively on the deadlock bug before any other work.",
+  "previous_bugs_status": {
+    "bug_3": "reported_fixed_but_issue_persists",
+    "bug_4": "reported_fixed_but_issue_persists",
+    "bug_5": "not_tested_due_to_blocking_bug",
+    "bug_6": "verified_fixed_persistence_works",
+    "bug_7": "not_tested_due_to_blocking_bug",
+    "bug_8": "not_tested_due_to_blocking_bug",
+    "bug_9": "not_tested_due_to_blocking_bug"
+  },
+  "environment": {
+    "python_version": "3.11",
+    "ports_checked": [8080, 8088, 8089, 9099],
+    "ports_open": [8080, 8088, 8089, 9099],
+    "ports_responsive": [9099],
+    "docker_running": true,
+    "test_fixtures_ready": true
+  }
+}
