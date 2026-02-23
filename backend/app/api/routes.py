@@ -326,6 +326,18 @@ async def get_analytics_stats():
         total_statements = sum(len(s.witness_statements) for s in sessions)
         total_reconstructions = sum(len(s.scene_versions) for s in sessions)
         
+        # Calculate average session duration
+        total_duration_seconds = 0
+        sessions_with_duration = 0
+        for session in sessions:
+            if session.created_at and session.updated_at:
+                duration = (session.updated_at - session.created_at).total_seconds()
+                if duration > 0:
+                    total_duration_seconds += duration
+                    sessions_with_duration += 1
+        
+        avg_duration_minutes = (total_duration_seconds / 60 / sessions_with_duration) if sessions_with_duration > 0 else 0
+        
         # Track element types
         element_counts = {}
         for session in sessions:
@@ -352,6 +364,7 @@ async def get_analytics_stats():
             "total_reconstructions": total_reconstructions,
             "avg_statements_per_session": total_statements / total_sessions if total_sessions > 0 else 0.0,
             "avg_reconstructions_per_session": total_reconstructions / total_sessions if total_sessions > 0 else 0.0,
+            "avg_session_duration_minutes": round(avg_duration_minutes, 2),
             "most_common_elements": most_common_elements,
             "session_statuses": status_counts
         }
@@ -433,15 +446,15 @@ async def list_models():
     ]
     
     try:
-        # If no API key, return known models
+        # If no API key, return known models with informative message
         if not settings.google_api_key or settings.google_api_key.strip() == "":
-            logger.info("No Google API key configured, returning known models")
+            logger.info("No Google API key configured, returning known models list")
             models_list = []
             for model_name in known_models:
                 models_list.append(ModelInfo(
                     name=model_name,
                     display_name=model_name.replace("-", " ").title(),
-                    description=f"Gemini model: {model_name}",
+                    description=f"Gemini model: {model_name} (API key not configured - using fallback list)",
                     supported_generation_methods=["generateContent"],
                 ))
             return models_list
@@ -622,3 +635,44 @@ async def get_current_model():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get current model"
         )
+
+
+@router.get("/info")
+async def get_server_info():
+    """
+    Get server information and capabilities.
+    
+    Returns:
+        Server version, configuration, and feature flags
+    """
+    import os
+    import sys
+    
+    return {
+        "name": "WitnessReplay API",
+        "version": "1.0.0",
+        "description": "Voice-driven crime scene reconstruction agent for Gemini Live Agent Challenge",
+        "environment": settings.environment,
+        "debug_mode": settings.debug,
+        "python_version": sys.version.split()[0],
+        "features": {
+            "voice_streaming": True,
+            "scene_generation": True,
+            "multi_session": True,
+            "analytics": True,
+            "rate_limiting": os.getenv("ENFORCE_RATE_LIMITS", "false").lower() == "true",
+            "export_pdf": True,
+            "export_json": True,
+            "websocket": True,
+        },
+        "models": {
+            "default": settings.gemini_model,
+            "vision": settings.gemini_vision_model,
+        },
+        "endpoints": {
+            "api_docs": "/docs",
+            "health": "/api/health",
+            "sessions": "/api/sessions",
+            "websocket": "/ws/{session_id}",
+        }
+    }
