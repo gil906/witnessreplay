@@ -2905,3 +2905,253 @@ body.forensic-mode {
     width: 100%;
 }
 
+/* ============================================================
+   INVESTIGATION PROGRESS BAR
+   ============================================================ */
+.investigation-progress {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-sm);
+}
+.progress-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--accent-blue);
+}
+.progress-pct {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+.progress-bar-track {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: var(--spacing-sm);
+}
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+.progress-checklist {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+    padding: 0;
+}
+.progress-checklist li {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.progress-checklist li.done {
+    color: var(--accent-green);
+}
+.progress-checklist li.done .check-icon {
+    color: var(--accent-green);
+}
+
+/* ============================================================
+   EVIDENCE BOARD
+   ============================================================ */
+.evidence-board {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-md);
+}
+.evidence-title {
+    font-size: 1rem;
+    color: var(--accent-blue);
+    margin-bottom: var(--spacing-sm);
+}
+.evidence-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+.evidence-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    min-width: 160px;
+    max-width: 240px;
+    flex: 1 1 160px;
+    position: relative;
+    transition: var(--transition-fast);
+}
+.evidence-card:hover {
+    border-color: var(--accent-blue);
+    box-shadow: var(--shadow-glow);
+}
+.evidence-card .ev-icon {
+    font-size: 1.3rem;
+    margin-right: 6px;
+}
+.evidence-card .ev-type {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+.evidence-card .ev-desc {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-top: 2px;
+}
+.evidence-card .ev-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.evidence-card .confidence-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.confidence-dot.high { background: var(--accent-green); }
+.confidence-dot.med  { background: var(--accent-amber); }
+.confidence-dot.low  { background: var(--accent-red); }
+
+.evidence-card.contradiction {
+    border-color: var(--accent-red);
+    background: rgba(255, 71, 87, 0.08);
+}
+.evidence-card.contradiction .ev-desc {
+    text-decoration: line-through;
+    color: var(--accent-red);
+}
+
+/* Evidence timeline */
+.evidence-timeline {
+    margin-top: var(--spacing-md);
+    border-top: 1px solid var(--glass-border);
+    padding-top: var(--spacing-sm);
+}
+.evidence-timeline h4 {
+    font-size: 0.9rem;
+    color: var(--accent-amber);
+    margin-bottom: var(--spacing-sm);
+}
+.timeline-events {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.timeline-event {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.timeline-event .te-marker {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    margin-top: 4px;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   TYPING INDICATOR
+   ============================================================ */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+}
+.typing-indicator.hidden { display: none; }
+.typing-avatar {
+    font-size: 1.1rem;
+}
+.typing-dots {
+    display: flex;
+    gap: 4px;
+}
+.typing-dots .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    animation: typingBounce 1.2s infinite ease-in-out;
+}
+.typing-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ============================================================
+   SUGGESTED ACTIONS
+   ============================================================ */
+.suggested-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    flex-wrap: wrap;
+}
+.suggestion-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: var(--font-family);
+}
+.suggestion-btn:hover {
+    background: var(--accent-blue);
+    color: var(--bg-primary);
+    border-color: var(--accent-blue);
+}
+
+/* ============================================================
+   ENHANCED MESSAGE STYLES
+   ============================================================ */
+.message {
+    position: relative;
+    padding-left: 36px;
+}
+.message .msg-avatar {
+    position: absolute;
+    left: 4px;
+    top: 6px;
+    font-size: 1.1rem;
+}
+.message .msg-time {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+.message-agent {
+    border-left: 3px solid var(--accent-blue);
+}
+.message-user {
+    border-left: 3px solid var(--accent-green);
+}
+

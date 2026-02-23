@@ -113,6 +113,9 @@ class WitnessReplayApp {
         
         // Start with a new session
         this.createNewSession();
+        
+        // Initialize suggested action buttons
+        this._initSuggestedActions();
     }
     
     initializeAudio() {
@@ -350,10 +353,21 @@ class WitnessReplayApp {
                 }
                 break;
             
+            case 'scene_state':
+                this._handleSceneState(message.data);
+                break;
+            
             case 'status':
                 const statusMsg = message.data.message || message.data.status;
                 const state = this.getStatusState(statusMsg);
                 this.ui.setStatus(statusMsg, state);
+                
+                // Show typing indicator when agent is thinking
+                if (state === 'processing') {
+                    this._showTyping();
+                } else {
+                    this._hideTyping();
+                }
                 
                 // Show loading skeleton when generating scene
                 if (state === 'generating' && !this.sceneDisplay.querySelector('.scene-image')) {
@@ -366,6 +380,7 @@ class WitnessReplayApp {
                 this.ui.setStatus(errorMsg, 'default');
                 this.displaySystemMessage(errorMsg);
                 this.ui.showToast(message.data.message, 'error');
+                this._hideTyping();
                 break;
             
             case 'pong':
@@ -515,21 +530,45 @@ class WitnessReplayApp {
             this.chatTranscript.innerHTML = '';
         }
         
+        // Hide typing indicator
+        this._hideTyping();
+        
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message-${speaker}`;
         
-        const label = document.createElement('strong');
-        label.textContent = speaker === 'user' ? 'You: ' : 
-                           speaker === 'agent' ? 'Agent: ' : 
-                           'System: ';
+        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
+        const labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        const textNode = document.createTextNode(text);
-        
-        messageDiv.appendChild(label);
-        messageDiv.appendChild(textNode);
+        messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong><span class="msg-time">${timeStr}</span><br>${this._escapeHtml(text)}`;
         
         this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        
+        // Track statement count for user messages
+        if (speaker === 'user') {
+            this.statementCount++;
+            if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+        }
+    }
+    
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    _showTyping() {
+        const el = document.getElementById('typing-indicator');
+        if (el) el.classList.remove('hidden');
+        // Scroll
+        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+    }
+    
+    _hideTyping() {
+        const el = document.getElementById('typing-indicator');
+        if (el) el.classList.add('hidden');
     }
     
     updateScene(data) {
@@ -845,6 +884,141 @@ class WitnessReplayApp {
         messageDiv.innerHTML = html;
         this.chatTranscript.appendChild(messageDiv);
         this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+    }
+    
+    // ======================================
+    // Scene State & Evidence Board
+    // ======================================
+    
+    _handleSceneState(data) {
+        // Update progress tracker
+        const completeness = data.completeness || 0;
+        const categories = data.categories || {};
+        
+        const pctEl = document.getElementById('progress-pct');
+        const barEl = document.getElementById('progress-bar-fill');
+        if (pctEl) pctEl.textContent = Math.round(completeness * 100) + '%';
+        if (barEl) barEl.style.width = Math.round(completeness * 100) + '%';
+        
+        // Update checklist
+        const checklist = document.getElementById('progress-checklist');
+        if (checklist) {
+            checklist.querySelectorAll('li').forEach(li => {
+                const cat = li.getAttribute('data-cat');
+                if (cat && categories[cat]) {
+                    li.classList.add('done');
+                    li.querySelector('.check-icon').textContent = '✅';
+                } else {
+                    li.classList.remove('done');
+                    li.querySelector('.check-icon').textContent = '⬜';
+                }
+            });
+        }
+        
+        // Update complexity
+        if (data.complexity !== undefined) {
+            if (this.complexityCard) this.complexityCard.style.display = 'block';
+            if (this.complexityScoreEl) this.complexityScoreEl.textContent = Math.round(data.complexity * 100) + '%';
+        }
+        
+        // Update contradictions count
+        if (data.contradictions && data.contradictions.length > 0) {
+            if (this.contradictionCard) this.contradictionCard.style.display = 'block';
+            if (this.contradictionCountEl) this.contradictionCountEl.textContent = data.contradictions.length;
+        }
+        
+        // Update statement count
+        if (data.statement_count !== undefined && this.statementCountEl) {
+            this.statementCountEl.textContent = data.statement_count;
+        }
+        
+        // Update evidence board
+        this._renderEvidenceBoard(data.elements || [], data.contradictions || []);
+    }
+    
+    _renderEvidenceBoard(elements, contradictions) {
+        const container = document.getElementById('evidence-cards');
+        if (!container) return;
+        
+        if (elements.length === 0) {
+            container.innerHTML = '<p class="empty-state">Evidence will appear as you describe the scene</p>';
+            return;
+        }
+        
+        const typeIcons = {
+            'vehicle': '🚗', 'person': '🧑', 'object': '📦', 'location_feature': '📍'
+        };
+        
+        // Build contradiction lookup (element description -> old/new)
+        const contradictionSet = new Set();
+        (contradictions || []).forEach(c => {
+            contradictionSet.add(c.element || '');
+        });
+        
+        let html = '';
+        elements.forEach(e => {
+            const conf = e.confidence || 0.5;
+            const confClass = conf > 0.7 ? 'high' : conf > 0.4 ? 'med' : 'low';
+            const icon = typeIcons[e.type] || '❓';
+            const isContradiction = contradictionSet.has(e.type + '_' + (e.description || '').substring(0, 30));
+            const cardClass = isContradiction ? 'evidence-card contradiction' : 'evidence-card';
+            
+            let meta = '';
+            if (e.color) meta += `🎨 ${e.color} `;
+            if (e.position) meta += `📍 ${e.position} `;
+            if (e.size) meta += `📐 ${e.size}`;
+            
+            html += `<div class="${cardClass}">
+                <div><span class="ev-icon">${icon}</span><span class="ev-type">${e.type}</span></div>
+                <div class="ev-desc">${this._escapeHtml(e.description || '')}</div>
+                <div class="ev-meta">
+                    <span class="confidence-dot ${confClass}"></span>${Math.round(conf * 100)}%
+                    ${meta ? ' · ' + meta : ''}
+                </div>
+            </div>`;
+        });
+        
+        container.innerHTML = html;
+        
+        // Update event timeline from conversation history
+        this._updateEvidenceTimeline(elements);
+    }
+    
+    _updateEvidenceTimeline(elements) {
+        const tlContainer = document.getElementById('evidence-timeline');
+        const eventsContainer = document.getElementById('timeline-events');
+        if (!tlContainer || !eventsContainer) return;
+        
+        if (elements.length < 2) {
+            tlContainer.style.display = 'none';
+            return;
+        }
+        
+        tlContainer.style.display = 'block';
+        let html = '';
+        elements.slice(0, 8).forEach((e, i) => {
+            html += `<div class="timeline-event">
+                <div class="te-marker"></div>
+                <span>${e.description || e.type}</span>
+            </div>`;
+        });
+        eventsContainer.innerHTML = html;
+    }
+    
+    _initSuggestedActions() {
+        document.querySelectorAll('.suggestion-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                let text = '';
+                if (action === 'correct') text = 'I want to correct something about the scene.';
+                else if (action === 'generate') text = 'Please generate the scene image now.';
+                else if (action === 'details') text = 'I have more details to add about what I saw.';
+                if (text && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'text', data: { text } }));
+                    this.displayMessage(text, 'user');
+                }
+            });
+        });
     }
     
     setStatus(status) {

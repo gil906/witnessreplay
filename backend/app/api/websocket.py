@@ -186,6 +186,9 @@ class WebSocketHandler:
             if should_generate_image:
                 await self.generate_and_send_scene_image()
             
+            # Always send scene_state so the frontend evidence board stays current
+            await self._send_scene_state()
+            
             await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
         
         except Exception as e:
@@ -196,6 +199,50 @@ class WebSocketHandler:
         """Handle a correction from the user."""
         data["is_correction"] = True
         await self.handle_text(data)
+    
+    async def _send_scene_state(self):
+        """Send current scene state (elements, completeness, categories) to client."""
+        try:
+            summary = self.agent.get_scene_summary()
+            elements_raw = summary.get("elements", [])
+            contradictions = summary.get("contradictions", [])
+            complexity = summary.get("complexity_score", 0)
+
+            # Determine which categories are filled
+            types_present = set()
+            for e in elements_raw:
+                types_present.add(e.get("type", ""))
+            has_location = any(
+                e.get("type") == "location_feature" or e.get("position")
+                for e in elements_raw
+            )
+            has_people = "person" in types_present
+            has_vehicles = "vehicle" in types_present
+            has_objects = "object" in types_present
+            statement_count = summary.get("statement_count", 0)
+            has_timeline = statement_count >= 4
+
+            categories = {
+                "location": has_location,
+                "people": has_people,
+                "vehicles": has_vehicles,
+                "timeline": has_timeline,
+                "evidence": has_objects,
+            }
+
+            filled = sum(1 for v in categories.values() if v)
+            completeness = filled / len(categories) if categories else 0
+
+            await self.send_message("scene_state", {
+                "elements": elements_raw,
+                "completeness": round(completeness, 2),
+                "categories": categories,
+                "contradictions": contradictions,
+                "complexity": round(complexity, 3),
+                "statement_count": statement_count,
+            })
+        except Exception as e:
+            logger.error(f"Error sending scene_state: {e}")
     
     async def generate_and_send_scene_image(self):
         """Generate a scene image and send it to the client."""

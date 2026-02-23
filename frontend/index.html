@@ -73,8 +73,8 @@
             <main class="scene-panel" role="main">
                 <h2>Scene Reconstruction</h2>
                 
-                <!-- Scene Stats -->
-                <div class="scene-stats">
+                <!-- Scene Stats / Progress Tracker -->
+                <div class="scene-stats" id="progress-tracker">
                     <div class="stat-card">
                         <div class="stat-value" id="version-count">0</div>
                         <div class="stat-label">Versions</div>
@@ -95,6 +95,24 @@
                         <div class="stat-value" id="contradiction-count">0</div>
                         <div class="stat-label">⚠️ Contradictions</div>
                     </div>
+                </div>
+
+                <!-- Investigation Progress Bar -->
+                <div class="investigation-progress" id="investigation-progress">
+                    <div class="progress-header">
+                        <span class="progress-title">Investigation Progress</span>
+                        <span class="progress-pct" id="progress-pct">0%</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progress-bar-fill" style="width:0%"></div>
+                    </div>
+                    <ul class="progress-checklist" id="progress-checklist">
+                        <li data-cat="location"><span class="check-icon">⬜</span> Location identified</li>
+                        <li data-cat="people"><span class="check-icon">⬜</span> People described</li>
+                        <li data-cat="vehicles"><span class="check-icon">⬜</span> Vehicles noted</li>
+                        <li data-cat="timeline"><span class="check-icon">⬜</span> Timeline established</li>
+                        <li data-cat="evidence"><span class="check-icon">⬜</span> Evidence collected</li>
+                    </ul>
                 </div>
                 
                 <!-- Scene Display Canvas -->
@@ -121,6 +139,18 @@
                 <!-- Scene Description -->
                 <div id="scene-description" class="scene-description">
                     <p>No scene generated yet</p>
+                </div>
+
+                <!-- Evidence Board -->
+                <div class="evidence-board" id="evidence-board">
+                    <h3 class="evidence-title">📋 Evidence Board</h3>
+                    <div class="evidence-cards" id="evidence-cards">
+                        <p class="empty-state">Evidence will appear as you describe the scene</p>
+                    </div>
+                    <div class="evidence-timeline" id="evidence-timeline" style="display:none;">
+                        <h4>📅 Event Timeline</h4>
+                        <div class="timeline-events" id="timeline-events"></div>
+                    </div>
                 </div>
                 
                 <!-- Export Controls -->
@@ -168,6 +198,21 @@
                 <h3>Conversation</h3>
                 <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite">
                     <p class="empty-state">Conversation will appear here</p>
+                </div>
+
+                <!-- Typing indicator -->
+                <div class="typing-indicator hidden" id="typing-indicator">
+                    <span class="typing-avatar">🔍</span>
+                    <div class="typing-dots">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+                </div>
+
+                <!-- Suggested Actions -->
+                <div class="suggested-actions" id="suggested-actions">
+                    <button class="suggestion-btn" data-action="correct">✏️ Correct something</button>
+                    <button class="suggestion-btn" data-action="generate">🎬 Generate scene</button>
+                    <button class="suggestion-btn" data-action="details">➕ Add more details</button>
                 </div>
                 
                 <!-- Text Input (fallback) -->
