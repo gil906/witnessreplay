@@ -434,7 +434,7 @@ class WitnessReplayApp {
                     this.chatMicBtn.classList.add('recording');
                     this.chatMicBtn.textContent = '⏹';
                 }
-                this.stopBtn.style.display = 'inline-block';
+                if (this.stopBtn) this.stopBtn.style.display = 'inline-block';
                 this.setStatus('Listening...');
             } else {
                 this.ui.showToast('Audio recorder not available. Use text input.', 'warning');
@@ -460,7 +460,7 @@ class WitnessReplayApp {
                     this.chatMicBtn.classList.remove('recording');
                     this.chatMicBtn.textContent = '🎤';
                 }
-                this.stopBtn.style.display = 'none';
+                if (this.stopBtn) this.stopBtn.style.display = 'none';
                 
                 // Convert to base64 and send
                 this.sendAudioMessage(audioBlob);
