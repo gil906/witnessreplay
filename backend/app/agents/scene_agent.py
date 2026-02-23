@@ -126,11 +126,6 @@ class SceneReconstructionAgent:
     def _should_generate_image(self, response: str) -> bool:
         """
         Determine if we should generate an image based on the conversation state.
-        
-        Criteria:
-        - Agent has asked enough questions
-        - Agent indicates readiness ("Let me show you...", "I'll create...")
-        - Significant new information has been provided
         """
         indicators = [
             "let me generate",
@@ -139,10 +134,23 @@ class SceneReconstructionAgent:
             "i'll show you",
             "here's what i'm picturing",
             "based on your description",
+            "let me reconstruct",
+            "i'll reconstruct",
+            "scene reconstruction",
+            "building the scene",
+            "generating",
+            "i have enough",
+            "clear picture",
         ]
         
         response_lower = response.lower()
-        return any(indicator in response_lower for indicator in indicators)
+        keyword_match = any(indicator in response_lower for indicator in indicators)
+        
+        # Also trigger after every 3 user statements (enough info to visualize)
+        user_messages = [m for m in self.conversation_history if m['role'] == 'user']
+        periodic_trigger = len(user_messages) >= 3 and len(user_messages) % 3 == 0
+        
+        return keyword_match or periodic_trigger
     
     async def _extract_scene_information(self):
         """

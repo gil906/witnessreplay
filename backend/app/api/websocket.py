@@ -218,17 +218,23 @@ class WebSocketHandler:
                 await self.send_message("error", {"message": "Failed to generate image"})
                 return
             
-            # Upload to GCS
-            filename = f"scene_v{self.version_counter}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.png"
-            image_url = await storage_service.upload_image(
-                image_data=image_bytes,
-                filename=filename,
-                session_id=self.session_id
-            )
+            # Try GCS upload first, fall back to base64 data URL
+            image_url = None
+            try:
+                filename = f"scene_v{self.version_counter}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.png"
+                image_url = await storage_service.upload_image(
+                    image_data=image_bytes,
+                    filename=filename,
+                    session_id=self.session_id
+                )
+            except Exception:
+                pass
             
             if not image_url:
-                await self.send_message("error", {"message": "Failed to upload image"})
-                return
+                # Fallback: serve as base64 data URL (works without GCS)
+                import base64
+                b64 = base64.b64encode(image_bytes).decode('utf-8')
+                image_url = f"data:image/png;base64,{b64}"
             
             # Create scene version
             self.version_counter += 1
