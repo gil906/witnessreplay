@@ -3,29 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WitnessReplay - Scene Reconstruction</title>
+    <meta name="description" content="WitnessReplay - AI-powered voice-driven crime scene reconstruction. Describe what you saw, and Detective Ray will rebuild the scene.">
+    <meta name="theme-color" content="#00d4ff">
+    <title>WitnessReplay - Detective Ray's Scene Reconstruction</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
 </head>
 <body>
+    <!-- Main Container -->
     <div class="container">
-        <!-- Header -->
+        <!-- Header with Detective Ray -->
         <header class="header">
-            <h1>🎙️ WitnessReplay</h1>
-            <p class="tagline">Describe what you saw. I'll rebuild the scene.</p>
-            <div class="session-info">
-                <span id="session-id">No active session</span>
-                <button id="new-session-btn" class="btn btn-secondary">New Session</button>
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">🎙️</div>
+                    <div class="logo-text">
+                        <h1>WitnessReplay</h1>
+                        <p class="tagline">Describe what you saw. I'll rebuild the scene.</p>
+                    </div>
+                </div>
+                
+                <div class="detective-badge">
+                    <div class="detective-avatar">🔍</div>
+                    <div class="detective-info">
+                        <h3>Detective Ray</h3>
+                        <p>Case Analyst &bull; Online</p>
+                    </div>
+                </div>
+                
+                <div class="session-info">
+                    <div class="session-status">
+                        <span class="status-dot"></span>
+                        <span id="session-id">Initializing...</span>
+                    </div>
+                    <button id="new-session-btn" class="btn btn-secondary">
+                        ➕ New Session
+                    </button>
+                    <button id="sessions-list-btn" class="btn btn-secondary" data-tooltip="View all sessions">
+                        📋 Sessions
+                    </button>
+                </div>
             </div>
         </header>
 
-        <!-- Main Content -->
+        <!-- Main Content: 3-Column Layout -->
         <div class="main-content">
-            <!-- Left Panel: Scene Display -->
-            <div class="scene-panel">
+            <!-- LEFT: Timeline Panel -->
+            <aside class="timeline-panel" role="complementary" aria-label="Scene version timeline">
+                <h3>Timeline</h3>
+                <div id="timeline" class="timeline">
+                    <p class="empty-state">No versions yet</p>
+                </div>
+            </aside>
+
+            <!-- CENTER: Scene Display Panel -->
+            <main class="scene-panel" role="main">
                 <h2>Scene Reconstruction</h2>
-                <div id="scene-display" class="scene-display">
+                
+                <!-- Scene Stats -->
+                <div class="scene-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="version-count">0</div>
+                        <div class="stat-label">Versions</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statement-count">0</div>
+                        <div class="stat-label">Statements</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="session-duration">0m</div>
+                        <div class="stat-label">Duration</div>
+                    </div>
+                </div>
+                
+                <!-- Scene Display Canvas -->
+                <div id="scene-display" class="scene-display" role="img" aria-label="Reconstructed scene">
                     <div class="placeholder">
+                        <div class="placeholder-icon">🎬</div>
                         <p>Start speaking to begin reconstruction</p>
+                    </div>
+                    
+                    <!-- Scene Controls (appear on hover) -->
+                    <div class="scene-controls hidden">
+                        <button class="scene-control-btn" id="zoom-btn" data-tooltip="Zoom" aria-label="Zoom scene">
+                            🔍
+                        </button>
+                        <button class="scene-control-btn" id="download-btn" data-tooltip="Download" aria-label="Download scene">
+                            ⬇️
+                        </button>
+                        <button class="scene-control-btn" id="fullscreen-btn" data-tooltip="Fullscreen" aria-label="Fullscreen">
+                            ⛶
+                        </button>
                     </div>
                 </div>
                 
@@ -34,67 +112,186 @@
                     <p>No scene generated yet</p>
                 </div>
 
-                <!-- Control Buttons -->
+                <!-- Voice Control Center -->
                 <div class="controls">
-                    <button id="mic-btn" class="btn btn-primary mic-btn" disabled>
-                        <span class="mic-icon">🎤</span>
-                        <span class="btn-text">Start Speaking</span>
-                    </button>
-                    <button id="stop-btn" class="btn btn-secondary" style="display: none;">Stop</button>
-                    <div class="status-indicator">
-                        <span id="status-text">Initializing...</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Panel: Timeline & Chat -->
-            <div class="side-panel">
-                <!-- Timeline -->
-                <div class="timeline-section">
-                    <h3>Timeline</h3>
-                    <div id="timeline" class="timeline">
-                        <p class="empty-state">No versions yet</p>
-                    </div>
-                </div>
-
-                <!-- Chat/Transcript -->
-                <div class="chat-section">
-                    <h3>Conversation</h3>
-                    <div id="chat-transcript" class="chat-transcript">
-                        <p class="empty-state">Conversation will appear here</p>
+                    <div class="mic-container">
+                        <!-- Waveform Ring -->
+                        <div class="waveform-ring" id="waveform-ring"></div>
+                        
+                        <!-- Audio Visualizer (canvas) -->
+                        <canvas id="audio-visualizer" width="140" height="140"></canvas>
+                        
+                        <!-- Microphone Button -->
+                        <button id="mic-btn" class="mic-btn" disabled aria-label="Start recording">
+                            🎤
+                        </button>
                     </div>
                     
-                    <!-- Text Input (fallback) -->
-                    <div class="text-input">
-                        <input 
-                            type="text" 
-                            id="text-input" 
-                            placeholder="Type your statement (or use voice)..."
-                            disabled
-                        >
-                        <button id="send-btn" class="btn btn-primary" disabled>Send</button>
+                    <!-- Status Indicator -->
+                    <div class="status-indicator" id="status-indicator">
+                        <span id="status-text">Initializing...</span>
+                    </div>
+                    
+                    <!-- Keyboard Hint -->
+                    <div class="keyboard-hint">
+                        Press <kbd>Space</kbd> to record &bull; <kbd>Esc</kbd> to cancel &bull; <kbd>?</kbd> for help
                     </div>
                 </div>
-            </div>
-        </div>
+            </main>
 
-        <!-- Session List Modal -->
-        <div id="session-modal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <h2>Your Sessions</h2>
-                <div id="session-list" class="session-list">
-                    <p>Loading sessions...</p>
+            <!-- RIGHT: Chat/Conversation Panel -->
+            <aside class="chat-panel" role="complementary" aria-label="Conversation transcript">
+                <h3>Conversation</h3>
+                <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite">
+                    <p class="empty-state">Conversation will appear here</p>
                 </div>
-                <button id="close-modal-btn" class="btn btn-secondary">Close</button>
+                
+                <!-- Text Input (fallback) -->
+                <div class="text-input">
+                    <input 
+                        type="text" 
+                        id="text-input" 
+                        placeholder="Type your statement (or use voice)..."
+                        disabled
+                        aria-label="Text input"
+                    >
+                    <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">
+                        ➤
+                    </button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Session List Modal -->
+    <div id="session-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Your Sessions</h2>
+                <button class="modal-close" id="close-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div id="session-list" class="session-list">
+                <p class="empty-state">Loading sessions...</p>
+            </div>
+            <button class="btn btn-secondary" id="modal-close-btn-2">Close</button>
+        </div>
+    </div>
+
+    <!-- Onboarding Overlay -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true">
+        <div class="onboarding-content">
+            <!-- Step 1 -->
+            <div class="onboarding-step active" data-step="1">
+                <div class="onboarding-icon">🔍</div>
+                <h2>Welcome to WitnessReplay</h2>
+                <p>I'm <strong>Detective Ray</strong>, your AI partner in scene reconstruction. Together, we'll rebuild what you witnessed using the power of your voice and AI-generated imagery.</p>
+                <div class="onboarding-actions">
+                    <button class="btn btn-secondary" id="skip-onboarding">Skip</button>
+                    <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
+                </div>
+                <div class="onboarding-indicators">
+                    <span class="indicator-dot active"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                </div>
+            </div>
+            
+            <!-- Step 2 -->
+            <div class="onboarding-step" data-step="2">
+                <div class="onboarding-icon">🎤</div>
+                <h2>Speak Naturally</h2>
+                <p>Just describe what you saw in your own words. Click the microphone or press <kbd>Space</kbd> to start recording. I'll listen carefully and start building the scene.</p>
+                <div class="onboarding-actions">
+                    <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
+                    <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
+                </div>
+                <div class="onboarding-indicators">
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot active"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                </div>
+            </div>
+            
+            <!-- Step 3 -->
+            <div class="onboarding-step" data-step="3">
+                <div class="onboarding-icon">💬</div>
+                <h2>Interactive Refinement</h2>
+                <p>I'll ask clarifying questions to understand better. Answer naturally. If something looks wrong, just tell me — "The car was blue, not red" — and I'll update the scene immediately.</p>
+                <div class="onboarding-actions">
+                    <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
+                    <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
+                </div>
+                <div class="onboarding-indicators">
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot active"></span>
+                    <span class="indicator-dot"></span>
+                </div>
+            </div>
+            
+            <!-- Step 4 -->
+            <div class="onboarding-step" data-step="4">
+                <div class="onboarding-icon">✅</div>
+                <h2>Ready to Begin</h2>
+                <p>Your session is saved automatically. Use the timeline to view previous versions, export to PDF, or start a new session anytime. Let's reconstruct what you witnessed.</p>
+                <div class="onboarding-actions">
+                    <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
+                    <button class="btn btn-success" id="start-session-btn">Start Session ➤</button>
+                </div>
+                <div class="onboarding-indicators">
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot"></span>
+                    <span class="indicator-dot active"></span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Audio Visualizer -->
-    <canvas id="audio-visualizer" width="200" height="60" style="display: none;"></canvas>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
+
+    <!-- Help Button -->
+    <button class="help-button" id="help-btn" data-tooltip="Help & Tutorial" aria-label="Help">
+        ?
+    </button>
 
     <!-- Scripts -->
     <script src="/static/js/audio.js"></script>
+    <script src="/static/js/ui.js"></script>
     <script src="/static/js/app.js"></script>
+    
+    <!-- Inline helper functions for onboarding -->
+    <script>
+        let currentOnboardingStep = 1;
+        
+        function nextOnboardingStep() {
+            const steps = document.querySelectorAll('.onboarding-step');
+            if (currentOnboardingStep < steps.length) {
+                steps[currentOnboardingStep - 1].classList.remove('active');
+                currentOnboardingStep++;
+                steps[currentOnboardingStep - 1].classList.add('active');
+            }
+        }
+        
+        function prevOnboardingStep() {
+            const steps = document.querySelectorAll('.onboarding-step');
+            if (currentOnboardingStep > 1) {
+                steps[currentOnboardingStep - 1].classList.remove('active');
+                currentOnboardingStep--;
+                steps[currentOnboardingStep - 1].classList.add('active');
+            }
+        }
+        
+        function closeOnboarding() {
+            document.getElementById('onboarding-overlay').classList.add('hidden');
+            localStorage.setItem('witnessreplay-onboarding-completed', 'true');
+        }
+        
+        document.getElementById('skip-onboarding')?.addEventListener('click', closeOnboarding);
+        document.getElementById('start-session-btn')?.addEventListener('click', closeOnboarding);
+    </script>
 </body>
 </html>

@@ -8,14 +8,57 @@ WitnessReplay is a voice-driven interactive crime/accident scene reconstruction 
 
 ## 🎯 Features
 
-- **🎤 Voice Input via Gemini Live API**: Real-time voice streaming with interruption support
-- **🖼️ Scene Reconstruction**: AI-generated scene images from verbal descriptions
-- **❓ Clarifying Questions**: Intelligent follow-up questions for precision
-- **🔄 Iterative Refinement**: Correction handling and scene updates
-- **📅 Timeline View**: Progressive history of scene versions
-- **💾 Session Persistence**: Save and revisit reconstruction sessions
-- **📄 PDF Export**: Generate professional reports
-- **☁️ Cloud-Ready**: Deploy to Google Cloud Run with one command
+### ✨ Core Features
+- ✅ **🎤 Real-Time Voice Input**: Gemini Live API with WebSocket streaming and interruption support
+- ✅ **🎬 AI Scene Reconstruction**: Generate photorealistic scene images from verbal descriptions
+- ✅ **🔍 Detective Ray Persona**: Professional AI agent with calm, methodical detective personality
+- ✅ **❓ Intelligent Questioning**: Context-aware clarifying questions for precision
+- ✅ **🔄 Iterative Refinement**: Natural language corrections instantly update the scene
+- ✅ **📅 Visual Timeline**: Complete history of scene versions with thumbnails
+- ✅ **💾 Session Persistence**: Firestore-backed session storage
+- ✅ **📄 PDF Export**: Professional reports with scenes and witness statements
+- ✅ **☁️ Cloud-Native**: Deploy to Google Cloud Run with one command
+
+### 🎨 UX/UI Features (v2.0 - Polished)
+- ✅ **Dark Forensic Theme**: Professional law enforcement aesthetic with glassmorphism
+- ✅ **Real-Time Audio Visualizer**: Circular waveform visualization during recording
+- ✅ **Animated Scene Transitions**: Smooth crossfades and loading states
+- ✅ **Interactive Timeline**: Click any version to view, compare side-by-side
+- ✅ **Session Management UI**: Beautiful session cards with thumbnails
+- ✅ **Onboarding Flow**: Step-by-step tutorial for first-time users
+- ✅ **Toast Notifications**: Real-time feedback for all operations
+- ✅ **Keyboard Shortcuts**: Space to record, Esc to cancel, ? for help
+- ✅ **Sound Effects**: Subtle audio feedback (toggleable)
+- ✅ **Scene Controls**: Zoom, download, fullscreen on generated images
+- ✅ **Responsive Design**: Works on desktop, tablet, and mobile
+- ✅ **Accessibility**: ARIA labels, keyboard navigation, screen reader support
+- ✅ **Progressive Web App**: Installable with offline manifest
+- ✅ **Loading Skeletons**: Smooth skeleton loaders for async content
+- ✅ **Stats Dashboard**: Version count, statement count, session duration
+
+## 📸 Screenshots
+
+### Main Interface
+![Main Interface](docs/screenshots/main-interface.png)
+*Professional 3-column layout: Timeline | Scene Display | Conversation*
+
+### Voice Recording
+![Voice Recording](docs/screenshots/recording.png)
+*Real-time circular audio waveform visualizer*
+
+### Scene Timeline
+![Timeline](docs/screenshots/timeline.png)
+*Progressive scene history with thumbnails and change indicators*
+
+### Onboarding
+![Onboarding](docs/screenshots/onboarding.png)
+*Interactive tutorial introducing Detective Ray*
+
+### Session Management
+![Sessions](docs/screenshots/sessions.png)
+*Browse and load past reconstruction sessions*
+
+> **Note**: Screenshots will be added before final submission. UI is fully functional.
 
 ## 🏗️ Architecture
 
@@ -267,4 +310,6 @@ Built for the **Gemini Live Agent Challenge**
 
 ---
 
-**Note**: This is v1.0 - the functional core. UI/UX polish is coming in the next iteration!
+**Built with ❤️ by gil906 for the Gemini Live Agent Challenge**
+
+**v2.0 - Polished Edition** — Featuring Detective Ray's professional forensic interface

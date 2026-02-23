@@ -100,8 +100,8 @@ class AudioRecorder {
     }
 }
 
-// Audio Visualizer (optional enhancement)
-class AudioVisualizer {
+// Audio Visualizer (enhanced with circular waveform)
+class EnhancedAudioVisualizer {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.canvasContext = this.canvas ? this.canvas.getContext('2d') : null;
@@ -109,10 +109,14 @@ class AudioVisualizer {
         this.analyser = null;
         this.dataArray = null;
         this.animationId = null;
+        this.isActive = false;
     }
     
     start(stream) {
         if (!this.canvas || !stream) return;
+        
+        this.canvas.classList.add('active');
+        this.isActive = true;
         
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.analyser = this.audioContext.createAnalyser();
@@ -128,35 +132,74 @@ class AudioVisualizer {
     }
     
     draw() {
-        if (!this.analyser || !this.canvasContext) return;
+        if (!this.isActive || !this.analyser || !this.canvasContext) return;
         
         this.animationId = requestAnimationFrame(() => this.draw());
         
         this.analyser.getByteFrequencyData(this.dataArray);
         
         const { width, height } = this.canvas;
-        this.canvasContext.fillStyle = 'rgb(20, 30, 40)';
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = 50;
+        
+        // Clear canvas
+        this.canvasContext.fillStyle = 'rgba(10, 10, 15, 0.3)';
         this.canvasContext.fillRect(0, 0, width, height);
         
-        const barWidth = (width / this.dataArray.length) * 2.5;
-        let x = 0;
+        // Draw circular waveform
+        const barCount = this.dataArray.length / 2;
+        const angleStep = (Math.PI * 2) / barCount;
         
-        for (let i = 0; i < this.dataArray.length; i++) {
-            const barHeight = (this.dataArray[i] / 255) * height;
+        this.canvasContext.strokeStyle = '#00d4ff';
+        this.canvasContext.lineWidth = 3;
+        this.canvasContext.shadowBlur = 10;
+        this.canvasContext.shadowColor = '#00d4ff';
+        
+        this.canvasContext.beginPath();
+        
+        for (let i = 0; i < barCount; i++) {
+            const value = this.dataArray[i];
+            const amplitude = (value / 255) * 30;
+            const angle = i * angleStep;
             
-            this.canvasContext.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
-            this.canvasContext.fillRect(x, height - barHeight, barWidth, barHeight);
+            const x = centerX + Math.cos(angle) * (radius + amplitude);
+            const y = centerY + Math.sin(angle) * (radius + amplitude);
             
-            x += barWidth + 1;
+            if (i === 0) {
+                this.canvasContext.moveTo(x, y);
+            } else {
+                this.canvasContext.lineTo(x, y);
+            }
         }
+        
+        this.canvasContext.closePath();
+        this.canvasContext.stroke();
+        
+        // Draw center circle
+        this.canvasContext.beginPath();
+        this.canvasContext.arc(centerX, centerY, radius - 5, 0, Math.PI * 2);
+        this.canvasContext.strokeStyle = 'rgba(0, 212, 255, 0.3)';
+        this.canvasContext.lineWidth = 1;
+        this.canvasContext.stroke();
     }
     
     stop() {
+        this.isActive = false;
+        
         if (this.animationId) {
             cancelAnimationFrame(this.animationId);
         }
         if (this.audioContext) {
             this.audioContext.close();
+        }
+        if (this.canvas) {
+            this.canvas.classList.remove('active');
+            
+            // Clear canvas
+            if (this.canvasContext) {
+                this.canvasContext.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
         }
     }
 }
@@ -164,3 +207,4 @@ class AudioVisualizer {
 // Export to global scope
 window.AudioRecorder = AudioRecorder;
 window.AudioVisualizer = AudioVisualizer;
+window.EnhancedAudioVisualizer = EnhancedAudioVisualizer;

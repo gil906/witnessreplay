@@ -1,0 +1,38 @@
+{
+  "name": "WitnessReplay - Detective Ray",
+  "short_name": "WitnessReplay",
+  "description": "AI-powered voice-driven crime scene reconstruction. Describe what you saw, and Detective Ray will rebuild the scene.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#00d4ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["productivity", "utilities", "law-enforcement"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "New Session",
+      "short_name": "New",
+      "description": "Start a new reconstruction session",
+      "url": "/?action=new",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>➕</text></svg>",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ]
+}
