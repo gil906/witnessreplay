@@ -1371,6 +1371,45 @@ html {
 .text-input {
     display: flex;
     gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.btn-mic {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    padding: var(--spacing-md);
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.btn-mic:hover:not(:disabled) {
+    border-color: var(--accent-blue);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.btn-mic.recording {
+    background: var(--status-error);
+    border-color: var(--status-error);
+    animation: pulse-mic 1s infinite;
+}
+
+@keyframes pulse-mic {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(244, 67, 54, 0); }
+}
+
+.btn-mic:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .text-input input {

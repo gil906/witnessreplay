@@ -15,6 +15,10 @@ class WitnessReplayApp {
         this.sessionStartTime = null;
         this.durationTimer = null;
         this.ui = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectTimer = null;
+        this.hasReceivedGreeting = false;
         
         this.initializeUI();
         this.initializeAudio();
@@ -58,6 +62,12 @@ class WitnessReplayApp {
         this.sessionsListBtn.addEventListener('click', () => this.showSessionsList());
         this.helpBtn.addEventListener('click', () => this.ui.showOnboarding());
         
+        // Chat mic button
+        this.chatMicBtn = document.getElementById('chat-mic-btn');
+        if (this.chatMicBtn) {
+            this.chatMicBtn.addEventListener('click', () => this.toggleRecording());
+        }
+        
         // Scene controls
         document.getElementById('download-btn')?.addEventListener('click', () => this.downloadScene());
         document.getElementById('zoom-btn')?.addEventListener('click', () => this.toggleZoom());
@@ -82,8 +92,29 @@ class WitnessReplayApp {
             this.audioRecorder = new AudioRecorder();
         }
         
-        if (window.AudioVisualizer) {
+        if (window.EnhancedAudioVisualizer) {
             this.audioVisualizer = new EnhancedAudioVisualizer('audio-visualizer');
+        }
+        
+        // Check if microphone is available (requires HTTPS or localhost)
+        const isSecureContext = window.isSecureContext || 
+            window.location.hostname === 'localhost' || 
+            window.location.hostname === '127.0.0.1';
+        
+        if (!isSecureContext) {
+            console.warn('Microphone requires HTTPS. Current page is not in a secure context.');
+            const micWarning = '⚠️ Microphone requires HTTPS. Use text input instead, or access via localhost.';
+            setTimeout(() => {
+                if (this.ui) this.ui.showToast(micWarning, 'warning', 8000);
+            }, 2000);
+        }
+        
+        // Pre-request microphone permission on user interaction
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            // We'll request on first mic click instead of page load
+            console.log('MediaDevices API available');
+        } else {
+            console.warn('MediaDevices API not available');
         }
     }
     
@@ -163,6 +194,8 @@ class WitnessReplayApp {
             this.currentVersion = 0;
             this.statementCount = 0;
             this.sessionStartTime = Date.now();
+            this.reconnectAttempts = 0;
+            this.hasReceivedGreeting = false;
             
             // Start duration timer
             this.startDurationTimer();
@@ -210,6 +243,11 @@ class WitnessReplayApp {
             this.ws.close();
         }
         
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
         
@@ -219,8 +257,10 @@ class WitnessReplayApp {
         
         this.ws.onopen = () => {
             console.log('WebSocket connected');
+            this.reconnectAttempts = 0;
             this.ui.setStatus('Ready — Press Space to speak', 'default');
             this.micBtn.disabled = false;
+            if (this.chatMicBtn) this.chatMicBtn.disabled = false;
             this.textInput.disabled = false;
             this.sendBtn.disabled = false;
             this.ui.showToast('Connected to Detective Ray', 'success', 2000);
@@ -234,23 +274,28 @@ class WitnessReplayApp {
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
             this.ui.setStatus('Connection error', 'default');
-            this.ui.showToast('Connection error — reconnecting...', 'error');
         };
         
         this.ws.onclose = () => {
             console.log('WebSocket closed');
             this.ui.setStatus('Disconnected', 'default');
             this.micBtn.disabled = true;
+            if (this.chatMicBtn) this.chatMicBtn.disabled = true;
             this.textInput.disabled = true;
             this.sendBtn.disabled = true;
             
-            // Try to reconnect after a delay
-            setTimeout(() => {
-                if (this.sessionId) {
-                    this.ui.showToast('Attempting to reconnect...', 'info');
+            // Reconnect with backoff, max attempts
+            if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = Math.min(3000 * this.reconnectAttempts, 15000);
+                this.ui.showToast(`Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, 'info', 2000);
+                this.reconnectTimer = setTimeout(() => {
                     this.connectWebSocket();
-                }
-            }, 3000);
+                }, delay);
+            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                this.ui.setStatus('Connection lost — click New Session to retry', 'default');
+                this.ui.showToast('Connection lost. Please start a new session.', 'error', 5000);
+            }
         };
     }
     
@@ -326,19 +371,49 @@ class WitnessReplayApp {
     
     async startRecording() {
         try {
+            // Check secure context first
+            if (!window.isSecureContext && 
+                window.location.hostname !== 'localhost' && 
+                window.location.hostname !== '127.0.0.1') {
+                this.ui.showToast('⚠️ Microphone requires HTTPS. Use text input or access via localhost.', 'error', 5000);
+                this.displaySystemMessage('⚠️ Voice recording requires a secure connection (HTTPS). Please type your statement instead.');
+                return;
+            }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                this.ui.showToast('Microphone not supported in this browser', 'error');
+                return;
+            }
+            
+            // Request permission explicitly — this triggers the browser popup
+            try {
+                const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                testStream.getTracks().forEach(t => t.stop());
+            } catch (permErr) {
+                console.error('Microphone permission denied:', permErr);
+                this.ui.showToast('🎤 Microphone access denied. Check browser permissions.', 'error', 5000);
+                this.displaySystemMessage('🎤 Microphone access was denied. Please allow microphone access in your browser settings, or type your statement below.');
+                return;
+            }
+            
             if (this.audioRecorder) {
                 await this.audioRecorder.start();
                 this.isRecording = true;
                 this.micBtn.classList.add('recording');
                 this.micBtn.querySelector('.btn-text').textContent = 'Recording...';
+                if (this.chatMicBtn) {
+                    this.chatMicBtn.classList.add('recording');
+                    this.chatMicBtn.textContent = '⏹';
+                }
                 this.stopBtn.style.display = 'inline-block';
                 this.setStatus('Listening...');
             } else {
-                this.setStatus('Audio recording not available. Use text input.');
+                this.ui.showToast('Audio recorder not available. Use text input.', 'warning');
             }
         } catch (error) {
             console.error('Error starting recording:', error);
-            this.setStatus('Microphone access denied');
+            this.ui.showToast('Microphone error: ' + error.message, 'error');
+            this.displaySystemMessage('🎤 Could not access microphone. Please type your statement instead.');
         }
     }
     
@@ -351,6 +426,10 @@ class WitnessReplayApp {
                 this.isRecording = false;
                 this.micBtn.classList.remove('recording');
                 this.micBtn.querySelector('.btn-text').textContent = 'Start Speaking';
+                if (this.chatMicBtn) {
+                    this.chatMicBtn.classList.remove('recording');
+                    this.chatMicBtn.textContent = '🎤';
+                }
                 this.stopBtn.style.display = 'none';
                 
                 // Convert to base64 and send

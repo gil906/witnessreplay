@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, List
 from datetime import datetime
-from google.cloud import firestore
+from google.cloud.firestore_v1.async_client import AsyncClient
 from google.api_core import exceptions as gcp_exceptions
 
 from app.config import settings
@@ -14,17 +14,17 @@ class FirestoreService:
     """Service for managing Firestore operations with in-memory fallback."""
     
     def __init__(self):
-        self.client = None
+        self.client: Optional[AsyncClient] = None
         self.collection_name = settings.firestore_collection
         self._memory_store: dict = {}  # In-memory fallback when Firestore unavailable
         self._initialize_client()
     
     def _initialize_client(self):
-        """Initialize Firestore client."""
+        """Initialize async Firestore client."""
         try:
             if settings.gcp_project_id:
-                self.client = firestore.Client(project=settings.gcp_project_id)
-                logger.info("Firestore client initialized successfully")
+                self.client = AsyncClient(project=settings.gcp_project_id)
+                logger.info("Async Firestore client initialized successfully")
             else:
                 logger.warning("GCP_PROJECT_ID not set, using in-memory session storage")
         except Exception as e:
@@ -36,7 +36,7 @@ class FirestoreService:
         if self.client:
             try:
                 session_dict = session.model_dump(mode='json')
-                self.client.collection(self.collection_name).document(session.id).set(session_dict)
+                await self.client.collection(self.collection_name).document(session.id).set(session_dict)
                 logger.info(f"Created session {session.id} in Firestore")
                 return True
             except Exception as e:
@@ -52,7 +52,7 @@ class FirestoreService:
         """Retrieve a session from Firestore or in-memory."""
         if self.client:
             try:
-                doc = self.client.collection(self.collection_name).document(session_id).get()
+                doc = await self.client.collection(self.collection_name).document(session_id).get()
                 if doc.exists:
                     data = doc.to_dict()
                     return ReconstructionSession(**data)
@@ -68,7 +68,7 @@ class FirestoreService:
             try:
                 session.updated_at = datetime.utcnow()
                 session_dict = session.model_dump(mode='json')
-                self.client.collection(self.collection_name).document(session.id).set(session_dict, merge=True)
+                await self.client.collection(self.collection_name).document(session.id).set(session_dict, merge=True)
                 logger.info(f"Updated session {session.id} in Firestore")
                 return True
             except Exception as e:
@@ -84,7 +84,7 @@ class FirestoreService:
         """Delete a session from Firestore or in-memory."""
         if self.client:
             try:
-                self.client.collection(self.collection_name).document(session_id).delete()
+                await self.client.collection(self.collection_name).document(session_id).delete()
                 logger.info(f"Deleted session {session_id} from Firestore")
                 return True
             except Exception as e:
@@ -99,14 +99,15 @@ class FirestoreService:
         """List all sessions from Firestore or in-memory."""
         if self.client:
             try:
+                from google.cloud.firestore_v1 import Query
                 docs = (
                     self.client.collection(self.collection_name)
-                    .order_by("updated_at", direction=firestore.Query.DESCENDING)
+                    .order_by("updated_at", direction=Query.DESCENDING)
                     .limit(limit)
                     .stream()
                 )
                 sessions = []
-                for doc in docs:
+                async for doc in docs:
                     try:
                         data = doc.to_dict()
                         sessions.append(ReconstructionSession(**data))
@@ -124,11 +125,14 @@ class FirestoreService:
         )
         return sessions[:limit]
     
-    def health_check(self) -> bool:
+    async def health_check(self) -> bool:
         """Check if storage is accessible."""
         if self.client:
             try:
-                self.client.collection(self.collection_name).limit(1).get()
+                # Simple async check - just verify client is initialized
+                docs = self.client.collection(self.collection_name).limit(1).stream()
+                async for _ in docs:
+                    break
                 return True
             except Exception as e:
                 logger.error(f"Firestore health check failed: {e}")
