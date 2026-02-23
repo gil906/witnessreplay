@@ -1,10 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import os
+import asyncio
 
 from app.config import settings
 from app.api.routes import router as api_router
@@ -85,6 +86,24 @@ else:
             "version": "1.0.0",
             "docs": "/docs"
         }
+
+
+# Request timeout middleware - prevent indefinite hanging
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    """Timeout protection for all requests."""
+    try:
+        # Set timeout to 60 seconds for all requests
+        return await asyncio.wait_for(call_next(request), timeout=60.0)
+    except asyncio.TimeoutError:
+        logger.error(f"Request timeout: {request.method} {request.url}")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "detail": "Request timeout - server took too long to respond",
+                "path": str(request.url.path)
+            }
+        )
 
 
 # Request ID middleware for debugging

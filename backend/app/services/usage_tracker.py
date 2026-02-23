@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from typing import Dict, Optional
 from collections import defaultdict
 import threading
+import asyncio
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +85,14 @@ class UsageTracker:
     def _check_reset(self):
         """Reset counters if it's a new day (Pacific Time)."""
         # Gemini quotas reset at midnight Pacific Time
-        # For simplicity, we reset at UTC midnight
-        # TODO: Add proper Pacific Time handling
-        today = datetime.now(timezone.utc).date()
+        try:
+            pacific_tz = ZoneInfo("America/Los_Angeles")
+            today = datetime.now(pacific_tz).date()
+        except Exception as e:
+            # Fallback to UTC if timezone not available
+            logger.warning(f"Could not use Pacific timezone, falling back to UTC: {e}")
+            today = datetime.now(timezone.utc).date()
+        
         if today != self._last_reset:
             logger.info(f"Resetting usage counters for new day: {today}")
             self._requests_today.clear()
@@ -127,15 +134,15 @@ class UsageTracker:
             total_tokens = input_tokens + output_tokens
             self._tokens_today[model_name] += total_tokens
             
-            # Save to disk after recording
-            self._save_to_disk()
-            
             logger.debug(
                 f"Recorded usage for {model_name}: "
                 f"+1 req, +{total_tokens} tokens "
                 f"(total today: {self._requests_today[model_name]} req, "
                 f"{self._tokens_today[model_name]} tokens)"
             )
+        
+        # Save to disk asynchronously after recording (outside lock)
+        asyncio.create_task(self._save_to_disk_async())
     
     def _get_usage_unlocked(self, model_name: str) -> Dict:
         """
@@ -223,8 +230,33 @@ class UsageTracker:
         except Exception as e:
             logger.warning(f"Could not load usage data from disk: {e}")
     
+    async def _save_to_disk_async(self):
+        """Save usage data to disk asynchronously (non-blocking)."""
+        try:
+            # Get snapshot of data while holding lock briefly
+            with self._lock:
+                data = {
+                    "date": self._last_reset.isoformat(),
+                    "requests_today": dict(self._requests_today),
+                    "tokens_today": dict(self._tokens_today),
+                    "saved_at": datetime.now(timezone.utc).isoformat()
+                }
+            
+            # Perform file I/O in thread pool (outside lock)
+            def _write_file():
+                # Atomic write: write to temp file, then rename
+                temp_file = self._persistence_file.with_suffix('.tmp')
+                with open(temp_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                temp_file.replace(self._persistence_file)
+            
+            await asyncio.to_thread(_write_file)
+            logger.debug(f"Saved usage data to {self._persistence_file}")
+        except Exception as e:
+            logger.error(f"Failed to save usage data to disk: {e}")
+    
     def _save_to_disk(self):
-        """Save usage data to disk."""
+        """Synchronous save (for use in __init__ only)."""
         try:
             data = {
                 "date": self._last_reset.isoformat(),
