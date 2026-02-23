@@ -55,6 +55,12 @@
                     <button id="quota-btn" class="btn btn-secondary" data-tooltip="Model & Quota">
                         🤖 Model
                     </button>
+                    <button id="analytics-btn" class="btn btn-secondary" data-tooltip="View analytics">
+                        📊 Analytics
+                    </button>
+                    <button id="info-btn" class="btn btn-secondary" data-tooltip="Server info">
+                        ℹ️ Info
+                    </button>
                 </div>
             </div>
         </header>
@@ -158,10 +164,13 @@
                     <h4>Export Session</h4>
                     <div class="export-buttons">
                         <button class="btn btn-secondary btn-export" id="export-pdf-btn">
-                            📄 Export PDF
+                            📄 PDF Report
                         </button>
                         <button class="btn btn-secondary btn-export" id="export-json-btn">
-                            📦 Export JSON
+                            📦 JSON Data
+                        </button>
+                        <button class="btn btn-secondary btn-export" id="export-evidence-btn" data-tooltip="Law enforcement compatible evidence report">
+                            🔒 Evidence Report
                         </button>
                     </div>
                 </div>
@@ -329,6 +338,121 @@
             </div>
 
             <button class="btn btn-secondary" id="modal-close-quota-btn-2">Close</button>
+        </div>
+    </div>
+
+    <!-- Analytics Modal -->
+    <div id="analytics-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="analytics-modal-title">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h2 id="analytics-modal-title">📊 Session Analytics</h2>
+                <button class="modal-close" id="close-analytics-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            
+            <div class="analytics-dashboard">
+                <h3>Overall Statistics</h3>
+                
+                <div class="analytics-grid">
+                    <div class="analytics-card">
+                        <div class="analytics-icon">📝</div>
+                        <div class="analytics-value" id="analytics-total-sessions">--</div>
+                        <div class="analytics-label">Total Sessions</div>
+                    </div>
+                    
+                    <div class="analytics-card">
+                        <div class="analytics-icon">🎬</div>
+                        <div class="analytics-value" id="analytics-active-sessions">--</div>
+                        <div class="analytics-label">Active Sessions</div>
+                    </div>
+                    
+                    <div class="analytics-card">
+                        <div class="analytics-icon">🖼️</div>
+                        <div class="analytics-value" id="analytics-total-scenes">--</div>
+                        <div class="analytics-label">Scenes Generated</div>
+                    </div>
+                    
+                    <div class="analytics-card">
+                        <div class="analytics-icon">⏱️</div>
+                        <div class="analytics-value" id="analytics-avg-duration">--</div>
+                        <div class="analytics-label">Avg Session Time</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 2rem;">Element Insights</h3>
+                <div class="element-insights">
+                    <div class="insight-row">
+                        <span class="insight-label">Most Common Elements:</span>
+                        <span class="insight-value" id="analytics-top-elements">--</span>
+                    </div>
+                    <div class="insight-row">
+                        <span class="insight-label">Average Confidence:</span>
+                        <span class="insight-value" id="analytics-avg-confidence">--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-close-analytics-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server Info Modal -->
+    <div id="info-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="info-modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="info-modal-title">ℹ️ Server Information</h2>
+                <button class="modal-close" id="close-info-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            
+            <div class="server-info-panel">
+                <div class="info-section">
+                    <h4>System Status</h4>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-key">Version:</span>
+                            <span class="info-value" id="info-version">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-key">Environment:</span>
+                            <span class="info-value" id="info-env">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-key">Python:</span>
+                            <span class="info-value" id="info-python">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-key">Debug Mode:</span>
+                            <span class="info-value" id="info-debug">--</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="info-section">
+                    <h4>Available Features</h4>
+                    <div class="feature-badges" id="feature-badges">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                
+                <div class="info-section">
+                    <h4>Configuration</h4>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-key">Active Model:</span>
+                            <span class="info-value" id="info-model">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-key">Rate Limiting:</span>
+                            <span class="info-value" id="info-rate-limit">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-close-info-btn">Close</button>
+            </div>
         </div>
     </div>
 

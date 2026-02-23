@@ -104,6 +104,7 @@ class WitnessReplayApp {
         // Export buttons
         document.getElementById('export-pdf-btn')?.addEventListener('click', () => this.exportPDF());
         document.getElementById('export-json-btn')?.addEventListener('click', () => this.exportJSON());
+        document.getElementById('export-evidence-btn')?.addEventListener('click', () => this.exportEvidence());
         
         // Model & Quota button
         const quotaBtn = document.getElementById('quota-btn');
@@ -111,11 +112,67 @@ class WitnessReplayApp {
             quotaBtn.addEventListener('click', () => this.showQuotaModal());
         }
         
+        // Analytics button
+        const analyticsBtn = document.getElementById('analytics-btn');
+        if (analyticsBtn) {
+            analyticsBtn.addEventListener('click', () => this.showAnalyticsModal());
+        }
+        
+        // Info button
+        const infoBtn = document.getElementById('info-btn');
+        if (infoBtn) {
+            infoBtn.addEventListener('click', () => this.showInfoModal());
+        }
+        
         // Start with a new session
         this.createNewSession();
         
         // Initialize suggested action buttons
         this._initSuggestedActions();
+        
+        // Initialize keyboard shortcuts
+        this._initKeyboardShortcuts();
+    }
+    
+    _initKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Ignore if typing in input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            // Space: Toggle recording (only if mic button is not disabled)
+            if (e.code === 'Space' && !this.micBtn.disabled) {
+                e.preventDefault();
+                this.toggleRecording();
+            }
+            
+            // Escape: Close any open modal
+            if (e.code === 'Escape') {
+                const openModal = document.querySelector('.modal:not(.hidden)');
+                if (openModal) {
+                    this.ui.hideModal(openModal.id);
+                }
+            }
+            
+            // ? : Show help/onboarding
+            if (e.key === '?' && !e.shiftKey) {
+                e.preventDefault();
+                this.ui.showOnboarding();
+            }
+            
+            // Ctrl/Cmd + N: New session
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                this.createNewSession();
+            }
+            
+            // Ctrl/Cmd + S: Show sessions list
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                this.showSessionsList();
+            }
+        });
     }
     
     initializeAudio() {
@@ -200,6 +257,32 @@ class WitnessReplayApp {
         if (refreshQuotaBtn) {
             refreshQuotaBtn.addEventListener('click', () => this.refreshQuota());
         }
+        
+        // Analytics modal close buttons
+        document.getElementById('close-analytics-modal-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('analytics-modal');
+        });
+        document.getElementById('modal-close-analytics-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('analytics-modal');
+        });
+        document.getElementById('analytics-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'analytics-modal') {
+                this.ui.hideModal('analytics-modal');
+            }
+        });
+        
+        // Info modal close buttons
+        document.getElementById('close-info-modal-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('info-modal');
+        });
+        document.getElementById('modal-close-info-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('info-modal');
+        });
+        document.getElementById('info-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'info-modal') {
+                this.ui.hideModal('info-modal');
+            }
+        });
     }
     
     async createNewSession() {
@@ -294,7 +377,15 @@ class WitnessReplayApp {
             if (this.chatMicBtn) this.chatMicBtn.disabled = false;
             this.textInput.disabled = false;
             this.sendBtn.disabled = false;
-            this.ui.showToast('Connected to Detective Ray', 'success', 2000);
+            
+            // Update connection status indicator
+            const statusDot = document.querySelector('.status-dot');
+            if (statusDot) {
+                statusDot.style.background = 'var(--accent-green)';
+                statusDot.style.boxShadow = '0 0 8px var(--accent-green)';
+            }
+            
+            this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
         
         this.ws.onmessage = (event) => {
@@ -315,16 +406,12 @@ class WitnessReplayApp {
             this.textInput.disabled = true;
             this.sendBtn.disabled = true;
             
-            // Update session status indicator
-            if (this.sessionIdEl) {
-                const statusSpan = this.sessionIdEl.querySelector('.connection-status');
-                if (statusSpan) {
-                    statusSpan.className = 'connection-status reconnecting';
-                    statusSpan.innerHTML = `
-                        <span class="status-dot"></span>
-                        Reconnecting...
-                    `;
-                }
+            // Update connection status indicator
+            const statusDot = document.querySelector('.status-dot');
+            if (statusDot) {
+                statusDot.style.background = 'var(--accent-amber)';
+                statusDot.style.boxShadow = '0 0 8px var(--accent-amber)';
+                statusDot.style.animation = 'statusPulse 1.5s ease-in-out infinite';
             }
             
             // Reconnect with backoff, max attempts
@@ -1228,6 +1315,37 @@ class WitnessReplayApp {
         }
     }
     
+    async exportEvidence() {
+        if (!this.sessionId) {
+            this.ui.showToast('No session to export', 'warning');
+            return;
+        }
+        
+        try {
+            this.ui.showToast('Generating evidence report...', 'info');
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/export/evidence`);
+            
+            if (!response.ok) throw new Error('Export failed');
+            
+            const data = await response.json();
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `evidence-report-${this.sessionId.substring(0, 8)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.ui.showToast('🔒 Evidence report generated successfully!', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.ui.showToast('Failed to export evidence report', 'error');
+        }
+    }
+    
     downloadScene() {
         const img = this.sceneDisplay.querySelector('.scene-image');
         if (!img) {
@@ -1553,6 +1671,103 @@ class WitnessReplayApp {
             tpdBadge.className = 'quota-badge';
             if (tpdPercent > 80) tpdBadge.classList.add('danger');
             else if (tpdPercent > 60) tpdBadge.classList.add('warning');
+        }
+    }
+    
+    async showAnalyticsModal() {
+        this.ui.showModal('analytics-modal');
+        
+        try {
+            const response = await this.fetchWithTimeout('/api/analytics/stats');
+            
+            if (!response.ok) {
+                throw new Error('Failed to load analytics');
+            }
+            
+            const data = await response.json();
+            
+            // Update overall statistics
+            document.getElementById('analytics-total-sessions').textContent = data.total_sessions || 0;
+            document.getElementById('analytics-active-sessions').textContent = data.active_sessions || 0;
+            document.getElementById('analytics-total-scenes').textContent = data.total_scenes_generated || 0;
+            
+            // Format average duration
+            const avgDuration = data.avg_session_duration_minutes || 0;
+            const durationText = avgDuration < 1 
+                ? '<1m' 
+                : avgDuration >= 60 
+                    ? `${Math.floor(avgDuration / 60)}h ${Math.round(avgDuration % 60)}m`
+                    : `${Math.round(avgDuration)}m`;
+            document.getElementById('analytics-avg-duration').textContent = durationText;
+            
+            // Element insights
+            if (data.top_elements && data.top_elements.length > 0) {
+                const topElements = data.top_elements.slice(0, 5).map(e => e.type).join(', ');
+                document.getElementById('analytics-top-elements').textContent = topElements;
+            } else {
+                document.getElementById('analytics-top-elements').textContent = 'No data yet';
+            }
+            
+            const avgConf = data.avg_confidence || 0;
+            document.getElementById('analytics-avg-confidence').textContent = 
+                avgConf > 0 ? `${Math.round(avgConf * 100)}%` : 'N/A';
+            
+        } catch (error) {
+            console.error('Error loading analytics:', error);
+            this.ui.showToast('Failed to load analytics data', 'error');
+        }
+    }
+    
+    async showInfoModal() {
+        this.ui.showModal('info-modal');
+        
+        try {
+            const response = await this.fetchWithTimeout('/api/info');
+            
+            if (!response.ok) {
+                throw new Error('Failed to load server info');
+            }
+            
+            const data = await response.json();
+            
+            // System status
+            document.getElementById('info-version').textContent = data.version || '1.0.0';
+            document.getElementById('info-env').textContent = data.environment || 'unknown';
+            document.getElementById('info-python').textContent = data.python_version || 'unknown';
+            document.getElementById('info-debug').textContent = data.debug ? 'Enabled' : 'Disabled';
+            
+            // Configuration
+            document.getElementById('info-model').textContent = data.config?.gemini_model || 'unknown';
+            document.getElementById('info-rate-limit').textContent = 
+                data.config?.enforce_rate_limits ? 'Enabled' : 'Disabled';
+            
+            // Feature badges
+            const featureBadges = document.getElementById('feature-badges');
+            if (featureBadges && data.features) {
+                featureBadges.innerHTML = '';
+                
+                const features = [
+                    { key: 'voice_recording', label: '🎤 Voice Recording', icon: '🎤' },
+                    { key: 'scene_generation', label: '🖼️ Scene Generation', icon: '🖼️' },
+                    { key: 'firestore', label: '💾 Cloud Storage', icon: '💾' },
+                    { key: 'websocket', label: '🔌 Real-time WebSocket', icon: '🔌' },
+                    { key: 'pdf_export', label: '📄 PDF Export', icon: '📄' },
+                    { key: 'analytics', label: '📊 Analytics', icon: '📊' },
+                    { key: 'evidence_export', label: '🔒 Evidence Export', icon: '🔒' }
+                ];
+                
+                features.forEach(feature => {
+                    const enabled = data.features[feature.key];
+                    const badge = document.createElement('div');
+                    badge.className = `feature-badge${enabled ? '' : ' disabled'}`;
+                    badge.innerHTML = `<span class="badge-icon">${enabled ? '✓' : '✗'}</span> ${feature.label}`;
+                    featureBadges.appendChild(badge);
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error loading server info:', error);
+            this.ui.showToast('Failed to load server information', 'error');
         }
     }
 }
