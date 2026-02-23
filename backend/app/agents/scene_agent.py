@@ -83,8 +83,23 @@ class SceneReconstructionAgent:
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
             
-            # Send to Gemini (wrapped in thread pool to avoid blocking event loop)
-            response = await asyncio.to_thread(self.chat.send_message, statement)
+            # Send to Gemini with retry on rate limit
+            response = None
+            for attempt in range(3):
+                try:
+                    response = await asyncio.to_thread(self.chat.send_message, statement)
+                    break
+                except Exception as e:
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        wait_time = (attempt + 1) * 10
+                        logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt+1}/3)")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise
+            
+            if not response:
+                return "I'm temporarily rate limited. Please wait a moment and try again.", False
+            
             agent_response = response.text
             
             # Track usage (estimate tokens - Gemini API doesn't always provide exact counts)
