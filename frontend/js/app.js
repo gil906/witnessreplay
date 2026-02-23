@@ -428,7 +428,8 @@ class WitnessReplayApp {
                 await this.audioRecorder.start();
                 this.isRecording = true;
                 this.micBtn.classList.add('recording');
-                this.micBtn.querySelector('.btn-text').textContent = 'Recording...';
+                const btnText = this.micBtn.querySelector('.btn-text');
+                if (btnText) btnText.textContent = 'Recording...';
                 if (this.chatMicBtn) {
                     this.chatMicBtn.classList.add('recording');
                     this.chatMicBtn.textContent = '⏹';
@@ -453,7 +454,8 @@ class WitnessReplayApp {
                 const audioBlob = await this.audioRecorder.stop();
                 this.isRecording = false;
                 this.micBtn.classList.remove('recording');
-                this.micBtn.querySelector('.btn-text').textContent = 'Start Speaking';
+                const btnText2 = this.micBtn.querySelector('.btn-text');
+                if (btnText2) btnText2.textContent = 'Start Speaking';
                 if (this.chatMicBtn) {
                     this.chatMicBtn.classList.remove('recording');
                     this.chatMicBtn.textContent = '🎤';
