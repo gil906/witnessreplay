@@ -382,215 +382,6 @@ class WitnessReplayApp {
         }
         
         const versionDiv = document.createElement('div');
-        versionDiv.className = 'timeline-item';
-        versionDiv.innerHTML = `
-            <div class="timeline-version">Version ${data.version || this.currentVersion}</div>
-            <div class="timeline-time">${new Date().toLocaleTimeString()}</div>
-            ${data.image_url ? `<img src="${data.image_url}" alt="Version ${data.version}">` : ''}
-            ${data.description ? `<p>${data.description.substring(0, 100)}...</p>` : ''}
-        `;
-        
-        this.timeline.insertBefore(versionDiv, this.timeline.firstChild);
-    }
-    
-    setStatus(status) {
-        this.statusText.textContent = status;
-    }
-}
-
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.app = new WitnessReplayApp();
-});
-    
-    toggleRecording() {
-        if (this.isRecording) {
-            this.stopRecording();
-        } else {
-            this.startRecording();
-        }
-    }
-    
-    async startRecording() {
-        try {
-            if (this.audioRecorder) {
-                await this.audioRecorder.start();
-                this.isRecording = true;
-                
-                // Update mic button
-                this.micBtn.classList.add('recording');
-                this.waveformRing?.classList.add('active');
-                
-                // Start visualizer
-                if (this.audioVisualizer && this.audioRecorder.stream) {
-                    this.audioVisualizer.start(this.audioRecorder.stream);
-                }
-                
-                // Update status
-                this.ui.setStatus('🎤 Listening...', 'listening');
-                this.ui.playSound('micClick');
-                
-            } else {
-                this.ui.setStatus('Audio recording not available. Use text input.', 'default');
-                this.ui.showToast('Microphone not available', 'warning');
-            }
-        } catch (error) {
-            console.error('Error starting recording:', error);
-            this.ui.setStatus('Microphone access denied', 'default');
-            this.ui.showToast('Microphone access denied. Please allow microphone access.', 'error');
-        }
-    }
-    
-    async stopRecording() {
-        if (!this.isRecording) return;
-        
-        try {
-            if (this.audioRecorder) {
-                const audioBlob = await this.audioRecorder.stop();
-                this.isRecording = false;
-                
-                // Update mic button
-                this.micBtn.classList.remove('recording');
-                this.micBtn.classList.add('processing');
-                this.waveformRing?.classList.remove('active');
-                
-                // Stop visualizer
-                if (this.audioVisualizer) {
-                    this.audioVisualizer.stop();
-                }
-                
-                // Send audio
-                this.sendAudioMessage(audioBlob);
-                
-                this.ui.playSound('micClick');
-            }
-        } catch (error) {
-            console.error('Error stopping recording:', error);
-            this.ui.setStatus('Error processing audio', 'default');
-            this.ui.showToast('Error processing audio', 'error');
-            this.micBtn.classList.remove('recording', 'processing');
-        }
-    }
-    
-    async sendAudioMessage(audioBlob) {
-        try {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64Audio = reader.result.split(',')[1];
-                
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
-                        type: 'audio',
-                        data: {
-                            audio: base64Audio,
-                            format: 'webm'
-                        }
-                    }));
-                    this.ui.setStatus('🤖 Detective Ray is analyzing...', 'processing');
-                    this.statementCount++;
-                    this.ui.updateStats({ statementCount: this.statementCount });
-                }
-            };
-            reader.readAsDataURL(audioBlob);
-        } catch (error) {
-            console.error('Error sending audio:', error);
-            this.micBtn.classList.remove('processing');
-        }
-    }
-    
-    sendTextMessage() {
-        const text = this.textInput.value.trim();
-        if (!text) return;
-        
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({
-                type: 'text',
-                data: {text: text}
-            }));
-            
-            this.displayMessage(text, 'user');
-            this.textInput.value = '';
-            this.ui.setStatus('🤖 Detective Ray is responding...', 'processing');
-            this.statementCount++;
-            this.ui.updateStats({ statementCount: this.statementCount });
-        }
-    }
-    
-    displayMessage(text, speaker) {
-        if (this.chatTranscript.querySelector('.empty-state')) {
-            this.chatTranscript.innerHTML = '';
-        }
-        
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message message-${speaker}`;
-        
-        const label = document.createElement('strong');
-        label.textContent = speaker === 'user' ? 'You' : 
-                           speaker === 'agent' ? 'Detective Ray' : 
-                           'System';
-        
-        const textNode = document.createTextNode(text);
-        
-        messageDiv.appendChild(label);
-        messageDiv.appendChild(textNode);
-        
-        this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
-    }
-    
-    displaySystemMessage(text) {
-        if (this.chatTranscript.querySelector('.empty-state')) {
-            this.chatTranscript.innerHTML = '';
-        }
-        
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message message-system';
-        messageDiv.textContent = text;
-        
-        this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
-    }
-    
-    updateScene(data) {
-        // Show scene controls when scene is present
-        this.ui.showSceneControls();
-        
-        // Update scene image
-        if (data.image_url) {
-            this.sceneDisplay.innerHTML = `
-                <img src="${data.image_url}" 
-                     alt="Scene reconstruction version ${data.version || this.currentVersion + 1}" 
-                     class="scene-image"
-                     id="scene-image">
-            `;
-            
-            // Enable scene controls after image loads
-            const img = this.sceneDisplay.querySelector('img');
-            img.onload = () => {
-                this.ui.setLoadingScene(false);
-                this.micBtn.classList.remove('processing');
-            };
-        }
-        
-        // Update description
-        if (data.description) {
-            this.sceneDescription.innerHTML = `<p>${data.description}</p>`;
-        }
-        
-        // Add to timeline
-        this.currentVersion = data.version || this.currentVersion + 1;
-        this.addTimelineVersion(data);
-        
-        // Update stats
-        this.ui.updateStats({ versionCount: this.currentVersion });
-    }
-    
-    addTimelineVersion(data) {
-        if (this.timeline.querySelector('.empty-state')) {
-            this.timeline.innerHTML = '';
-        }
-        
-        const versionDiv = document.createElement('div');
         versionDiv.className = 'timeline-item active';
         versionDiv.dataset.version = data.version || this.currentVersion;
         
@@ -697,7 +488,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.sessionId = session.id;
             this.sessionIdEl.textContent = `Session: ${session.id.substring(0, 8)}...`;
             
-            // TODO: Load session data into UI
             this.connectWebSocket();
             this.ui.showToast('Session loaded', 'success');
             
@@ -762,6 +552,26 @@ document.addEventListener('DOMContentLoaded', () => {
             display.requestFullscreen();
         } else {
             document.exitFullscreen();
+        }
+    }
+    
+    displaySystemMessage(text) {
+        if (this.chatTranscript.querySelector('.empty-state')) {
+            this.chatTranscript.innerHTML = '';
+        }
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-system';
+        messageDiv.textContent = text;
+        
+        this.chatTranscript.appendChild(messageDiv);
+        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+    }
+    
+    setStatus(status) {
+        // Deprecated - use this.ui.setStatus instead
+        if (this.ui) {
+            this.ui.setStatus(status);
         }
     }
 }
