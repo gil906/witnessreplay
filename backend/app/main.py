@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -40,10 +40,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware — allow all origins for hackathon demo
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins if settings.environment == "development" else ["*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,7 +54,7 @@ app.include_router(api_router, prefix="/api", tags=["api"])
 
 # WebSocket endpoint
 @app.websocket("/ws/{session_id}")
-async def websocket_handler(websocket, session_id: str):
+async def websocket_handler(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time communication."""
     await websocket_endpoint(websocket, session_id)
 

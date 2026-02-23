@@ -1,5 +1,6 @@
 import os
 from typing import List
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,14 +18,8 @@ class Settings(BaseSettings):
     # Application Configuration
     environment: str = "development"
     debug: bool = True
-    from pydantic import field_validator
 
-    allowed_origins: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-    ]
+    allowed_origins: List[str] = ["*"]
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
