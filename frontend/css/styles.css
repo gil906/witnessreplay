@@ -2564,3 +2564,344 @@ body.forensic-mode {
     to { opacity: 0; }
 }
 
+/* ==================== MOBILE RESPONSIVE OVERHAUL ==================== */
+
+/* Tablet: Stack to single column */
+@media (max-width: 1200px) {
+    .scene-panel {
+        position: relative;
+        top: auto;
+    }
+    
+    .chat-panel,
+    .timeline-panel {
+        position: relative;
+        top: auto;
+    }
+}
+
+/* Mobile phones */
+@media (max-width: 768px) {
+    body {
+        font-size: 14px;
+    }
+    
+    .container {
+        padding: var(--spacing-sm);
+        gap: var(--spacing-sm);
+    }
+    
+    /* Header: compact for mobile */
+    .header {
+        padding: var(--spacing-md);
+        border-radius: 12px;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        text-align: center;
+    }
+    
+    .logo-section {
+        justify-content: center;
+    }
+    
+    .logo-icon {
+        font-size: 2rem;
+    }
+    
+    .logo-text h1 {
+        font-size: 1.5rem;
+    }
+    
+    .tagline {
+        font-size: 0.85rem;
+    }
+    
+    .detective-badge {
+        padding: var(--spacing-sm) var(--spacing-md);
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .detective-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 1.2rem;
+    }
+    
+    .session-info {
+        width: 100%;
+        justify-content: center;
+        gap: var(--spacing-xs);
+        flex-wrap: wrap;
+    }
+    
+    .session-info .btn {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.8rem;
+    }
+    
+    #session-id {
+        font-size: 0.75rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+    
+    /* Main content: single column, reorder for mobile */
+    .main-content {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto;
+        gap: var(--spacing-sm);
+    }
+    
+    /* Panels: reorder for mobile - scene first, then chat, then timeline */
+    .scene-panel {
+        order: 1;
+        padding: var(--spacing-md);
+        border-radius: 12px;
+        position: relative;
+        top: auto;
+    }
+    
+    .chat-panel {
+        order: 2;
+        max-height: 60vh;
+        padding: var(--spacing-md);
+        border-radius: 12px;
+        position: relative;
+        top: auto;
+    }
+    
+    .timeline-panel {
+        order: 3;
+        max-height: 300px;
+        padding: var(--spacing-md);
+        border-radius: 12px;
+        position: relative;
+        top: auto;
+    }
+    
+    /* Scene display: smaller on mobile */
+    .scene-display {
+        min-height: 200px;
+        max-height: 350px;
+        border-radius: 8px;
+    }
+    
+    .scene-stats {
+        gap: var(--spacing-xs);
+        flex-wrap: wrap;
+    }
+    
+    .stat-card {
+        min-width: 60px;
+        padding: var(--spacing-sm);
+    }
+    
+    .stat-value {
+        font-size: 1.2rem;
+    }
+    
+    .stat-label {
+        font-size: 0.7rem;
+    }
+    
+    /* Mic button: smaller on mobile */
+    .mic-container {
+        margin: var(--spacing-sm) 0;
+    }
+    
+    .mic-btn {
+        width: 80px !important;
+        height: 80px !important;
+        font-size: 2rem !important;
+    }
+    
+    .mic-btn .btn-text {
+        display: none;
+    }
+    
+    .waveform-ring {
+        width: 100px !important;
+        height: 100px !important;
+    }
+    
+    #audio-visualizer {
+        width: 100px !important;
+        height: 100px !important;
+    }
+    
+    .keyboard-hint {
+        display: none;
+    }
+    
+    /* Status indicator */
+    .status-indicator {
+        font-size: 0.85rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+    
+    /* Chat panel: text input at bottom */
+    .chat-transcript {
+        min-height: 150px;
+        padding: var(--spacing-sm);
+    }
+    
+    .text-input {
+        gap: var(--spacing-xs);
+        padding-top: var(--spacing-sm);
+    }
+    
+    .text-input input {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.9rem;
+        min-width: 0;
+    }
+    
+    .btn-mic {
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
+        padding: var(--spacing-sm);
+    }
+    
+    .btn-primary {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+    
+    /* Messages */
+    .message-user,
+    .message-agent,
+    .message-system {
+        max-width: 95%;
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 0.9rem;
+    }
+    
+    /* Scene description */
+    .scene-description {
+        font-size: 0.85rem;
+        padding: var(--spacing-sm);
+    }
+    
+    /* Controls section */
+    .controls {
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) 0;
+    }
+    
+    /* Export controls */
+    .export-controls {
+        padding: var(--spacing-sm);
+    }
+    
+    .export-buttons {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+    
+    /* Modals */
+    .modal-content {
+        width: 95%;
+        max-width: 95%;
+        max-height: 90vh;
+        padding: var(--spacing-md);
+        margin: var(--spacing-md);
+    }
+    
+    .modal-wide {
+        width: 95% !important;
+    }
+    
+    /* Onboarding */
+    .onboarding-content {
+        width: 95%;
+        padding: var(--spacing-md);
+    }
+    
+    .onboarding-step h2 {
+        font-size: 1.3rem;
+    }
+    
+    /* Help button */
+    .help-button {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+        bottom: var(--spacing-sm);
+        right: var(--spacing-sm);
+    }
+    
+    /* Timeline items */
+    .timeline-item {
+        padding: var(--spacing-sm);
+    }
+    
+    .timeline-item img {
+        max-height: 80px;
+    }
+    
+    /* Toasts */
+    .toast-container {
+        bottom: var(--spacing-sm);
+        left: var(--spacing-sm);
+        right: var(--spacing-sm);
+    }
+    
+    .toast {
+        min-width: auto;
+        font-size: 0.85rem;
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+}
+
+/* Small phones (< 400px) */
+@media (max-width: 400px) {
+    .container {
+        padding: var(--spacing-xs);
+    }
+    
+    .header {
+        padding: var(--spacing-sm);
+    }
+    
+    .logo-text h1 {
+        font-size: 1.2rem;
+    }
+    
+    .detective-badge {
+        display: none;
+    }
+    
+    .session-info .btn {
+        font-size: 0.7rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+    
+    .mic-btn {
+        width: 70px !important;
+        height: 70px !important;
+        font-size: 1.8rem !important;
+    }
+    
+    .scene-display {
+        min-height: 180px;
+    }
+    
+    .chat-panel {
+        max-height: 50vh;
+    }
+}
+
+/* Ensure text-input doesn't overflow on any screen */
+.text-input {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.text-input input {
+    min-width: 0;
+    width: 100%;
+}
+

@@ -554,27 +554,27 @@ class WitnessReplayApp {
         
         // Update stats
         this.currentVersion = data.version || this.currentVersion + 1;
-        this.versionCountEl.textContent = this.currentVersion;
+        if (this.versionCountEl) this.versionCountEl.textContent = this.currentVersion;
         
         if (data.statement_count) {
-            this.statementCountEl.textContent = data.statement_count;
+            if (this.statementCountEl) this.statementCountEl.textContent = data.statement_count;
         }
         
         // Update complexity if available
         if (data.complexity !== undefined) {
-            this.complexityCard.style.display = 'block';
-            this.complexityScoreEl.textContent = (data.complexity * 100).toFixed(0) + '%';
+            if (this.complexityCard) this.complexityCard.style.display = 'block';
+            if (this.complexityScoreEl) this.complexityScoreEl.textContent = (data.complexity * 100).toFixed(0) + '%';
         }
         
         // Update contradictions if available
         if (data.contradictions && data.contradictions.length > 0) {
-            this.contradictionCard.style.display = 'block';
-            this.contradictionCountEl.textContent = data.contradictions.length;
+            if (this.contradictionCard) this.contradictionCard.style.display = 'block';
+            if (this.contradictionCountEl) this.contradictionCountEl.textContent = data.contradictions.length;
             this.ui.showToast(`⚠️ ${data.contradictions.length} contradiction(s) detected`, 'warning', 4000);
         }
         
         // Show export controls once we have a scene
-        this.exportControls.style.display = 'block';
+        if (this.exportControls) this.exportControls.style.display = 'block';
         
         // Add to timeline
         this.addTimelineVersion(data);

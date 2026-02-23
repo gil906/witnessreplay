@@ -79,19 +79,8 @@ class WebSocketHandler:
             await self.send_message("error", {"message": str(e)})
     
     async def handle_audio(self, data: dict):
-        """
-        Handle audio data from the client.
-        
-        In a full implementation, this would:
-        1. Receive audio chunks
-        2. Stream to Gemini Live API for transcription
-        3. Process the transcribed text
-        4. Generate responses
-        
-        For now, we'll simulate this with the text handler.
-        """
+        """Handle audio data from the client using Gemini for transcription."""
         try:
-            # Extract audio data
             audio_base64 = data.get("audio")
             audio_format = data.get("format", "webm")
             
@@ -99,25 +88,61 @@ class WebSocketHandler:
                 await self.send_message("error", {"message": "No audio data provided"})
                 return
             
-            # Send status update
-            await self.send_message("status", {"status": "processing", "message": "Processing audio..."})
+            await self.send_message("status", {"status": "processing", "message": "Transcribing audio..."})
             
-            # In a full implementation:
-            # 1. Decode base64 audio
-            # 2. Convert to format Gemini expects (PCM, etc.)
-            # 3. Stream to Gemini Live API
-            # 4. Receive transcription
-            # 5. Process transcription
+            # Use Gemini to transcribe audio
+            if self.agent and self.agent.client:
+                try:
+                    import base64
+                    audio_bytes = base64.b64decode(audio_base64)
+                    
+                    mime_map = {
+                        "webm": "audio/webm",
+                        "ogg": "audio/ogg",
+                        "mp4": "audio/mp4",
+                        "wav": "audio/wav",
+                    }
+                    mime_type = mime_map.get(audio_format, "audio/webm")
+                    
+                    # Use Gemini multimodal to transcribe
+                    from google.genai import types
+                    from app.config import settings as app_settings
+                    transcription_response = await asyncio.to_thread(
+                        self.agent.client.models.generate_content,
+                        model=app_settings.gemini_model,
+                        contents=[
+                            types.Content(parts=[
+                                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                                types.Part.from_text("Transcribe this audio exactly. Return ONLY the transcribed text, nothing else."),
+                            ])
+                        ]
+                    )
+                    
+                    transcribed_text = transcription_response.text.strip()
+                    
+                    if transcribed_text:
+                        logger.info(f"Transcribed audio: {transcribed_text[:100]}")
+                        await self.send_message("text", {
+                            "text": transcribed_text,
+                            "speaker": "user"
+                        })
+                        await self.handle_text({"text": transcribed_text})
+                        return
+                    else:
+                        await self.send_message("error", {"message": "Could not transcribe audio. Please try again or type your statement."})
+                        return
+                        
+                except Exception as e:
+                    logger.warning(f"Gemini audio transcription failed: {e}")
+                    await self.send_message("status", {
+                        "status": "error",
+                        "message": "Audio transcription failed. Please type your statement instead."
+                    })
+                    return
             
-            # For now, notify that we received the audio
-            await self.send_message("status", {
-                "status": "received",
-                "message": "Audio received. In production, this would be transcribed via Gemini Live API."
+            await self.send_message("error", {
+                "message": "Audio transcription not available. Please type your statement."
             })
-            
-            # Placeholder: If text is provided alongside audio (for testing)
-            if "text" in data:
-                await self.handle_text({"text": data["text"]})
         
         except Exception as e:
             logger.error(f"Error handling audio: {e}")
