@@ -1,0 +1,31 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'backend/Dockerfile', '-t', 'gcr.io/$PROJECT_ID/witnessreplay', '.']
+  
+  # Push to Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/witnessreplay']
+  
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'witnessreplay'
+      - '--image=gcr.io/$PROJECT_ID/witnessreplay'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID'
+      - '--set-secrets=GOOGLE_API_KEY=gemini-api-key:latest'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--timeout=300'
+
+images:
+  - 'gcr.io/$PROJECT_ID/witnessreplay'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

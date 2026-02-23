@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WitnessReplay - Scene Reconstruction</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎙️ WitnessReplay</h1>
+            <p class="tagline">Describe what you saw. I'll rebuild the scene.</p>
+            <div class="session-info">
+                <span id="session-id">No active session</span>
+                <button id="new-session-btn" class="btn btn-secondary">New Session</button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Scene Display -->
+            <div class="scene-panel">
+                <h2>Scene Reconstruction</h2>
+                <div id="scene-display" class="scene-display">
+                    <div class="placeholder">
+                        <p>Start speaking to begin reconstruction</p>
+                    </div>
+                </div>
+                
+                <!-- Scene Description -->
+                <div id="scene-description" class="scene-description">
+                    <p>No scene generated yet</p>
+                </div>
+
+                <!-- Control Buttons -->
+                <div class="controls">
+                    <button id="mic-btn" class="btn btn-primary mic-btn" disabled>
+                        <span class="mic-icon">🎤</span>
+                        <span class="btn-text">Start Speaking</span>
+                    </button>
+                    <button id="stop-btn" class="btn btn-secondary" style="display: none;">Stop</button>
+                    <div class="status-indicator">
+                        <span id="status-text">Initializing...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Timeline & Chat -->
+            <div class="side-panel">
+                <!-- Timeline -->
+                <div class="timeline-section">
+                    <h3>Timeline</h3>
+                    <div id="timeline" class="timeline">
+                        <p class="empty-state">No versions yet</p>
+                    </div>
+                </div>
+
+                <!-- Chat/Transcript -->
+                <div class="chat-section">
+                    <h3>Conversation</h3>
+                    <div id="chat-transcript" class="chat-transcript">
+                        <p class="empty-state">Conversation will appear here</p>
+                    </div>
+                    
+                    <!-- Text Input (fallback) -->
+                    <div class="text-input">
+                        <input 
+                            type="text" 
+                            id="text-input" 
+                            placeholder="Type your statement (or use voice)..."
+                            disabled
+                        >
+                        <button id="send-btn" class="btn btn-primary" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session List Modal -->
+        <div id="session-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Your Sessions</h2>
+                <div id="session-list" class="session-list">
+                    <p>Loading sessions...</p>
+                </div>
+                <button id="close-modal-btn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Visualizer -->
+    <canvas id="audio-visualizer" width="200" height="60" style="display: none;"></canvas>
+
+    <!-- Scripts -->
+    <script src="/static/js/audio.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
