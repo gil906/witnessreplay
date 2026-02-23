@@ -218,6 +218,29 @@ html {
     justify-content: center;
     font-size: 1.5rem;
     box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+    animation: avatarPulse 3s ease-in-out infinite;
+    position: relative;
+}
+
+.detective-avatar::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-amber));
+    opacity: 0.3;
+    filter: blur(8px);
+    animation: avatarGlow 3s ease-in-out infinite;
+}
+
+@keyframes avatarPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes avatarGlow {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.6; }
 }
 
 .detective-info h3 {
@@ -3153,5 +3176,431 @@ body.forensic-mode {
 }
 .message-user {
     border-left: 3px solid var(--accent-green);
+}
+
+/* ============================================================
+   ENHANCED UX IMPROVEMENTS - Cycle 4
+   ============================================================ */
+
+/* Better button hover and active states */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* Enhanced scene control buttons with tooltips */
+.scene-control-btn {
+    position: relative;
+}
+
+.scene-control-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-5px);
+    background: var(--bg-primary);
+    border: 1px solid var(--accent-blue);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.scene-control-btn:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-10px);
+}
+
+/* Loading skeleton animations */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary) 0%,
+        var(--bg-tertiary) 50%,
+        var(--bg-secondary) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.5s ease-in-out infinite;
+    border-radius: 8px;
+}
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+    height: 16px;
+    margin-bottom: 8px;
+}
+
+.skeleton-title {
+    height: 24px;
+    width: 60%;
+    margin-bottom: 12px;
+}
+
+.skeleton-image {
+    height: 200px;
+    width: 100%;
+}
+
+/* Enhanced error states with icons and styling */
+.error-state {
+    background: rgba(255, 71, 87, 0.1);
+    border: 2px solid var(--accent-red);
+    border-radius: 12px;
+    padding: var(--spacing-xl);
+    text-align: center;
+    animation: errorShake 0.5s ease-out;
+}
+
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+}
+
+.error-state .error-icon {
+    font-size: 3rem;
+    margin-bottom: var(--spacing-md);
+    animation: errorPulse 1s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.error-state .error-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent-red);
+    margin-bottom: var(--spacing-sm);
+}
+
+.error-state .error-message {
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
+}
+
+.error-state .error-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: center;
+}
+
+/* Connection status indicators */
+.connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: 16px;
+    font-size: 0.85rem;
+    transition: all var(--transition-base);
+}
+
+.connection-status.online {
+    background: rgba(46, 213, 115, 0.1);
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+}
+
+.connection-status.offline {
+    background: rgba(255, 71, 87, 0.1);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+}
+
+.connection-status.reconnecting {
+    background: rgba(255, 152, 0, 0.1);
+    color: var(--accent-amber);
+    border: 1px solid var(--accent-amber);
+}
+
+.connection-status .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: statusBlink 2s ease-in-out infinite;
+}
+
+@keyframes statusBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Enhanced timeline item with thumbnail preview */
+.timeline-item .timeline-thumbnail {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin: var(--spacing-sm) 0;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    filter: brightness(0.8);
+}
+
+.timeline-item:hover .timeline-thumbnail {
+    filter: brightness(1);
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+}
+
+.timeline-item .timeline-compare {
+    display: none;
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    background: var(--accent-blue);
+    color: var(--bg-primary);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.timeline-item:hover .timeline-compare {
+    display: block;
+}
+
+.timeline-compare:hover {
+    transform: scale(1.1);
+}
+
+/* Progress bar enhancements */
+.progress-bar-fill {
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: progressShine 2s ease-in-out infinite;
+}
+
+@keyframes progressShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+}
+
+/* Enhanced toast notifications with icons */
+.toast .toast-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.toast-success .toast-icon::before {
+    content: '✅';
+}
+
+.toast-error .toast-icon::before {
+    content: '❌';
+}
+
+.toast-warning .toast-icon::before {
+    content: '⚠️';
+}
+
+.toast-info .toast-icon::before {
+    content: 'ℹ️';
+}
+
+.toast .toast-content {
+    flex: 1;
+}
+
+.toast .toast-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.toast .toast-message {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+/* Enhanced focus states for accessibility */
+.btn:focus-visible,
+.scene-control-btn:focus-visible,
+.suggestion-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+input:focus-visible,
+#text-input:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-color: var(--accent-blue);
+}
+
+/* Smooth page transitions */
+.page-transition {
+    animation: pageSlideIn 0.5s ease-out;
+}
+
+@keyframes pageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Enhanced mic button with ripple effect */
+.mic-btn::after {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    opacity: 0;
+    animation: micRipple 2s ease-out infinite;
+}
+
+.mic-btn.recording::after {
+    border-color: var(--accent-red);
+}
+
+@keyframes micRipple {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Scene version indicator badge */
+.scene-version-badge {
+    position: absolute;
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--accent-blue);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: badgeSlideIn 0.5s ease-out;
+}
+
+@keyframes badgeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.scene-version-badge .badge-icon {
+    font-size: 1rem;
+}
+
+/* Enhanced stat card animations */
+.stat-card .stat-value {
+    transition: all var(--transition-base);
+}
+
+.stat-card:hover .stat-value {
+    transform: scale(1.1);
+    text-shadow: 0 0 10px currentColor;
+}
+
+/* Loading spinner for async operations */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--bg-tertiary);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spinnerRotate 0.8s linear infinite;
+}
+
+@keyframes spinnerRotate {
+    to { transform: rotate(360deg); }
+}
+
+.spinner-small {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+}
+
+/* Smooth scroll behavior for all scrollable containers */
+.chat-transcript,
+.timeline,
+.session-list {
+    scroll-behavior: smooth;
+}
+
+/* Enhanced empty state with animation */
+.empty-state {
+    animation: emptyStatePulse 3s ease-in-out infinite;
+}
+
+@keyframes emptyStatePulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.7; }
 }
 

@@ -315,17 +315,66 @@ class WitnessReplayApp {
             this.textInput.disabled = true;
             this.sendBtn.disabled = true;
             
+            // Update session status indicator
+            if (this.sessionIdEl) {
+                const statusSpan = this.sessionIdEl.querySelector('.connection-status');
+                if (statusSpan) {
+                    statusSpan.className = 'connection-status reconnecting';
+                    statusSpan.innerHTML = `
+                        <span class="status-dot"></span>
+                        Reconnecting...
+                    `;
+                }
+            }
+            
             // Reconnect with backoff, max attempts
             if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
-                const delay = Math.min(3000 * this.reconnectAttempts, 15000);
-                this.ui.showToast(`Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`, 'info', 2000);
+                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
+                this.ui.showToast(
+                    `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+                    'warning',
+                    delay
+                );
                 this.reconnectTimer = setTimeout(() => {
                     this.connectWebSocket();
                 }, delay);
             } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                this.ui.setStatus('Connection lost — click New Session to retry', 'default');
-                this.ui.showToast('Connection lost. Please start a new session.', 'error', 5000);
+                // Max attempts reached - show error state
+                this.ui.setStatus('Connection lost - Please reload', 'default');
+                this.ui.showToast(
+                    '❌ Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts. Please reload the page.',
+                    'error',
+                    0 // Persistent
+                );
+                
+                // Show error in scene display
+                this.sceneDisplay.innerHTML = `
+                    <div class="error-state">
+                        <div class="error-icon">📡</div>
+                        <div class="error-title">Connection Lost</div>
+                        <div class="error-message">
+                            Unable to reconnect to Detective Ray. Please reload the page to continue.
+                        </div>
+                        <div class="error-actions">
+                            <button class="btn btn-primary" onclick="location.reload()">
+                                🔄 Reload Page
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Update status indicator
+                if (this.sessionIdEl) {
+                    const statusSpan = this.sessionIdEl.querySelector('.connection-status');
+                    if (statusSpan) {
+                        statusSpan.className = 'connection-status offline';
+                        statusSpan.innerHTML = `
+                            <span class="status-dot"></span>
+                            Offline
+                        `;
+                    }
+                }
             }
         };
     }
@@ -637,40 +686,104 @@ class WitnessReplayApp {
     
     setSceneImage(data) {
         if (data.image_url) {
-            // Create image with loading state
+            // Clear existing scene
+            this.sceneDisplay.innerHTML = '';
+            
+            // Create container for scene with version badge
+            const sceneContainer = document.createElement('div');
+            sceneContainer.style.position = 'relative';
+            sceneContainer.style.width = '100%';
+            sceneContainer.style.height = '100%';
+            sceneContainer.style.display = 'flex';
+            sceneContainer.style.alignItems = 'center';
+            sceneContainer.style.justifyContent = 'center';
+            
+            // Add version badge
+            const versionBadge = document.createElement('div');
+            versionBadge.className = 'scene-version-badge';
+            versionBadge.innerHTML = `
+                <span class="badge-icon">🎬</span>
+                <span>Version ${data.version || this.currentVersion}</span>
+            `;
+            sceneContainer.appendChild(versionBadge);
+            
+            // Create image with enhanced loading state
             const img = new Image();
-            img.className = 'scene-image loading';
+            img.className = 'scene-image scene-entering';
             img.alt = 'Scene reconstruction';
             
             img.onload = () => {
-                // Transition from blur to sharp
+                // Smooth transition from entering to loaded
                 setTimeout(() => {
-                    img.classList.remove('loading');
-                    img.classList.add('loaded', 'crossfade-in');
-                }, 50);
+                    img.classList.remove('scene-entering');
+                    img.classList.add('loaded');
+                }, 600);
+            };
+            
+            img.onerror = () => {
+                // Show error state with retry option
+                this.showSceneError('Failed to load scene image', data);
             };
             
             img.src = data.image_url;
+            sceneContainer.appendChild(img);
+            this.sceneDisplay.appendChild(sceneContainer);
             
-            // Clear and add new image
+            // Show scene controls
+            const controls = this.sceneDisplay.querySelector('.scene-controls');
+            if (controls) controls.classList.remove('hidden');
+        } else if (data.base64_image) {
+            // Similar handling for base64 images
             this.sceneDisplay.innerHTML = '';
-            this.sceneDisplay.appendChild(img);
             
-            // Re-add scene controls
-            const controls = document.createElement('div');
-            controls.className = 'scene-controls';
-            controls.innerHTML = `
-                <button class="scene-control-btn" id="zoom-btn" data-tooltip="Zoom" aria-label="Zoom scene">🔍</button>
-                <button class="scene-control-btn" id="download-btn" data-tooltip="Download" aria-label="Download scene">⬇️</button>
-                <button class="scene-control-btn" id="fullscreen-btn" data-tooltip="Fullscreen" aria-label="Fullscreen">⛶</button>
+            const sceneContainer = document.createElement('div');
+            sceneContainer.style.position = 'relative';
+            sceneContainer.style.width = '100%';
+            sceneContainer.style.height = '100%';
+            sceneContainer.style.display = 'flex';
+            sceneContainer.style.alignItems = 'center';
+            sceneContainer.style.justifyContent = 'center';
+            
+            const versionBadge = document.createElement('div');
+            versionBadge.className = 'scene-version-badge';
+            versionBadge.innerHTML = `
+                <span class="badge-icon">🎬</span>
+                <span>Version ${data.version || this.currentVersion}</span>
             `;
-            this.sceneDisplay.appendChild(controls);
+            sceneContainer.appendChild(versionBadge);
             
-            // Re-attach event listeners
-            controls.querySelector('#zoom-btn')?.addEventListener('click', () => this.toggleZoom());
-            controls.querySelector('#download-btn')?.addEventListener('click', () => this.downloadScene());
-            controls.querySelector('#fullscreen-btn')?.addEventListener('click', () => this.toggleFullscreen());
+            const img = new Image();
+            img.className = 'scene-image scene-entering';
+            img.alt = 'Scene reconstruction';
+            img.onload = () => {
+                setTimeout(() => {
+                    img.classList.remove('scene-entering');
+                    img.classList.add('loaded');
+                }, 600);
+            };
+            img.src = `data:image/png;base64,${data.base64_image}`;
+            sceneContainer.appendChild(img);
+            this.sceneDisplay.appendChild(sceneContainer);
+            
+            const controls = this.sceneDisplay.querySelector('.scene-controls');
+            if (controls) controls.classList.remove('hidden');
         }
+    }
+    
+    showSceneError(message, data) {
+        // Enhanced error state for scene loading failures
+        this.sceneDisplay.innerHTML = `
+            <div class="error-state">
+                <div class="error-icon">⚠️</div>
+                <div class="error-title">Scene Generation Error</div>
+                <div class="error-message">${this._escapeHtml(message)}</div>
+                <div class="error-actions">
+                    <button class="btn btn-primary" onclick="location.reload()">
+                        Reload Page
+                    </button>
+                </div>
+            </div>
+        `;
     }
     
     addTimelineVersion(data) {
@@ -683,13 +796,17 @@ class WitnessReplayApp {
         versionDiv.dataset.version = data.version || this.currentVersion;
         
         const changes = data.changes ? `<div class="timeline-changes">✨ ${data.changes}</div>` : '';
+        const thumbnailSrc = data.image_url || (data.base64_image ? `data:image/png;base64,${data.base64_image}` : '');
         
         versionDiv.innerHTML = `
             <div class="timeline-version">Version ${data.version || this.currentVersion}</div>
             <div class="timeline-time">${new Date().toLocaleTimeString()}</div>
-            ${data.image_url ? `<img src="${data.image_url}" alt="Version ${data.version}">` : ''}
-            ${data.description ? `<p class="timeline-description">${data.description.substring(0, 100)}...</p>` : ''}
+            ${thumbnailSrc ? `<img src="${thumbnailSrc}" alt="Version ${data.version}" class="timeline-thumbnail">` : ''}
+            ${data.description ? `<p class="timeline-description">${this._escapeHtml(data.description.substring(0, 80))}...</p>` : ''}
             ${changes}
+            <button class="timeline-compare" title="Compare with current">
+                ⚖️ Compare
+            </button>
         `;
         
         // Remove active class from previous versions
@@ -697,12 +814,34 @@ class WitnessReplayApp {
             item.classList.remove('active');
         });
         
-        // Add click handler
-        versionDiv.addEventListener('click', () => {
-            this.showTimelineVersion(versionDiv);
+        // Add click handler for viewing
+        versionDiv.addEventListener('click', (e) => {
+            // Don't trigger if clicking compare button
+            if (!e.target.classList.contains('timeline-compare')) {
+                this.showTimelineVersion(versionDiv);
+            }
         });
         
+        // Add compare button handler
+        const compareBtn = versionDiv.querySelector('.timeline-compare');
+        if (compareBtn) {
+            compareBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.compareVersions(versionDiv);
+            });
+        }
+        
         this.timeline.insertBefore(versionDiv, this.timeline.firstChild);
+        
+        // Smooth scroll to show new version
+        this.timeline.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    compareVersions(versionElement) {
+        // Show comparison modal or side-by-side view
+        const versionNum = versionElement.dataset.version;
+        this.ui.showToast(`📊 Comparison mode for version ${versionNum} - feature coming soon!`, 'info', 3000);
+        // TODO: Implement side-by-side comparison UI
     }
     
     showTimelineVersion(versionElement) {
