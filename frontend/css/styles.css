@@ -720,6 +720,90 @@ html {
     font-size: 0.95rem;
 }
 
+/* Export Controls */
+.export-controls {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-lg);
+    border-radius: 12px;
+    margin-bottom: var(--spacing-lg);
+}
+
+.export-controls h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.export-controls h4::before {
+    content: '⬇️';
+}
+
+.export-buttons {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+.btn-export {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
+/* Scene loading states with blur transition */
+.scene-display .scene-image {
+    transition: filter 0.8s ease-out, opacity 0.5s ease-out;
+}
+
+.scene-display .scene-image.loading {
+    filter: blur(20px);
+    opacity: 0.5;
+}
+
+.scene-display .scene-image.loaded {
+    filter: blur(0);
+    opacity: 1;
+}
+
+/* Crossfade animation for scene changes */
+.scene-display .scene-image.crossfade-out {
+    animation: crossfadeOut 0.4s ease-out forwards;
+}
+
+.scene-display .scene-image.crossfade-in {
+    animation: crossfadeIn 0.6s ease-out forwards;
+}
+
+@keyframes crossfadeOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+}
+
+@keyframes crossfadeIn {
+    from {
+        opacity: 0;
+        filter: blur(10px);
+        transform: scale(1.02);
+    }
+    to {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+    }
+}
+
 /* Scene stats */
 .scene-stats {
     display: flex;
@@ -734,6 +818,22 @@ html {
     border-radius: 8px;
     padding: var(--spacing-md);
     text-align: center;
+    transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.stat-card.warning {
+    border-color: var(--accent-amber);
+    background: rgba(255, 152, 0, 0.05);
+}
+
+.stat-card.warning .stat-value {
+    color: var(--accent-amber);
 }
 
 .stat-value {
@@ -797,22 +897,35 @@ html {
 .mic-btn.recording {
     background: linear-gradient(135deg, var(--accent-red), #cc0000);
     animation: micPulse 1.5s ease-in-out infinite;
+    box-shadow: 
+        var(--shadow-md), 
+        0 0 40px rgba(255, 71, 87, 0.6),
+        0 0 80px rgba(255, 71, 87, 0.3);
 }
 
 @keyframes micPulse {
     0%, 100% {
         transform: scale(1);
-        box-shadow: var(--shadow-md), 0 0 30px rgba(255, 71, 87, 0.4);
+        box-shadow: 
+            var(--shadow-md), 
+            0 0 40px rgba(255, 71, 87, 0.6),
+            0 0 80px rgba(255, 71, 87, 0.3);
     }
     50% {
-        transform: scale(1.05);
-        box-shadow: var(--shadow-lg), 0 0 50px rgba(255, 71, 87, 0.7);
+        transform: scale(1.08);
+        box-shadow: 
+            var(--shadow-lg), 
+            0 0 60px rgba(255, 71, 87, 0.9),
+            0 0 120px rgba(255, 71, 87, 0.5);
     }
 }
 
 .mic-btn.processing {
     background: linear-gradient(135deg, var(--accent-amber), #cc7700);
     animation: micSpin 2s linear infinite;
+    box-shadow: 
+        var(--shadow-md), 
+        0 0 30px rgba(255, 152, 0, 0.5);
 }
 
 @keyframes micSpin {
@@ -1181,6 +1294,69 @@ html {
     font-size: 0.9rem;
     text-align: center;
     margin: var(--spacing-sm) auto;
+}
+
+.message-contradiction {
+    background: rgba(255, 152, 0, 0.1);
+    border: 2px solid var(--accent-amber);
+    border-radius: 12px;
+    padding: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+    animation: contradictionPulse 0.5s ease-out;
+}
+
+@keyframes contradictionPulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 rgba(255, 152, 0, 0.4);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(255, 152, 0, 0.4);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 10px rgba(255, 152, 0, 0.2);
+    }
+}
+
+.contradiction-item {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.contradiction-field {
+    font-weight: 600;
+    color: var(--accent-amber);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    margin-bottom: var(--spacing-xs);
+}
+
+.contradiction-change {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.old-value {
+    color: var(--accent-red);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.arrow {
+    color: var(--accent-amber);
+    font-weight: bold;
+}
+
+.new-value {
+    color: var(--accent-green);
+    font-weight: 600;
 }
 
 .message strong {

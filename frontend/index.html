@@ -84,6 +84,14 @@
                         <div class="stat-value" id="session-duration">0m</div>
                         <div class="stat-label">Duration</div>
                     </div>
+                    <div class="stat-card" id="complexity-card" style="display: none;">
+                        <div class="stat-value" id="complexity-score">--</div>
+                        <div class="stat-label">Complexity</div>
+                    </div>
+                    <div class="stat-card warning" id="contradiction-card" style="display: none;">
+                        <div class="stat-value" id="contradiction-count">0</div>
+                        <div class="stat-label">⚠️ Contradictions</div>
+                    </div>
                 </div>
                 
                 <!-- Scene Display Canvas -->
@@ -110,6 +118,19 @@
                 <!-- Scene Description -->
                 <div id="scene-description" class="scene-description">
                     <p>No scene generated yet</p>
+                </div>
+                
+                <!-- Export Controls -->
+                <div class="export-controls" id="export-controls" style="display: none;">
+                    <h4>Export Session</h4>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary btn-export" id="export-pdf-btn">
+                            📄 Export PDF
+                        </button>
+                        <button class="btn btn-secondary btn-export" id="export-json-btn">
+                            📦 Export JSON
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Voice Control Center -->

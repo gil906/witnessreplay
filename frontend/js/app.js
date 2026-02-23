@@ -39,6 +39,15 @@ class WitnessReplayApp {
         this.helpBtn = document.getElementById('help-btn');
         this.waveformRing = document.getElementById('waveform-ring');
         
+        // Stats elements
+        this.versionCountEl = document.getElementById('version-count');
+        this.statementCountEl = document.getElementById('statement-count');
+        this.complexityScoreEl = document.getElementById('complexity-score');
+        this.contradictionCountEl = document.getElementById('contradiction-count');
+        this.complexityCard = document.getElementById('complexity-card');
+        this.contradictionCard = document.getElementById('contradiction-card');
+        this.exportControls = document.getElementById('export-controls');
+        
         // Event listeners
         this.micBtn.addEventListener('click', () => this.toggleRecording());
         this.sendBtn.addEventListener('click', () => this.sendTextMessage());
@@ -53,6 +62,10 @@ class WitnessReplayApp {
         document.getElementById('download-btn')?.addEventListener('click', () => this.downloadScene());
         document.getElementById('zoom-btn')?.addEventListener('click', () => this.toggleZoom());
         document.getElementById('fullscreen-btn')?.addEventListener('click', () => this.toggleFullscreen());
+        
+        // Export buttons
+        document.getElementById('export-pdf-btn')?.addEventListener('click', () => this.exportPDF());
+        document.getElementById('export-json-btn')?.addEventListener('click', () => this.exportJSON());
         
         // Start with a new session
         this.createNewSession();
@@ -215,6 +228,11 @@ class WitnessReplayApp {
                 this.updateScene(message.data);
                 this.ui.playSound('sceneGenerated');
                 this.ui.showToast('Scene updated', 'success', 2000);
+                
+                // Show contradictions if any
+                if (message.data.contradictions && message.data.contradictions.length > 0) {
+                    this.displayContradictions(message.data.contradictions);
+                }
                 break;
             
             case 'status':
@@ -359,11 +377,18 @@ class WitnessReplayApp {
     }
     
     updateScene(data) {
-        // Update scene image
-        if (data.image_url) {
-            this.sceneDisplay.innerHTML = `
-                <img src="${data.image_url}" alt="Scene reconstruction" class="scene-image">
-            `;
+        // Crossfade animation for scene changes
+        const existingImage = this.sceneDisplay.querySelector('.scene-image');
+        
+        if (existingImage) {
+            // Fade out old image
+            existingImage.classList.add('crossfade-out');
+            setTimeout(() => {
+                this.setSceneImage(data);
+            }, 400);
+        } else {
+            // First scene, no crossfade needed
+            this.setSceneImage(data);
         }
         
         // Update description
@@ -371,9 +396,70 @@ class WitnessReplayApp {
             this.sceneDescription.innerHTML = `<p>${data.description}</p>`;
         }
         
-        // Add to timeline
+        // Update stats
         this.currentVersion = data.version || this.currentVersion + 1;
+        this.versionCountEl.textContent = this.currentVersion;
+        
+        if (data.statement_count) {
+            this.statementCountEl.textContent = data.statement_count;
+        }
+        
+        // Update complexity if available
+        if (data.complexity !== undefined) {
+            this.complexityCard.style.display = 'block';
+            this.complexityScoreEl.textContent = (data.complexity * 100).toFixed(0) + '%';
+        }
+        
+        // Update contradictions if available
+        if (data.contradictions && data.contradictions.length > 0) {
+            this.contradictionCard.style.display = 'block';
+            this.contradictionCountEl.textContent = data.contradictions.length;
+            this.ui.showToast(`⚠️ ${data.contradictions.length} contradiction(s) detected`, 'warning', 4000);
+        }
+        
+        // Show export controls once we have a scene
+        this.exportControls.style.display = 'block';
+        
+        // Add to timeline
         this.addTimelineVersion(data);
+    }
+    
+    setSceneImage(data) {
+        if (data.image_url) {
+            // Create image with loading state
+            const img = new Image();
+            img.className = 'scene-image loading';
+            img.alt = 'Scene reconstruction';
+            
+            img.onload = () => {
+                // Transition from blur to sharp
+                setTimeout(() => {
+                    img.classList.remove('loading');
+                    img.classList.add('loaded', 'crossfade-in');
+                }, 50);
+            };
+            
+            img.src = data.image_url;
+            
+            // Clear and add new image
+            this.sceneDisplay.innerHTML = '';
+            this.sceneDisplay.appendChild(img);
+            
+            // Re-add scene controls
+            const controls = document.createElement('div');
+            controls.className = 'scene-controls';
+            controls.innerHTML = `
+                <button class="scene-control-btn" id="zoom-btn" data-tooltip="Zoom" aria-label="Zoom scene">🔍</button>
+                <button class="scene-control-btn" id="download-btn" data-tooltip="Download" aria-label="Download scene">⬇️</button>
+                <button class="scene-control-btn" id="fullscreen-btn" data-tooltip="Fullscreen" aria-label="Fullscreen">⛶</button>
+            `;
+            this.sceneDisplay.appendChild(controls);
+            
+            // Re-attach event listeners
+            controls.querySelector('#zoom-btn')?.addEventListener('click', () => this.toggleZoom());
+            controls.querySelector('#download-btn')?.addEventListener('click', () => this.downloadScene());
+            controls.querySelector('#fullscreen-btn')?.addEventListener('click', () => this.toggleFullscreen());
+        }
     }
     
     addTimelineVersion(data) {
@@ -568,10 +654,132 @@ class WitnessReplayApp {
         this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
     }
     
+    displayContradictions(contradictions) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message-contradiction';
+        
+        let html = '<strong>⚠️ Contradiction Detected</strong>';
+        contradictions.forEach(c => {
+            html += `<div class="contradiction-item">
+                <div class="contradiction-field">${c.field || 'Unknown field'}</div>
+                <div class="contradiction-change">
+                    <span class="old-value">"${c.old_value}"</span>
+                    <span class="arrow">→</span>
+                    <span class="new-value">"${c.new_value}"</span>
+                </div>
+            </div>`;
+        });
+        
+        messageDiv.innerHTML = html;
+        this.chatTranscript.appendChild(messageDiv);
+        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+    }
+    
     setStatus(status) {
         // Deprecated - use this.ui.setStatus instead
         if (this.ui) {
             this.ui.setStatus(status);
+        }
+    }
+    
+    // Export functions
+    async exportPDF() {
+        if (!this.sessionId) {
+            this.ui.showToast('No session to export', 'warning');
+            return;
+        }
+        
+        try {
+            this.ui.showToast('Generating PDF...', 'info');
+            const response = await fetch(`/api/sessions/${this.sessionId}/export/pdf`);
+            
+            if (!response.ok) throw new Error('Export failed');
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `witness-replay-${this.sessionId.substring(0, 8)}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.ui.showToast('PDF exported successfully!', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.ui.showToast('Failed to export PDF', 'error');
+        }
+    }
+    
+    async exportJSON() {
+        if (!this.sessionId) {
+            this.ui.showToast('No session to export', 'warning');
+            return;
+        }
+        
+        try {
+            this.ui.showToast('Exporting JSON...', 'info');
+            const response = await fetch(`/api/sessions/${this.sessionId}/export/json`);
+            
+            if (!response.ok) throw new Error('Export failed');
+            
+            const data = await response.json();
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `witness-replay-${this.sessionId.substring(0, 8)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.ui.showToast('JSON exported successfully!', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.ui.showToast('Failed to export JSON', 'error');
+        }
+    }
+    
+    downloadScene() {
+        const img = this.sceneDisplay.querySelector('.scene-image');
+        if (!img) {
+            this.ui.showToast('No scene to download', 'warning');
+            return;
+        }
+        
+        const a = document.createElement('a');
+        a.href = img.src;
+        a.download = `scene-v${this.currentVersion}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        this.ui.showToast('Scene downloaded!', 'success');
+    }
+    
+    toggleZoom() {
+        const img = this.sceneDisplay.querySelector('.scene-image');
+        if (!img) return;
+        
+        if (img.style.transform === 'scale(1.5)') {
+            img.style.transform = 'scale(1)';
+            img.style.cursor = 'zoom-in';
+        } else {
+            img.style.transform = 'scale(1.5)';
+            img.style.cursor = 'zoom-out';
+        }
+    }
+    
+    toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            this.sceneDisplay.requestFullscreen().catch(err => {
+                console.error('Fullscreen error:', err);
+            });
+        } else {
+            document.exitFullscreen();
         }
     }
 }
