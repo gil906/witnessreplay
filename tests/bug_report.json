@@ -1,0 +1,123 @@
+{
+  "timestamp": "2026-02-23T19:25:00Z",
+  "tester": "tester_agent",
+  "bugs": [
+    {
+      "title": "CRITICAL: Blocking Firestore calls hang all API endpoints",
+      "description": "The firestore.py service uses synchronous blocking Firestore calls (.stream(), .get(), .set()) inside async functions. This blocks the FastAPI event loop, causing ALL API endpoints to hang indefinitely when Firestore is configured. Specifically, the list_sessions() method calls .stream() which blocks, preventing any other API requests from being processed.",
+      "severity": "critical",
+      "steps_to_reproduce": "1. Ensure GCP_PROJECT_ID is set in .env\n2. Start the backend server\n3. Call any API endpoint: curl http://localhost:8088/api/sessions\n4. Request hangs indefinitely (tested with 30+ second timeout)",
+      "expected_behavior": "API endpoints should respond within 1-2 seconds with session data or error messages",
+      "actual_behavior": "All API requests hang indefinitely. Tested endpoints: /api/sessions, /api/models, /api/models/quota, /api/sessions (POST) all timeout after 30+ seconds with no response",
+      "affected_files": [
+        "backend/app/services/firestore.py"
+      ],
+      "fix_recommendation": "Use the async Firestore client from google.cloud.firestore_v1.async_client.AsyncClient instead of the sync client. Replace all blocking calls with their async equivalents: .stream() → .stream() with async for, .get() → await .get(), .set() → await .set()"
+    },
+    {
+      "title": "HIGH: Model selector endpoint calls blocking API in async context",
+      "description": "The /api/models endpoint calls client.models.list() which is a synchronous blocking call from the google-genai SDK, but it's used inside an async FastAPI route handler. This causes the endpoint to hang when the API key is properly configured, blocking the event loop.",
+      "severity": "high",
+      "steps_to_reproduce": "1. Configure GOOGLE_API_KEY in .env\n2. Call GET /api/models\n3. Request hangs waiting for synchronous API call to complete",
+      "expected_behavior": "Should return list of available Gemini models within 2-3 seconds",
+      "actual_behavior": "Request hangs indefinitely. Timeout after 30+ seconds with no response.",
+      "affected_files": [
+        "backend/app/api/routes.py"
+      ],
+      "fix_recommendation": "Wrap the synchronous client.models.list() call in an asyncio executor using asyncio.to_thread() or run_in_executor() to prevent blocking the event loop. Alternatively, use the async google-genai client if available."
+    },
+    {
+      "title": "MEDIUM: No error handling for missing GOOGLE_API_KEY in model endpoints",
+      "description": "The /api/models endpoint checks if google_api_key exists but returns a 503 error immediately without falling back to the known models list. Additionally, the Client initialization may fail with ValueError if the API key is empty string instead of None.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Set GOOGLE_API_KEY=\"\" (empty string) in .env\n2. Call GET /api/models\n3. Receive 503 error instead of fallback model list",
+      "expected_behavior": "Should gracefully fall back to known models list when API key is not configured or invalid",
+      "actual_behavior": "Returns 503 SERVICE_UNAVAILABLE error immediately",
+      "affected_files": [
+        "backend/app/api/routes.py"
+      ],
+      "fix_recommendation": "Check for both None and empty string: 'if not settings.google_api_key or settings.google_api_key.strip() == \"\":'. Also move the 503 error inside the try block so it falls through to the fallback known models."
+    },
+    {
+      "title": "MEDIUM: Usage tracker has no persistence across restarts",
+      "description": "The UsageTracker service stores all quota usage in memory only. When the server restarts, all usage counts are lost, which could lead to users exceeding actual quota limits since the tracker resets but the real API usage doesn't.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Make several API calls that increment usage\n2. Restart the backend server\n3. Check /api/models/quota\n4. All usage counts are reset to 0",
+      "expected_behavior": "Usage counts should persist across server restarts, or at minimum show a warning that counts may be inaccurate after restart",
+      "actual_behavior": "All usage tracking is lost on restart, potentially allowing quota overruns",
+      "affected_files": [
+        "backend/app/services/usage_tracker.py"
+      ],
+      "fix_recommendation": "Add persistence layer using SQLite or file-based storage to save usage counts. Include a timestamp of last reset. Add a warning in the API response if the server was recently restarted."
+    },
+    {
+      "title": "LOW: Frontend model selector calls will fail due to backend hanging",
+      "description": "The frontend JavaScript calls await fetch('/api/models') in showQuotaModal(), but since the backend endpoint hangs, this will cause the modal to appear with infinite loading state. No error handling for timeout.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Click the '🤖 Model' button in the UI\n2. Modal opens but models never load\n3. No error message shown to user",
+      "expected_behavior": "Should show error message after timeout or display cached/default models",
+      "actual_behavior": "Modal shows with empty model selector, no feedback to user",
+      "affected_files": [
+        "frontend/js/app.js"
+      ],
+      "fix_recommendation": "Add fetch timeout using AbortController with 10-second timeout. Show user-friendly error message if fetch fails. Consider caching available models in localStorage."
+    },
+    {
+      "title": "LOW: Token estimation is inaccurate",
+      "description": "The usage tracker estimates tokens as '1 token per 4 characters', but Gemini uses a different tokenization method (likely SentencePiece or similar). This leads to incorrect quota tracking.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Send API request with known text length\n2. Check token count in usage tracker\n3. Compare with actual token count from API response metadata",
+      "expected_behavior": "Token count should match or closely approximate actual tokens used",
+      "actual_behavior": "Token estimates are rough approximations and may be significantly off",
+      "affected_files": [
+        "backend/app/services/usage_tracker.py",
+        "backend/app/agents/scene_agent.py"
+      ],
+      "fix_recommendation": "Use the Gemini API's count_tokens() method to get accurate token counts before making requests, or extract actual token usage from response metadata. Add disclaimer in UI that token counts are estimates until this is implemented."
+    },
+    {
+      "title": "LOW: No rate limiting implementation despite tracker infrastructure",
+      "description": "The UsageTracker calculates remaining quota and tracks RPM/RPD, but there's no enforcement mechanism. The API will continue making requests even when tracked limits are exceeded.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Manually increment usage past limits\n2. Make additional API requests\n3. Requests succeed despite showing 0 remaining quota",
+      "expected_behavior": "Should return 429 Too Many Requests when quota limits are reached",
+      "actual_behavior": "No enforcement, quota tracking is informational only",
+      "affected_files": [
+        "backend/app/api/routes.py",
+        "backend/app/services/usage_tracker.py"
+      ],
+      "fix_recommendation": "Add middleware to check usage_tracker.get_usage() before processing requests. Return 429 with Retry-After header when limits exceeded. Add a bypass flag for testing."
+    }
+  ],
+  "tests_passed": [
+    "GET /api/health - Returns 200 with degraded status (storage unavailable)",
+    "Python syntax validation - All backend files compile without errors",
+    "JavaScript syntax validation - No unclosed braces/parens/brackets",
+    "Frontend HTML structure - Valid HTML5, proper meta tags, ARIA labels",
+    "Audio test fixtures generation - 3 WAV files created successfully (10s, 20s, 60s)",
+    "Environment configuration - GOOGLE_API_KEY and GCP_PROJECT_ID are set",
+    "CSS structure - No obvious syntax errors in styles.css",
+    "Import statements - All Python imports are syntactically correct"
+  ],
+  "tests_failed": [
+    "GET /api/sessions - TIMEOUT (30+ seconds, no response)",
+    "GET /api/models - TIMEOUT (30+ seconds, no response)",
+    "GET /api/models/quota - TIMEOUT (30+ seconds, no response)",
+    "GET /api/models/current - TIMEOUT (30+ seconds, no response)",
+    "POST /api/sessions - TIMEOUT (30+ seconds, no response)",
+    "Frontend model selector functionality - Cannot test due to backend failures",
+    "Quota dashboard display - Cannot test due to backend failures",
+    "WebSocket connection - Not tested due to backend blocking issues"
+  ],
+  "summary": "CRITICAL FAILURE: The application is completely non-functional due to blocking synchronous calls in async contexts. The main issue is in firestore.py which uses the synchronous Firestore client (.stream(), .get(), .set()) inside async functions, blocking the entire FastAPI event loop. This causes ALL API endpoints to hang indefinitely. Secondary issue: the /api/models endpoint also has a blocking call to client.models.list(). \n\nThe new Gemini model selector feature (Idea #1) implemented by Feature Agent and UX Agent is well-designed architecturally with good UI/UX, but it is completely untestable and non-functional due to these blocking issues. The frontend code appears correct but cannot be validated. \n\nThe only working endpoint is /api/health which doesn't interact with Firestore. \n\nImmediate action required: Feature Agent must convert all Firestore calls to async and wrap blocking SDK calls in executors. Until these critical bugs are fixed, the application cannot process any user requests.",
+  "recommendations": [
+    "URGENT: Convert firestore.py to use AsyncClient from google.cloud.firestore_v1.async_client",
+    "URGENT: Wrap all blocking SDK calls (genai.Client().models.list()) in asyncio.to_thread()",
+    "Add comprehensive error handling with timeouts for all external API calls",
+    "Implement actual rate limiting based on UsageTracker data",
+    "Add usage persistence to SQLite or file storage",
+    "Use accurate token counting via Gemini API instead of character-based estimation",
+    "Add frontend timeout handling for all fetch() calls with user feedback",
+    "Add integration tests that verify endpoints respond within acceptable timeframes"
+  ]
+}
