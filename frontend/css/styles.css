@@ -703,9 +703,9 @@ img {
     height: 80px;
     min-width: 80px;
     border-radius: 50%;
-    border: 2px solid var(--border-color);
-    background: var(--bg-surface);
-    color: var(--text-secondary);
+    border: 2px solid var(--accent-blue);
+    background: linear-gradient(135deg, var(--bg-surface) 0%, var(--accent-blue-muted) 100%);
+    color: var(--accent-blue);
     font-size: 1.5rem;
     cursor: pointer;
     display: flex;
@@ -717,29 +717,39 @@ img {
     position: relative;
     z-index: 2;
     overflow: hidden;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+    animation: micIdlePulse 3s ease-in-out infinite;
+}
+
+@keyframes micIdlePulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15); }
+    50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.3); }
 }
 
 .mic-btn:hover:not(:disabled) {
     border-color: var(--accent-blue);
-    background: var(--accent-blue-muted);
+    background: linear-gradient(135deg, var(--accent-blue-muted) 0%, rgba(59, 130, 246, 0.3) 100%);
     color: var(--accent-blue);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+    transform: scale(1.05);
 }
 
 .mic-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+    animation: none;
 }
 
 .mic-btn.recording {
     border-color: var(--accent-red);
-    background: var(--accent-red-muted);
+    background: linear-gradient(135deg, var(--accent-red-muted) 0%, rgba(239, 68, 68, 0.3) 100%);
     color: var(--accent-red);
-    animation: micPulse 1.5s ease-in-out infinite;
+    animation: micRecordingPulse 1.5s ease-in-out infinite;
 }
 
-@keyframes micPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
-    50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+@keyframes micRecordingPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); transform: scale(1); }
+    50% { box-shadow: 0 0 0 16px rgba(239, 68, 68, 0); transform: scale(1.02); }
 }
 
 .btn-text {
@@ -848,6 +858,7 @@ img {
 .scene-display {
     position: relative;
     width: 100%;
+    min-height: 400px;
     aspect-ratio: 16 / 10;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-color);
@@ -859,12 +870,25 @@ img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    animation: sceneAppear 0.35s ease;
+    animation: sceneFadeIn 0.5s ease;
 }
 
-@keyframes sceneAppear {
-    from { opacity: 0; }
-    to { opacity: 1; }
+@keyframes sceneFadeIn {
+    from { opacity: 0; filter: blur(4px); }
+    to { opacity: 1; filter: blur(0); }
+}
+
+/* Gradient overlay at bottom of scene */
+.scene-display::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(transparent, rgba(15, 25, 35, 0.7));
+    pointer-events: none;
+    z-index: 3;
 }
 
 /* Placeholder */
@@ -876,24 +900,39 @@ img {
     height: 100%;
     gap: var(--spacing-sm);
     color: var(--text-muted);
+    padding: var(--spacing-lg);
+    text-align: center;
 }
 
 .placeholder-icon {
-    font-size: 2.5rem;
-    opacity: 0.5;
+    font-size: 3rem;
+    opacity: 0.4;
+    animation: placeholderFloat 3s ease-in-out infinite;
+}
+
+@keyframes placeholderFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
 }
 
 .placeholder p {
     font-size: 0.85rem;
 }
 
+.placeholder-hint {
+    font-size: 0.75rem !important;
+    color: var(--text-muted);
+    opacity: 0.7;
+    margin-top: var(--spacing-xs);
+}
+
 /* Scene controls overlay */
 .scene-controls {
     position: absolute;
-    bottom: var(--spacing-sm);
-    right: var(--spacing-sm);
+    bottom: var(--spacing-md);
+    right: var(--spacing-md);
     display: flex;
-    gap: 4px;
+    gap: 6px;
     opacity: 0;
     transition: opacity var(--transition-base);
     z-index: 5;
@@ -904,23 +943,25 @@ img {
 }
 
 .scene-control-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--btn-radius);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(15, 25, 35, 0.85);
+    width: 40px;
+    height: 40px;
+    border-radius: var(--card-radius);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(15, 25, 35, 0.9);
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
+    font-size: 1rem;
     transition: all var(--transition-fast);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .scene-control-btn:hover {
     background: var(--accent-blue);
     border-color: var(--accent-blue);
+    transform: scale(1.1);
 }
 
 /* Scene description */
@@ -1002,25 +1043,40 @@ img {
 }
 
 .progress-bar-track {
-    height: 6px;
+    height: 8px;
     background: var(--bg-surface);
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     margin-bottom: var(--spacing-sm);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .progress-bar-fill {
     height: 100%;
-    background: var(--accent-blue);
-    border-radius: 3px;
-    transition: width 0.4s ease;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+    border-radius: 4px;
+    transition: width 0.6s ease;
+    position: relative;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .progress-checklist {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
 }
 
 .progress-checklist li {
@@ -1029,9 +1085,17 @@ img {
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--btn-radius);
+    transition: all var(--transition-base);
 }
 
 .progress-checklist li.done {
+    color: var(--accent-green);
+    background: var(--accent-green-muted);
+}
+
+.progress-checklist li.done .check-icon {
     color: var(--accent-green);
 }
 
@@ -1064,24 +1128,77 @@ img {
 .evidence-card {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-blue);
     border-radius: var(--card-radius);
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: 0.85rem;
     color: var(--text-secondary);
-    transition: border-color var(--transition-base);
+    transition: all var(--transition-base);
 }
 .evidence-card:hover {
     border-color: var(--border-color-hover);
+    background: var(--bg-surface-alt);
+    transform: translateX(2px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Evidence category color coding */
+.evidence-card[data-category="physical"],
+.evidence-card.cat-physical {
+    border-left-color: var(--accent-blue);
+}
+.evidence-card[data-category="witness"],
+.evidence-card.cat-witness {
+    border-left-color: var(--accent-green);
+}
+.evidence-card[data-category="temporal"],
+.evidence-card.cat-temporal {
+    border-left-color: var(--accent-amber);
+}
+.evidence-card[data-category="environmental"],
+.evidence-card.cat-environmental {
+    border-left-color: #14b8a6;
 }
 
 .evidence-timeline {
-    margin-top: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    position: relative;
+}
+
+/* Timeline connecting line */
+.evidence-timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2rem;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-color);
 }
 
 .timeline-events {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-sm);
+    padding-left: var(--spacing-lg);
+    position: relative;
+}
+
+.timeline-events > * {
+    position: relative;
+}
+
+.timeline-events > *::before {
+    content: '';
+    position: absolute;
+    left: calc(-1 * var(--spacing-lg) + 2px);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    border: 2px solid var(--bg-secondary);
 }
 
 /* =========================================================
@@ -1393,16 +1510,15 @@ img {
     align-items: center;
     justify-content: center;
     padding: var(--spacing-lg);
-    animation: modalFadeIn 0.2s ease;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
 .modal.active {
     display: flex;
-}
-
-@keyframes modalFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    opacity: 1;
+    visibility: visible;
 }
 
 .modal-content {
@@ -1414,12 +1530,12 @@ img {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: var(--shadow-lg);
-    animation: modalSlideIn 0.25s ease;
+    transform: translateY(20px) scale(0.95);
+    transition: transform 0.3s ease;
 }
 
-@keyframes modalSlideIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
+.modal.active .modal-content {
+    transform: translateY(0) scale(1);
 }
 
 .modal-content h2 {
@@ -1520,6 +1636,39 @@ img {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
+}
+
+/* Grid layout for the onboarding modal (not overlay) */
+.onboarding-content.onboarding-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+}
+
+.onboarding-grid .onboarding-step {
+    display: flex;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
+    padding: var(--spacing-md);
+    transition: border-color var(--transition-base), transform var(--transition-base);
+}
+
+.onboarding-grid .onboarding-step:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+}
+
+.onboarding-grid .onboarding-step h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.onboarding-grid .onboarding-step p {
+    font-size: 0.8rem;
+    max-width: none;
 }
 
 .onboarding-step {
@@ -1718,21 +1867,42 @@ img {
     position: fixed;
     bottom: var(--spacing-sm);
     left: var(--spacing-md);
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
-    opacity: 0.6;
+    opacity: 0.5;
     z-index: 10;
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
+    background: rgba(15, 25, 35, 0.8);
+    padding: 3px 10px;
+    border-radius: 20px;
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border-color);
+    transition: opacity var(--transition-base);
+}
+
+.version-badge:hover {
+    opacity: 0.9;
 }
 
 .version-label {
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .version-number {
     font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--accent-blue);
+}
+
+.version-separator {
+    opacity: 0.5;
+}
+
+.version-challenge {
+    color: var(--text-muted);
+    font-weight: 400;
 }
 
 /* =========================================================
@@ -2270,20 +2440,38 @@ img {
    35. SKELETON / LOADING
    ========================================================= */
 @keyframes skeleton-loading {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
 .skeleton {
     background: linear-gradient(
         90deg,
-        var(--bg-surface) 25%,
-        var(--bg-surface-alt) 50%,
-        var(--bg-surface) 75%
+        #1e2d3d 25%,
+        #243447 50%,
+        #1e2d3d 75%
     );
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s ease-in-out infinite;
-    border-radius: 4px;
+    border-radius: 6px;
+}
+
+@keyframes skeleton-pulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+    height: 14px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #1e2d3d 25%, #243447 50%, #1e2d3d 75%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    border-radius: 6px;
+}
+
+.skeleton-text:last-child {
+    width: 60%;
 }
 
 /* =========================================================
@@ -2372,6 +2560,7 @@ img {
         height: auto;
         min-height: 50px;
         padding: var(--spacing-sm) var(--spacing-md);
+        border-bottom-width: 1px;
     }
 
     .header-content {
@@ -2384,6 +2573,18 @@ img {
     }
 
     .tagline {
+        display: none;
+    }
+
+    .tagline-sub {
+        display: none;
+    }
+
+    .challenge-badge {
+        display: none;
+    }
+
+    .connection-status .status-text {
         display: none;
     }
 
@@ -2410,14 +2611,26 @@ img {
     /* Chat panel first, scene below */
     .chat-panel {
         order: -1;
-        min-height: 60vh;
-        max-height: 80vh;
+        min-height: 50vh;
+        width: 100%;
     }
     .scene-panel {
         order: 0;
+        width: 100%;
     }
     .timeline-panel {
         order: 1;
+    }
+
+    /* Mic button larger and centered on mobile */
+    .mic-btn {
+        width: 72px;
+        height: 72px;
+        min-width: 72px;
+    }
+
+    .controls {
+        padding: var(--spacing-md) var(--spacing-lg);
     }
 
     /* Full-width chat input */
@@ -2425,11 +2638,12 @@ img {
         padding: var(--spacing-sm);
     }
 
-    /* Modal adjustments */
+    /* Modal adjustments - near fullscreen */
     .modal-content {
         max-width: 100%;
         margin: var(--spacing-sm);
         max-height: 95vh;
+        border-radius: var(--card-radius);
     }
 
     .modal-fullwidth {
@@ -2462,6 +2676,14 @@ img {
     .onboarding-content {
         padding: var(--spacing-md);
     }
+
+    .scene-display {
+        min-height: 250px;
+    }
+
+    .version-badge {
+        display: none;
+    }
 }
 
 /* =========================================================
@@ -2482,7 +2704,7 @@ img {
     }
 
     .logo-icon {
-        font-size: 1.2rem;
+        font-size: 1.4rem;
     }
 
     .logo-text h1 {
@@ -2523,10 +2745,11 @@ img {
     }
 
     .mic-btn {
-        width: 64px;
-        height: 64px;
-        min-width: 64px;
-        font-size: 1.3rem;
+        width: 80px;
+        height: 80px;
+        min-width: 80px;
+        font-size: 1.5rem;
+        margin: 0 auto;
     }
 
     /* Touch-friendly sizes */
@@ -2540,9 +2763,22 @@ img {
         height: 44px;
     }
 
+    .scene-display {
+        min-height: 200px;
+    }
+
+    /* Fullscreen modals on phone */
     .modal-content {
-        border-radius: var(--card-radius);
-        margin: var(--spacing-xs);
+        border-radius: 0;
+        margin: 0;
+        max-height: 100vh;
+        max-width: 100%;
+        width: 100%;
+        height: 100vh;
+    }
+
+    .modal {
+        padding: 0;
     }
 
     .modal-header {

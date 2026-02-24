@@ -196,3 +196,4 @@ class CaseResponse(BaseModel):
     updated_at: datetime
     scene_image_url: Optional[str] = None
     timeframe: Dict[str, Any] = {}
+    incident_type: Optional[str] = None

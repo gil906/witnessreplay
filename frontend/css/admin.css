@@ -312,7 +312,7 @@
 /* ─── Stats Overview ──────────────────────────────────────── */
 .stats-overview {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1rem;
     margin-bottom: 1.5rem;
 }
@@ -954,6 +954,493 @@
     background: rgba(15,25,35,0.8);
 }
 
+/* ─── View Toggle Tabs ────────────────────────────────────── */
+.view-toggle {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+}
+
+.view-tab {
+    padding: 0.625rem 1.25rem;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+.view-tab:last-child {
+    border-right: none;
+}
+
+.view-tab:hover {
+    color: #94a3b8;
+    background: rgba(255,255,255,0.03);
+}
+
+.view-tab.active {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+/* ─── Section Subtitle ───────────────────────────────────── */
+.section-subtitle {
+    font-size: 0.8125rem;
+    color: #64748b;
+    font-weight: 400;
+    margin-left: 0.5rem;
+}
+
+/* ─── Source Type Badges ──────────────────────────────────── */
+.source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.source-badge.chat {
+    background: rgba(59,130,246,0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(59,130,246,0.25);
+}
+
+.source-badge.phone {
+    background: rgba(34,197,94,0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34,197,94,0.25);
+}
+
+.source-badge.voice {
+    background: rgba(168,85,247,0.12);
+    color: #c084fc;
+    border: 1px solid rgba(168,85,247,0.25);
+}
+
+.source-badge.email {
+    background: rgba(251,146,60,0.12);
+    color: #fb923c;
+    border: 1px solid rgba(251,146,60,0.25);
+}
+
+/* ─── Enhanced Case Cards ─────────────────────────────────── */
+.case-card-enhanced {
+    min-height: 90px;
+}
+
+.case-summary-snippet {
+    margin-top: 0.375rem;
+    color: #64748b;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.unassigned-label {
+    color: #fbbf24;
+    font-weight: 600;
+}
+
+/* ─── Case Summary Section (Modal) ────────────────────────── */
+.case-summary-section h3,
+.case-timeframe h3,
+.case-reports-section h3,
+.case-key-elements h3,
+.scene-image-section h3 {
+    color: #e2e8f0;
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.case-summary-text {
+    background: #243447;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 1.25rem;
+    color: #94a3b8;
+    font-size: 0.875rem;
+    line-height: 1.7;
+    white-space: pre-wrap;
+}
+
+/* ─── Timeframe Display ───────────────────────────────────── */
+.timeframe-display {
+    background: #243447;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+}
+
+.timeframe-range {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.timeframe-start,
+.timeframe-end {
+    font-size: 0.875rem;
+    color: #e2e8f0;
+    font-weight: 600;
+}
+
+.timeframe-arrow {
+    color: #3b82f6;
+    font-size: 1.125rem;
+}
+
+.timeframe-description {
+    color: #64748b;
+    font-size: 0.8125rem;
+    margin-top: 0.375rem;
+}
+
+/* ─── Scene Image (Modal) ─────────────────────────────────── */
+.scene-image-container {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    max-height: 400px;
+}
+
+.scene-image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+    max-height: 400px;
+}
+
+/* ─── Report List in Case Detail ──────────────────────────── */
+.case-reports-list {
+    display: grid;
+    gap: 0.625rem;
+}
+
+.report-detail-card {
+    background: #243447;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+}
+
+.report-detail-card:hover {
+    border-color: rgba(59,130,246,0.15);
+}
+
+.report-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.report-detail-header:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.report-detail-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.report-detail-title strong {
+    color: #e2e8f0;
+    font-size: 0.875rem;
+}
+
+.report-number {
+    color: #64748b;
+    font-size: 0.75rem;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.report-detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #64748b;
+    font-size: 0.75rem;
+}
+
+.expand-icon {
+    transition: transform 0.2s ease;
+    font-size: 0.625rem;
+}
+
+.report-detail-card.expanded .expand-icon {
+    transform: rotate(90deg);
+}
+
+.report-detail-body {
+    display: none;
+    padding: 0 1rem 1rem;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.report-detail-card.expanded .report-detail-body {
+    display: block;
+}
+
+.report-statements {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+/* ─── Key Elements Tags ───────────────────────────────────── */
+.key-elements-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.key-element-tag {
+    padding: 4px 12px;
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 12px;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* ─── Status: Closed ──────────────────────────────────────── */
+.status-closed {
+    background: rgba(100,116,139,0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(100,116,139,0.2);
+}
+
+/* ─── Status: Open ────────────────────────────────────────── */
+.status-open {
+    background: rgba(34,197,94,0.1);
+    color: #4ade80;
+    border: 1px solid rgba(34,197,94,0.2);
+}
+
+/* ─── Status: Investigation ───────────────────────────────── */
+.status-investigation {
+    background: rgba(251,191,36,0.1);
+    color: #fbbf24;
+    border: 1px solid rgba(251,191,36,0.2);
+}
+
+/* ─── Privacy Notice ──────────────────────────────────────── */
+.privacy-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background: rgba(59,130,246,0.06);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    margin-bottom: 1rem;
+}
+
+/* ─── Timeline ────────────────────────────────────────────── */
+.case-timeline h3,
+.audit-trail h3 {
+    color: #e2e8f0;
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.timeline-container { position: relative; padding-left: 30px; }
+.timeline-item { position: relative; padding-bottom: 1.5rem; }
+.timeline-dot { position: absolute; left: -30px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; border: 2px solid #1e2d3d; }
+.timeline-line { position: absolute; left: -25px; top: 16px; bottom: 0; width: 2px; background: rgba(59,130,246,0.2); }
+.timeline-item:last-child .timeline-line { display: none; }
+.timeline-date { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
+.timeline-title { font-size: 0.875rem; color: #e2e8f0; font-weight: 600; }
+.timeline-detail { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+
+/* ─── Status Workflow ─────────────────────────────────────── */
+.status-workflow {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #243447;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.status-workflow label {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ─── Comparison Grid ─────────────────────────────────────── */
+.comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.comparison-column {
+    background: #243447;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.comparison-column h4 {
+    margin: 0 0 0.75rem 0;
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.comparison-stmt {
+    color: #94a3b8;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin: 0 0 0.5rem 0;
+    padding: 0.5rem;
+    background: rgba(15,25,35,0.4);
+    border-radius: 4px;
+}
+
+/* ─── Reliability Badge ───────────────────────────────────── */
+.reliability-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; display: inline-block; margin-left: 0.5rem; }
+.reliability-badge.high { background: rgba(34,197,94,0.1); color: #4ade80; }
+.reliability-badge.medium { background: rgba(251,191,36,0.1); color: #fbbf24; }
+.reliability-badge.low { background: rgba(239,68,68,0.1); color: #f87171; }
+
+/* ─── Notification Bell ───────────────────────────────────── */
+.notification-bell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+    font-size: 1.25rem;
+    padding: 0.375rem;
+}
+
+.notification-count {
+    position: absolute;
+    top: -2px;
+    right: -6px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.625rem;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 8px;
+    padding: 0 4px;
+}
+
+/* ─── Audit Trail ─────────────────────────────────────────── */
+.audit-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.audit-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: #243447;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+}
+
+.audit-icon { flex-shrink: 0; }
+.audit-text { color: #94a3b8; flex: 1; }
+.audit-time { color: #475569; font-size: 0.75rem; white-space: nowrap; }
+
+/* ─── Progress Bar (Case Card) ────────────────────────────── */
+.card-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.card-progress-fill {
+    height: 100%;
+    background: #3b82f6;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+/* ─── Incident Type Badge ─────────────────────────────────── */
+.incident-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgba(255,255,255,0.04);
+    color: #94a3b8;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ─── Time Since Badge ────────────────────────────────────── */
+.time-since {
+    font-size: 0.6875rem;
+    color: #475569;
+    font-style: italic;
+}
+
+/* ─── Status: Under Review ────────────────────────────────── */
+.status-under_review {
+    background: rgba(251,191,36,0.1);
+    color: #fbbf24;
+    border: 1px solid rgba(251,191,36,0.2);
+}
+
 /* ─── Accessibility Focus ─────────────────────────────────── */
 .admin-portal .search-input:focus-visible,
 .admin-portal .filter-select:focus-visible,
@@ -968,7 +1455,7 @@
 /* ─── Responsive: Tablet ──────────────────────────────────── */
 @media (max-width: 1024px) {
     .stats-overview {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
     }
 
     .admin-header .header-content {

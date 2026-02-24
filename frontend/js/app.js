@@ -626,20 +626,20 @@ class WitnessReplayApp {
     updateConnectionStatus(status) {
         const indicator = document.getElementById('connection-status');
         if (!indicator) return;
-        const dot = indicator.querySelector('.status-dot');
         const text = indicator.querySelector('.status-text');
+        
+        // Remove all status classes
+        indicator.classList.remove('connected', 'reconnecting', 'disconnected');
+        indicator.classList.add(status);
         
         switch(status) {
             case 'connected':
-                if (dot) { dot.style.background = '#22c55e'; dot.style.boxShadow = '0 0 8px #22c55e'; dot.style.animation = ''; }
                 if (text) text.textContent = 'Connected';
                 break;
             case 'reconnecting':
-                if (dot) { dot.style.background = '#f59e0b'; dot.style.boxShadow = '0 0 8px #f59e0b'; dot.style.animation = 'statusPulse 1.5s ease-in-out infinite'; }
                 if (text) text.textContent = 'Reconnecting...';
                 break;
             case 'disconnected':
-                if (dot) { dot.style.background = '#ef4444'; dot.style.boxShadow = '0 0 8px #ef4444'; dot.style.animation = ''; }
                 if (text) text.textContent = 'Disconnected';
                 break;
         }

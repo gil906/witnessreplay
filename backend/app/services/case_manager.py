@@ -136,6 +136,15 @@ Do not explain your reasoning."""
         await firestore_service.create_case(case)
         logger.info(f"Created new case {case.case_number} for report {report.id}")
 
+        # Try to determine incident type
+        incident_type = await self._classify_incident(report)
+        if incident_type:
+            case.metadata["incident_type"] = incident_type.get("type", "")
+            case.metadata["incident_subtype"] = incident_type.get("subtype", "")
+            case.metadata["severity"] = incident_type.get("severity", "")
+            case.updated_at = datetime.utcnow()
+            await firestore_service.update_case(case)
+
         asyncio.create_task(self.generate_case_summary(case.id))
 
         return case.id
@@ -224,6 +233,36 @@ Respond with a JSON object:
         if not report.witness_statements:
             return report.title or ""
         return "\n".join(stmt.text for stmt in report.witness_statements)
+
+    async def _classify_incident(self, report: ReconstructionSession) -> Optional[Dict]:
+        """Use Gemini to classify the incident type."""
+        if not self.client:
+            return None
+        try:
+            report_text = self._get_report_text(report)
+            if not report_text:
+                return None
+            
+            chat_model = await model_selector.get_best_model_for_chat()
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model=chat_model,
+                contents=f"""Classify this witness report into an incident category. 
+            
+Report: {report_text}
+
+Respond with ONLY a JSON object:
+{{"type": "accident|crime|incident|other", "subtype": "specific_type", "severity": "critical|high|medium|low"}}""",
+                config={"temperature": 0.1}
+            )
+            
+            text = response.text.strip()
+            if "```" in text:
+                text = text.split("```json")[-1].split("```")[0] if "```json" in text else text.split("```")[1].split("```")[0]
+            return json.loads(text)
+        except Exception as e:
+            logger.warning(f"Failed to classify incident: {e}")
+            return None
 
 
 # Global instance

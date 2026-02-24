@@ -8,7 +8,7 @@
     <title>WitnessReplay - Report an Incident</title>
     
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="/static/manifest.json">
@@ -26,11 +26,17 @@
                     <div class="logo-icon">🛡️</div>
                     <div class="logo-text">
                         <h1>WitnessReplay</h1>
-                        <p class="tagline">Incident Reporting System</p>
+                        <p class="tagline">AI-Powered Witness Interview &amp; Scene Reconstruction</p>
+                        <p class="tagline-sub">Powered by Google Gemini • Built for Law Enforcement</p>
                     </div>
+                    <span class="challenge-badge">Gemini Live Agent Challenge</span>
                 </div>
                 
                 <div class="session-info">
+                    <div class="connection-status" id="connection-status" title="Connection status">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Connecting...</span>
+                    </div>
                     <div class="session-status" style="display:none;">
                         <span class="status-dot"></span>
                         <span id="session-id">Initializing...</span>
@@ -97,8 +103,8 @@
 
                 <!-- Text Input — always visible -->
                 <div class="text-input">
-                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Click to record">🎤</button>
-                    <input type="text" id="text-input" placeholder="Type your statement here..." disabled aria-label="Text input">
+                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record">🎤</button>
+                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                 </div>
 
@@ -128,11 +134,11 @@
                         <div class="progress-bar-fill" id="progress-bar-fill" style="width:0%"></div>
                     </div>
                     <ul class="progress-checklist" id="progress-checklist">
-                        <li data-cat="location"><span class="check-icon">⬜</span> Location identified</li>
-                        <li data-cat="people"><span class="check-icon">⬜</span> People described</li>
-                        <li data-cat="vehicles"><span class="check-icon">⬜</span> Vehicles noted</li>
-                        <li data-cat="timeline"><span class="check-icon">⬜</span> Timeline established</li>
-                        <li data-cat="evidence"><span class="check-icon">⬜</span> Evidence collected</li>
+                        <li data-cat="location"><span class="check-icon">⬜</span> 📍 Location identified</li>
+                        <li data-cat="people"><span class="check-icon">⬜</span> 👥 People described</li>
+                        <li data-cat="vehicles"><span class="check-icon">⬜</span> 🚗 Vehicles noted</li>
+                        <li data-cat="timeline"><span class="check-icon">⬜</span> ⏱️ Timeline established</li>
+                        <li data-cat="evidence"><span class="check-icon">⬜</span> 🔍 Evidence collected</li>
                     </ul>
                 </div>
 
@@ -142,6 +148,7 @@
                     <div class="placeholder">
                         <div class="placeholder-icon">📷</div>
                         <p>Scene will be generated as you describe the incident</p>
+                        <p class="placeholder-hint">Start by telling us what happened — speak or type below</p>
                     </div>
                     <div class="scene-controls hidden">
                         <button class="scene-control-btn" id="zoom-btn" data-tooltip="Zoom" aria-label="Zoom scene">🔍</button>
@@ -603,46 +610,47 @@
                 <h2 id="onboarding-title">👋 Welcome to WitnessReplay</h2>
             </div>
             
-            <div class="onboarding-content">
+            <div class="onboarding-content onboarding-grid">
                 <div class="onboarding-step">
-                    <div class="onboarding-icon">🚨</div>
-                    <h3>Report Any Incident</h3>
-                    <p>Describe what you witnessed — an accident, crime, or any event. Speak naturally or type, and we'll guide you through the reporting process.</p>
+                    <div class="onboarding-icon">🎤</div>
+                    <h3>Speak or Type Your Account</h3>
+                    <p>Describe what you witnessed naturally — use your voice or type. Our AI listens carefully to every detail.</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="onboarding-icon">🛡️</div>
+                    <h3>Detective Ray Guides You</h3>
+                    <p>Our AI detective will ask follow-up questions to build a complete picture of the incident.</p>
                 </div>
                 
                 <div class="onboarding-step">
                     <div class="onboarding-icon">🎬</div>
-                    <h3>Scene Reconstruction</h3>
-                    <p>Watch as a visual scene is built from your description. Make corrections and add details at any time.</p>
+                    <h3>Visual Scene Reconstruction</h3>
+                    <p>Watch as your account is reconstructed as a visual scene. Make corrections and add details anytime.</p>
                 </div>
                 
                 <div class="onboarding-step">
-                    <div class="onboarding-icon">⌨️</div>
-                    <h3>Keyboard Shortcuts</h3>
-                    <p>Press <kbd>Space</kbd> to record, <kbd>?</kbd> for help, <kbd>Esc</kbd> to cancel. Full keyboard navigation supported.</p>
-                </div>
-                
-                <div class="onboarding-step">
-                    <div class="onboarding-icon">��</div>
+                    <div class="onboarding-icon">📋</div>
                     <h3>Export Your Report</h3>
-                    <p>Export reports, review evidence, compare scene versions, and manage your incident records.</p>
-                </div>
-            </div>
+                    <p>Export complete incident reports with evidence boards, timelines, and scene reconstructions.</p>
+                </div>            </div>
             
             <div class="onboarding-footer">
                 <label class="onboarding-checkbox">
                     <input type="checkbox" id="dont-show-onboarding">
                     <span>Don't show this again</span>
                 </label>
-                <button class="btn btn-primary btn-lg" id="onboarding-start-btn">Start Reporting →</button>
+                <button class="btn btn-primary btn-lg" id="onboarding-start-btn">Get Started →</button>
             </div>
         </div>
     </div>
 
     <!-- Version Display -->
     <div class="version-badge" id="version-display">
-        <span class="version-label">v</span>
-        <span class="version-number">0.052</span>
+        <span class="version-label">WitnessReplay</span>
+        <span class="version-number">v2.0</span>
+        <span class="version-separator">•</span>
+        <span class="version-challenge">Gemini Live Agent Challenge</span>
     </div>
     
     <!-- Particle Background Canvas -->

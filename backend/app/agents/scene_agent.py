@@ -14,6 +14,7 @@ from app.agents.prompts import (
     INITIAL_GREETING,
     SCENE_EXTRACTION_PROMPT,
     CLARIFICATION_PROMPTS,
+    CONTRADICTION_FOLLOW_UP,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,10 @@ class SceneReconstructionAgent:
                 "timestamp": datetime.utcnow().isoformat()
             })
             
+            # Optimize token usage: summarize history when it gets long
+            if len(self.conversation_history) > 16:
+                await self._summarize_history()
+            
             # Determine if we should generate an image
             should_generate = self._should_generate_image(agent_response)
             
@@ -199,6 +204,70 @@ class SceneReconstructionAgent:
         periodic_trigger = len(user_messages) >= 3 and len(user_messages) % 3 == 0
         
         return keyword_match or periodic_trigger
+    
+    async def _summarize_history(self):
+        """Summarize conversation history to optimize token usage."""
+        if not self.client or len(self.conversation_history) <= 8:
+            return
+        try:
+            # Keep last 8 messages, summarize the rest
+            old_messages = self.conversation_history[:-8]
+            summary_text = "\n".join([f"{m['role']}: {m['content']}" for m in old_messages])
+            
+            chat_model = await model_selector.get_best_model_for_chat()
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model=chat_model,
+                contents=f"Summarize this witness interview conversation in 3-4 bullet points, keeping all key facts, descriptions, and details:\n\n{summary_text}",
+                config={"temperature": 0.1}
+            )
+            
+            summary = response.text.strip()
+            # Replace old messages with summary
+            self.conversation_history = [
+                {"role": "system", "content": f"[Previous conversation summary]: {summary}", "timestamp": datetime.utcnow().isoformat()}
+            ] + self.conversation_history[-8:]
+            
+            logger.info(f"Summarized {len(old_messages)} messages into conversation summary")
+        except Exception as e:
+            logger.warning(f"Failed to summarize history: {e}")
+    
+    async def assess_confidence(self) -> Dict[str, Any]:
+        """Assess overall witness confidence and testimony reliability."""
+        user_messages = [m for m in self.conversation_history if m['role'] == 'user']
+        
+        # Basic metrics
+        total_statements = len(user_messages)
+        contradictions = len(self.contradictions)
+        
+        # Calculate scores
+        detail_score = min(1.0, total_statements / 8)  # More detail = higher
+        consistency_score = max(0.0, 1.0 - (contradictions * 0.15))
+        specificity_score = 0.0
+        
+        # Check for specific details (colors, numbers, times)
+        for msg in user_messages:
+            content = msg['content'].lower()
+            if any(c in content for c in ['red', 'blue', 'black', 'white', 'green', 'gray', 'silver']):
+                specificity_score += 0.1
+            if any(c in content for c in ['feet', 'inches', 'meters', 'miles', 'blocks']):
+                specificity_score += 0.1
+            if any(c in content for c in ['am', 'pm', 'o\'clock', 'morning', 'afternoon', 'evening']):
+                specificity_score += 0.1
+        
+        specificity_score = min(1.0, specificity_score)
+        
+        overall = (detail_score * 0.3 + consistency_score * 0.4 + specificity_score * 0.3)
+        
+        return {
+            "overall_confidence": round(overall, 2),
+            "detail_level": round(detail_score, 2),
+            "consistency": round(consistency_score, 2),
+            "specificity": round(specificity_score, 2),
+            "total_statements": total_statements,
+            "contradictions_found": contradictions,
+            "rating": "high" if overall > 0.7 else "medium" if overall > 0.4 else "low"
+        }
     
     async def _extract_scene_information(self):
         """

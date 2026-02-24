@@ -317,15 +317,23 @@ class FirestoreService:
 
     async def get_next_case_number(self) -> str:
         """Generate next sequential case number like CASE-2026-XXXX."""
-        cases = await self.list_cases(limit=10000)
-        next_num = len(cases) + 1
-        return f"CASE-2026-{next_num:04d}"
+        try:
+            db = await self._get_sqlite()
+            count = await db.count_cases()
+        except Exception:
+            cases = await self.list_cases(limit=10000)
+            count = len(cases)
+        return f"CASE-2026-{count + 1:04d}"
 
     async def get_next_report_number(self) -> str:
         """Generate next sequential report number like RPT-2026-XXXX."""
-        sessions = await self.list_sessions(limit=10000)
-        next_num = len(sessions) + 1
-        return f"RPT-2026-{next_num:04d}"
+        try:
+            db = await self._get_sqlite()
+            count = await db.count_sessions()
+        except Exception:
+            sessions = await self.list_sessions(limit=10000)
+            count = len(sessions)
+        return f"RPT-2026-{count + 1:04d}"
 
     async def health_check(self) -> bool:
         """Check if storage is accessible."""

@@ -104,7 +104,7 @@ class DatabaseService:
     # ── Session CRUD ──────────────────────────────────────
 
     async def save_session(self, session_dict: dict) -> bool:
-        """Insert or replace a session."""
+        """Insert or replace a session with its statements and scene versions."""
         try:
             now = datetime.utcnow().isoformat()
             metadata = session_dict.get("metadata", {})
@@ -126,8 +126,43 @@ class DatabaseService:
                     now,
                 ),
             )
+            # Save statements
+            sid = session_dict.get("id")
+            for stmt in session_dict.get("witness_statements", []):
+                await self._db.execute(
+                    """INSERT OR REPLACE INTO statements
+                       (id, session_id, text, audio_url, is_correction, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        stmt.get("id"),
+                        sid,
+                        stmt.get("text", ""),
+                        stmt.get("audio_url"),
+                        1 if stmt.get("is_correction") else 0,
+                        stmt.get("timestamp", now),
+                    ),
+                )
+            # Save scene versions
+            for sv in session_dict.get("scene_versions", []):
+                elements = sv.get("elements", [])
+                if not isinstance(elements, str):
+                    elements = json.dumps(elements)
+                await self._db.execute(
+                    """INSERT OR REPLACE INTO scene_versions
+                       (session_id, version, description, image_url, elements, timestamp, changes_from_previous)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        sid,
+                        sv.get("version"),
+                        sv.get("description"),
+                        sv.get("image_url"),
+                        elements,
+                        sv.get("timestamp", now),
+                        sv.get("changes_from_previous"),
+                    ),
+                )
             await self._db.commit()
-            await self._audit("session", session_dict.get("id"), "save")
+            await self._audit("session", sid, "save")
             return True
         except Exception as e:
             logger.error(f"SQLite save_session error: {e}")
@@ -138,9 +173,28 @@ class DatabaseService:
             "SELECT * FROM sessions WHERE id = ?", (session_id,)
         ) as cursor:
             row = await cursor.fetchone()
-            if row:
-                return self._row_to_dict(row)
-        return None
+            if not row:
+                return None
+            d = self._row_to_dict(row)
+        # Load statements
+        stmts = []
+        async with self._db.execute(
+            "SELECT * FROM statements WHERE session_id = ? ORDER BY timestamp", (session_id,)
+        ) as cursor:
+            async for row in cursor:
+                s = self._row_to_dict(row)
+                s["is_correction"] = bool(s.get("is_correction"))
+                stmts.append(s)
+        d["witness_statements"] = stmts
+        # Load scene versions
+        svs = []
+        async with self._db.execute(
+            "SELECT * FROM scene_versions WHERE session_id = ? ORDER BY version", (session_id,)
+        ) as cursor:
+            async for row in cursor:
+                svs.append(self._row_to_dict(row))
+        d["scene_versions"] = svs
+        return d
 
     async def delete_session(self, session_id: str) -> bool:
         try:
@@ -246,7 +300,15 @@ class DatabaseService:
 
     @staticmethod
     def _row_to_dict(row) -> dict:
-        return dict(row)
+        d = dict(row)
+        # Deserialize JSON string fields
+        for key in ('metadata', 'timeframe', 'report_ids', 'elements'):
+            if key in d and isinstance(d[key], str):
+                try:
+                    d[key] = json.loads(d[key])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return d
 
     async def health_check(self) -> bool:
         try:

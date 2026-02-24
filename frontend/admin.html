@@ -66,7 +66,14 @@
                     </div>
                 </div>
                 
+                <div class="notification-bell" id="notification-bell" title="Recent activity">
+                    🔔 <span class="notification-count" id="notification-count" style="display:none">0</span>
+                </div>
+                
                 <div class="admin-actions">
+                    <button id="seed-data-btn" class="btn btn-secondary" data-tooltip="Seed demo data">
+                        🌱 Seed Demo Data
+                    </button>
                     <button id="refresh-btn" class="btn btn-secondary" data-tooltip="Refresh data">
                         🔄 Refresh
                     </button>
@@ -96,6 +103,13 @@
                     <div class="stat-details">
                         <div class="stat-value" id="total-witnesses">0</div>
                         <div class="stat-label">Witness Reports</div>
+                    </div>
+                </div>
+                <div class="stat-card admin-stat">
+                    <div class="stat-icon">📌</div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="unassigned-reports">0</div>
+                        <div class="stat-label">Unassigned Reports</div>
                     </div>
                 </div>
                 <div class="stat-card admin-stat">
@@ -148,16 +162,36 @@
                 </div>
             </section>
 
+            <!-- View Toggle Tabs -->
+            <section class="view-toggle">
+                <button class="view-tab active" data-view="cases">📁 Cases View</button>
+                <button class="view-tab" data-view="reports">📝 Reports View</button>
+            </section>
+
             <!-- Cases List -->
-            <section class="cases-section">
+            <section class="cases-section" id="cases-section">
                 <div class="section-header">
-                    <h2>Submitted Reports</h2>
+                    <h2>Cases <span class="section-subtitle" id="cases-count-subtitle"></span></h2>
                 </div>
                 
                 <div id="cases-list" class="cases-list">
                     <div class="loading-state">
                         <div class="spinner"></div>
                         <p>Loading cases...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reports List (hidden by default) -->
+            <section class="cases-section" id="reports-section" style="display: none;">
+                <div class="section-header">
+                    <h2>Individual Reports <span class="section-subtitle" id="reports-count-subtitle"></span></h2>
+                </div>
+                
+                <div id="reports-list" class="cases-list">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <p>Loading reports...</p>
                     </div>
                 </div>
             </section>
@@ -172,19 +206,29 @@
                 <button class="modal-close" data-modal="case-detail-modal">&times;</button>
             </div>
             
-            <div class="modal-body">
+            <div class="modal-body" id="modal-body-content">
                 <div class="case-detail-container">
+                    <!-- Privacy Notice -->
+                    <div class="privacy-notice">
+                        <span>🔒</span>
+                        <span>Witness identities are protected. Report numbers are used instead of names.</span>
+                    </div>
+
                     <!-- Case Info -->
                     <section class="case-info">
                         <h3>Case Information</h3>
                         <div class="info-grid">
                             <div class="info-item">
-                                <label>Case ID:</label>
-                                <span id="detail-case-id">-</span>
+                                <label>Case Number:</label>
+                                <span id="detail-case-number">-</span>
                             </div>
                             <div class="info-item">
-                                <label>Type:</label>
-                                <span id="detail-case-type">-</span>
+                                <label>Title:</label>
+                                <span id="detail-case-title">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Location:</label>
+                                <span id="detail-case-location">-</span>
                             </div>
                             <div class="info-item">
                                 <label>Status:</label>
@@ -198,60 +242,79 @@
                                 <label>Last Updated:</label>
                                 <span id="detail-updated">-</span>
                             </div>
-                            <div class="info-item">
-                                <label>Duration:</label>
-                                <span id="detail-duration">-</span>
-                            </div>
                         </div>
                     </section>
 
-                    <!-- Witness Reports -->
-                    <section class="witness-reports">
-                        <h3>Witness Statements (<span id="witness-count">0</span>)</h3>
-                        <div id="witness-statements" class="statements-list">
-                            <p class="empty-state">No statements recorded yet</p>
+                    <!-- Timeframe -->
+                    <section class="case-timeframe" id="detail-timeframe-section" style="display: none;">
+                        <h3>Timeframe</h3>
+                        <div class="timeframe-display">
+                            <div class="timeframe-range">
+                                <span class="timeframe-start" id="detail-timeframe-start"></span>
+                                <span class="timeframe-arrow">→</span>
+                                <span class="timeframe-end" id="detail-timeframe-end"></span>
+                            </div>
+                            <div class="timeframe-description" id="detail-timeframe-desc"></div>
                         </div>
                     </section>
 
-                    <!-- Scene Reconstructions -->
-                    <section class="scene-gallery">
-                        <h3>Scene Reconstructions (<span id="scene-count">0</span>)</h3>
-                        <div id="scene-versions" class="scene-grid">
-                            <p class="empty-state">No scenes generated yet</p>
+                    <!-- Case Summary -->
+                    <section class="case-summary-section" id="detail-summary-section" style="display: none;">
+                        <h3>AI-Generated Summary</h3>
+                        <div class="case-summary-text" id="detail-case-summary"></div>
+                    </section>
+
+                    <!-- Scene Image -->
+                    <section class="scene-image-section" id="detail-scene-image-section" style="display: none;">
+                        <h3>Scene Reconstruction</h3>
+                        <div class="scene-image-container">
+                            <img id="detail-scene-image" src="" alt="Scene reconstruction" loading="lazy">
                         </div>
                     </section>
 
-                    <!-- Analytics -->
-                    <section class="case-analytics">
-                        <h3>Case Analytics</h3>
-                        <div class="analytics-grid">
-                            <div class="analytics-card">
-                                <h4>Completeness</h4>
-                                <div class="progress-bar">
-                                    <div id="completeness-bar" class="progress-fill" style="width: 0%"></div>
-                                </div>
-                                <span id="completeness-text">0%</span>
-                            </div>
-                            <div class="analytics-card">
-                                <h4>Contradictions</h4>
-                                <div id="contradictions-list">
-                                    <p class="empty-state">No contradictions detected</p>
-                                </div>
-                            </div>
-                            <div class="analytics-card">
-                                <h4>Key Elements</h4>
-                                <div id="key-elements-list" class="tag-list">
-                                    <p class="empty-state">No elements extracted</p>
-                                </div>
-                            </div>
+                    <!-- Reports within Case -->
+                    <section class="case-reports-section">
+                        <h3>Reports (<span id="detail-report-count">0</span>)</h3>
+                        <div id="detail-reports-list" class="case-reports-list">
+                            <p class="empty-state">No reports in this case</p>
                         </div>
                     </section>
+
+                    <!-- Key Elements -->
+                    <section class="case-key-elements" id="detail-key-elements-section" style="display: none;">
+                        <h3>Key Elements</h3>
+                        <div id="detail-key-elements" class="key-elements-tags"></div>
+                    </section>
+
+                    <!-- Case Timeline -->
+                    <section class="case-timeline">
+                        <h3>📅 Case Timeline</h3>
+                        <div id="case-timeline" class="timeline-container"></div>
+                    </section>
+
+                    <!-- Audit Trail -->
+                    <section class="audit-trail">
+                        <h3>📋 Audit Trail</h3>
+                        <div id="audit-trail-list" class="audit-list"></div>
+                    </section>
+
+                    <!-- Status Workflow -->
+                    <div class="status-workflow">
+                        <label>Case Status:</label>
+                        <select id="case-status-select" class="filter-select">
+                            <option value="open">🟢 Open</option>
+                            <option value="under_review">🟡 Under Review</option>
+                            <option value="closed">🔴 Closed</option>
+                        </select>
+                        <button id="update-status-btn" class="btn btn-primary">Update Status</button>
+                    </div>
 
                     <!-- Actions -->
                     <section class="case-actions">
-                        <button id="export-case-btn" class="btn btn-primary">📥 Export Case</button>
-                        <button id="export-evidence-btn" class="btn btn-secondary">📋 Export Evidence</button>
-                        <button id="mark-complete-btn" class="btn btn-secondary">✅ Mark Complete</button>
+                        <button id="regenerate-summary-btn" class="btn btn-primary">🤖 Regenerate Summary</button>
+                        <button id="compare-reports-btn" class="btn btn-secondary">📊 Compare Reports</button>
+                        <button id="upload-evidence-btn" class="btn btn-secondary">📷 Upload Evidence Photo</button>
+                        <button id="export-case-btn" class="btn btn-secondary">📥 Export Case</button>
                         <button id="delete-case-btn" class="btn btn-danger">🗑️ Delete Case</button>
                     </section>
                 </div>
