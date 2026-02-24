@@ -210,6 +210,19 @@ class DatabaseService:
             CREATE INDEX IF NOT EXISTS idx_assignments_case ON case_assignments(case_id);
             CREATE INDEX IF NOT EXISTS idx_assignments_investigator ON case_assignments(investigator_id);
             CREATE INDEX IF NOT EXISTS idx_assignments_active ON case_assignments(is_active);
+
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                key_prefix TEXT NOT NULL,
+                permissions TEXT DEFAULT '["read","write"]',
+                rate_limit_rpm INTEGER DEFAULT 30,
+                created_at TEXT,
+                last_used_at TEXT,
+                is_active INTEGER DEFAULT 1,
+                usage_count INTEGER DEFAULT 0
+            );
         """)
         await self._db.commit()
 

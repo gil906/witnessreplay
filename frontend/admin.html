@@ -235,6 +235,7 @@
                 <button class="view-tab" data-view="workload">👮 Workload</button>
                 <button class="view-tab" data-view="dashboard">📊 Dashboard</button>
                 <button class="view-tab" data-view="map">🗺️ Map</button>
+                <button class="view-tab" data-view="settings">⚙️ Settings</button>
             </section>
 
             <!-- Cases List -->
@@ -436,6 +437,182 @@
             <div id="map-view" class="map-container" style="display:none;">
                 <div id="incident-map" style="height: 500px; width: 100%; border-radius: 12px;"></div>
                 <div id="map-no-data" class="empty-state" style="display:none;">No location data available for cases</div>
+            </div>
+
+            <!-- Settings / API Section -->
+            <div id="settings-view" class="settings-container" style="display:none;">
+                <!-- API Keys Management -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3>🔑 API Keys</h3>
+                        <button class="btn btn-primary btn-sm" id="create-api-key-btn">+ Create Key</button>
+                    </div>
+                    <p class="settings-desc">Generate API keys to access WitnessReplay programmatically. Keys provide full access to create sessions, send messages, retrieve scenes, and manage cases — everything the web UI can do.</p>
+                    <div id="api-keys-list" class="api-keys-list">
+                        <div class="empty-state">Loading API keys...</div>
+                    </div>
+                </div>
+
+                <!-- Create API Key Modal (inline) -->
+                <div id="create-key-form" class="settings-card" style="display:none;">
+                    <h3>Create New API Key</h3>
+                    <div class="form-group">
+                        <label>Key Name</label>
+                        <input type="text" id="new-key-name" placeholder="e.g. Mobile App, CI Pipeline, Partner Integration" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Permissions</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" value="read" checked disabled> Read (sessions, cases, scenes)</label>
+                            <label><input type="checkbox" value="write" checked> Write (create sessions, send messages)</label>
+                            <label><input type="checkbox" value="admin"> Admin (manage cases, export)</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Rate Limit (requests/min)</label>
+                        <input type="number" id="new-key-rate-limit" value="30" min="1" max="120" class="form-input" style="width:120px;">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" id="confirm-create-key">Create Key</button>
+                        <button class="btn btn-secondary" id="cancel-create-key">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- New Key Display (shown once after creation) -->
+                <div id="new-key-display" class="settings-card key-created-card" style="display:none;">
+                    <h3>🎉 API Key Created</h3>
+                    <p class="key-warning">⚠️ Copy this key now — it will never be shown again!</p>
+                    <div class="key-display">
+                        <code id="new-key-value"></code>
+                        <button class="btn btn-sm" id="copy-key-btn" onclick="navigator.clipboard.writeText(document.getElementById('new-key-value').textContent).then(()=>{this.textContent='✅ Copied!'})">📋 Copy</button>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('new-key-display').style.display='none'">Done</button>
+                </div>
+
+                <!-- API Documentation -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3>📖 API Documentation</h3>
+                        <a href="/docs" target="_blank" class="btn btn-secondary btn-sm">Open Swagger UI →</a>
+                    </div>
+                    <p class="settings-desc">All endpoints below require the <code>X-API-Key</code> header. Base URL: <code id="api-base-url"></code></p>
+
+                    <div class="api-docs">
+                        <!-- Quick Start -->
+                        <div class="api-section">
+                            <h4>🚀 Quick Start</h4>
+                            <div class="code-block">
+                                <div class="code-tabs">
+                                    <button class="code-tab active" data-lang="curl">cURL</button>
+                                    <button class="code-tab" data-lang="python">Python</button>
+                                    <button class="code-tab" data-lang="javascript">JavaScript</button>
+                                </div>
+                                <pre class="code-content" data-lang="curl"><code># 1. Create a session
+curl -X POST <span class="api-url"></span>/api/v1/sessions \
+  -H "X-API-Key: wr_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"template": "general"}'
+
+# 2. Send a witness statement
+curl -X POST <span class="api-url"></span>/api/v1/sessions/{session_id}/message \
+  -H "X-API-Key: wr_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "I saw a red car run a stop sign and hit a pedestrian"}'
+
+# 3. Get the scene reconstruction
+curl <span class="api-url"></span>/api/v1/sessions/{session_id}/scene \
+  -H "X-API-Key: wr_your_key_here"</code></pre>
+                                <pre class="code-content" data-lang="python" style="display:none;"><code>import requests
+
+BASE = "<span class="api-url"></span>/api/v1"
+HEADERS = {"X-API-Key": "wr_your_key_here"}
+
+# 1. Create a session
+session = requests.post(f"{BASE}/sessions",
+    headers=HEADERS, json={"template": "general"}).json()
+sid = session["session"]["id"]
+
+# 2. Send a witness statement
+response = requests.post(f"{BASE}/sessions/{sid}/message",
+    headers=HEADERS,
+    json={"text": "I saw a red car run a stop sign"}).json()
+print(response["ai_response"])
+
+# 3. Get the scene
+scene = requests.get(f"{BASE}/sessions/{sid}/scene",
+    headers=HEADERS).json()
+print(scene["latest_version"])</code></pre>
+                                <pre class="code-content" data-lang="javascript" style="display:none;"><code>const BASE = '<span class="api-url"></span>/api/v1';
+const headers = {
+  'X-API-Key': 'wr_your_key_here',
+  'Content-Type': 'application/json'
+};
+
+// 1. Create a session
+const session = await fetch(`${BASE}/sessions`, {
+  method: 'POST', headers, body: JSON.stringify({template: 'general'})
+}).then(r => r.json());
+const sid = session.session.id;
+
+// 2. Send a witness statement
+const response = await fetch(`${BASE}/sessions/${sid}/message`, {
+  method: 'POST', headers,
+  body: JSON.stringify({text: 'I saw a red car run a stop sign'})
+}).then(r => r.json());
+console.log(response.ai_response);
+
+// 3. Get scene reconstruction
+const scene = await fetch(`${BASE}/sessions/${sid}/scene`, {
+  headers
+}).then(r => r.json());</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- Endpoints Reference -->
+                        <div class="api-section">
+                            <h4>📋 Endpoints Reference</h4>
+                            <table class="api-table">
+                                <thead>
+                                    <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td><span class="method post">POST</span></td><td>/api/v1/sessions</td><td>Create a new interview session</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/sessions/{id}</td><td>Get session details + statements</td></tr>
+                                    <tr><td><span class="method post">POST</span></td><td>/api/v1/sessions/{id}/message</td><td>Send text → get AI response + scene</td></tr>
+                                    <tr><td><span class="method post">POST</span></td><td>/api/v1/sessions/{id}/audio</td><td>Send audio (base64) → transcribe + respond</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/sessions/{id}/scene</td><td>Get scene reconstruction image</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/sessions/{id}/transcript</td><td>Get full interview transcript</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/cases</td><td>List all cases</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/cases/{id}</td><td>Get case with linked reports</td></tr>
+                                    <tr><td><span class="method post">POST</span></td><td>/api/v1/cases/{id}/export</td><td>Export case (JSON/RMS)</td></tr>
+                                    <tr><td><span class="method get">GET</span></td><td>/api/v1/status</td><td>API health + quota status</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Authentication -->
+                        <div class="api-section">
+                            <h4>🔐 Authentication</h4>
+                            <p>Include your API key in every request:</p>
+                            <pre><code>X-API-Key: wr_xxxxxxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
+                            <p>Keys are created in the API Keys section above. Each key has its own rate limit and permissions. Keys can be revoked at any time.</p>
+                        </div>
+
+                        <!-- Rate Limits -->
+                        <div class="api-section">
+                            <h4>⏱️ Rate Limits</h4>
+                            <p>Default: <strong>30 requests/minute</strong> per API key. Configurable per key. When exceeded, the API returns <code>429 Too Many Requests</code> with a <code>Retry-After</code> header.</p>
+                            <p>AI-powered endpoints (/message, /audio) also count against Google Gemini API quotas (5 RPM for Flash, 10 RPM for Flash Lite).</p>
+                        </div>
+
+                        <!-- Response Format -->
+                        <div class="api-section">
+                            <h4>📦 Response Format</h4>
+                            <p>All responses are JSON. Successful responses return the data directly. Errors return:</p>
+                            <pre><code>{"detail": "Error description", "status_code": 404}</code></pre>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

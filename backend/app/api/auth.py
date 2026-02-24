@@ -119,3 +119,36 @@ def require_admin_auth(authorization: Optional[str] = Header(None)) -> None:
             status_code=401,
             detail="Invalid or expired session"
         )
+
+
+# ─── Per-API-key rate limiter ─────────────────────────────
+_api_key_requests: Dict[str, list] = {}  # key_id -> [timestamps]
+
+
+async def require_api_key(x_api_key: Optional[str] = Header(None)) -> Dict:
+    """Dependency that validates an X-API-Key header and enforces per-key rate limits."""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+
+    from app.services.api_key_service import api_key_service
+
+    key_meta = await api_key_service.validate_key(x_api_key)
+    if key_meta is None:
+        raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+
+    # Per-key rate limiting
+    key_id = key_meta["id"]
+    rpm = key_meta.get("rate_limit_rpm", 30)
+    now = time.time()
+    window = _api_key_requests.setdefault(key_id, [])
+    cutoff = now - 60
+    _api_key_requests[key_id] = [t for t in window if t > cutoff]
+    if len(_api_key_requests[key_id]) >= rpm:
+        raise HTTPException(
+            status_code=429,
+            detail="API key rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+    _api_key_requests[key_id].append(now)
+
+    return key_meta

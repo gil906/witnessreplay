@@ -70,6 +70,11 @@ async def lifespan(app: FastAPI):
     await db.initialize()
     logger.info("SQLite database initialized")
 
+    # Initialize API key service
+    from app.services.api_key_service import api_key_service
+    await api_key_service.initialize()
+    logger.info("API key service initialized")
+
     # Ensure images directory exists
     os.makedirs("/app/data/images", exist_ok=True)
     

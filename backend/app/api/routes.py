@@ -69,7 +69,8 @@ from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
-from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit
+from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key
+from app.services.api_key_service import api_key_service
 from google import genai
 import uuid
 
@@ -8858,4 +8859,319 @@ async def get_interview_progress(session_id: str):
         "total_duration_seconds": int(total_duration),
         "active_duration_seconds": int(active_duration),
         "breaks_taken": comfort_state.get("breaks_taken", 0)
+    }
+
+
+# ─── API Key Management (Admin Only) ─────────────────────
+
+
+@router.post("/admin/api-keys")
+async def create_api_key(data: dict, auth=Depends(require_admin_auth)):
+    """Create a new API key. Returns the full key ONCE."""
+    name = data.get("name", "Unnamed Key")
+    permissions = data.get("permissions", ["read", "write"])
+    rate_limit = data.get("rate_limit_rpm", 30)
+    result = await api_key_service.create_key(name, permissions, rate_limit)
+    return result
+
+
+@router.get("/admin/api-keys")
+async def list_api_keys(auth=Depends(require_admin_auth)):
+    """List all API keys (without the actual keys)."""
+    keys = await api_key_service.list_keys()
+    return {"keys": keys}
+
+
+@router.delete("/admin/api-keys/{key_id}")
+async def revoke_api_key(key_id: str, auth=Depends(require_admin_auth)):
+    """Revoke an API key."""
+    success = await api_key_service.revoke_key(key_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"status": "revoked"}
+
+
+# ─── Public API (API Key Authenticated) ──────────────────
+
+
+@router.post("/v1/sessions", tags=["Public API"])
+async def api_create_session(data: dict = {}, api_key=Depends(require_api_key)):
+    """Create a new witness interview session."""
+    if "write" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: write required")
+    try:
+        session = ReconstructionSession(
+            id=str(uuid.uuid4()),
+            title=data.get("title", "API Session"),
+            source_type=data.get("source_type", "api"),
+            witness_name=data.get("witness_name", ""),
+            witness_contact=data.get("witness_contact", ""),
+            witness_location=data.get("witness_location", ""),
+            metadata=data.get("metadata", {}),
+        )
+        success = await firestore_service.create_session(session)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to create session")
+        session.report_number = await firestore_service.get_next_report_number()
+        await firestore_service.update_session(session)
+        agent = get_agent(session.id)
+        greeting = await agent.start_interview()
+        return {
+            "id": session.id,
+            "title": session.title,
+            "report_number": session.report_number,
+            "greeting": greeting,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"API create session error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v1/sessions/{session_id}", tags=["Public API"])
+async def api_get_session(session_id: str, api_key=Depends(require_api_key)):
+    """Get session details including all statements and scene versions."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@router.post("/v1/sessions/{session_id}/message", tags=["Public API"])
+async def api_send_message(session_id: str, data: dict, api_key=Depends(require_api_key)):
+    """Send a text message to the AI interviewer and get a response.
+    Body: {"text": "I saw a red car crash into a blue van"}
+    Returns: AI response + updated scene description
+    """
+    if "write" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: write required")
+
+    text = (data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing 'text' in request body")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    agent = get_agent(session_id)
+    is_correction = data.get("is_correction", False)
+
+    try:
+        agent_response, should_generate_image, token_info = await agent.process_statement(
+            text, is_correction=is_correction
+        )
+    except Exception as e:
+        logger.error(f"API message processing error: {e}")
+        raise HTTPException(status_code=500, detail="AI processing failed")
+
+    # Save statement
+    stmt = WitnessStatement(
+        id=str(uuid.uuid4()),
+        text=text,
+        is_correction=is_correction,
+    )
+    session.witness_statements.append(stmt)
+    await firestore_service.update_session(session)
+
+    scene_summary = agent.get_scene_summary()
+    return {
+        "response": agent_response,
+        "should_generate_image": should_generate_image,
+        "scene": {
+            "description": scene_summary.get("description", ""),
+            "elements": scene_summary.get("elements", []),
+            "statement_count": scene_summary.get("statement_count", 0),
+        },
+        "token_info": token_info,
+    }
+
+
+@router.post("/v1/sessions/{session_id}/audio", tags=["Public API"])
+async def api_send_audio(session_id: str, data: dict, api_key=Depends(require_api_key)):
+    """Send base64-encoded audio for transcription + AI response.
+    Body: {"audio": "<base64>", "format": "webm"}
+    Returns: transcription + AI response + scene data
+    """
+    if "write" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: write required")
+
+    import base64
+
+    audio_b64 = data.get("audio", "")
+    audio_format = data.get("format", "webm")
+    if not audio_b64:
+        raise HTTPException(status_code=400, detail="Missing 'audio' in request body")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Transcribe
+    try:
+        audio_bytes = base64.b64decode(audio_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 audio data")
+
+    try:
+        from google import genai as _genai
+
+        client = _genai.Client(api_key=settings.google_api_key)
+        mime_map = {"webm": "audio/webm", "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg"}
+        mime = mime_map.get(audio_format, f"audio/{audio_format}")
+
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=settings.gemini_model,
+            contents=[
+                "Transcribe the following audio accurately. Return only the transcription text.",
+                {"inline_data": {"mime_type": mime, "data": audio_b64}},
+            ],
+        )
+        transcription = response.text.strip()
+    except Exception as e:
+        logger.error(f"Audio transcription error: {e}")
+        raise HTTPException(status_code=500, detail="Audio transcription failed")
+
+    # Process transcription through agent
+    agent = get_agent(session_id)
+    try:
+        agent_response, should_generate_image, token_info = await agent.process_statement(transcription)
+    except Exception as e:
+        logger.error(f"API audio message processing error: {e}")
+        raise HTTPException(status_code=500, detail="AI processing failed")
+
+    stmt = WitnessStatement(id=str(uuid.uuid4()), text=transcription)
+    session.witness_statements.append(stmt)
+    await firestore_service.update_session(session)
+
+    scene_summary = agent.get_scene_summary()
+    return {
+        "transcription": transcription,
+        "response": agent_response,
+        "should_generate_image": should_generate_image,
+        "scene": {
+            "description": scene_summary.get("description", ""),
+            "elements": scene_summary.get("elements", []),
+            "statement_count": scene_summary.get("statement_count", 0),
+        },
+        "token_info": token_info,
+    }
+
+
+@router.get("/v1/sessions/{session_id}/scene", tags=["Public API"])
+async def api_get_scene(session_id: str, version: int = None, api_key=Depends(require_api_key)):
+    """Get the latest (or specific version) scene reconstruction."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    versions = session.scene_versions or []
+    if version is not None:
+        match = [v for v in versions if getattr(v, "version", None) == version]
+        if not match:
+            raise HTTPException(status_code=404, detail=f"Scene version {version} not found")
+        return match[0]
+
+    if versions:
+        return versions[-1]
+
+    # Fall back to agent in-memory scene summary
+    agent = get_agent(session_id)
+    return agent.get_scene_summary()
+
+
+@router.get("/v1/sessions/{session_id}/transcript", tags=["Public API"])
+async def api_get_transcript(session_id: str, api_key=Depends(require_api_key)):
+    """Get the full interview transcript."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    for s in session.witness_statements:
+        statements.append({
+            "id": s.id,
+            "text": s.text,
+            "is_correction": s.is_correction,
+            "timestamp": s.timestamp.isoformat() if hasattr(s, "timestamp") and s.timestamp else None,
+        })
+
+    agent = get_agent(session_id)
+    return {
+        "session_id": session_id,
+        "statements": statements,
+        "conversation_history": agent.conversation_history,
+    }
+
+
+@router.get("/v1/cases", tags=["Public API"])
+async def api_list_cases(limit: int = 20, api_key=Depends(require_api_key)):
+    """List all cases."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+    cases = await firestore_service.list_cases(limit=limit)
+    return {"cases": cases}
+
+
+@router.get("/v1/cases/{case_id}", tags=["Public API"])
+async def api_get_case(case_id: str, api_key=Depends(require_api_key)):
+    """Get case details with linked reports."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return case
+
+
+@router.post("/v1/cases/{case_id}/export", tags=["Public API"])
+async def api_export_case(case_id: str, format: str = "json", api_key=Depends(require_api_key)):
+    """Export case in JSON or RMS format."""
+    if "read" not in api_key.get("permissions", []):
+        raise HTTPException(status_code=403, detail="Permission denied: read required")
+
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if format == "json":
+        return case
+
+    if format in ("niem_json", "xml", "csv"):
+        from app.services.rms_export import rms_export_service
+
+        if format == "niem_json":
+            exported = await rms_export_service.export_case(case_id)
+            return exported
+        elif format == "xml":
+            xml_content = await rms_export_service.export_to_xml(case_id)
+            from fastapi.responses import Response
+
+            return Response(content=xml_content, media_type="application/xml")
+        elif format == "csv":
+            csv_files = await rms_export_service.export_to_csv(case_id)
+            return csv_files
+
+    raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
+
+
+@router.get("/v1/status", tags=["Public API"])
+async def api_status(api_key=Depends(require_api_key)):
+    """Check API health and quota status."""
+    return {
+        "status": "ok",
+        "api_key_name": api_key.get("name"),
+        "permissions": api_key.get("permissions"),
+        "rate_limit_rpm": api_key.get("rate_limit_rpm"),
     }

@@ -243,6 +243,8 @@ class AdminPortal {
         document.getElementById('workload-section').style.display = view === 'workload' ? '' : 'none';
         document.getElementById('dashboard-view').style.display = view === 'dashboard' ? '' : 'none';
         document.getElementById('map-view').style.display = view === 'map' ? '' : 'none';
+        const settingsEl = document.getElementById('settings-view');
+        if (settingsEl) settingsEl.style.display = view === 'settings' ? '' : 'none';
         
         if (view === 'reports') {
             this.renderReports();
@@ -252,6 +254,8 @@ class AdminPortal {
             this.renderDashboardCharts();
         } else if (view === 'map') {
             setTimeout(() => this.initMap(), 100);
+        } else if (view === 'settings') {
+            this.loadSettingsView();
         }
     }
     
@@ -2842,6 +2846,114 @@ class AdminPortal {
             console.error('Error fetching version:', error);
         }
     }
+    
+    // ─── Settings / API Key Management ────────────────────────
+    
+    loadSettingsView() {
+        const baseUrl = window.location.origin;
+        const baseUrlEl = document.getElementById('api-base-url');
+        if (baseUrlEl) baseUrlEl.textContent = baseUrl;
+        document.querySelectorAll('.api-url').forEach(el => el.textContent = baseUrl);
+        
+        document.querySelectorAll('.code-tab').forEach(tab => {
+            if (tab._wired) return;
+            tab._wired = true;
+            tab.addEventListener('click', () => {
+                const lang = tab.dataset.lang;
+                const parent = tab.closest('.code-block');
+                parent.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                parent.querySelectorAll('.code-content').forEach(pre => {
+                    pre.style.display = pre.dataset.lang === lang ? '' : 'none';
+                });
+            });
+        });
+        
+        const createBtn = document.getElementById('create-api-key-btn');
+        if (createBtn && !createBtn._wired) {
+            createBtn._wired = true;
+            createBtn.addEventListener('click', () => {
+                document.getElementById('create-key-form').style.display = '';
+                document.getElementById('new-key-name').focus();
+            });
+            document.getElementById('cancel-create-key').addEventListener('click', () => {
+                document.getElementById('create-key-form').style.display = 'none';
+            });
+            document.getElementById('confirm-create-key').addEventListener('click', () => this.createApiKey());
+        }
+        
+        this.loadApiKeys();
+    }
+    
+    async loadApiKeys() {
+        try {
+            const resp = await fetch('/api/admin/api-keys', {
+                headers: { 'Authorization': `Bearer ${this.authToken}` }
+            });
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            this.renderApiKeys(data.keys || []);
+        } catch (err) {
+            const el = document.getElementById('api-keys-list');
+            if (el) el.innerHTML = '<div class="empty-state">Could not load API keys</div>';
+        }
+    }
+    
+    renderApiKeys(keys) {
+        const c = document.getElementById('api-keys-list');
+        if (!c) return;
+        if (!keys.length) {
+            c.innerHTML = '<div class="empty-state">No API keys yet. Create one to get started.</div>';
+            return;
+        }
+        c.innerHTML = `<table class="api-keys-table">
+            <thead><tr><th>Name</th><th>Key</th><th>Permissions</th><th>Rate</th><th>Usage</th><th>Last Used</th><th>Status</th><th></th></tr></thead>
+            <tbody>${keys.map(k => `<tr class="${k.is_active ? '' : 'revoked'}">
+                <td><strong>${this._esc(k.name)}</strong></td>
+                <td><code>${k.key_prefix}...</code></td>
+                <td>${(k.permissions||[]).map(p=>`<span class="perm-badge">${p}</span>`).join(' ')}</td>
+                <td>${k.rate_limit_rpm}/min</td>
+                <td>${(k.usage_count||0).toLocaleString()}</td>
+                <td>${k.last_used_at ? this._ago(k.last_used_at) : 'Never'}</td>
+                <td>${k.is_active ? '<span class="status-active">Active</span>' : '<span class="status-revoked">Revoked</span>'}</td>
+                <td>${k.is_active ? `<button class="btn btn-danger btn-xs" onclick="window.adminPortal.revokeApiKey('${k.id}')">Revoke</button>` : ''}</td>
+            </tr>`).join('')}</tbody></table>`;
+    }
+    
+    async createApiKey() {
+        const name = document.getElementById('new-key-name').value.trim() || 'Unnamed Key';
+        const rateLimit = parseInt(document.getElementById('new-key-rate-limit').value) || 30;
+        const cbs = document.querySelectorAll('#create-key-form .checkbox-group input:checked');
+        const permissions = Array.from(cbs).map(cb => cb.value);
+        try {
+            const resp = await fetch('/api/admin/api-keys', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, permissions, rate_limit_rpm: rateLimit })
+            });
+            if (!resp.ok) throw new Error('Failed');
+            const data = await resp.json();
+            document.getElementById('new-key-value').textContent = data.key;
+            document.getElementById('new-key-display').style.display = '';
+            document.getElementById('create-key-form').style.display = 'none';
+            document.getElementById('new-key-name').value = '';
+            document.getElementById('copy-key-btn').textContent = '📋 Copy';
+            this.loadApiKeys();
+        } catch (err) { alert('Error creating API key: ' + err.message); }
+    }
+    
+    async revokeApiKey(keyId) {
+        if (!confirm('Revoke this API key? Apps using it will stop working.')) return;
+        try {
+            await fetch(`/api/admin/api-keys/${keyId}`, {
+                method: 'DELETE', headers: { 'Authorization': `Bearer ${this.authToken}` }
+            });
+            this.loadApiKeys();
+        } catch (err) { alert('Error: ' + err.message); }
+    }
+    
+    _ago(d) { const m=Math.floor((Date.now()-new Date(d))/60000); return m<1?'Just now':m<60?m+'m ago':m<1440?Math.floor(m/60)+'h ago':Math.floor(m/1440)+'d ago'; }
+    _esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 }
 
 // Initialize when DOM is ready
