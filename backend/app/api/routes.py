@@ -2,7 +2,6 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
-from fpdf import FPDF
 import io
 import asyncio
 
@@ -207,6 +206,15 @@ async def delete_session(session_id: str):
 async def export_session(session_id: str):
     """Export a session as a PDF report."""
     try:
+        # Import fpdf only when needed to avoid module load failure
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="PDF export functionality not available. Install fpdf2 package."
+            )
+        
         session = await firestore_service.get_session(session_id)
         if not session:
             raise HTTPException(
@@ -261,10 +269,10 @@ async def export_session(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting session: {e}")
+        logger.error(f"Error exporting session: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to export session"
+            detail=f"Failed to export session: {str(e)}"
         )
 
 

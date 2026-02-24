@@ -7,7 +7,7 @@ import logging
 import json
 import os
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from collections import defaultdict
 import threading
@@ -171,9 +171,33 @@ class UsageTracker:
         requests_minute = len(self._requests_minute.get(model_name, []))
         tokens_today = self._tokens_today.get(model_name, 0)
         
+        # Calculate next reset timestamp (midnight Pacific Time)
+        try:
+            pacific_tz = ZoneInfo("America/Los_Angeles")
+            now = datetime.now(pacific_tz)
+            tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = tomorrow + timedelta(days=1)
+            next_reset_timestamp = tomorrow.timestamp()
+        except Exception:
+            # Fallback to UTC
+            now = datetime.now(timezone.utc)
+            tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = tomorrow + timedelta(days=1)
+            next_reset_timestamp = tomorrow.timestamp()
+        
         return {
             "model": model_name,
             "tier": limits["tier"],
+            "limits": {
+                "requests_per_minute": limits["rpm"],
+                "requests_per_day": limits["rpd"],
+                "tokens_per_day": limits["tpd"]
+            },
+            "remaining": {
+                "requests_per_minute": max(0, limits["rpm"] - requests_minute),
+                "requests_per_day": max(0, limits["rpd"] - requests_today),
+                "tokens_per_day": max(0, limits["tpd"] - tokens_today)
+            },
             "requests": {
                 "minute": {
                     "used": requests_minute,
@@ -193,6 +217,7 @@ class UsageTracker:
                         "remaining": max(0, limits["tpd"] - tokens_today)
                     }
                 },
+                "next_reset_timestamp": next_reset_timestamp,
                 "reset_time": "Midnight Pacific Time (approximate)",
                 "note": "Usage tracking is approximate and based on local counting"
             }

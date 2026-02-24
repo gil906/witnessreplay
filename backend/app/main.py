@@ -162,6 +162,7 @@ async def rate_limit_middleware(request: Request, call_next):
     """
     Rate limiting middleware using usage tracker.
     Only enforces limits if ENFORCE_RATE_LIMITS=true in env.
+    Adds rate limit headers to all API responses.
     """
     from app.services.usage_tracker import usage_tracker
     
@@ -170,13 +171,16 @@ async def rate_limit_middleware(request: Request, call_next):
        request.url.path.startswith("/static"):
         return await call_next(request)
     
+    # Get current model from settings
+    current_model = settings.gemini_model
+    
+    # Get usage info for headers
+    usage = usage_tracker.get_usage(current_model)
+    
     # Check if enforcement is enabled
     enforce_limits = os.getenv("ENFORCE_RATE_LIMITS", "false").lower() == "true"
     
     if enforce_limits:
-        # Get current model from settings
-        current_model = settings.gemini_model
-        
         # Check rate limit before processing request
         allowed, reason = usage_tracker.check_rate_limit(current_model)
         
@@ -190,11 +194,22 @@ async def rate_limit_middleware(request: Request, call_next):
                     "retry_after": "60"  # Retry after 1 minute
                 },
                 headers={
-                    "Retry-After": "60"
+                    "Retry-After": "60",
+                    "X-RateLimit-Limit": str(usage["limits"]["requests_per_minute"]),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(int(usage.get("next_reset_timestamp", 0)))
                 }
             )
     
-    return await call_next(request)
+    # Process request
+    response = await call_next(request)
+    
+    # Add rate limit headers to response
+    response.headers["X-RateLimit-Limit"] = str(usage["limits"]["requests_per_minute"])
+    response.headers["X-RateLimit-Remaining"] = str(usage["remaining"]["requests_per_minute"])
+    response.headers["X-RateLimit-Reset"] = str(int(usage.get("next_reset_timestamp", 0)))
+    
+    return response
 
 
 
