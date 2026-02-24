@@ -934,6 +934,9 @@ class WitnessReplayApp {
             // Update connection status indicator
             this.updateConnectionStatus('connected');
             
+            // Load witnesses for multi-witness support
+            this.loadWitnesses();
+            
             this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
         
@@ -1394,14 +1397,23 @@ class WitnessReplayApp {
         if (!text) return;
         
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Include active witness ID for multi-witness support
+            const messageData = { text: text };
+            if (this.activeWitnessId) {
+                messageData.witness_id = this.activeWitnessId;
+            }
+            
             this.ws.send(JSON.stringify({
                 type: 'text',
-                data: {text: text}
+                data: messageData
             }));
             
             this.displayMessage(text, 'user');
             this.textInput.value = '';
             this.setStatus('Processing...');
+            
+            // Refresh witness statement counts after a brief delay
+            setTimeout(() => this.loadWitnesses(), 1500);
         }
     }
     
@@ -1418,11 +1430,20 @@ class WitnessReplayApp {
         messageDiv.setAttribute('role', 'listitem');
         
         const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
-        const labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong><span class="msg-time">${timeStr}</span><br>${this._escapeHtml(text)}`;
+        // Add witness badge for multi-witness sessions
+        let witnessBadge = '';
+        if (speaker === 'user' && this.witnesses.length > 0 && this.activeWitnessId) {
+            const activeWitness = this.witnesses.find(w => w.id === this.activeWitnessId);
+            if (activeWitness) {
+                witnessBadge = `<span class="msg-witness-badge">${this.escapeHtmlAttr(activeWitness.name)}</span>`;
+            }
+        }
+        
+        messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span><br>${this._escapeHtml(text)}`;
         
         this.chatTranscript.appendChild(messageDiv);
         this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
@@ -2296,6 +2317,12 @@ class WitnessReplayApp {
             // Load measurements for this session
             this.loadMeasurements();
             
+            // Load evidence markers for this session
+            this.loadEvidenceMarkers();
+            
+            // Load sketches for this session
+            this.loadSessionSketches(sessionId);
+            
             this.ui.showToast('Session loaded', 'success');
             
         } catch (error) {
@@ -2743,6 +2770,11 @@ class WitnessReplayApp {
             // Include measurements if available
             if (this.measurementTool && this.measurementTool.measurements.length > 0) {
                 data.measurements = this.measurementTool.getMeasurementsSummary();
+            }
+            
+            // Include evidence markers if available
+            if (this.evidenceMarkerTool && this.evidenceMarkerTool.markers.length > 0) {
+                data.evidence_markers = this.evidenceMarkerTool.getMarkersSummary();
             }
             
             const jsonStr = JSON.stringify(data, null, 2);
@@ -3764,6 +3796,35 @@ class WitnessReplayApp {
     }
     
     /**
+     * Initialize evidence marker tool
+     */
+    initializeEvidenceMarkerTool() {
+        // Initialize evidence marker tool when EvidenceMarkerTool is available
+        if (typeof EvidenceMarkerTool !== 'undefined') {
+            this.evidenceMarkerTool = new EvidenceMarkerTool(this);
+            
+            // Bind evidence marker button (added dynamically by the tool)
+            const markerBtn = document.getElementById('evidence-marker-btn');
+            if (markerBtn) {
+                markerBtn.addEventListener('click', () => {
+                    if (this.evidenceMarkerTool) {
+                        this.evidenceMarkerTool.showMarkerMenu();
+                    }
+                });
+            }
+        }
+    }
+    
+    /**
+     * Load evidence markers for current session
+     */
+    async loadEvidenceMarkers() {
+        if (this.evidenceMarkerTool && this.sessionId) {
+            await this.evidenceMarkerTool.loadMarkers();
+        }
+    }
+    
+    /**
      * Update scene transform for zoom/pan
      */
     updateSceneTransform(scale, panX, panY) {
@@ -3771,6 +3832,198 @@ class WitnessReplayApp {
         if (sceneImage) {
             sceneImage.style.transform = `scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
         }
+    }
+
+    // ==================== Multi-Witness Management ====================
+    
+    initializeWitnessTabs() {
+        const addWitnessBtn = document.getElementById('add-witness-btn');
+        if (addWitnessBtn) {
+            addWitnessBtn.addEventListener('click', () => this.showAddWitnessModal());
+        }
+    }
+    
+    /**
+     * Load witnesses for current session and update UI
+     */
+    async loadWitnesses() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses`);
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            this.witnesses = data.witnesses || [];
+            this.activeWitnessId = data.active_witness_id;
+            
+            this.renderWitnessTabs();
+        } catch (e) {
+            console.warn('Failed to load witnesses:', e);
+        }
+    }
+    
+    /**
+     * Render witness tabs in the UI
+     */
+    renderWitnessTabs() {
+        const tabsContainer = document.getElementById('witness-tabs');
+        const selectorBar = document.getElementById('witness-selector-bar');
+        
+        if (!tabsContainer || !selectorBar) return;
+        
+        // Show/hide witness bar based on whether we have multiple witnesses
+        if (this.witnesses.length > 0) {
+            selectorBar.style.display = 'flex';
+            
+            tabsContainer.innerHTML = this.witnesses.map(witness => `
+                <div class="witness-tab ${witness.id === this.activeWitnessId ? 'active' : ''}"
+                     data-witness-id="${witness.id}"
+                     onclick="window.app.setActiveWitness('${witness.id}')">
+                    <span class="witness-avatar">${this.getWitnessInitials(witness.name)}</span>
+                    <span class="witness-tab-name">${this.escapeHtmlAttr(witness.name)}</span>
+                    <span class="witness-stmt-count">${witness.statement_count || 0}</span>
+                </div>
+            `).join('');
+        } else {
+            selectorBar.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Get initials from witness name
+     */
+    getWitnessInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[1][0]).toUpperCase();
+        }
+        return name.substring(0, 2).toUpperCase();
+    }
+    
+    /**
+     * Set the active witness for new statements
+     */
+    async setActiveWitness(witnessId) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses/${witnessId}/activate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.activeWitnessId = data.active_witness_id;
+                this.renderWitnessTabs();
+                this.ui.showToast(`👤 Switched to ${data.witness_name}`, 'success', 2000);
+            }
+        } catch (e) {
+            console.error('Failed to set active witness:', e);
+            this.ui.showToast('Failed to switch witness', 'error');
+        }
+    }
+    
+    /**
+     * Show modal to add a new witness
+     */
+    showAddWitnessModal() {
+        // Create a simple modal for adding a witness
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'add-witness-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px;">
+                <div class="modal-header">
+                    <h2>➕ Add Witness</h2>
+                    <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="new-witness-name">Witness Name</label>
+                        <input type="text" id="new-witness-name" placeholder="Enter witness name" autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-witness-contact">Contact (optional)</label>
+                        <input type="text" id="new-witness-contact" placeholder="Phone or email">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-witness-location">Location at Incident (optional)</label>
+                        <input type="text" id="new-witness-location" placeholder="Where were they?">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button class="btn btn-primary" onclick="window.app.addWitness()">Add Witness</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Focus the name input
+        document.getElementById('new-witness-name')?.focus();
+        
+        // Handle Enter key
+        modal.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.addWitness();
+            }
+        });
+    }
+    
+    /**
+     * Add a new witness to the session
+     */
+    async addWitness() {
+        const nameInput = document.getElementById('new-witness-name');
+        const contactInput = document.getElementById('new-witness-contact');
+        const locationInput = document.getElementById('new-witness-location');
+        
+        const name = nameInput?.value?.trim() || 'Anonymous Witness';
+        const contact = contactInput?.value?.trim() || null;
+        const location = locationInput?.value?.trim() || null;
+        
+        if (!this.sessionId) {
+            this.ui.showToast('No active session', 'error');
+            return;
+        }
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, contact, location })
+            });
+            
+            if (response.ok) {
+                const witness = await response.json();
+                this.ui.showToast(`👤 Added witness: ${witness.name}`, 'success');
+                
+                // Close modal
+                document.getElementById('add-witness-modal')?.remove();
+                
+                // Reload witnesses and set as active
+                await this.loadWitnesses();
+                await this.setActiveWitness(witness.id);
+            } else {
+                throw new Error('Failed to add witness');
+            }
+        } catch (e) {
+            console.error('Failed to add witness:', e);
+            this.ui.showToast('Failed to add witness', 'error');
+        }
+    }
+    
+    /**
+     * Helper to escape HTML for attributes
+     */
+    escapeHtmlAttr(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
     }
 
     // ==================== ITEM 25: Interview Progress Phases ====================

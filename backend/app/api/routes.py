@@ -395,9 +395,11 @@ async def list_sessions(limit: int = 50):
                 status=session.status,
                 statement_count=len(session.witness_statements),
                 version_count=len(session.scene_versions),
+                witness_count=len(getattr(session, 'witnesses', []) or []),
                 source_type=getattr(session, 'source_type', 'chat'),
                 report_number=getattr(session, 'report_number', ''),
                 case_id=getattr(session, 'case_id', None),
+                active_witness_id=getattr(session, 'active_witness_id', None),
                 metadata=getattr(session, 'metadata', {})
             )
             for session in sessions

@@ -6581,3 +6581,144 @@ a:focus-visible,
         align-self: flex-start;
     }
 }
+
+/* ==================== Witness Sketches Gallery ==================== */
+.witness-sketches-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-md);
+    border: 1px solid var(--border-color);
+}
+
+.sketches-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.sketches-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.sketches-count {
+    background: var(--accent-primary);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.sketches-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.sketch-card {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.sketch-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.sketch-image-container {
+    position: relative;
+    aspect-ratio: 1;
+    overflow: hidden;
+}
+
+.sketch-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.sketch-image:hover {
+    transform: scale(1.05);
+}
+
+.sketch-info {
+    padding: var(--spacing-xs);
+}
+
+.sketch-description {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0 0 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sketch-ai-interpretation {
+    font-size: 0.75rem;
+    color: var(--accent-purple);
+    margin: 0 0 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.sketch-timestamp {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.sketch-thumbnail {
+    max-width: 200px;
+    border: 2px solid var(--accent-primary);
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+.sketch-interpretation {
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    border-left: 3px solid var(--accent-purple);
+}
+
+.sketch-elements ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+
+.sketch-elements li {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+/* Upload sketch button styling */
+#upload-sketch-btn {
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink, #ff69b4));
+}
+
+#upload-sketch-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(138, 43, 226, 0.4);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .sketches-gallery {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

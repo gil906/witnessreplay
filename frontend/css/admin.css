@@ -2232,3 +2232,160 @@
 #add-link-btn {
     margin-top: 0.75rem;
 }
+
+/* =========================================================
+   SCENE ANIMATION CONTROLS (Admin Portal)
+   ========================================================= */
+
+.scene-animation-container {
+    background: #1e2d3d;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-top: 8px;
+}
+
+.animation-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.animation-playback {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.anim-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 4px;
+    background: #243447;
+    color: #e2e8f0;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.anim-btn:hover {
+    background: #3b82f6;
+    color: white;
+}
+
+.anim-btn.anim-play {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: white;
+}
+
+.anim-btn.anim-play:hover {
+    background: #2563eb;
+    transform: scale(1.05);
+}
+
+.animation-progress-wrapper {
+    flex: 1;
+    min-width: 120px;
+}
+
+.animation-progress-bar {
+    position: relative;
+    height: 8px;
+    background: #1a2332;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow: visible;
+}
+
+.animation-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3b82f6, #00d4ff);
+    border-radius: 4px;
+    transition: width 0.05s linear;
+}
+
+.animation-progress-handle {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border: 2px solid #3b82f6;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    z-index: 2;
+}
+
+.animation-keyframe-markers {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.keyframe-marker {
+    position: absolute;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    background: #f59e0b;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+}
+
+.keyframe-marker.action-appear { background: #22c55e; }
+.keyframe-marker.action-disappear { background: #ef4444; }
+.keyframe-marker.action-highlight { background: #00d4ff; }
+.keyframe-marker.action-pulse { background: #f59e0b; }
+.keyframe-marker.action-move { background: #9333ea; }
+
+.animation-time-display {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    color: #94a3b8;
+    min-width: 70px;
+}
+
+.animation-speed label {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.speed-select {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    background: #243447;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.animation-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 0.7rem;
+    color: #64748b;
+}
