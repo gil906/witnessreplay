@@ -13,3 +13,5 @@ aiofiles==24.1.0
 fpdf2==2.8.1
 pillow==11.0.0
 httpx==0.28.1
+bcrypt==4.2.1
+aiosqlite==0.20.0

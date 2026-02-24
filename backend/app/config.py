@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Application Configuration
     environment: str = "development"
-    debug: bool = True
+    debug: bool = False
 
     allowed_origins: List[str] = ["*"]
 
@@ -42,7 +42,10 @@ class Settings(BaseSettings):
     enforce_rate_limits: bool = False  # Set to True in production
     
     # Admin Configuration
-    admin_password: str = "DetectiveRay2026"
+    admin_password: str = "change_this_password_immediately"
+    
+    # Database Configuration
+    database_path: str = "/app/data/witnessreplay.db"
     
     # Session Configuration
     session_timeout_minutes: int = 60

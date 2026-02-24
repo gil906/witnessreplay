@@ -4,10 +4,14 @@ Simple password-based authentication for admin portal
 """
 import os
 import secrets
+import time
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 from fastapi import HTTPException, Header
 import logging
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +19,40 @@ logger = logging.getLogger(__name__)
 # In production, use Redis or database
 active_sessions: Dict[str, datetime] = {}
 
-# Admin credentials (in production, use proper password hashing and DB)
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "DetectiveRay2026")
+# Session expiry
 SESSION_EXPIRY_HOURS = 24
+
+# Bcrypt hashed password (hashed on first use from settings)
+_hashed_password = None
+
+def _get_hashed_password():
+    global _hashed_password
+    if _hashed_password is None:
+        _hashed_password = bcrypt.hashpw(
+            settings.admin_password.encode('utf-8'),
+            bcrypt.gensalt()
+        )
+    return _hashed_password
+
+# Login rate limiting
+_login_attempts = {}  # IP -> (count, first_attempt_time)
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW = 900  # 15 minutes
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Check if login attempts from this IP are within limits."""
+    now = time.time()
+    if client_ip in _login_attempts:
+        count, first_time = _login_attempts[client_ip]
+        if now - first_time > LOGIN_WINDOW:
+            _login_attempts[client_ip] = (1, now)
+            return True
+        if count >= MAX_LOGIN_ATTEMPTS:
+            return False
+        _login_attempts[client_ip] = (count + 1, first_time)
+    else:
+        _login_attempts[client_ip] = (1, now)
+    return True
 
 
 def create_session() -> str:
@@ -57,7 +92,7 @@ def revoke_session(token: str) -> bool:
 
 def authenticate(password: str) -> Optional[str]:
     """Authenticate with password and return session token if successful."""
-    if password == ADMIN_PASSWORD:
+    if bcrypt.checkpw(password.encode('utf-8'), _get_hashed_password()):
         return create_session()
     return None
 

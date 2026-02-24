@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Request, status, Depends
 from pydantic import BaseModel
 import io
 import asyncio
@@ -28,7 +28,7 @@ from app.services.usage_tracker import usage_tracker
 from app.services.case_manager import case_manager
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
-from app.api.auth import authenticate, require_admin_auth, revoke_session
+from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit
 from google import genai
 import uuid
 
@@ -51,8 +51,14 @@ class LogoutRequest(BaseModel):
 
 # Authentication endpoints
 @router.post("/auth/login", response_model=LoginResponse)
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, raw_request: Request):
     """Admin login endpoint."""
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again in 15 minutes."
+        )
     token = authenticate(request.password)
     if not token:
         raise HTTPException(
@@ -2459,6 +2465,38 @@ async def get_scene_complexity(session_id: str):
         )
 
 
+@router.get("/sessions/{session_id}/confidence")
+async def get_witness_confidence(session_id: str):
+    """
+    Assess witness confidence and testimony reliability for a session.
+    Returns scores for detail level, consistency, specificity, and overall confidence.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        agent = get_agent(session_id)
+        confidence = await agent.assess_confidence()
+        
+        return {
+            "session_id": session_id,
+            **confidence
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assessing confidence for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error assessing confidence: {str(e)}"
+        )
+
+
 @router.get("/metrics/requests")
 async def get_request_metrics():
     """
@@ -2603,6 +2641,12 @@ async def regenerate_case_summary(case_id: str, auth=Depends(require_admin_auth)
     except Exception as e:
         logger.error(f"Error regenerating summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sessions/{session_id}/evidence/upload")
+async def upload_evidence_photo(session_id: str):
+    """Upload evidence photo for a session (placeholder)."""
+    raise HTTPException(status_code=501, detail="Evidence photo upload not yet implemented")
 
 
 @router.post("/admin/seed-mock-data")

@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 class FirestoreService:
-    """Service for managing Firestore operations with in-memory fallback."""
+    """Service for managing Firestore operations with SQLite fallback."""
     
     def __init__(self):
         self.client: Optional[AsyncClient] = None
         self.collection_name = settings.firestore_collection
-        self._memory_store: dict = {}  # In-memory fallback when Firestore unavailable
+        self._sqlite = None  # Lazy-loaded DatabaseService
         self._case_memory_store: dict = {}
+        self._memory_store: dict = {}
         self.cases_collection = "cases"
         self._initialize_client()
     
@@ -29,10 +30,19 @@ class FirestoreService:
                 self.client = AsyncClient(project=settings.gcp_project_id)
                 logger.info("Async Firestore client initialized successfully")
             else:
-                logger.warning("GCP_PROJECT_ID not set, using in-memory session storage")
+                logger.warning("GCP_PROJECT_ID not set, using SQLite session storage")
         except Exception as e:
-            logger.warning(f"Firestore not available, using in-memory storage: {e}")
+            logger.warning(f"Firestore not available, using SQLite storage: {e}")
             self.client = None
+
+    async def _get_sqlite(self):
+        """Lazy-load the SQLite database service."""
+        if self._sqlite is None:
+            from app.services.database import get_database
+            self._sqlite = get_database()
+            if self._sqlite._db is None:
+                await self._sqlite.initialize()
+        return self._sqlite
     
     async def create_session(self, session: ReconstructionSession) -> bool:
         """Create a new session in Firestore or in-memory."""
@@ -46,9 +56,16 @@ class FirestoreService:
                 logger.error(f"Failed to create session in Firestore: {e}")
                 # Fall through to in-memory
         
-        # In-memory fallback
-        self._memory_store[session.id] = session
-        logger.info(f"Created session {session.id} in memory")
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            session_dict = session.model_dump(mode='json')
+            await db.save_session(session_dict)
+            logger.info(f"Created session {session.id} in SQLite")
+        except Exception as e:
+            logger.warning(f"SQLite fallback failed, using memory: {e}")
+            self._memory_store[session.id] = session
+            logger.info(f"Created session {session.id} in memory")
         return True
     
     async def get_session(self, session_id: str) -> Optional[ReconstructionSession]:
@@ -69,7 +86,17 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to get session from Firestore: {e}")
         
-        # In-memory fallback
+        # SQLite fallback
+        if not session:
+            try:
+                db = await self._get_sqlite()
+                row = await db.get_session(session_id)
+                if row:
+                    session = ReconstructionSession(**row)
+            except Exception as e:
+                logger.warning(f"SQLite get_session failed: {e}")
+        
+        # In-memory last resort
         if not session:
             session = self._memory_store.get(session_id)
         
@@ -94,10 +121,17 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to update session in Firestore: {e}")
         
-        # In-memory fallback
+        # SQLite fallback
         session.updated_at = datetime.utcnow()
-        self._memory_store[session.id] = session
-        logger.info(f"Updated session {session.id} in memory")
+        try:
+            db = await self._get_sqlite()
+            session_dict = session.model_dump(mode='json')
+            await db.save_session(session_dict)
+            logger.info(f"Updated session {session.id} in SQLite")
+        except Exception as e:
+            logger.warning(f"SQLite update_session failed: {e}")
+            self._memory_store[session.id] = session
+            logger.info(f"Updated session {session.id} in memory")
         return True
     
     async def delete_session(self, session_id: str) -> bool:
@@ -110,9 +144,15 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to delete session from Firestore: {e}")
         
-        # In-memory fallback
-        self._memory_store.pop(session_id, None)
-        logger.info(f"Deleted session {session_id} from memory")
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            await db.delete_session(session_id)
+            logger.info(f"Deleted session {session_id} from SQLite")
+        except Exception as e:
+            logger.warning(f"SQLite delete_session failed: {e}")
+            self._memory_store.pop(session_id, None)
+            logger.info(f"Deleted session {session_id} from memory")
         return True
     
     async def list_sessions(self, limit: int = 50) -> List[ReconstructionSession]:
@@ -137,7 +177,22 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to list sessions from Firestore: {e}")
         
-        # In-memory fallback
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            rows = await db.list_sessions(limit=limit)
+            sessions = []
+            for row in rows:
+                try:
+                    sessions.append(ReconstructionSession(**row))
+                except Exception as e:
+                    logger.error(f"Failed to parse SQLite session row: {e}")
+            if sessions:
+                return sessions
+        except Exception as e:
+            logger.warning(f"SQLite list_sessions failed: {e}")
+
+        # In-memory last resort
         sessions = sorted(
             self._memory_store.values(),
             key=lambda s: s.updated_at,
@@ -158,12 +213,20 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to create case in Firestore: {e}")
 
-        self._case_memory_store[case.id] = case
-        logger.info(f"Created case {case.id} in memory")
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            case_dict = case.model_dump(mode='json')
+            await db.save_case(case_dict)
+            logger.info(f"Created case {case.id} in SQLite")
+        except Exception as e:
+            logger.warning(f"SQLite create_case failed: {e}")
+            self._case_memory_store[case.id] = case
+            logger.info(f"Created case {case.id} in memory")
         return True
 
     async def get_case(self, case_id: str) -> Optional[Case]:
-        """Retrieve a case from Firestore or in-memory."""
+        """Retrieve a case from Firestore or SQLite."""
         if self.client:
             try:
                 doc = await self.client.collection(self.cases_collection).document(case_id).get()
@@ -172,10 +235,19 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to get case from Firestore: {e}")
 
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            row = await db.get_case(case_id)
+            if row:
+                return Case(**row)
+        except Exception as e:
+            logger.warning(f"SQLite get_case failed: {e}")
+
         return self._case_memory_store.get(case_id)
 
     async def list_cases(self, limit: int = 50) -> List[Case]:
-        """List all cases from Firestore or in-memory."""
+        """List all cases from Firestore or SQLite."""
         if self.client:
             try:
                 from google.cloud.firestore_v1 import Query
@@ -195,6 +267,22 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to list cases from Firestore: {e}")
 
+        # SQLite fallback
+        try:
+            db = await self._get_sqlite()
+            rows = await db.list_cases(limit=limit)
+            cases = []
+            for row in rows:
+                try:
+                    cases.append(Case(**row))
+                except Exception as e:
+                    logger.error(f"Failed to parse SQLite case row: {e}")
+            if cases:
+                return cases
+        except Exception as e:
+            logger.warning(f"SQLite list_cases failed: {e}")
+
+        # In-memory last resort
         cases = sorted(
             self._case_memory_store.values(),
             key=lambda c: c.updated_at,
@@ -214,9 +302,17 @@ class FirestoreService:
             except Exception as e:
                 logger.error(f"Failed to update case in Firestore: {e}")
 
+        # SQLite fallback
         case.updated_at = datetime.utcnow()
-        self._case_memory_store[case.id] = case
-        logger.info(f"Updated case {case.id} in memory")
+        try:
+            db = await self._get_sqlite()
+            case_dict = case.model_dump(mode='json')
+            await db.save_case(case_dict)
+            logger.info(f"Updated case {case.id} in SQLite")
+        except Exception as e:
+            logger.warning(f"SQLite update_case failed: {e}")
+            self._case_memory_store[case.id] = case
+            logger.info(f"Updated case {case.id} in memory")
         return True
 
     async def get_next_case_number(self) -> str:
