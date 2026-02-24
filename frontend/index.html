@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="WitnessReplay - AI-powered voice-driven crime scene reconstruction. Describe what you saw, and Detective Ray will rebuild the scene.">
+    <meta name="description" content="WitnessReplay - Report an accident or crime. Speak or type to describe what happened, and we'll help reconstruct the scene.">
     <meta name="theme-color" content="#00d4ff">
-    <title>WitnessReplay - Detective Ray's Scene Reconstruction</title>
+    <title>WitnessReplay - Report an Incident</title>
     
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
@@ -18,58 +18,73 @@
     
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
+
+    <!-- Info banner styles -->
+    <style>
+        .info-banner {
+            text-align: center;
+            padding: 1rem 1.5rem;
+            background: linear-gradient(135deg, rgba(0,40,80,0.95), rgba(0,20,50,0.98));
+            border-bottom: 1px solid rgba(0,212,255,0.15);
+        }
+        .info-banner h2 {
+            font-size: 1.3rem;
+            color: #e0f0ff;
+            margin: 0 0 0.25rem;
+            font-weight: 600;
+        }
+        .info-banner p {
+            color: #8ab4d8;
+            font-size: 0.9rem;
+            margin: 0;
+            max-width: 700px;
+            margin-inline: auto;
+            line-height: 1.4;
+        }
+    </style>
 </head>
 <body>
     <!-- Main Container -->
     <div class="container">
-        <!-- Header with Detective Ray -->
+        <!-- Header -->
         <header class="header">
             <div class="header-content">
                 <div class="logo-section">
-                    <div class="logo-icon">🎙️</div>
+                    <div class="logo-icon">🚨</div>
                     <div class="logo-text">
                         <h1>WitnessReplay</h1>
-                        <p class="tagline">Describe what you saw. I'll rebuild the scene.</p>
-                    </div>
-                </div>
-                
-                <div class="detective-badge">
-                    <div class="detective-avatar">🔍</div>
-                    <div class="detective-info">
-                        <h3>Detective Ray</h3>
-                        <p>Case Analyst &bull; Online</p>
+                        <p class="tagline">Incident Reporting &amp; Scene Reconstruction</p>
                     </div>
                 </div>
                 
                 <div class="session-info">
-                    <div class="session-status">
+                    <div class="session-status" style="display:none;">
                         <span class="status-dot"></span>
                         <span id="session-id">Initializing...</span>
                     </div>
                     <button id="new-session-btn" class="btn btn-secondary">
-                        ➕ New Session
+                        ➕ New Report
                     </button>
-                    <button id="sessions-list-btn" class="btn btn-secondary" data-tooltip="View all sessions">
-                        📋 Sessions
-                    </button>
-                    <button id="quota-btn" class="btn btn-secondary" data-tooltip="Model & Quota">
-                        🤖 Model
-                    </button>
-                    <button id="analytics-btn" class="btn btn-secondary" data-tooltip="View analytics">
-                        📊 Analytics
-                    </button>
-                    <button id="info-btn" class="btn btn-secondary" data-tooltip="Server info">
-                        ℹ️ Info
-                    </button>
-                    <button id="admin-portal-btn" class="btn btn-primary" data-tooltip="Admin Portal - Case Management">
+                    <!-- Hidden technical buttons (IDs preserved for app.js) -->
+                    <button id="sessions-list-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View all sessions">📋 Sessions</button>
+                    <button id="quota-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Model & Quota">🤖 Model</button>
+                    <button id="analytics-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View analytics">📊 Analytics</button>
+                    <button id="info-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Server info">ℹ️ Info</button>
+                    <button id="admin-portal-btn" class="btn btn-primary" data-tooltip="Admin Portal">
                         🛡️ Admin
                     </button>
                 </div>
             </div>
         </header>
 
+        <!-- Info Banner -->
+        <section class="info-banner">
+            <h2>Report an Incident</h2>
+            <p>Describe what you witnessed by typing or speaking. Our AI will ask follow-up questions, build a timeline, and reconstruct the scene automatically.</p>
+        </section>
+
         <!-- Main Content: 3-Column Layout -->
-        <div class="main-content">
+        <div class="main-content" id="main-workspace">
             <!-- LEFT: Timeline Panel -->
             <aside class="timeline-panel" role="complementary" aria-label="Scene version timeline">
                 <h3>Timeline</h3>
@@ -214,7 +229,7 @@
 
                 <!-- Typing indicator -->
                 <div class="typing-indicator hidden" id="typing-indicator">
-                    <span class="typing-avatar">🔍</span>
+                    <span class="typing-avatar">🤖</span>
                     <div class="typing-dots">
                         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                     </div>
@@ -235,7 +250,7 @@
                     <input 
                         type="text" 
                         id="text-input" 
-                        placeholder="Type your statement (or use voice)..."
+                        placeholder="Describe what happened..."
                         disabled
                         aria-label="Text input"
                     >
@@ -466,9 +481,9 @@
         <div class="onboarding-content">
             <!-- Step 1 -->
             <div class="onboarding-step active" data-step="1">
-                <div class="onboarding-icon">🔍</div>
+                <div class="onboarding-icon">🚨</div>
                 <h2>Welcome to WitnessReplay</h2>
-                <p>I'm <strong>Detective Ray</strong>, your AI partner in scene reconstruction. Together, we'll rebuild what you witnessed using the power of your voice and AI-generated imagery.</p>
+                <p>We're here to help you <strong>report an incident</strong> — whether it's an accident, crime, or any event you witnessed. You can speak or type, and we'll guide you through the process.</p>
                 <div class="onboarding-actions">
                     <button class="btn btn-secondary" id="skip-onboarding">Skip</button>
                     <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
@@ -484,8 +499,8 @@
             <!-- Step 2 -->
             <div class="onboarding-step" data-step="2">
                 <div class="onboarding-icon">🎤</div>
-                <h2>Speak Naturally</h2>
-                <p>Just describe what you saw in your own words. Click the microphone or press <kbd>Space</kbd> to start recording. I'll listen carefully and start building the scene.</p>
+                <h2>Speak or Type</h2>
+                <p>Describe what you saw in your own words. Click the microphone or press <kbd>Space</kbd> to start recording, or simply type in the chat. We'll listen carefully and begin building a record of the incident.</p>
                 <div class="onboarding-actions">
                     <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
                     <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
@@ -501,8 +516,8 @@
             <!-- Step 3 -->
             <div class="onboarding-step" data-step="3">
                 <div class="onboarding-icon">💬</div>
-                <h2>Interactive Refinement</h2>
-                <p>I'll ask clarifying questions to understand better. Answer naturally. If something looks wrong, just tell me — "The car was blue, not red" — and I'll update the scene immediately.</p>
+                <h2>Guided Reporting</h2>
+                <p>We'll ask clarifying questions to capture the full picture. Answer naturally. If something needs correcting, just say so — "The car was blue, not red" — and we'll update the record immediately.</p>
                 <div class="onboarding-actions">
                     <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
                     <button class="btn btn-primary" onclick="nextOnboardingStep()">Next ➤</button>
@@ -518,11 +533,11 @@
             <!-- Step 4 -->
             <div class="onboarding-step" data-step="4">
                 <div class="onboarding-icon">✅</div>
-                <h2>Ready to Begin</h2>
-                <p>Your session is saved automatically. Use the timeline to view previous versions, export to PDF, or start a new session anytime. Let's reconstruct what you witnessed.</p>
+                <h2>Ready to Report</h2>
+                <p>Your report is saved automatically. You can review the timeline, scene reconstruction, export to PDF, or start a new report anytime. Let's document what you witnessed.</p>
                 <div class="onboarding-actions">
                     <button class="btn btn-secondary" onclick="prevOnboardingStep()">⬅ Back</button>
-                    <button class="btn btn-success" id="start-session-btn">Start Session ➤</button>
+                    <button class="btn btn-success" id="start-session-btn">Start Report ➤</button>
                 </div>
                 <div class="onboarding-indicators">
                     <span class="indicator-dot"></span>
@@ -668,15 +683,15 @@
             
             <div class="onboarding-content">
                 <div class="onboarding-step">
-                    <div class="onboarding-icon">🎙️</div>
-                    <h3>Voice-Driven Reconstruction</h3>
-                    <p>Speak naturally to describe what you witnessed. Detective Ray will ask clarifying questions and build the scene.</p>
+                    <div class="onboarding-icon">🚨</div>
+                    <h3>Report Any Incident</h3>
+                    <p>Describe what you witnessed — an accident, crime, or any event. Speak naturally or type, and we'll guide you through the reporting process.</p>
                 </div>
                 
                 <div class="onboarding-step">
                     <div class="onboarding-icon">🎬</div>
-                    <h3>Progressive Scene Building</h3>
-                    <p>Watch as the scene evolves with each statement. Make corrections and add details at any time.</p>
+                    <h3>Scene Reconstruction</h3>
+                    <p>Watch as a visual scene is built from your description. Make corrections and add details at any time.</p>
                 </div>
                 
                 <div class="onboarding-step">
@@ -686,9 +701,9 @@
                 </div>
                 
                 <div class="onboarding-step">
-                    <div class="onboarding-icon">🔍</div>
-                    <h3>Professional Tools</h3>
-                    <p>Export reports, track evidence, compare scene versions, and manage multiple cases.</p>
+                    <div class="onboarding-icon">📋</div>
+                    <h3>Export Your Report</h3>
+                    <p>Export reports, review evidence, compare scene versions, and manage your incident records.</p>
                 </div>
             </div>
             
@@ -697,7 +712,7 @@
                     <input type="checkbox" id="dont-show-onboarding">
                     <span>Don't show this again</span>
                 </label>
-                <button class="btn btn-primary btn-lg" id="onboarding-start-btn">Start Investigation →</button>
+                <button class="btn btn-primary btn-lg" id="onboarding-start-btn">Start Reporting →</button>
             </div>
         </div>
     </div>
