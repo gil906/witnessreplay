@@ -829,6 +829,50 @@ const scene = await fetch(`${BASE}/sessions/${sid}/scene`, {
                         <div id="interactive-timeline-container" class="interactive-timeline" style="display:none; min-height: 350px; position: relative;"></div>
                     </section>
 
+                    <!-- Interactive Case Timeline -->
+                    <section class="case-timeline-section" id="detail-timeline-section" style="display:none;">
+                        <h3>📅 Case Timeline</h3>
+                        <div id="case-timeline-container" class="case-timeline-container"></div>
+                    </section>
+
+                    <!-- Case Tags -->
+                    <section class="case-tags-section" id="case-tags-section">
+                        <h3>🏷️ Tags</h3>
+                        <div id="case-tags-list" class="case-tags-list"></div>
+                        <div class="tag-add-form">
+                            <input type="text" id="new-tag-input" class="form-input" placeholder="New tag...">
+                            <input type="color" id="new-tag-color" value="#60a5fa" title="Tag color">
+                            <button class="btn btn-primary btn-sm" onclick="window.adminPortal?.addCaseTag()">Add Tag</button>
+                        </div>
+                    </section>
+
+                    <!-- Case Notes -->
+                    <section class="case-notes-section" id="case-notes-section">
+                        <h3>📝 Investigator Notes</h3>
+                        <div class="note-add-form">
+                            <textarea id="new-note-content" class="form-input" rows="3" placeholder="Add a note..."></textarea>
+                            <button class="btn btn-primary btn-sm" onclick="window.adminPortal?.addCaseNote()">Add Note</button>
+                        </div>
+                        <div id="case-notes-list" class="case-notes-list"></div>
+                    </section>
+
+                    <!-- Case Deadlines -->
+                    <section class="case-deadlines-section" id="case-deadlines-section">
+                        <h3>⏰ Deadlines / SLA</h3>
+                        <div id="case-deadlines-list" class="case-deadlines-list"></div>
+                        <div class="deadline-add-form">
+                            <select id="new-deadline-type" class="filter-select">
+                                <option value="general">General</option>
+                                <option value="sla">SLA</option>
+                                <option value="court">Court Date</option>
+                                <option value="review">Review</option>
+                            </select>
+                            <input type="datetime-local" id="new-deadline-date" class="form-input">
+                            <input type="text" id="new-deadline-desc" class="form-input" placeholder="Description">
+                            <button class="btn btn-primary btn-sm" onclick="window.adminPortal?.addCaseDeadline()">Add Deadline</button>
+                        </div>
+                    </section>
+
                     <!-- Audit Trail -->
                     <section class="audit-trail">
                         <h3>📋 Audit Trail</h3>
@@ -927,6 +971,15 @@ const scene = await fetch(`${BASE}/sessions/${sid}/scene`, {
                         <div class="assignment-history" id="assignment-history-section" style="display:none;">
                             <h4>📋 Assignment History</h4>
                             <div id="assignment-history-list" class="assignment-history-list"></div>
+                        </div>
+                    </section>
+
+                    <!-- Case Merge -->
+                    <section class="case-merge-section" id="case-merge-section">
+                        <h3>🔀 Merge Case</h3>
+                        <div class="merge-form">
+                            <input type="text" id="merge-source-id" class="form-input" placeholder="Source Case ID to merge into this case">
+                            <button class="btn btn-warning btn-sm" onclick="window.adminPortal?.mergeCases()">Merge Into This Case</button>
                         </div>
                     </section>
 

@@ -940,9 +940,15 @@ class AdminPortal {
             
             // Timeline
             this.renderCaseTimeline(caseData.reports || []);
+            this.renderCaseTimelineViz(caseData);
             
             // Audit trail
             this.renderAuditTrail(caseData);
+            
+            // Tags, notes, deadlines
+            this.loadCaseTags(caseId);
+            this.loadCaseNotes(caseId);
+            this.loadCaseDeadlines(caseId);
             
             // Set status dropdown
             const statusSelect = document.getElementById('case-status-select');
@@ -1600,6 +1606,29 @@ class AdminPortal {
         `).join('');
     }
     
+    renderCaseTimelineViz(caseData) {
+        const container = document.getElementById('case-timeline-container');
+        if (!container) return;
+        const events = [];
+        // Add case creation
+        events.push({time: caseData.created_at, type: 'created', text: 'Case created'});
+        // Add reports
+        (caseData.report_ids || []).forEach((rid, i) => {
+            events.push({time: caseData.created_at, type: 'report', text: `Report #${i+1} filed`});
+        });
+        events.sort((a,b) => new Date(a.time) - new Date(b.time));
+        container.innerHTML = events.map(e => `
+            <div class="timeline-event">
+                <div class="timeline-dot ${e.type}"></div>
+                <div class="timeline-content">
+                    <span class="timeline-time">${e.time ? new Date(e.time).toLocaleString() : 'Unknown'}</span>
+                    <span class="timeline-text">${e.text}</span>
+                </div>
+            </div>
+        `).join('');
+        document.getElementById('detail-timeline-section').style.display = '';
+    }
+
     switchTimelineView(view) {
         const simpleBtn = document.getElementById('simple-timeline-btn');
         const interactiveBtn = document.getElementById('interactive-timeline-btn');

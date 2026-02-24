@@ -6792,26 +6792,31 @@ async def get_related_cases(case_id: str):
 
 
 @router.get("/cases/{case_id}/similar")
-async def get_similar_cases(case_id: str, limit: int = 5, exclude_linked: bool = True):
-    """Find similar cases based on semantic similarity, location, time, and MO."""
-    from app.services.case_linking import case_linking_service
-    
+async def find_similar_cases(case_id: str, limit: int = 5, auth=Depends(require_admin_auth)):
+    """Find similar cases based on type, location, and time patterns."""
     case = await firestore_service.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-    
-    try:
-        similar = await case_linking_service.find_similar_cases(
-            case_id, limit=limit, exclude_linked=exclude_linked
-        )
-        return {
-            "case_id": case_id,
-            "similar_cases": [s.model_dump(mode="json") for s in similar],
-            "count": len(similar),
-        }
-    except Exception as e:
-        logger.error(f"Error finding similar cases: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    if not case: raise HTTPException(404, "Case not found")
+    c = case if isinstance(case, dict) else case.model_dump()
+    all_cases = await firestore_service.list_cases(limit=100)
+    similar = []
+    for other in all_cases:
+        o = other if isinstance(other, dict) else other.model_dump()
+        if o.get("id") == case_id: continue
+        score = 0
+        # Location match
+        if c.get("location") and o.get("location") and c["location"].lower() in o["location"].lower():
+            score += 40
+        # Status match
+        if c.get("status") == o.get("status"): score += 10
+        # Title keyword overlap
+        c_words = set((c.get("title","") + " " + c.get("summary","")).lower().split())
+        o_words = set((o.get("title","") + " " + o.get("summary","")).lower().split())
+        overlap = len(c_words & o_words - {"the","a","an","in","on","at","to","of","and","or","was","is"})
+        score += min(40, overlap * 5)
+        if score > 15:
+            similar.append({"case_id": o.get("id"), "title": o.get("title",""), "score": min(100, score), "location": o.get("location","")})
+    similar.sort(key=lambda x: x["score"], reverse=True)
+    return {"similar_cases": similar[:limit]}
 
 
 class LinkCasesRequest(BaseModel):
@@ -9326,6 +9331,41 @@ async def api_status(api_key=Depends(require_api_key)):
     }
 
 
+@router.get("/vehicles/search")
+async def search_vehicles(query: str = "", make: str = "", color: str = ""):
+    """Search vehicle database for matching vehicles."""
+    vehicles = [
+        {"make":"Toyota","models":["Camry","Corolla","RAV4","Highlander","Tacoma","Prius"]},
+        {"make":"Honda","models":["Civic","Accord","CR-V","Pilot","Fit","HR-V"]},
+        {"make":"Ford","models":["F-150","Mustang","Explorer","Escape","Focus","Fusion"]},
+        {"make":"Chevrolet","models":["Silverado","Malibu","Equinox","Tahoe","Camaro","Impala"]},
+        {"make":"BMW","models":["3 Series","5 Series","X3","X5","7 Series"]},
+        {"make":"Mercedes","models":["C-Class","E-Class","GLE","GLC","S-Class"]},
+        {"make":"Nissan","models":["Altima","Sentra","Rogue","Pathfinder","Maxima"]},
+        {"make":"Hyundai","models":["Elantra","Sonata","Tucson","Santa Fe","Kona"]},
+        {"make":"Kia","models":["Optima","Forte","Sportage","Sorento","Seltos"]},
+        {"make":"Volkswagen","models":["Jetta","Passat","Tiguan","Atlas","Golf"]},
+    ]
+    colors = ["black","white","silver","gray","red","blue","green","yellow","orange","brown","gold","beige","maroon","navy","tan"]
+    results = []
+    q = query.lower()
+    for v in vehicles:
+        if make and make.lower() != v["make"].lower(): continue
+        if q and q not in v["make"].lower() and not any(q in m.lower() for m in v["models"]): continue
+        for m in v["models"]:
+            if q and q not in v["make"].lower() and q not in m.lower(): continue
+            results.append({"make": v["make"], "model": m})
+    return {"results": results[:20], "colors": colors if not color else [c for c in colors if color.lower() in c]}
+
+
+@router.post("/sessions/{session_id}/validate-estimates")
+async def validate_estimates(session_id: str, data: dict):
+    from app.services.spatial_validation import SpatialValidator
+    validator = SpatialValidator()
+    result = await validator.validate_estimates(data.get("text", ""))
+    return result
+
+
 @router.post("/sessions/{session_id}/photo-overlay")
 async def create_photo_overlay(session_id: str, data: dict):
     """Accept a base64 photo and return scene overlay description."""
@@ -9371,3 +9411,276 @@ def _weather_code_to_text(code):
              81: "Moderate rain showers", 82: "Violent rain showers", 95: "Thunderstorm",
              96: "Thunderstorm with hail"}
     return codes.get(code, "Unknown")
+
+
+# ── Feature 26: Custom Case Tags ─────────────────────────────────
+
+@router.post("/cases/{case_id}/tags")
+async def add_case_tag(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    from datetime import timezone
+    db = get_database()
+    tag = data.get("tag", "").strip()
+    color = data.get("color", "#60a5fa")
+    if not tag:
+        raise HTTPException(400, "Tag required")
+    try:
+        await db._db.execute(
+            "INSERT INTO case_tags (case_id, tag, color, created_at) VALUES (?,?,?,?)",
+            (case_id, tag, color, datetime.now(timezone.utc).isoformat()))
+        await db._db.commit()
+    except Exception:
+        pass  # Duplicate
+    return {"status": "ok"}
+
+
+@router.get("/cases/{case_id}/tags")
+async def get_case_tags(case_id: str):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute("SELECT tag, color FROM case_tags WHERE case_id = ?", (case_id,))
+    rows = await cursor.fetchall()
+    return {"tags": [{"tag": r[0], "color": r[1]} for r in rows]}
+
+
+@router.delete("/cases/{case_id}/tags/{tag}")
+async def remove_case_tag(case_id: str, tag: str, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    await db._db.execute("DELETE FROM case_tags WHERE case_id = ? AND tag = ?", (case_id, tag))
+    await db._db.commit()
+    return {"status": "deleted"}
+
+
+# ── Feature 27: Audit Trail Viewer ───────────────────────────────
+
+@router.get("/cases/{case_id}/audit-trail")
+async def get_audit_trail(case_id: str, limit: int = 50, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute(
+        "SELECT * FROM audit_log WHERE entity_id = ? ORDER BY timestamp DESC LIMIT ?",
+        (case_id, limit))
+    rows = await cursor.fetchall()
+    return {"events": [dict(r) for r in rows]}
+
+
+@router.post("/audit-log")
+async def add_audit_event(data: dict, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    await db._db.execute(
+        "INSERT INTO audit_log (entity_type, entity_id, action, details) VALUES (?,?,?,?)",
+        (data.get("entity_type", "case"), data.get("entity_id", ""),
+         data.get("action", ""), data.get("details", "")))
+    await db._db.commit()
+    return {"status": "logged"}
+
+
+# ── Feature 28: Investigator Case Notes ──────────────────────────
+
+@router.get("/cases/{case_id}/notes")
+async def get_case_notes(case_id: str, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute(
+        "SELECT * FROM case_notes WHERE case_id = ? ORDER BY created_at DESC", (case_id,))
+    return {"notes": [dict(r) for r in await cursor.fetchall()]}
+
+
+@router.post("/cases/{case_id}/notes")
+async def add_case_note(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    from datetime import timezone
+    db = get_database()
+    note_id = str(uuid.uuid4())
+    await db._db.execute(
+        "INSERT INTO case_notes (id, case_id, author_id, author_name, content, created_at) VALUES (?,?,?,?,?,?)",
+        (note_id, case_id, auth.get("user_id", ""), auth.get("username", "admin"),
+         data.get("content", ""), datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"id": note_id, "status": "created"}
+
+
+# ── Feature 29: Case Merge/Split ─────────────────────────────────
+
+@router.post("/admin/cases/merge")
+async def merge_cases(data: dict, auth=Depends(require_admin_auth)):
+    """Merge source case into target case."""
+    from app.services.database import get_database
+    target_id = data.get("target_case_id")
+    source_id = data.get("source_case_id")
+    if not target_id or not source_id:
+        raise HTTPException(400, "Both target and source case IDs required")
+    target = await firestore_service.get_case(target_id)
+    source = await firestore_service.get_case(source_id)
+    if not target or not source:
+        raise HTTPException(404, "Case not found")
+    t = target if isinstance(target, dict) else target.model_dump()
+    s = source if isinstance(source, dict) else source.model_dump()
+    # Merge report_ids
+    t_reports = t.get("report_ids", [])
+    s_reports = s.get("report_ids", [])
+    if isinstance(t_reports, str):
+        t_reports = json.loads(t_reports) if t_reports else []
+    if isinstance(s_reports, str):
+        s_reports = json.loads(s_reports) if s_reports else []
+    merged = list(set(t_reports + s_reports))
+    # Update target
+    if hasattr(target, 'report_ids'):
+        target.report_ids = merged
+    elif isinstance(target, dict):
+        target["report_ids"] = merged
+    await firestore_service.update_case(target)
+    # Mark source as merged
+    if hasattr(source, 'status'):
+        source.status = 'merged'
+    elif isinstance(source, dict):
+        source["status"] = 'merged'
+    await firestore_service.update_case(source)
+    # Audit
+    db = get_database()
+    await db._db.execute(
+        "INSERT INTO audit_log (entity_type, entity_id, action, details) VALUES (?,?,?,?)",
+        ("case", target_id, "merge", f"Merged case {source_id} into {target_id}. {len(s_reports)} reports moved."))
+    await db._db.commit()
+    return {"status": "merged", "target_reports": len(merged), "source_status": "merged"}
+
+
+# ── Feature 30: Case Deadline/SLA Tracking ───────────────────────
+
+@router.get("/cases/{case_id}/deadlines")
+async def get_deadlines(case_id: str, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute(
+        "SELECT * FROM case_deadlines WHERE case_id = ? ORDER BY due_date ASC", (case_id,))
+    return {"deadlines": [dict(r) for r in await cursor.fetchall()]}
+
+
+@router.post("/cases/{case_id}/deadlines")
+async def add_deadline(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    from datetime import timezone
+    db = get_database()
+    dl_id = str(uuid.uuid4())
+    await db._db.execute(
+        "INSERT INTO case_deadlines (id, case_id, deadline_type, due_date, description, created_at) VALUES (?,?,?,?,?,?)",
+        (dl_id, case_id, data.get("type", "general"), data.get("due_date", ""),
+         data.get("description", ""), datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"id": dl_id}
+
+
+@router.get("/admin/upcoming-deadlines")
+async def upcoming_deadlines(days: int = 7, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    from datetime import timezone, timedelta
+    db = get_database()
+    cutoff = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    cursor = await db._db.execute(
+        "SELECT * FROM case_deadlines WHERE due_date <= ? AND is_completed = 0 ORDER BY due_date ASC",
+        (cutoff,))
+    return {"deadlines": [dict(r) for r in await cursor.fetchall()]}
+
+
+@router.get("/cases/{case_id}/lead-scores")
+async def get_lead_scores(case_id: str, auth=Depends(require_admin_auth)):
+    """Score and rank witness statements by investigative value."""
+    case = await firestore_service.get_case(case_id)
+    if not case: raise HTTPException(404, "Case not found")
+    report_ids = case.get("report_ids", []) if isinstance(case, dict) else getattr(case, 'report_ids', [])
+    if isinstance(report_ids, str):
+        try: report_ids = json.loads(report_ids)
+        except: report_ids = []
+    leads = []
+    for rid in report_ids[:10]:
+        session = await firestore_service.get_session(rid)
+        if not session: continue
+        s = session if isinstance(session, dict) else session.model_dump()
+        statements = s.get("statements", [])
+        scene_versions = s.get("scene_versions", [])
+        # Score based on: detail level, scene impact, recency
+        detail_score = min(50, len(statements) * 10)
+        scene_score = min(30, len(scene_versions) * 15)
+        recency_score = 20  # default
+        total = detail_score + scene_score + recency_score
+        leads.append({"session_id": rid, "score": min(100, total), "detail_score": detail_score, "scene_score": scene_score, "statements_count": len(statements), "scene_versions": len(scene_versions)})
+    leads.sort(key=lambda x: x["score"], reverse=True)
+    return {"leads": leads}
+
+
+@router.get("/cases/{case_id}/pdf")
+async def export_case_pdf(case_id: str, auth=Depends(require_admin_auth)):
+    """Export case as a formatted text report (plain text for now, PDF requires reportlab)."""
+    case = await firestore_service.get_case(case_id)
+    if not case: raise HTTPException(404, "Case not found")
+    c = case if isinstance(case, dict) else case.model_dump()
+    
+    lines = []
+    lines.append("=" * 60)
+    lines.append("WITNESSREPLAY - OFFICIAL CASE REPORT")
+    lines.append("=" * 60)
+    lines.append(f"Case Number: {c.get('case_number', 'N/A')}")
+    lines.append(f"Title: {c.get('title', 'Untitled')}")
+    lines.append(f"Status: {c.get('status', 'open').upper()}")
+    lines.append(f"Location: {c.get('location', 'Not specified')}")
+    lines.append(f"Created: {c.get('created_at', 'N/A')}")
+    lines.append(f"Last Updated: {c.get('updated_at', 'N/A')}")
+    lines.append("-" * 60)
+    lines.append("CASE SUMMARY")
+    lines.append(c.get('summary', 'No summary available.'))
+    lines.append("-" * 60)
+    
+    report_ids = c.get("report_ids", [])
+    if isinstance(report_ids, str):
+        try: report_ids = json.loads(report_ids)
+        except: report_ids = []
+    
+    lines.append(f"WITNESS REPORTS ({len(report_ids)} total)")
+    lines.append("-" * 60)
+    for i, rid in enumerate(report_ids[:20]):
+        session = await firestore_service.get_session(rid)
+        if not session: continue
+        s = session if isinstance(session, dict) else session.model_dump()
+        lines.append(f"\nReport #{i+1} (ID: {rid[:8]}...)")
+        lines.append(f"  Title: {s.get('title', 'Untitled')}")
+        lines.append(f"  Source: {s.get('source_type', 'chat')}")
+        lines.append(f"  Created: {s.get('created_at', 'N/A')}")
+        for stmt in (s.get('statements', []) or [])[:10]:
+            text = stmt.get('text', '') if isinstance(stmt, dict) else str(stmt)
+            lines.append(f"  Statement: {text[:200]}")
+    
+    from datetime import timezone
+    lines.append("\n" + "=" * 60)
+    lines.append("END OF REPORT")
+    lines.append(f"Generated: {datetime.now(timezone.utc).isoformat()}")
+    lines.append("=" * 60)
+    
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse("\n".join(lines), media_type="text/plain", headers={"Content-Disposition": f"attachment; filename=case_{c.get('case_number','report')}.txt"})
+
+
+@router.post("/cases/{case_id}/notify-witnesses")
+async def notify_case_witnesses(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    """Send notification to all witnesses in a case (logged for now — email service needed)."""
+    case = await firestore_service.get_case(case_id)
+    if not case: raise HTTPException(404, "Case not found")
+    c = case if isinstance(case, dict) else case.model_dump()
+    message = data.get("message", "")
+    notification_type = data.get("type", "update")  # update, follow_up, court_date
+    
+    report_ids = c.get("report_ids", [])
+    if isinstance(report_ids, str):
+        try: report_ids = json.loads(report_ids)
+        except: report_ids = []
+    
+    notified = []
+    for rid in report_ids:
+        session = await firestore_service.get_session(rid)
+        if session:
+            s = session if isinstance(session, dict) else session.model_dump()
+            notified.append({"session_id": rid, "title": s.get("title",""), "status": "logged"})
+            logger.info(f"[Notification] Case {case_id} → Session {rid}: {notification_type} - {message[:100]}")
+    
+    return {"notifications_sent": len(notified), "type": notification_type, "recipients": notified, "note": "Notifications logged. Email delivery requires SMTP configuration."}
