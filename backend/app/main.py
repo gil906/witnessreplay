@@ -186,6 +186,7 @@ async def log_requests(request, call_next):
     request_id = getattr(request.state, 'request_id', 'unknown')
     method = request.method
     url = str(request.url)
+    path = request.url.path
     client_ip = request.client.host if request.client else "unknown"
     
     logger.info(f"Request started: {method} {url} | IP: {client_ip} | ID: {request_id}")
@@ -195,6 +196,7 @@ async def log_requests(request, call_next):
     
     # Calculate duration
     duration = time.time() - start_time
+    duration_ms = duration * 1000
     
     # Log response
     logger.info(
@@ -203,6 +205,22 @@ async def log_requests(request, call_next):
         f"Duration: {duration:.3f}s | "
         f"ID: {request_id}"
     )
+    
+    # Record metrics
+    try:
+        from app.services.metrics import metrics_collector
+        error_msg = None
+        if response.status_code >= 400:
+            error_msg = f"HTTP {response.status_code}"
+        metrics_collector.record_request(
+            endpoint=path,
+            method=method,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            error=error_msg
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record metrics: {e}")
     
     # Add timing header
     response.headers["X-Process-Time"] = str(duration)

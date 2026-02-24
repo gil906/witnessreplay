@@ -97,6 +97,32 @@ def _check_usage_tracker_health() -> bool:
         return False
 
 
+@router.get("/metrics")
+async def get_metrics():
+    """
+    Get API performance metrics and statistics.
+    
+    Returns:
+        - Uptime
+        - Total requests and errors
+        - Response time statistics (avg, min, max, p95)
+        - Top endpoints by request count
+        - Top endpoints by error count
+        - Recent errors
+        - Status code distribution
+    """
+    try:
+        from app.services.metrics import metrics_collector
+        stats = metrics_collector.get_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error fetching metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch metrics: {str(e)}"
+        )
+
+
 
 
 @router.get("/sessions")
@@ -1405,22 +1431,88 @@ async def get_server_info():
             "scene_generation": True,
             "multi_session": True,
             "analytics": True,
-            "rate_limiting": os.getenv("ENFORCE_RATE_LIMITS", "false").lower() == "true",
+            "admin_portal": True,
+            "model_selector": True,
+            "witness_analysis": True,
+            "session_comparison": True,
+            "rate_limiting": settings.enforce_rate_limits,
             "export_pdf": True,
             "export_json": True,
+            "export_csv": True,
+            "export_evidence": True,
             "websocket": True,
+            "metrics": True,
         },
         "models": {
             "default": settings.gemini_model,
             "vision": settings.gemini_vision_model,
         },
+        "limits": {
+            "max_requests_per_minute": settings.max_requests_per_minute,
+            "session_timeout_minutes": settings.session_timeout_minutes,
+            "max_session_size_mb": settings.max_session_size_mb,
+        },
         "endpoints": {
             "api_docs": "/docs",
             "health": "/api/health",
+            "metrics": "/api/metrics",
             "sessions": "/api/sessions",
+            "admin_stats": "/api/admin/stats",
+            "admin_search": "/api/admin/search",
+            "models": "/api/models",
+            "models_quota": "/api/models/quota",
+            "models_compare": "/api/models/compare",
             "websocket": "/ws/{session_id}",
         }
     }
+
+
+@router.get("/config")
+async def get_config_info(auth=Depends(require_admin_auth)):
+    """
+    Get detailed server configuration (admin only).
+    
+    Returns full configuration details including environment variables.
+    Sensitive values are masked.
+    """
+    import os
+    
+    return {
+        "google_cloud": {
+            "project_id": settings.gcp_project_id or "(not set)",
+            "gcs_bucket": settings.gcs_bucket,
+            "firestore_collection": settings.firestore_collection,
+            "api_key_configured": bool(settings.google_api_key),
+        },
+        "server": {
+            "environment": settings.environment,
+            "debug": settings.debug,
+            "host": settings.host,
+            "port": settings.port,
+        },
+        "models": {
+            "default_model": settings.gemini_model,
+            "vision_model": settings.gemini_vision_model,
+        },
+        "security": {
+            "cors_origins": settings.allowed_origins,
+            "rate_limiting_enabled": settings.enforce_rate_limits,
+            "max_requests_per_minute": settings.max_requests_per_minute,
+            "admin_password_set": bool(settings.admin_password),
+        },
+        "session": {
+            "timeout_minutes": settings.session_timeout_minutes,
+            "max_size_mb": settings.max_session_size_mb,
+        },
+        "environment_variables": {
+            "GOOGLE_API_KEY": "***" if settings.google_api_key else "(not set)",
+            "GCP_PROJECT_ID": settings.gcp_project_id or "(not set)",
+            "ENVIRONMENT": settings.environment,
+            "DEBUG": str(settings.debug),
+            "ADMIN_PASSWORD": "***" if settings.admin_password else "(not set)",
+        }
+    }
+
 
 
 @router.get("/admin/stats")

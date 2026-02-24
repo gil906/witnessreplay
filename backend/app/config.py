@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     
     # Rate Limiting
     max_requests_per_minute: int = 60
+    enforce_rate_limits: bool = False  # Set to True in production
+    
+    # Admin Configuration
+    admin_password: str = "DetectiveRay2026"
     
     # Session Configuration
     session_timeout_minutes: int = 60
