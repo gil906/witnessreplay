@@ -69,7 +69,8 @@ from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
-from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key, authenticate_user_credentials, create_session
+from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key, authenticate_user_credentials
+from app.api.auth import create_session as create_auth_session
 from app.services.api_key_service import api_key_service
 from google import genai
 import uuid
@@ -191,7 +192,7 @@ async def register(request: RegisterRequest, raw_request: Request):
             role="officer",
         )
         # Auto-login after registration
-        token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+        token = create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
         return {"token": token, "user": user, "expires_in": 86400}
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -219,7 +220,7 @@ async def oauth_login(request: OAuthLoginRequest):
         full_name=request.full_name,
         avatar_url=request.avatar_url,
     )
-    token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+    token = create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
     return {"token": token, "user": user, "expires_in": 86400}
 
 
