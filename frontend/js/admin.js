@@ -214,6 +214,20 @@ class AdminPortal {
         // Add investigator button
         document.getElementById('add-investigator-btn')?.addEventListener('click', () => this.showInvestigatorModal());
         
+        // Handle resize: sync side-panel class with viewport width
+        window.addEventListener('resize', () => {
+            const modal = document.getElementById('case-detail-modal');
+            if (modal && modal.classList.contains('active')) {
+                if (this.isDesktop()) {
+                    document.body.classList.add('side-panel-open');
+                    this.highlightSelectedCase();
+                } else {
+                    document.body.classList.remove('side-panel-open');
+                    this.clearCaseHighlight();
+                }
+            }
+        });
+
         // Initialize timeline visualization
         this.timelineViz = null;
     }
@@ -256,6 +270,9 @@ class AdminPortal {
         }
         
         localStorage.setItem('adminCasesViewMode', mode);
+        if (this.filteredCases && this.filteredCases.length > 0) {
+            this.renderCases();
+        }
     }
     
     async fetchWithTimeout(url, options = {}) {
@@ -423,14 +440,67 @@ class AdminPortal {
             return;
         }
         
-        container.innerHTML = this.filteredCases.map(c => this.renderCaseCard(c)).join('');
-        
-        container.querySelectorAll('.case-card').forEach((card) => {
-            card.addEventListener('click', () => {
-                const caseId = card.dataset.caseId;
-                this.showCaseDetail(caseId);
+        const mode = localStorage.getItem('adminCasesViewMode') || 'compact';
+        if (mode === 'compact') {
+            container.innerHTML = this.renderCasesTableView();
+            container.querySelectorAll('.cases-table-row[data-case-id]').forEach(row => {
+                row.addEventListener('click', () => this.showCaseDetail(row.dataset.caseId));
             });
-        });
+        } else {
+            container.innerHTML = this.filteredCases.map(c => this.renderCaseCard(c)).join('');
+            container.querySelectorAll('.case-card').forEach((card) => {
+                card.addEventListener('click', () => {
+                    const caseId = card.dataset.caseId;
+                    this.showCaseDetail(caseId);
+                });
+            });
+        }
+    }
+    
+    renderCasesTableView() {
+        const header = `
+            <div class="cases-table-header cases-table-row">
+                <div class="ct-col ct-col-check"></div>
+                <div class="ct-col ct-col-num">Case #</div>
+                <div class="ct-col ct-col-title">Title</div>
+                <div class="ct-col ct-col-reports">Reports</div>
+                <div class="ct-col ct-col-age">Age</div>
+                <div class="ct-col ct-col-status">Status</div>
+                <div class="ct-col ct-col-priority">Priority</div>
+                <div class="ct-col ct-col-sources">Sources</div>
+                <div class="ct-col ct-col-date">Created</div>
+            </div>`;
+        const rows = this.filteredCases.map(c => this.renderCasesTableRow(c)).join('');
+        return header + rows;
+    }
+    
+    renderCasesTableRow(caseData) {
+        const status = caseData.status || 'active';
+        const statusClass = `status-${status}`;
+        const reportCount = caseData.report_count || 0;
+        const priorityLabel = caseData.priority_label || 'normal';
+        const priorityBadge = this.renderPriorityBadge(priorityLabel, caseData.priority_score != null ? Math.round(caseData.priority_score) : null);
+        const sourceIcons = (caseData.metadata?.source_types || []).map(s => this.getSourceIcon(s)).join(' ') || '—';
+        const title = caseData.title || 'Untitled Case';
+        const truncTitle = title.length > 50 ? title.substring(0, 50) + '…' : title;
+        const daysOld = caseData.created_at ? Math.floor((Date.now() - new Date(caseData.created_at).getTime()) / 86400000) : '—';
+        
+        return `
+            <div class="cases-table-row" data-case-id="${caseData.id}">
+                <div class="ct-col ct-col-check">
+                    <input type="checkbox" class="case-checkbox" data-case-id="${caseData.id}"
+                           ${this.selectedCases.has(caseData.id) ? 'checked' : ''}
+                           onclick="event.stopPropagation(); window.adminPortal?.updateBulkSelection()">
+                </div>
+                <div class="ct-col ct-col-num">${caseData.case_number || caseData.id}</div>
+                <div class="ct-col ct-col-title" title="${title}">${truncTitle}</div>
+                <div class="ct-col ct-col-reports">${reportCount}</div>
+                <div class="ct-col ct-col-age">${daysOld}d</div>
+                <div class="ct-col ct-col-status"><span class="case-status-badge ${statusClass}">${status}</span></div>
+                <div class="ct-col ct-col-priority">${priorityBadge}</div>
+                <div class="ct-col ct-col-sources">${sourceIcons}</div>
+                <div class="ct-col ct-col-date">${this.formatDateShort(caseData.created_at)}</div>
+            </div>`;
     }
     
     renderCaseCard(caseData) {
@@ -980,8 +1050,12 @@ class AdminPortal {
     }
     
     navigateToRelatedCase(caseId) {
-        this.hideModal('case-detail-modal');
-        setTimeout(() => this.showCaseDetail(caseId), 300);
+        if (this.isDesktop()) {
+            this.showCaseDetail(caseId);
+        } else {
+            this.hideModal('case-detail-modal');
+            setTimeout(() => this.showCaseDetail(caseId), 300);
+        }
     }
     
     // ── Pattern Detection ─────────────────────────────────────────
@@ -1261,18 +1335,54 @@ class AdminPortal {
         }
     }
     
+    isDesktop() {
+        return window.innerWidth > 1024;
+    }
+
     showModal(modalId) {
         const modal = document.getElementById(modalId);
-        if (modal) {
+        if (!modal) return;
+
+        if (modalId === 'case-detail-modal' && this.isDesktop()) {
+            document.body.classList.add('side-panel-open');
+            modal.classList.remove('closing');
+            modal.classList.add('active');
+            this.highlightSelectedCase();
+        } else {
             modal.classList.add('active');
         }
     }
     
     hideModal(modalId) {
         const modal = document.getElementById(modalId);
-        if (modal) {
+        if (!modal) return;
+
+        if (modalId === 'case-detail-modal' && this.isDesktop()) {
+            modal.classList.add('closing');
+            this.clearCaseHighlight();
+            setTimeout(() => {
+                modal.classList.remove('active', 'closing');
+                document.body.classList.remove('side-panel-open');
+            }, 250);
+        } else {
             modal.classList.remove('active');
+            if (modalId === 'case-detail-modal') {
+                document.body.classList.remove('side-panel-open');
+                this.clearCaseHighlight();
+            }
         }
+    }
+
+    highlightSelectedCase() {
+        this.clearCaseHighlight();
+        if (this.currentCase) {
+            const card = document.querySelector(`.case-card[data-case-id="${this.currentCase.id}"]`);
+            if (card) card.classList.add('case-selected');
+        }
+    }
+
+    clearCaseHighlight() {
+        document.querySelectorAll('.case-card.case-selected').forEach(el => el.classList.remove('case-selected'));
     }
     
     showToast(message, type = 'info', duration = 3000) {
