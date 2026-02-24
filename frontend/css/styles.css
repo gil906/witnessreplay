@@ -9629,3 +9629,35 @@ img.loaded,
 }
 
 .evidence-tag { display:inline-block; padding:2px 8px; background:rgba(251,191,36,0.15); color:#fbbf24; border-radius:12px; font-size:0.78rem; margin:2px; }
+
+/* ===== Feature 46: Onboarding Tour ===== */
+.tour-overlay { position: fixed; inset: 0; z-index: 100000; }
+.tour-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }
+.tour-tooltip { position: absolute; background: #1a1a2e; border: 1px solid #60a5fa; border-radius: 12px; padding: 16px 20px; max-width: 280px; z-index: 100001; box-shadow: 0 8px 32px rgba(96,165,250,0.3); }
+.tour-text { font-size: 0.95rem; color: #e2e8f0; line-height: 1.4; }
+.tour-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.tour-progress { font-size: 0.75rem; color: #94a3b8; }
+.tour-next-btn { background: #60a5fa; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.tour-next-btn:hover { background: #3b82f6; }
+
+/* ===== Feature 47: Witness Feedback Form ===== */
+.feedback-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100000; display: flex; align-items: center; justify-content: center; }
+.feedback-modal { background: var(--bg-secondary, #1a1a2e); border: 1px solid var(--border, #333); border-radius: 16px; padding: 24px; max-width: 350px; width: 90%; }
+.feedback-modal h3 { margin: 0 0 12px; }
+.feedback-stars { font-size: 1.5rem; cursor: pointer; }
+.star:hover { transform: scale(1.2); }
+.feedback-q { margin: 10px 0; }
+.feedback-q label { font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+
+/* ===== Feature 48: AI Confidence Visualization ===== */
+.confidence-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 4px; position: relative; }
+.confidence-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+.confidence-label { position: absolute; right: 0; top: -16px; font-size: 0.65rem; color: var(--text-secondary); }
+
+/* ===== Feature 49: Quick Action Command Palette ===== */
+.command-palette { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100000; display: flex; justify-content: center; padding-top: 20vh; }
+.command-palette > .cmd-input, .command-palette > .cmd-list { max-width: 400px; width: 90%; }
+.cmd-input { background: var(--bg-secondary, #1a1a2e); border: 1px solid #60a5fa; border-radius: 12px 12px 0 0; padding: 14px 18px; font-size: 1rem; color: white; outline: none; position: absolute; top: 20vh; left: 50%; transform: translateX(-50%); width: min(400px, 90%); }
+.cmd-list { position: absolute; top: calc(20vh + 52px); left: 50%; transform: translateX(-50%); width: min(400px, 90%); background: var(--bg-secondary, #1a1a2e); border: 1px solid var(--border, #333); border-top: none; border-radius: 0 0 12px 12px; max-height: 300px; overflow-y: auto; }
+.cmd-item { padding: 10px 18px; cursor: pointer; font-size: 0.9rem; }
+.cmd-item:hover { background: rgba(96,165,250,0.15); }

@@ -5,6 +5,8 @@
 
 class AdminPortal {
     constructor() {
+        this._notifications = [];
+        this._notificationCount = 0;
         this.cases = [];
         this.reports = [];
         this.filteredCases = [];
@@ -3053,6 +3055,22 @@ class AdminPortal {
         }
         
         this.loadApiKeys();
+        this.loadRateLimits();
+    }
+
+    async loadRateLimits() {
+        try {
+            const resp = await fetch('/api/admin/rate-limits', {headers: {'Authorization': `Bearer ${this.authToken}`}});
+            if (resp.ok) {
+                const data = await resp.json();
+                const container = document.getElementById('rate-limit-stats');
+                if (container) {
+                    const stats = data.api_key_stats || {};
+                    const keys = Object.keys(stats);
+                    container.innerHTML = keys.length ? keys.map(k => `<div class="rate-stat"><span>${k}</span><span>${stats[k].requests_last_minute} req/min</span></div>`).join('') : '<p style="color:var(--text-secondary)">No API traffic yet</p>';
+                }
+            }
+        } catch(e) { console.error('Rate limits:', e); }
     }
     
     async loadApiKeys() {
@@ -3147,6 +3165,182 @@ class AdminPortal {
             grid.appendChild(card);
         });
         section.style.display = '';
+    }
+
+    // ── Case Tags ────────────────────────────────────────────
+    async loadCaseTags(caseId) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${caseId}/tags`);
+            const data = await resp.json();
+            const list = document.getElementById('case-tags-list');
+            if (!list) return;
+            list.innerHTML = (data.tags || []).map(t =>
+                `<span class="case-tag" style="background:${this._esc(t.color)}">${this._esc(t.tag)} <button class="tag-remove" onclick="window.adminPortal?.removeCaseTag('${this._esc(t.tag)}')">&times;</button></span>`
+            ).join('') || '<span class="empty-state">No tags</span>';
+        } catch(e) { console.error('Failed to load tags', e); }
+    }
+
+    async addCaseTag() {
+        if (!this.currentCase) return;
+        const tag = document.getElementById('new-tag-input')?.value.trim();
+        const color = document.getElementById('new-tag-color')?.value || '#60a5fa';
+        if (!tag) return;
+        await fetch(`/api/cases/${this.currentCase.id}/tags`, {
+            method: 'POST', headers: {'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({tag, color})
+        });
+        document.getElementById('new-tag-input').value = '';
+        this.loadCaseTags(this.currentCase.id);
+    }
+
+    async removeCaseTag(tag) {
+        if (!this.currentCase) return;
+        await fetch(`/api/cases/${this.currentCase.id}/tags/${encodeURIComponent(tag)}`, {
+            method: 'DELETE', headers: {'Authorization': `Bearer ${this.authToken}`}
+        });
+        this.loadCaseTags(this.currentCase.id);
+    }
+
+    // ── Case Notes ───────────────────────────────────────────
+    async loadCaseNotes(caseId) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${caseId}/notes`, {headers: {'Authorization': `Bearer ${this.authToken}`}});
+            const data = await resp.json();
+            const list = document.getElementById('case-notes-list');
+            if (!list) return;
+            list.innerHTML = (data.notes || []).map(n =>
+                `<div class="case-note-item"><div class="note-header"><strong>${this._esc(n.author_name||'admin')}</strong> <span class="note-date">${this._ago(n.created_at)}</span></div><div class="note-content">${this._esc(n.content)}</div></div>`
+            ).join('') || '<p class="empty-state">No notes yet</p>';
+        } catch(e) { console.error('Failed to load notes', e); }
+    }
+
+    async addCaseNote() {
+        if (!this.currentCase) return;
+        const content = document.getElementById('new-note-content')?.value.trim();
+        if (!content) return;
+        await fetch(`/api/cases/${this.currentCase.id}/notes`, {
+            method: 'POST', headers: {'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({content})
+        });
+        document.getElementById('new-note-content').value = '';
+        this.loadCaseNotes(this.currentCase.id);
+    }
+
+    // ── Case Deadlines ───────────────────────────────────────
+    async loadCaseDeadlines(caseId) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${caseId}/deadlines`, {headers: {'Authorization': `Bearer ${this.authToken}`}});
+            const data = await resp.json();
+            const list = document.getElementById('case-deadlines-list');
+            if (!list) return;
+            list.innerHTML = (data.deadlines || []).map(d => {
+                const overdue = !d.is_completed && new Date(d.due_date) < new Date();
+                return `<div class="deadline-item ${overdue ? 'overdue' : ''} ${d.is_completed ? 'completed' : ''}"><span class="deadline-type">${this._esc(d.deadline_type)}</span> <span class="deadline-date">${new Date(d.due_date).toLocaleString()}</span> <span class="deadline-desc">${this._esc(d.description||'')}</span>${overdue ? ' <span class="deadline-overdue-badge">OVERDUE</span>' : ''}</div>`;
+            }).join('') || '<p class="empty-state">No deadlines set</p>';
+        } catch(e) { console.error('Failed to load deadlines', e); }
+    }
+
+    async addCaseDeadline() {
+        if (!this.currentCase) return;
+        const type = document.getElementById('new-deadline-type')?.value || 'general';
+        const due_date = document.getElementById('new-deadline-date')?.value;
+        const description = document.getElementById('new-deadline-desc')?.value || '';
+        if (!due_date) { alert('Please select a due date'); return; }
+        await fetch(`/api/cases/${this.currentCase.id}/deadlines`, {
+            method: 'POST', headers: {'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({type, due_date: new Date(due_date).toISOString(), description})
+        });
+        document.getElementById('new-deadline-date').value = '';
+        document.getElementById('new-deadline-desc').value = '';
+        this.loadCaseDeadlines(this.currentCase.id);
+    }
+
+    // ── Case Merge ───────────────────────────────────────────
+    async mergeCases() {
+        if (!this.currentCase) return;
+        const sourceId = document.getElementById('merge-source-id')?.value.trim();
+        if (!sourceId) { alert('Please enter a source case ID'); return; }
+        if (!confirm(`Merge case ${sourceId} into ${this.currentCase.id}? This cannot be undone.`)) return;
+        try {
+            const resp = await fetch('/api/admin/cases/merge', {
+                method: 'POST', headers: {'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json'},
+                body: JSON.stringify({target_case_id: this.currentCase.id, source_case_id: sourceId})
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Merge failed');
+            alert(`Merge complete. Target now has ${data.target_reports} reports.`);
+            document.getElementById('merge-source-id').value = '';
+            this.showCaseDetail(this.currentCase.id);
+        } catch(e) { alert('Merge error: ' + e.message); }
+    }
+
+    // ── Notification Center ──────────────────────────────────
+    showNotificationCenter() {
+        let panel = document.getElementById('notification-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'notification-panel';
+            panel.className = 'notification-panel';
+            panel.innerHTML = `<div class="notif-header"><h3>🔔 Notifications</h3><button onclick="adminPortal.clearNotifications()" class="btn-sm">Clear All</button></div><div id="notif-list" class="notif-list"></div>`;
+            document.body.appendChild(panel);
+        }
+        panel.classList.toggle('show');
+        this._renderNotifications();
+    }
+
+    addNotification(title, message, type = 'info') {
+        this._notifications.unshift({id: Date.now(), title, message, type, time: new Date().toLocaleTimeString(), read: false});
+        this._notificationCount++;
+        this._updateNotifBadge();
+    }
+
+    _renderNotifications() {
+        const list = document.getElementById('notif-list');
+        if (!list) return;
+        list.innerHTML = this._notifications.length ? this._notifications.map(n => `
+            <div class="notif-item ${n.type} ${n.read ? 'read' : ''}">
+                <div class="notif-title">${n.title}</div>
+                <div class="notif-msg">${n.message}</div>
+                <div class="notif-time">${n.time}</div>
+            </div>
+        `).join('') : '<p style="text-align:center;color:var(--text-secondary);padding:20px;">No notifications</p>';
+    }
+
+    clearNotifications() {
+        this._notifications = [];
+        this._notificationCount = 0;
+        this._updateNotifBadge();
+        this._renderNotifications();
+    }
+
+    _updateNotifBadge() {
+        const badge = document.getElementById('notif-badge');
+        if (badge) {
+            badge.textContent = this._notificationCount;
+            badge.style.display = this._notificationCount > 0 ? '' : 'none';
+        }
+    }
+
+    // ── Global Search ────────────────────────────────────────
+    async handleGlobalSearch(query) {
+        const results = document.getElementById('global-search-results');
+        if (!results) return;
+        if (query.length < 2) { results.style.display = 'none'; return; }
+        clearTimeout(this._searchDebounce);
+        this._searchDebounce = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/api/admin/search/global?q=${encodeURIComponent(query)}`, {headers: {'Authorization': `Bearer ${this.authToken}`}});
+                if (resp.ok) {
+                    const data = await resp.json();
+                    results.style.display = 'block';
+                    let html = '';
+                    if (data.cases.length) html += '<div class="search-group"><b>Cases</b>' + data.cases.map(c => `<div class="search-item" onclick="adminPortal.showCaseDetail('${c.id}')">${c.case_number || ''} - ${c.title || 'Untitled'}</div>`).join('') + '</div>';
+                    if (data.sessions.length) html += '<div class="search-group"><b>Sessions</b>' + data.sessions.map(s => `<div class="search-item">${s.title || s.id.slice(0,8)}</div>`).join('') + '</div>';
+                    if (data.users.length) html += '<div class="search-group"><b>Users</b>' + data.users.map(u => `<div class="search-item">${u.username} (${u.role})</div>`).join('') + '</div>';
+                    results.innerHTML = html || '<p style="padding:10px;color:var(--text-secondary)">No results</p>';
+                }
+            } catch(e) { console.error('Search:', e); }
+        }, 300);
     }
 }
 

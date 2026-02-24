@@ -272,10 +272,12 @@ class SessionCreate(BaseModel):
     witness_location: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = {}
 
+    is_anonymous: bool = False
+
     @field_validator('source_type')
     @classmethod
     def validate_source_type(cls, v):
-        valid = ['chat', 'phone', 'voice', 'email']
+        valid = ['chat', 'phone', 'voice', 'email', 'phone_link']
         if v not in valid:
             raise ValueError(f'source_type must be one of {valid}')
         return v

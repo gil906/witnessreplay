@@ -397,6 +397,22 @@ class WebSocketHandler:
             # Always send scene_state so the frontend evidence board stays current
             await self._send_scene_state()
             
+            # After getting the AI response, try to extract evidence tags
+            try:
+                evidence_prompt = f"From this witness statement, list any physical evidence mentioned (weapons, vehicles, clothing, objects). Return as comma-separated list, or 'none'.\n\nStatement: {text[:300]}"
+                evidence_resp = await asyncio.to_thread(
+                    self.agent.client.models.generate_content,
+                    model="gemini-2.0-flash-lite",
+                    contents=[evidence_prompt]
+                )
+                evidence_text = evidence_resp.text.strip() if evidence_resp.text else "none"
+                if evidence_text.lower() != "none":
+                    tags = [t.strip() for t in evidence_text.split(",") if t.strip()]
+                    if tags:
+                        await self.send_message("evidence_tags", {"tags": tags, "source_text": text[:100]})
+            except Exception:
+                pass
+            
             await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
         
         except Exception as e:
