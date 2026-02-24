@@ -73,6 +73,9 @@ class ReconstructionSession(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = "active"  # active, completed, archived
+    source_type: str = "chat"  # chat, phone, voice, email
+    report_number: str = ""  # e.g. "RPT-2026-0001"
+    case_id: Optional[str] = None
     witness_statements: List[WitnessStatement] = []
     scene_versions: List[SceneVersion] = []
     timeline: List[TimelineEvent] = []
@@ -85,6 +88,7 @@ class ReconstructionSession(BaseModel):
 class SessionCreate(BaseModel):
     """Request model for creating a new session."""
     title: Optional[str] = "Untitled Session"
+    source_type: Optional[str] = "chat"
     metadata: Optional[Dict[str, Any]] = {}
 
 
@@ -104,6 +108,9 @@ class SessionResponse(BaseModel):
     status: str
     statement_count: int
     version_count: int
+    source_type: str = "chat"
+    report_number: str = ""
+    case_id: Optional[str] = None
 
 
 class WebSocketMessage(BaseModel):
@@ -153,3 +160,39 @@ class ModelConfigUpdate(BaseModel):
 class ModelsListResponse(BaseModel):
     """Response containing list of available models."""
     models: List[ModelInfo]
+
+
+class Case(BaseModel):
+    """A case groups multiple witness reports about the same incident."""
+    id: str
+    case_number: str  # e.g. "CASE-2026-0001"
+    title: str = "Untitled Case"
+    summary: str = ""
+    location: str = ""
+    timeframe: Dict[str, Any] = {}  # {"start": "...", "end": "...", "description": "..."}
+    scene_image_url: Optional[str] = None
+    report_ids: List[str] = []
+    status: str = "open"  # open, under_review, closed
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = {}
+
+
+class CaseCreate(BaseModel):
+    title: Optional[str] = "Untitled Case"
+    location: Optional[str] = ""
+    metadata: Optional[Dict[str, Any]] = {}
+
+
+class CaseResponse(BaseModel):
+    id: str
+    case_number: str
+    title: str
+    summary: str
+    location: str
+    status: str
+    report_count: int
+    created_at: datetime
+    updated_at: datetime
+    scene_image_url: Optional[str] = None
+    timeframe: Dict[str, Any] = {}

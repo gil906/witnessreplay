@@ -16,11 +16,16 @@ from app.models.schemas import (
     ModelsListResponse,
     UsageQuota,
     ModelConfigUpdate,
+    Case,
+    CaseCreate,
+    CaseResponse,
+    WitnessStatement,
 )
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
 from app.services.image_gen import image_service
 from app.services.usage_tracker import usage_tracker
+from app.services.case_manager import case_manager
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 from app.api.auth import authenticate, require_admin_auth, revoke_session
@@ -139,7 +144,10 @@ async def list_sessions(limit: int = 50):
                 updated_at=session.updated_at,
                 status=session.status,
                 statement_count=len(session.witness_statements),
-                version_count=len(session.scene_versions)
+                version_count=len(session.scene_versions),
+                source_type=getattr(session, 'source_type', 'chat'),
+                report_number=getattr(session, 'report_number', ''),
+                case_id=getattr(session, 'case_id', None)
             )
             for session in sessions
         ]
@@ -161,6 +169,7 @@ async def create_session(session_data: SessionCreate):
         session = ReconstructionSession(
             id=str(uuid.uuid4()),
             title=session_data.title or "Untitled Session",
+            source_type=session_data.source_type if hasattr(session_data, 'source_type') and session_data.source_type else "chat",
             metadata=session_data.metadata or {}
         )
         
@@ -170,6 +179,10 @@ async def create_session(session_data: SessionCreate):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create session"
             )
+        
+        # Assign report number
+        session.report_number = await firestore_service.get_next_report_number()
+        await firestore_service.update_session(session)
         
         # Initialize agent for this session
         agent = get_agent(session.id)
@@ -1588,6 +1601,7 @@ async def get_admin_stats(auth=Depends(require_admin_auth)):
             "total_statements": total_statements,
             "total_corrections": total_corrections,
             "total_reconstructions": total_reconstructions,
+            "total_cases_grouped": len(await firestore_service.list_cases(limit=1000)),
             "averages": {
                 "statements_per_case": round(avg_statements, 2),
                 "reconstructions_per_case": round(avg_reconstructions, 2)
@@ -1936,7 +1950,10 @@ async def get_admin_cases(
                 updated_at=session.updated_at,
                 status=session.status,
                 statement_count=len(session.witness_statements),
-                version_count=len(session.scene_versions)
+                version_count=len(session.scene_versions),
+                source_type=getattr(session, 'source_type', 'chat'),
+                report_number=getattr(session, 'report_number', ''),
+                case_id=getattr(session, 'case_id', None)
             )
             
             status_key = session.status if session.status in cases_by_status else "active"
@@ -2465,6 +2482,266 @@ async def get_request_metrics():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving metrics: {str(e)}"
         )
+
+
+# ── Case Management ──────────────────────────────────
+
+@router.get("/cases")
+async def list_cases(limit: int = 50):
+    """List all cases with report counts."""
+    try:
+        cases = await firestore_service.list_cases(limit=limit)
+        cases_list = [
+            CaseResponse(
+                id=case.id,
+                case_number=case.case_number,
+                title=case.title,
+                summary=case.summary,
+                location=case.location,
+                status=case.status,
+                report_count=len(case.report_ids),
+                created_at=case.created_at,
+                updated_at=case.updated_at,
+                scene_image_url=case.scene_image_url,
+                timeframe=case.timeframe
+            )
+            for case in cases
+        ]
+        return {"cases": cases_list}
+    except Exception as e:
+        logger.error(f"Error listing cases: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list cases")
+
+
+@router.get("/cases/{case_id}")
+async def get_case_detail(case_id: str):
+    """Get case detail with all its reports."""
+    try:
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        reports = []
+        for report_id in case.report_ids:
+            session = await firestore_service.get_session(report_id)
+            if session:
+                reports.append({
+                    "id": session.id,
+                    "title": session.title,
+                    "report_number": getattr(session, 'report_number', ''),
+                    "source_type": getattr(session, 'source_type', 'chat'),
+                    "created_at": session.created_at.isoformat() if session.created_at else None,
+                    "statement_count": len(session.witness_statements),
+                    "statements": [
+                        {"id": s.id, "text": s.text, "timestamp": s.timestamp.isoformat() if s.timestamp else None}
+                        for s in session.witness_statements
+                    ],
+                    "scene_versions": [
+                        {"version": sv.version, "image_url": sv.image_url, "description": sv.description}
+                        for sv in session.scene_versions
+                    ]
+                })
+
+        return {
+            "id": case.id,
+            "case_number": case.case_number,
+            "title": case.title,
+            "summary": case.summary,
+            "location": case.location,
+            "status": case.status,
+            "timeframe": case.timeframe,
+            "scene_image_url": case.scene_image_url,
+            "created_at": case.created_at.isoformat() if case.created_at else None,
+            "updated_at": case.updated_at.isoformat() if case.updated_at else None,
+            "reports": reports,
+            "metadata": case.metadata
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting case detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/cases/{case_id}")
+async def update_case(case_id: str, updates: dict):
+    """Update a case."""
+    try:
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        if "title" in updates:
+            case.title = updates["title"]
+        if "status" in updates:
+            case.status = updates["status"]
+        if "location" in updates:
+            case.location = updates["location"]
+        if "summary" in updates:
+            case.summary = updates["summary"]
+
+        case.updated_at = datetime.utcnow()
+        await firestore_service.update_case(case)
+        return {"message": "Case updated", "case_id": case_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating case: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cases/{case_id}/summary")
+async def regenerate_case_summary(case_id: str, auth=Depends(require_admin_auth)):
+    """Regenerate case summary using Gemini AI."""
+    try:
+        result = await case_manager.generate_case_summary(case_id)
+        if result:
+            return {"message": "Summary regenerated", "summary": result}
+        raise HTTPException(status_code=500, detail="Failed to generate summary")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/seed-mock-data")
+async def seed_mock_data(auth=Depends(require_admin_auth)):
+    """Seed the database with mock reports and cases for demonstration."""
+    try:
+        mock_reports = [
+            # --- Car Accident Reports ---
+            {
+                "title": "Car Accident on Main Street",
+                "source_type": "chat",
+                "statements": [
+                    "I was walking on Main Street around 3:15 PM on February 22nd when I heard a loud crash.",
+                    "A red sedan ran the red light at the intersection of Main and Oak Avenue.",
+                    "It hit a blue SUV that was turning left. The SUV spun around and hit a parked white van.",
+                    "The driver of the red car looked like a young man, maybe in his 20s, wearing a black hoodie.",
+                    "There were two people in the SUV - a woman driving and a child in the back seat.",
+                    "Glass was everywhere on the road. The front of the red car was completely smashed."
+                ],
+                "metadata": {"location": "Main Street & Oak Avenue", "case_type": "accident"}
+            },
+            {
+                "title": "Witnessed collision at Main/Oak intersection",
+                "source_type": "phone",
+                "statements": [
+                    "I called because I saw an accident today around 3:20 PM at Main Street.",
+                    "A red car, maybe a Toyota, blew through the intersection really fast.",
+                    "It crashed into another car that was making a left turn. I think it was a dark blue Honda.",
+                    "The red car driver was a younger guy. He got out and was holding his head.",
+                    "The lady in the other car was screaming. Someone ran over to help with the kid in the backseat.",
+                    "An ambulance arrived about 10 minutes later."
+                ],
+                "metadata": {"location": "Main St intersection", "case_type": "accident"}
+            },
+            {
+                "title": "Traffic accident report near Main Street",
+                "source_type": "voice",
+                "statements": [
+                    "I was in the coffee shop on the corner of Main and Oak around 3:15, maybe 3:20 PM on the 22nd.",
+                    "I heard the crash and looked out the window. A red compact car had hit a blue SUV.",
+                    "The red car came from the east on Oak Avenue, must have been going at least 50 in a 30 zone.",
+                    "After the impact the SUV hit a white vehicle parked on the street.",
+                    "I ran out to help. The SUV driver was a woman, about 35-40, she seemed disoriented.",
+                    "There was a little girl in the back, maybe 5 years old. She was crying but looked okay.",
+                    "The red car driver was young, wearing dark clothes. He seemed dazed."
+                ],
+                "metadata": {"location": "Corner of Main & Oak", "case_type": "accident"}
+            },
+            # --- Convenience Store Robbery ---
+            {
+                "title": "Robbery at QuickMart Store",
+                "source_type": "chat",
+                "statements": [
+                    "I was buying groceries at QuickMart on 5th Avenue around 9:45 PM on February 21st.",
+                    "Two men came in wearing ski masks. One had a gun, the other had a knife.",
+                    "The one with the gun was tall, maybe 6 feet, wearing all black clothes.",
+                    "The shorter one with the knife went behind the counter and grabbed cash from the register.",
+                    "They yelled at everyone to get on the floor. The whole thing lasted about 3 minutes.",
+                    "They ran out the front door and got into a dark colored car, maybe black or dark gray.",
+                    "I think it was a newer model sedan, maybe a Nissan or Honda."
+                ],
+                "metadata": {"location": "QuickMart, 5th Avenue", "case_type": "crime"}
+            },
+            {
+                "title": "Armed robbery witness account",
+                "source_type": "email",
+                "statements": [
+                    "I am writing to report what I witnessed at the QuickMart on 5th Avenue last night around 9:45 PM, February 21st.",
+                    "Two masked individuals entered the store. The taller one, approximately 6 foot 1, brandished a handgun.",
+                    "The shorter individual, about 5 foot 7, jumped over the counter with a large knife.",
+                    "The taller one was wearing a black jacket and black pants. The shorter one wore a gray hoodie and jeans.",
+                    "They took money from the register and I noticed the shorter one also grabbed cigarettes.",
+                    "They fled in a dark vehicle heading south on 5th Avenue. The car looked like a black Honda Civic, newer model.",
+                    "The store clerk was very shaken but not physically harmed."
+                ],
+                "metadata": {"location": "QuickMart, 5th Avenue", "case_type": "crime"}
+            },
+            # --- Hit and Run ---
+            {
+                "title": "Hit and run on Elm Boulevard",
+                "source_type": "voice",
+                "statements": [
+                    "I saw a pedestrian get hit by a car on Elm Boulevard around 7:30 PM on February 23rd.",
+                    "The car was a silver or light gray pickup truck, pretty large, maybe a Ford F-150.",
+                    "It was driving too fast and ran over the crosswalk. A man was crossing the street.",
+                    "The man fell and the truck just kept going. It turned right onto Cedar Lane.",
+                    "The victim was an older man, maybe 60s, wearing a brown jacket. He was on the ground holding his leg.",
+                    "I called 911 immediately. Some other people stopped to help."
+                ],
+                "metadata": {"location": "Elm Boulevard near Cedar Lane", "case_type": "accident"}
+            }
+        ]
+
+        created_reports = []
+        for mock in mock_reports:
+            report_number = await firestore_service.get_next_report_number()
+            session = ReconstructionSession(
+                id=str(uuid.uuid4()),
+                title=mock["title"],
+                source_type=mock["source_type"],
+                report_number=report_number,
+                witness_statements=[
+                    WitnessStatement(
+                        id=str(uuid.uuid4()),
+                        text=stmt_text,
+                    )
+                    for stmt_text in mock["statements"]
+                ],
+                metadata=mock.get("metadata", {}),
+                status="completed"
+            )
+
+            await firestore_service.create_session(session)
+
+            case_id = await case_manager.assign_report_to_case(session)
+            session.case_id = case_id
+            await firestore_service.update_session(session)
+
+            created_reports.append({
+                "report_number": report_number,
+                "title": mock["title"],
+                "source_type": mock["source_type"],
+                "case_id": case_id
+            })
+
+        all_cases = await firestore_service.list_cases()
+        cases_info = [
+            {"case_number": c.case_number, "title": c.title, "report_count": len(c.report_ids)}
+            for c in all_cases
+        ]
+
+        return {
+            "message": f"Created {len(created_reports)} mock reports grouped into {len(all_cases)} cases",
+            "reports": created_reports,
+            "cases": cases_info
+        }
+    except Exception as e:
+        logger.error(f"Error seeding mock data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

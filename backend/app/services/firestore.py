@@ -5,7 +5,7 @@ from google.cloud.firestore_v1.async_client import AsyncClient
 from google.api_core import exceptions as gcp_exceptions
 
 from app.config import settings
-from app.models.schemas import ReconstructionSession
+from app.models.schemas import ReconstructionSession, Case
 from app.services.cache import cache, cached
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,8 @@ class FirestoreService:
         self.client: Optional[AsyncClient] = None
         self.collection_name = settings.firestore_collection
         self._memory_store: dict = {}  # In-memory fallback when Firestore unavailable
+        self._case_memory_store: dict = {}
+        self.cases_collection = "cases"
         self._initialize_client()
     
     def _initialize_client(self):
@@ -143,6 +145,92 @@ class FirestoreService:
         )
         return sessions[:limit]
     
+    # ── Case Methods ────────────────────────────────────
+
+    async def create_case(self, case: Case) -> bool:
+        """Create a new case in Firestore or in-memory."""
+        if self.client:
+            try:
+                case_dict = case.model_dump(mode='json')
+                await self.client.collection(self.cases_collection).document(case.id).set(case_dict)
+                logger.info(f"Created case {case.id} in Firestore")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to create case in Firestore: {e}")
+
+        self._case_memory_store[case.id] = case
+        logger.info(f"Created case {case.id} in memory")
+        return True
+
+    async def get_case(self, case_id: str) -> Optional[Case]:
+        """Retrieve a case from Firestore or in-memory."""
+        if self.client:
+            try:
+                doc = await self.client.collection(self.cases_collection).document(case_id).get()
+                if doc.exists:
+                    return Case(**doc.to_dict())
+            except Exception as e:
+                logger.error(f"Failed to get case from Firestore: {e}")
+
+        return self._case_memory_store.get(case_id)
+
+    async def list_cases(self, limit: int = 50) -> List[Case]:
+        """List all cases from Firestore or in-memory."""
+        if self.client:
+            try:
+                from google.cloud.firestore_v1 import Query
+                docs = (
+                    self.client.collection(self.cases_collection)
+                    .order_by("updated_at", direction=Query.DESCENDING)
+                    .limit(limit)
+                    .stream()
+                )
+                cases = []
+                async for doc in docs:
+                    try:
+                        cases.append(Case(**doc.to_dict()))
+                    except Exception as e:
+                        logger.error(f"Failed to parse case document: {e}")
+                return cases
+            except Exception as e:
+                logger.error(f"Failed to list cases from Firestore: {e}")
+
+        cases = sorted(
+            self._case_memory_store.values(),
+            key=lambda c: c.updated_at,
+            reverse=True
+        )
+        return cases[:limit]
+
+    async def update_case(self, case: Case) -> bool:
+        """Update an existing case in Firestore or in-memory."""
+        if self.client:
+            try:
+                case.updated_at = datetime.utcnow()
+                case_dict = case.model_dump(mode='json')
+                await self.client.collection(self.cases_collection).document(case.id).set(case_dict, merge=True)
+                logger.info(f"Updated case {case.id} in Firestore")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update case in Firestore: {e}")
+
+        case.updated_at = datetime.utcnow()
+        self._case_memory_store[case.id] = case
+        logger.info(f"Updated case {case.id} in memory")
+        return True
+
+    async def get_next_case_number(self) -> str:
+        """Generate next sequential case number like CASE-2026-XXXX."""
+        cases = await self.list_cases(limit=10000)
+        next_num = len(cases) + 1
+        return f"CASE-2026-{next_num:04d}"
+
+    async def get_next_report_number(self) -> str:
+        """Generate next sequential report number like RPT-2026-XXXX."""
+        sessions = await self.list_sessions(limit=10000)
+        next_num = len(sessions) + 1
+        return f"RPT-2026-{next_num:04d}"
+
     async def health_check(self) -> bool:
         """Check if storage is accessible."""
         if self.client:
