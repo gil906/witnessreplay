@@ -2079,7 +2079,7 @@ async def get_session_relationships(session_id: str):
     Returns relationship graph and timeline sequence.
     """
     try:
-        session = await storage.get_session(session_id)
+        session = await firestore_service.get_session(session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -2145,7 +2145,7 @@ async def get_session_evidence(session_id: str):
     Returns breakdown by category and quality tags.
     """
     try:
-        session = await storage.get_session(session_id)
+        session = await firestore_service.get_session(session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
