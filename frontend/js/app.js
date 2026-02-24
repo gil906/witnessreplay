@@ -42,6 +42,11 @@ class WitnessReplayApp {
         this.ttsPlayer = null;
         this.initializeTTS();
         
+        // Voice conversation mode
+        this.autoListenEnabled = localStorage.getItem('autoListenEnabled') !== 'false';
+        this._isSpeakingResponse = false;
+        this._autoListenTimer = null;
+        
         // Interview Comfort Manager
         this.comfortManager = null;
         
@@ -286,6 +291,9 @@ class WitnessReplayApp {
         
         // TTS toggle button for accessibility
         this._addTTSToggle();
+        
+        // Auto-listen toggle for voice conversation
+        this._addAutoListenToggle();
     }
     
     _addSoundToggle() {
@@ -317,11 +325,91 @@ class WitnessReplayApp {
         sessionInfo.appendChild(ttsBtn);
     }
     
+    _addAutoListenToggle() {
+        const sessionInfo = document.querySelector('.session-info');
+        if (!sessionInfo || document.getElementById('auto-listen-btn')) return;
+        
+        const btn = document.createElement('button');
+        btn.id = 'auto-listen-btn';
+        btn.className = 'btn btn-secondary';
+        btn.setAttribute('data-tooltip', 'Auto-listen after AI speaks');
+        btn.setAttribute('aria-label', 'Toggle auto-listen mode');
+        btn.innerHTML = this.autoListenEnabled ? '🔁' : '⏸️';
+        btn.addEventListener('click', () => this.toggleAutoListen());
+        
+        sessionInfo.appendChild(btn);
+    }
+    
+    toggleAutoListen() {
+        this.autoListenEnabled = !this.autoListenEnabled;
+        localStorage.setItem('autoListenEnabled', this.autoListenEnabled.toString());
+        
+        const btn = document.getElementById('auto-listen-btn');
+        if (btn) btn.innerHTML = this.autoListenEnabled ? '🔁' : '⏸️';
+        
+        this.ui.showToast(
+            this.autoListenEnabled
+                ? '🔁 Auto-listen ON — recording starts after AI speaks'
+                : '⏸️ Auto-listen OFF — tap mic each time',
+            'success', 3000
+        );
+        
+        // Cancel pending auto-listen if turning off
+        if (!this.autoListenEnabled && this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+    }
+    
     initializeTTS() {
         // Initialize TTS player for accessibility
         if (window.TTSPlayer) {
             this.ttsPlayer = new TTSPlayer();
+            
+            // Wire up voice conversation callbacks
+            this.ttsPlayer.onPlaybackStart = () => {
+                this._isSpeakingResponse = true;
+                this._setMicSpeakingState(true);
+            };
+            this.ttsPlayer.onPlaybackEnd = () => {
+                this._isSpeakingResponse = false;
+                this._setMicSpeakingState(false);
+                this._triggerAutoListen();
+            };
         }
+    }
+    
+    _setMicSpeakingState(speaking) {
+        if (!this.micBtn || this.isRecording) return;
+        if (speaking) {
+            this.micBtn.classList.remove('processing');
+            this.micBtn.classList.add('ai-speaking');
+            const t = this.micBtn.querySelector('.btn-text');
+            if (t) t.textContent = 'Detective Ray speaking...';
+        } else {
+            this.micBtn.classList.remove('ai-speaking');
+            const t = this.micBtn.querySelector('.btn-text');
+            if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
+                t.textContent = 'Tap to Report';
+            }
+        }
+    }
+    
+    _triggerAutoListen() {
+        if (!this.autoListenEnabled) return;
+        if (this.isRecording) return;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (this.micBtn && (this.micBtn.classList.contains('connecting') || this.micBtn.classList.contains('disconnected'))) return;
+        
+        // Brief 1-second pause, then auto-start recording
+        if (this._autoListenTimer) clearTimeout(this._autoListenTimer);
+        this._autoListenTimer = setTimeout(() => {
+            this._autoListenTimer = null;
+            if (!this.isRecording && !this._isSpeakingResponse && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                console.log('[VoiceConversation] Auto-listen: starting recording');
+                this.startRecording();
+            }
+        }, 1000);
     }
     
     toggleTTS() {
@@ -353,7 +441,11 @@ class WitnessReplayApp {
     // Speak AI response using TTS (called when agent responds)
     speakAIResponse(text) {
         if (this.ttsPlayer && this.ttsPlayer.isEnabled()) {
+            // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
             this.ttsPlayer.speak(text);
+        } else if (this.autoListenEnabled) {
+            // No TTS — still trigger auto-listen after a brief pause
+            this._triggerAutoListen();
         }
     }
     
@@ -1231,17 +1323,20 @@ class WitnessReplayApp {
                     this.micBtn.classList.add('ai-speaking');
                     const micBtnText = this.micBtn.querySelector('.btn-text');
                     if (micBtnText) micBtnText.textContent = 'Detective Ray speaking...';
-                    // Reset to idle after a delay
-                    clearTimeout(this._aiSpeakingTimeout);
-                    this._aiSpeakingTimeout = setTimeout(() => {
-                        if (this.micBtn && !this.isRecording) {
-                            this.micBtn.classList.remove('ai-speaking');
-                            const t = this.micBtn.querySelector('.btn-text');
-                            if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
-                                t.textContent = 'Tap to Report';
+                    // If TTS is enabled, callbacks will manage mic state reset.
+                    // Otherwise, reset to idle after a short delay.
+                    if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
+                        clearTimeout(this._aiSpeakingTimeout);
+                        this._aiSpeakingTimeout = setTimeout(() => {
+                            if (this.micBtn && !this.isRecording && !this._isSpeakingResponse) {
+                                this.micBtn.classList.remove('ai-speaking');
+                                const t = this.micBtn.querySelector('.btn-text');
+                                if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
+                                    t.textContent = 'Tap to Report';
+                                }
                             }
-                        }
-                    }, 3000);
+                        }, 3000);
+                    }
                 }
                 
                 // Prevent duplicate greetings on reconnect
@@ -1277,6 +1372,9 @@ class WitnessReplayApp {
                     if (previewPanel) previewPanel.style.display = 'block';
                     if (previewImage) previewImage.src = 'data:image/png;base64,' + message.data.image_data;
                 }
+                
+                // Display inline scene card in chat transcript
+                this._displaySceneCard(message.data);
                 
                 // Show contradictions if any
                 if (message.data.contradictions && message.data.contradictions.length > 0) {
@@ -1428,6 +1526,21 @@ class WitnessReplayApp {
             this._autoCreateSession();
             return;
         }
+        
+        // Cancel pending auto-listen timer
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+        
+        // Interrupt TTS if speaking (user wants to talk)
+        if (this.ttsPlayer && this.ttsPlayer.isCurrentlyPlaying()) {
+            this.ttsPlayer.stop();
+            this.ttsPlayer.queue = [];
+            this._isSpeakingResponse = false;
+            this._setMicSpeakingState(false);
+        }
+        
         if (this.isRecording) {
             this.stopRecording();
         } else {
@@ -2784,8 +2897,72 @@ class WitnessReplayApp {
     }
     
     /**
-     * Get severity icon for a given severity level
+     * Display an inline scene update card in the chat transcript
      */
+    _displaySceneCard(data) {
+        const imageUrl = data.image_url || (data.image_data ? 'data:image/png;base64,' + data.image_data : null) || (data.base64_image ? 'data:image/png;base64,' + data.base64_image : null);
+        if (!imageUrl && !data.description) return;
+        
+        if (this.chatTranscript.querySelector('.empty-state')) {
+            this.chatTranscript.innerHTML = '';
+        }
+        
+        const card = document.createElement('div');
+        card.className = 'message message-scene-card';
+        card.setAttribute('role', 'listitem');
+        
+        const version = data.version || this.currentVersion;
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        let html = `<div class="scene-card-header"><span class="msg-avatar">🎬</span><strong>Scene Updated</strong><span class="scene-card-version">v${version}</span><span class="msg-time">${timeStr}</span></div>`;
+        
+        if (imageUrl) {
+            html += `<div class="scene-card-thumb"><img src="${imageUrl}" alt="Scene v${version}" class="scene-card-image" loading="lazy"></div>`;
+        }
+        
+        if (data.description) {
+            const desc = data.description.length > 120 ? data.description.substring(0, 120) + '…' : data.description;
+            html += `<div class="scene-card-desc">${this._escapeHtml(desc)}</div>`;
+        }
+        
+        card.innerHTML = html;
+        
+        // Make image tappable for fullscreen on mobile
+        const thumb = card.querySelector('.scene-card-image');
+        if (thumb) {
+            thumb.addEventListener('click', () => this._showFullscreenImage(imageUrl, version));
+        }
+        
+        this.chatTranscript.appendChild(card);
+        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+    }
+    
+    /**
+     * Show a fullscreen overlay for a scene image (mobile-friendly)
+     */
+    _showFullscreenImage(imageUrl, version) {
+        let overlay = document.getElementById('scene-fullscreen-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'scene-fullscreen-overlay';
+            overlay.className = 'scene-fullscreen-overlay';
+            overlay.innerHTML = `<div class="scene-fullscreen-close">&times;</div><img class="scene-fullscreen-img" alt="Scene fullscreen">`;
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay || e.target.classList.contains('scene-fullscreen-close')) {
+                    overlay.classList.remove('visible');
+                }
+            });
+            document.body.appendChild(overlay);
+        }
+        
+        const img = overlay.querySelector('.scene-fullscreen-img');
+        if (img) {
+            img.src = imageUrl;
+            img.alt = `Scene v${version}`;
+        }
+        overlay.classList.add('visible');
+    }
     _getSeverityIcon(level) {
         const icons = {
             'low': '🔵',

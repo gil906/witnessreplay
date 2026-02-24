@@ -223,6 +223,10 @@ class TTSPlayer {
         this.queue = [];
         this.isProcessing = false;
         
+        // Voice conversation callbacks
+        this.onPlaybackStart = null;
+        this.onPlaybackEnd = null;
+        
         // Fetch available voices on init
         this.fetchVoices();
     }
@@ -290,6 +294,7 @@ class TTSPlayer {
         }
         
         this.isProcessing = true;
+        if (this.onPlaybackStart) this.onPlaybackStart();
         
         while (this.queue.length > 0) {
             const text = this.queue.shift();
@@ -301,6 +306,7 @@ class TTSPlayer {
         }
         
         this.isProcessing = false;
+        if (this.onPlaybackEnd) this.onPlaybackEnd();
     }
     
     async _playText(text) {

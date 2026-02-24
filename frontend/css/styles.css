@@ -9052,3 +9052,99 @@ img.loaded,
 .count-value {
     animation: countUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
+
+/* ─── Scene Card in Chat ────────────────────────────────── */
+.message-scene-card {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(139, 92, 246, 0.08));
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 8px 0;
+}
+
+.scene-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.scene-card-version {
+    background: rgba(0, 212, 255, 0.2);
+    color: var(--accent-cyan, #00d4ff);
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.scene-card-thumb {
+    margin: 6px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    max-height: 160px;
+}
+
+.scene-card-image {
+    width: 100%;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.scene-card-image:hover {
+    transform: scale(1.02);
+}
+
+.scene-card-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted, #aaa);
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* ─── Fullscreen Image Overlay ──────────────────────────── */
+.scene-fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.scene-fullscreen-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.scene-fullscreen-img {
+    max-width: 95vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.scene-fullscreen-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 2rem;
+    color: #fff;
+    cursor: pointer;
+    line-height: 1;
+    z-index: 10001;
+}
+
+/* ─── Auto-listen button active state ───────────────────── */
+#auto-listen-btn {
+    font-size: 1rem;
+}
