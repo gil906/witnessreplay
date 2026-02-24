@@ -2,19 +2,19 @@
 
 **"Describe what you saw. I'll rebuild the scene."**
 
-WitnessReplay is a voice-driven interactive crime/accident scene reconstruction agent built for the **Gemini Live Agent Challenge**. Witnesses speak naturally about what they saw, and the AI generates progressive scene images, asks clarifying questions, and iteratively refines the visual reconstruction in real-time.
+WitnessReplay is an AI-powered crime/accident scene reconstruction tool built for the **Gemini Live Agent Challenge**. Witnesses report incidents by **chatting (typing) or speaking (voice)** with an AI agent — Detective Ray — who asks intelligent follow-up questions to gather details. The AI then **automatically** generates a visual timeline and photorealistic scene reconstruction using Gemini models, iteratively refining the scene as new information emerges. An **Admin/Law Enforcement Dashboard** allows officials to browse and review all submitted witness reports.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🎯 Features
 
 ### ✨ Core Features
-- ✅ **🎤 Real-Time Voice Input**: Gemini Live API with WebSocket streaming and interruption support
-- ✅ **🎬 AI Scene Reconstruction**: Generate photorealistic scene images from verbal descriptions
-- ✅ **🔍 Detective Ray Persona**: Professional AI agent with calm, methodical detective personality
-- ✅ **❓ Intelligent Questioning**: Context-aware clarifying questions for precision
+- ✅ **💬 Chat & Voice Input**: Witnesses can type or speak — Gemini Live API with WebSocket streaming and interruption support
+- ✅ **🔍 Detective Ray Persona**: AI agent that guides the conversation, asking follow-up questions to gather details
+- ✅ **🎬 Automatic Scene Reconstruction**: AI builds photorealistic scene images from the conversation — no manual steps
+- ✅ **📅 Automatic Timeline Generation**: AI assembles a visual timeline of events as details emerge
 - ✅ **🔄 Iterative Refinement**: Natural language corrections instantly update the scene
-- ✅ **📅 Visual Timeline**: Complete history of scene versions with thumbnails
+- ✅ **🛡️ Admin/Law Enforcement Dashboard**: Officials can browse and review all submitted witness reports
 - ✅ **💾 Session Persistence**: Firestore-backed session storage
 - ✅ **📄 PDF Export**: Professional reports with scenes and witness statements
 - ✅ **☁️ Cloud-Native**: Deploy to Google Cloud Run with one command
