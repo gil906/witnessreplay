@@ -32,6 +32,7 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy application code
 COPY backend/app ./app
 COPY frontend ./frontend
+COPY VERSION ./VERSION
 
 # Expose port
 EXPOSE 8080

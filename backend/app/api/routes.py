@@ -1137,7 +1137,11 @@ async def get_models_status():
 async def get_version():
     """Get application version from VERSION file."""
     import os
-    version_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "VERSION")
+    # In production Docker: /app/VERSION
+    # In development: ../../../VERSION from backend/app/api/
+    version_file = "/app/VERSION" if os.path.exists("/app/VERSION") else os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", "VERSION"
+    )
     try:
         if os.path.exists(version_file):
             with open(version_file, 'r') as f:
@@ -1161,8 +1165,10 @@ async def get_server_info():
     import os
     import sys
     
-    # Read version from file
-    version_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "VERSION")
+    # Read version from file (same logic as /version endpoint)
+    version_file = "/app/VERSION" if os.path.exists("/app/VERSION") else os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", "VERSION"
+    )
     try:
         if os.path.exists(version_file):
             with open(version_file, 'r') as f:
