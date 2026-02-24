@@ -842,12 +842,29 @@ html {
     padding: var(--spacing-md);
     text-align: center;
     transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.stat-card:hover::before {
+    left: 100%;
 }
 
 .stat-card:hover {
     border-color: var(--accent-blue);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-sm);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: var(--shadow-md), 0 0 15px rgba(0, 212, 255, 0.2);
 }
 
 .stat-card.warning {
@@ -1074,6 +1091,7 @@ html {
     overflow-y: auto;
     position: sticky;
     top: var(--spacing-lg);
+    scroll-behavior: smooth;
 }
 
 .timeline-panel h3 {
@@ -1147,8 +1165,13 @@ html {
 
 .timeline-item:hover {
     border-color: var(--accent-blue);
-    transform: translateX(5px);
-    box-shadow: var(--shadow-md);
+    transform: translateX(5px) scale(1.02);
+    box-shadow: var(--shadow-md), 0 0 15px rgba(0, 212, 255, 0.2);
+}
+
+.timeline-item:focus-within {
+    border-color: var(--accent-blue);
+    box-shadow: var(--shadow-md), 0 0 0 3px rgba(0, 212, 255, 0.2);
 }
 
 .timeline-item.active {
@@ -1480,7 +1503,8 @@ html {
 }
 
 .btn:active:not(:disabled) {
-    transform: translateY(0);
+    transform: translateY(1px);
+    box-shadow: var(--shadow-sm);
 }
 
 .btn:disabled {
@@ -1495,6 +1519,7 @@ html {
 
 .btn-primary:hover:not(:disabled) {
     background: linear-gradient(135deg, #00e0ff, var(--accent-blue));
+    box-shadow: var(--shadow-md), 0 0 20px rgba(0, 212, 255, 0.3);
 }
 
 .btn-secondary {
@@ -1506,6 +1531,7 @@ html {
 .btn-secondary:hover:not(:disabled) {
     background: var(--bg-secondary);
     border-color: var(--accent-blue);
+    box-shadow: var(--shadow-md), 0 0 10px rgba(0, 212, 255, 0.2);
 }
 
 .btn-danger {
@@ -1569,11 +1595,11 @@ html {
 @keyframes modalSlideIn {
     from {
         opacity: 0;
-        transform: translateY(-30px);
+        transform: translateY(-30px) scale(0.95);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -1595,11 +1621,24 @@ html {
     font-size: 2rem;
     cursor: pointer;
     color: var(--text-muted);
-    transition: color var(--transition-fast);
+    transition: all var(--transition-fast);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .modal-close:hover {
     color: var(--accent-red);
+    background: rgba(255, 71, 87, 0.1);
+    transform: rotate(90deg);
+}
+
+.modal-close:focus {
+    outline: 2px solid var(--accent-red);
+    outline-offset: 2px;
 }
 
 /* Session List Modal */
@@ -1623,8 +1662,9 @@ html {
 
 .session-card:hover {
     border-color: var(--accent-blue);
-    transform: translateX(5px);
-    box-shadow: var(--shadow-md);
+    transform: translateX(5px) scale(1.01);
+    box-shadow: var(--shadow-md), 0 0 15px rgba(0, 212, 255, 0.15);
+    background: linear-gradient(135deg, var(--bg-tertiary), rgba(0, 212, 255, 0.05));
 }
 
 .session-thumbnail {
@@ -1898,6 +1938,46 @@ html {
 .sr-only {
     position: absolute;
     width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* Enhanced focus states */
+*:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+button:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.2);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
     height: 1px;
     padding: 0;
     margin: -1px;

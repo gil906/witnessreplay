@@ -1183,8 +1183,12 @@ class WitnessReplayApp {
         
         this.timeline.insertBefore(versionDiv, this.timeline.firstChild);
         
-        // Smooth scroll to show new version
-        this.timeline.scrollTo({ top: 0, behavior: 'smooth' });
+        // Smooth scroll to show new version with a slight delay for animation
+        requestAnimationFrame(() => {
+            this.timeline.scrollTo({ top: 0, behavior: 'smooth' });
+            // Add highlight pulse effect
+            versionDiv.style.animation = 'timelinePulse 0.6s ease-out';
+        });
     }
     
     compareVersions(versionElement) {

@@ -92,8 +92,8 @@
 
 .admin-stat:hover {
     border-color: #00d4ff;
-    box-shadow: 0 8px 30px rgba(0, 212, 255, 0.3);
-    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 212, 255, 0.3), 0 0 20px rgba(0, 212, 255, 0.2);
+    transform: translateY(-3px) scale(1.02);
 }
 
 .stat-icon {
@@ -233,8 +233,8 @@
 
 .case-card:hover {
     border-color: #00d4ff;
-    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
-    transform: translateX(4px);
+    box-shadow: 0 8px 30px rgba(0, 212, 255, 0.3), 0 0 15px rgba(0, 212, 255, 0.2);
+    transform: translateX(5px) scale(1.01);
 }
 
 .case-icon {
