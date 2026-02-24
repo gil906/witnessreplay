@@ -41,6 +41,40 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Global exception handler for better error responses
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to provide consistent error responses.
+    Includes request ID for debugging and detailed error context in debug mode.
+    """
+    request_id = getattr(request.state, 'request_id', 'unknown')
+    
+    # Log the error
+    logger.error(
+        f"Unhandled exception in {request.method} {request.url.path} | "
+        f"ID: {request_id} | Error: {str(exc)}",
+        exc_info=True
+    )
+    
+    # Build error response
+    error_detail = {
+        "detail": "Internal server error",
+        "request_id": request_id,
+        "path": str(request.url.path)
+    }
+    
+    # In debug mode, include more details
+    if settings.debug:
+        error_detail["error_type"] = exc.__class__.__name__
+        error_detail["error_message"] = str(exc)
+    
+    return JSONResponse(
+        status_code=500,
+        content=error_detail,
+        headers={"X-Request-ID": request_id}
+    )
+
 # CORS middleware — allow all origins for hackathon demo
 app.add_middleware(
     CORSMiddleware,

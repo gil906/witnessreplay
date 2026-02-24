@@ -115,6 +115,99 @@ async def create_session(session_data: SessionCreate):
         )
 
 
+@router.get("/sessions/export/bulk")
+async def export_all_sessions_bulk(
+    limit: int = 100,
+    status_filter: Optional[str] = None,
+    format: str = "json"
+):
+    """
+    Export multiple sessions in bulk for backup or analysis.
+    
+    Args:
+        limit: Maximum number of sessions to export (default 100)
+        status_filter: Optional filter by status (active, completed, archived)
+        format: Export format - "json" (default) or "csv"
+    
+    Returns:
+        JSON array of all sessions or CSV file
+    """
+    try:
+        # Get sessions
+        all_sessions = await firestore_service.list_sessions(limit=limit)
+        
+        # Filter by status if requested
+        if status_filter:
+            all_sessions = [s for s in all_sessions if s.status == status_filter]
+        
+        from fastapi.responses import Response
+        import json
+        
+        if format == "csv":
+            # CSV export for spreadsheet analysis
+            import io
+            import csv
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow([
+                "Session ID", "Title", "Created", "Updated", "Status",
+                "Statements", "Corrections", "Scene Elements", "Reconstructions"
+            ])
+            
+            # Data rows
+            for session in all_sessions:
+                writer.writerow([
+                    session.id,
+                    session.title,
+                    session.created_at.isoformat() if session.created_at else "",
+                    session.updated_at.isoformat() if session.updated_at else "",
+                    session.status,
+                    len(session.witness_statements),
+                    sum(1 for stmt in session.witness_statements if stmt.is_correction),
+                    len(session.current_scene_elements),
+                    len(session.scene_versions),
+                ])
+            
+            csv_content = output.getvalue()
+            
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=sessions_export.csv"
+                }
+            )
+        else:
+            # JSON export (default)
+            sessions_data = [s.model_dump(mode='json') for s in all_sessions]
+            export_data = {
+                "export_timestamp": datetime.utcnow().isoformat(),
+                "total_sessions": len(sessions_data),
+                "status_filter": status_filter,
+                "sessions": sessions_data
+            }
+            
+            json_str = json.dumps(export_data, indent=2, default=str)
+            
+            return Response(
+                content=json_str,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename=sessions_bulk_export.json"
+                }
+            )
+    
+    except Exception as e:
+        logger.error(f"Error exporting sessions in bulk: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export sessions: {str(e)}"
+        )
+
+
 @router.get("/sessions/{session_id}", response_model=ReconstructionSession)
 async def get_session(session_id: str):
     """Get a specific reconstruction session."""
@@ -421,100 +514,6 @@ async def export_session_evidence(session_id: str):
         )
 
 
-@router.get("/sessions/export/bulk")
-async def export_all_sessions_bulk(
-    limit: int = 100,
-    status_filter: Optional[str] = None,
-    format: str = "json"
-):
-    """
-    Export multiple sessions in bulk for backup or analysis.
-    
-    Args:
-        limit: Maximum number of sessions to export (default 100)
-        status_filter: Optional filter by status (active, completed, archived)
-        format: Export format - "json" (default) or "csv"
-    
-    Returns:
-        JSON array of all sessions or CSV file
-    """
-    try:
-        # Get sessions
-        all_sessions = await firestore_service.list_sessions(limit=limit)
-        
-        # Filter by status if requested
-        if status_filter:
-            all_sessions = [s for s in all_sessions if s.status == status_filter]
-        
-        from fastapi.responses import Response
-        import json
-        
-        if format == "csv":
-            # CSV export for spreadsheet analysis
-            import io
-            import csv
-            
-            output = io.StringIO()
-            writer = csv.writer(output)
-            
-            # Header
-            writer.writerow([
-                "Session ID", "Title", "Created", "Updated", "Status",
-                "Statements", "Corrections", "Scene Elements", "Reconstructions"
-            ])
-            
-            # Data rows
-            for session in all_sessions:
-                writer.writerow([
-                    session.id,
-                    session.title,
-                    session.created_at.isoformat() if session.created_at else "",
-                    session.updated_at.isoformat() if session.updated_at else "",
-                    session.status,
-                    len(session.witness_statements),
-                    sum(1 for stmt in session.witness_statements if stmt.is_correction),
-                    len(session.current_scene_elements),
-                    len(session.scene_versions),
-                ])
-            
-            csv_content = output.getvalue()
-            
-            return Response(
-                content=csv_content,
-                media_type="text/csv",
-                headers={
-                    "Content-Disposition": f"attachment; filename=sessions_export.csv"
-                }
-            )
-        else:
-            # JSON export (default)
-            sessions_data = [s.model_dump(mode='json') for s in all_sessions]
-            export_data = {
-                "export_timestamp": datetime.utcnow().isoformat(),
-                "total_sessions": len(sessions_data),
-                "status_filter": status_filter,
-                "sessions": sessions_data
-            }
-            
-            json_str = json.dumps(export_data, indent=2, default=str)
-            
-            return Response(
-                content=json_str,
-                media_type="application/json",
-                headers={
-                    "Content-Disposition": f"attachment; filename=sessions_bulk_export.json"
-                }
-            )
-    
-    except Exception as e:
-        logger.error(f"Error exporting sessions in bulk: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to export sessions: {str(e)}"
-        )
-
-
-
 @router.get("/analytics/stats")
 async def get_analytics_stats():
     """Get analytics statistics across all sessions."""
@@ -633,6 +632,194 @@ async def search_sessions_by_element(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to search sessions"
+        )
+
+
+@router.get("/sessions/{session_id}/insights")
+async def get_session_insights(session_id: str):
+    """
+    Get AI-powered insights about a session's reconstruction quality.
+    
+    Returns:
+        - Scene complexity score
+        - Completeness assessment
+        - Detected contradictions
+        - Suggested next questions
+        - Evidence confidence levels
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Get agent for this session to access state
+        from app.agents.scene_agent import get_agent
+        agent = get_agent(session_id)
+        scene_summary = agent.get_scene_summary()
+        
+        # Calculate insights
+        insights = {
+            "session_id": session_id,
+            "complexity_score": scene_summary.get("complexity_score", 0.0),
+            "completeness": {
+                "total_elements": len(scene_summary.get("elements", [])),
+                "elements_with_position": sum(
+                    1 for e in scene_summary.get("elements", [])
+                    if e.get("position")
+                ),
+                "elements_with_color": sum(
+                    1 for e in scene_summary.get("elements", [])
+                    if e.get("color")
+                ),
+                "elements_with_size": sum(
+                    1 for e in scene_summary.get("elements", [])
+                    if e.get("size")
+                ),
+                "completeness_percentage": (
+                    scene_summary.get("complexity_score", 0.0) * 100
+                )
+            },
+            "contradictions": {
+                "count": len(scene_summary.get("contradictions", [])),
+                "details": scene_summary.get("contradictions", [])
+            },
+            "statement_analysis": {
+                "total_statements": len(session.witness_statements),
+                "corrections": sum(
+                    1 for s in session.witness_statements
+                    if s.is_correction
+                ),
+                "avg_confidence": (
+                    sum(s.confidence for s in session.witness_statements) /
+                    len(session.witness_statements)
+                    if session.witness_statements else 0.0
+                )
+            },
+            "scene_versions": {
+                "count": len(session.scene_versions),
+                "progression": [
+                    {
+                        "version": i + 1,
+                        "elements": len(v.elements),
+                        "timestamp": v.timestamp.isoformat() if v.timestamp else None
+                    }
+                    for i, v in enumerate(session.scene_versions)
+                ]
+            },
+            "recommendations": []
+        }
+        
+        # Generate recommendations based on insights
+        if insights["completeness"]["completeness_percentage"] < 30:
+            insights["recommendations"].append({
+                "type": "low_detail",
+                "message": "Scene has low detail. Ask more specific questions about positions, colors, and sizes."
+            })
+        
+        if insights["contradictions"]["count"] > 0:
+            insights["recommendations"].append({
+                "type": "contradictions_found",
+                "message": f"Found {insights['contradictions']['count']} contradictions. Review and clarify conflicting information."
+            })
+        
+        if insights["statement_analysis"]["avg_confidence"] < 0.5:
+            insights["recommendations"].append({
+                "type": "low_confidence",
+                "message": "Witness shows low confidence. Ask clarifying questions to improve accuracy."
+            })
+        
+        if insights["completeness"]["total_elements"] < 3:
+            insights["recommendations"].append({
+                "type": "few_elements",
+                "message": "Few scene elements identified. Continue gathering details about the scene."
+            })
+        
+        return insights
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session insights: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get session insights: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/timeline")
+async def get_session_timeline(session_id: str):
+    """
+    Get a temporal timeline of events and statements for a session.
+    Useful for understanding the sequence of witness statements and scene evolution.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Build timeline from witness statements
+        timeline_events = []
+        
+        for idx, statement in enumerate(session.witness_statements):
+            event = {
+                "index": idx,
+                "timestamp": statement.timestamp.isoformat() if statement.timestamp else None,
+                "type": "correction" if statement.is_correction else "statement",
+                "text": statement.text,
+                "confidence": statement.confidence,
+                "scene_version": None
+            }
+            timeline_events.append(event)
+        
+        # Add scene version generations to timeline
+        for idx, version in enumerate(session.scene_versions):
+            event = {
+                "index": None,
+                "timestamp": version.timestamp.isoformat() if version.timestamp else None,
+                "type": "scene_generation",
+                "text": f"Scene reconstruction #{idx + 1}",
+                "prompt": version.prompt_used,
+                "image_url": version.image_url,
+                "element_count": len(version.elements)
+            }
+            timeline_events.append(event)
+        
+        # Sort by timestamp
+        timeline_events.sort(key=lambda x: x.get("timestamp") or "")
+        
+        # Calculate time deltas
+        for i in range(1, len(timeline_events)):
+            if timeline_events[i-1].get("timestamp") and timeline_events[i].get("timestamp"):
+                from datetime import datetime
+                t1 = datetime.fromisoformat(timeline_events[i-1]["timestamp"])
+                t2 = datetime.fromisoformat(timeline_events[i]["timestamp"])
+                delta = (t2 - t1).total_seconds()
+                timeline_events[i]["seconds_since_previous"] = delta
+        
+        return {
+            "session_id": session_id,
+            "session_title": session.title,
+            "total_events": len(timeline_events),
+            "session_duration_seconds": (
+                (session.updated_at - session.created_at).total_seconds()
+                if session.created_at and session.updated_at else None
+            ),
+            "timeline": timeline_events
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session timeline: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get session timeline: {str(e)}"
         )
 
 
