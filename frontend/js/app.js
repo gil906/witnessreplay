@@ -483,7 +483,6 @@ class WitnessReplayApp {
             
             // Clear UI
             this.chatTranscript.innerHTML = '';
-            this.displaySystemMessage("👋 Detective Ray here. Ready to reconstruct the scene. Start speaking when you're ready.");
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
             
             // Update stats
@@ -495,9 +494,6 @@ class WitnessReplayApp {
             
             // Connect WebSocket
             this.connectWebSocket();
-            
-            // Show success toast
-            this.ui.showToast('New session created', 'success');
             
         } catch (error) {
             console.error('Error creating session:', error);
@@ -550,8 +546,6 @@ class WitnessReplayApp {
                 statusDot.style.background = 'var(--accent-green)';
                 statusDot.style.boxShadow = '0 0 8px var(--accent-green)';
             }
-            
-            this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
         
         this.ws.onmessage = (event) => {
@@ -583,11 +577,6 @@ class WitnessReplayApp {
             if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
                 const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
-                this.ui.showToast(
-                    `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-                    'warning',
-                    delay
-                );
                 this.reconnectTimer = setTimeout(() => {
                     this.connectWebSocket();
                 }, delay);
@@ -635,9 +624,20 @@ class WitnessReplayApp {
         switch (message.type) {
             case 'text':
                 const speaker = message.data.speaker || 'agent';
-                this.displayMessage(message.data.text, speaker);
-                if (speaker === 'agent') {
+                // Prevent duplicate greetings on reconnect
+                if (speaker === 'agent' && !this.hasReceivedGreeting) {
+                    this.hasReceivedGreeting = true;
+                    this.displayMessage(message.data.text, speaker);
                     this.ui.playSound('notification');
+                } else if (speaker === 'agent' && this.hasReceivedGreeting) {
+                    // Check if this is the same greeting text (duplicate from reconnect)
+                    const isGreeting = message.data.text && message.data.text.includes("I'm Detective Ray");
+                    if (!isGreeting) {
+                        this.displayMessage(message.data.text, speaker);
+                        this.ui.playSound('notification');
+                    }
+                } else {
+                    this.displayMessage(message.data.text, speaker);
                 }
                 break;
             
@@ -741,6 +741,11 @@ class WitnessReplayApp {
             if (this.audioRecorder) {
                 await this.audioRecorder.start();
                 this.isRecording = true;
+                
+                // Show voice controls panel
+                const voiceControls = document.getElementById('voice-controls');
+                if (voiceControls) voiceControls.classList.add('expanded');
+                
                 this.micBtn.classList.add('recording');
                 const btnText = this.micBtn.querySelector('.btn-text');
                 if (btnText) btnText.textContent = 'Recording...';
@@ -780,6 +785,10 @@ class WitnessReplayApp {
                 this.micBtn.classList.remove('recording');
                 const btnText2 = this.micBtn.querySelector('.btn-text');
                 if (btnText2) btnText2.textContent = 'Start Speaking';
+                
+                // Hide voice controls panel
+                const voiceControls = document.getElementById('voice-controls');
+                if (voiceControls) voiceControls.classList.remove('expanded');
                 if (this.chatMicBtn) {
                     this.chatMicBtn.classList.remove('recording');
                     this.chatMicBtn.textContent = '🎤';

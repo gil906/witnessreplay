@@ -81,8 +81,8 @@
                     <button class="suggestion-btn" data-action="details">➕ Add more details</button>
                 </div>
 
-                <!-- Voice Control - prominent -->
-                <div class="controls">
+                <!-- Voice Control - collapsible, hidden by default -->
+                <div class="controls" id="voice-controls">
                     <div class="mic-container">
                         <div class="waveform-ring" id="waveform-ring"></div>
                         <canvas id="audio-visualizer" width="140" height="140"></canvas>
@@ -91,13 +91,13 @@
                         </button>
                     </div>
                     <div class="status-indicator" id="status-indicator">
-                        <span id="status-text">Initializing...</span>
+                        <span id="status-text">Ready to listen</span>
                     </div>
                 </div>
 
-                <!-- Text Input -->
+                <!-- Text Input — always visible -->
                 <div class="text-input">
-                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record">🎤</button>
+                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Click to record">🎤</button>
                     <input type="text" id="text-input" placeholder="Type your statement here..." disabled aria-label="Text input">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                 </div>

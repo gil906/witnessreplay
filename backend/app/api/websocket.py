@@ -36,9 +36,12 @@ class WebSocketHandler:
         self.is_connected = True
         logger.info(f"WebSocket connected for session {self.session_id}")
         
-        # Send initial greeting
-        greeting = await self.agent.start_interview()
-        await self.send_message("text", {"text": greeting, "speaker": "agent"})
+        # Only send greeting if the session has no prior statements (i.e. fresh session, not reconnect)
+        session = await firestore_service.get_session(self.session_id)
+        if session and len(session.witness_statements) == 0:
+            greeting = await self.agent.start_interview()
+            await self.send_message("text", {"text": greeting, "speaker": "agent"})
+        
         await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
     
     async def disconnect(self):
