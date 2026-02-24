@@ -4295,9 +4295,9 @@ input:focus-visible {
 }
 
 .version-badge {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
     background: var(--glass-bg);
     backdrop-filter: blur(10px);
     padding: 0.5rem 1rem;

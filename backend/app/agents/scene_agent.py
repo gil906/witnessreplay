@@ -260,8 +260,8 @@ class SceneReconstructionAgent:
                 return
             
             # Track usage for extraction
-            extraction_tokens_in = len(extraction_prompt) // 4
-            extraction_tokens_out = len(response.text) // 4
+            extraction_tokens_in = self._estimate_tokens(extraction_prompt)
+            extraction_tokens_out = self._estimate_tokens(response.text)
             usage_tracker.record_request(
                 model_name=scene_model,
                 input_tokens=extraction_tokens_in,
