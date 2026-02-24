@@ -8,11 +8,13 @@ from google import genai
 from app.config import settings
 from app.models.schemas import SceneElement, WitnessStatement, SceneVersion
 from app.services.usage_tracker import usage_tracker
-from app.services.model_selector import model_selector
+from app.services.model_selector import model_selector, call_with_retry
 from app.agents.prompts import (
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_COMPACT,
     INITIAL_GREETING,
     SCENE_EXTRACTION_PROMPT,
+    SCENE_EXTRACTION_COMPACT,
     CLARIFICATION_PROMPTS,
     CONTRADICTION_FOLLOW_UP,
 )
@@ -38,13 +40,17 @@ class SceneReconstructionAgent:
         self.key_facts: Dict[str, Any] = {}
         self._initialize_model()
     
+    def _log_structured(self, event: str, **kwargs):
+        """Emit structured log entry."""
+        entry = {"event": event, "session_id": self.session_id, **kwargs}
+        logger.info(json.dumps(entry))
+
     def _initialize_model(self):
         """Initialize the Gemini model for conversation."""
         try:
             if settings.google_api_key:
                 self.client = genai.Client(api_key=settings.google_api_key)
-                # Note: Chat is initialized lazily to use best available model
-                logger.info(f"Initialized scene agent for session {self.session_id}")
+                self._log_structured("agent_initialized")
             else:
                 logger.warning("GOOGLE_API_KEY not set, agent not initialized")
         except Exception as e:
@@ -53,6 +59,7 @@ class SceneReconstructionAgent:
     
     async def start_interview(self) -> str:
         """Start the interview with an initial greeting."""
+        self._log_structured("interview_started")
         return INITIAL_GREETING
     
     async def process_statement(
@@ -76,7 +83,7 @@ class SceneReconstructionAgent:
         try:
             # Initialize chat if not already done (lazy init with best model)
             if not self.chat:
-                chat_model = await model_selector.get_best_model_for_chat()
+                chat_model = await model_selector.get_best_model_for_task("chat")
                 self.chat = self.client.chats.create(
                     model=chat_model,
                     config={
@@ -84,11 +91,15 @@ class SceneReconstructionAgent:
                         "temperature": 0.7,
                     }
                 )
-                logger.info(f"Initialized chat with model {chat_model}")
+                self._log_structured("chat_initialized", model=chat_model)
             
             # Add context if this is a correction
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
+            
+            self._log_structured("statement_received",
+                                 tokens_estimated=len(statement) // 4,
+                                 is_correction=is_correction)
             
             # Send to Gemini with automatic model fallback on rate limit
             response = None
@@ -96,7 +107,11 @@ class SceneReconstructionAgent:
             
             for attempt in range(3):
                 try:
-                    response = await asyncio.to_thread(self.chat.send_message, statement)
+                    response = await call_with_retry(
+                        asyncio.to_thread,
+                        self.chat.send_message,
+                        statement,
+                    )
                     break
                 except Exception as e:
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
@@ -112,9 +127,11 @@ class SceneReconstructionAgent:
                         await model_selector.mark_rate_limited(current_model)
                         
                         # Try a different model
-                        new_model = await model_selector.get_best_model_for_chat()
+                        new_model = await model_selector.get_best_model_for_task("chat")
                         if new_model != current_model:
-                            logger.info(f"Switching from {current_model} to {new_model}")
+                            self._log_structured("model_switched",
+                                                 old_model=current_model,
+                                                 new_model=new_model)
                             self.chat = self.client.chats.create(
                                 model=new_model,
                                 config={
@@ -122,7 +139,6 @@ class SceneReconstructionAgent:
                                     "temperature": 0.7,
                                 }
                             )
-                            # Retry with new model immediately
                             continue
                         
                         # If same model (all are rate limited), wait and retry
@@ -169,12 +185,26 @@ class SceneReconstructionAgent:
             if should_generate or len(self.conversation_history) > 6:
                 await self._extract_scene_information()
             
-            logger.info(f"Processed statement for session {self.session_id}")
+            self._log_structured("statement_processed",
+                                 model=current_model or "chat",
+                                 tokens_estimated=len(statement) // 4,
+                                 elements_count=len(self.current_elements))
             return agent_response, should_generate
         
         except Exception as e:
-            logger.error(f"Error processing statement: {e}")
-            return "I'm having trouble understanding. Could you rephrase that?", False
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                self._log_structured("error_rate_limited", error=str(e)[:200])
+                return ("I'm experiencing high demand right now. Could you please "
+                        "repeat that in a moment? Your testimony is important.",
+                        False)
+            elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):
+                self._log_structured("error_invalid_request", error=str(e)[:200])
+                return ("I had trouble processing that. Could you rephrase?",
+                        False)
+            else:
+                self._log_structured("error_unexpected", error=str(e)[:200])
+                logger.error(f"Unexpected error processing statement: {e}", exc_info=True)
+                raise
     
     def _should_generate_image(self, response: str) -> bool:
         """
@@ -214,12 +244,16 @@ class SceneReconstructionAgent:
             old_messages = self.conversation_history[:-8]
             summary_text = "\n".join([f"{m['role']}: {m['content']}" for m in old_messages])
             
-            chat_model = await model_selector.get_best_model_for_chat()
-            response = await asyncio.to_thread(
+            lightweight_model = await model_selector.get_best_model_for_task("lightweight")
+            self._log_structured("history_summarize", model=lightweight_model,
+                                 messages_to_summarize=len(old_messages))
+            response = await call_with_retry(
+                asyncio.to_thread,
                 self.client.models.generate_content,
-                model=chat_model,
+                model=lightweight_model,
                 contents=f"Summarize this witness interview conversation in 3-4 bullet points, keeping all key facts, descriptions, and details:\n\n{summary_text}",
-                config={"temperature": 0.1}
+                config={"temperature": 0.1},
+                model_name=lightweight_model,
             )
             
             summary = response.text.strip()
@@ -233,7 +267,8 @@ class SceneReconstructionAgent:
             logger.warning(f"Failed to summarize history: {e}")
     
     async def assess_confidence(self) -> Dict[str, Any]:
-        """Assess overall witness confidence and testimony reliability."""
+        """Assess overall witness confidence and testimony reliability.
+        Uses lightweight model (gemma-3) for its high RPM allowance."""
         user_messages = [m for m in self.conversation_history if m['role'] == 'user']
         
         # Basic metrics
@@ -287,42 +322,18 @@ class SceneReconstructionAgent:
             # Ask Gemini to extract structured information
             extraction_prompt = f"{SCENE_EXTRACTION_PROMPT}\n\nConversation:\n{conversation_text}"
             
-            # Use best model for scene extraction (Idea #3: Use best models for scene reconstruction)
-            scene_model = await model_selector.get_best_model_for_scene()
-            logger.info(f"Using {scene_model} for scene extraction")
+            # Use best model for scene extraction
+            scene_model = await model_selector.get_best_model_for_task("scene")
+            self._log_structured("scene_extraction_started", model=scene_model)
             
-            # Generate content using the best available model
-            def extract():
-                try:
-                    response = self.client.models.generate_content(
-                        model=scene_model,
-                        contents=extraction_prompt,
-                        config={
-                            "temperature": 0.3,  # Lower temperature for more consistent extraction
-                        }
-                    )
-                    return response
-                except Exception as e:
-                    # Handle rate limits
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        logger.warning(f"Scene model {scene_model} rate limited during extraction")
-                        raise
-                    raise
-            
-            response = None
-            for attempt in range(2):
-                try:
-                    response = await asyncio.to_thread(extract)
-                    break
-                except Exception as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        # Mark as rate limited and try fallback
-                        await model_selector.mark_rate_limited(scene_model)
-                        scene_model = await model_selector.get_best_model_for_scene()
-                        logger.info(f"Retrying with fallback model {scene_model}")
-                        continue
-                    else:
-                        raise
+            response = await call_with_retry(
+                asyncio.to_thread,
+                self.client.models.generate_content,
+                model=scene_model,
+                contents=extraction_prompt,
+                config={"temperature": 0.3},
+                model_name=scene_model,
+            )
             
             if not response:
                 logger.warning("Failed to extract scene information after retries")
@@ -368,7 +379,9 @@ class SceneReconstructionAgent:
                     )
                     self.current_elements.append(element)
                 
-                logger.info(f"Extracted {len(self.current_elements)} scene elements")
+                self._log_structured("scene_updated",
+                                     elements_count=len(self.current_elements),
+                                     model=scene_model)
                 
                 # Auto-detect relationships from latest statement
                 if self.conversation_history:
@@ -557,19 +570,15 @@ class SceneReconstructionAgent:
     
     def reset(self):
         """Reset the agent state."""
+        self._log_structured("interview_completed",
+                             total_statements=len([m for m in self.conversation_history if m["role"] == "user"]),
+                             elements_count=len(self.current_elements))
         self.conversation_history = []
         self.current_elements = []
         self.scene_description = ""
         self.contradictions = []
         self.key_facts = {}
-        if self.client:
-            self.chat = self.client.chats.create(
-                model=settings.gemini_model,
-                config={
-                    "system_instruction": SYSTEM_PROMPT,
-                    "temperature": 0.7,
-                }
-            )
+        self.chat = None
 
 
 # Agent instance cache

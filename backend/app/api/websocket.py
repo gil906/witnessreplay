@@ -15,6 +15,9 @@ from app.models.schemas import (
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
 from app.services.image_gen import image_service
+from app.services.model_selector import model_selector, quota_tracker
+from app.services.imagen_service import imagen_service
+from app.services.embedding_service import embedding_service
 from app.agents.scene_agent import get_agent, remove_agent
 
 logger = logging.getLogger(__name__)
@@ -58,7 +61,13 @@ class WebSocketHandler:
             try:
                 await asyncio.sleep(25)
                 if self.is_connected:
-                    await self.send_message("ping", {})
+                    # Include basic model availability in heartbeat
+                    models_status = await model_selector.get_all_models_status()
+                    available_count = sum(1 for m in models_status if m.get("available"))
+                    await self.send_message("ping", {
+                        "models_available": available_count,
+                        "total_models": len(models_status),
+                    })
             except Exception:
                 break
 
@@ -87,6 +96,8 @@ class WebSocketHandler:
                 await self.handle_correction(data)
             elif message_type == "ping":
                 await self.send_message("pong", {})
+            elif message_type == "health_check":
+                await self._send_health_status()
             else:
                 logger.warning(f"Unknown message type: {message_type}")
         
@@ -215,6 +226,20 @@ class WebSocketHandler:
         """Handle a correction from the user."""
         data["is_correction"] = True
         await self.handle_text(data)
+    
+    async def _send_health_status(self):
+        """Send model availability and quota health info to the client."""
+        try:
+            quota_status = await quota_tracker.get_quota_status()
+            health_data = {
+                "type": "health_status",
+                "models_available": quota_status,
+                "imagen_quota": imagen_service.get_quota_status(),
+                "embedding_quota": embedding_service.get_quota_status(),
+            }
+            await self.send_message("health_status", health_data)
+        except Exception as e:
+            logger.error(f"Error sending health status: {e}")
     
     async def _send_scene_state(self):
         """Send current scene state (elements, completeness, categories) to client."""
