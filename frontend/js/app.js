@@ -541,15 +541,17 @@ class WitnessReplayApp {
             this.sendBtn.disabled = false;
             
             // Update connection status indicator
-            const statusDot = document.querySelector('.status-dot');
-            if (statusDot) {
-                statusDot.style.background = 'var(--accent-green)';
-                statusDot.style.boxShadow = '0 0 8px var(--accent-green)';
-            }
+            this.updateConnectionStatus('connected');
+            
+            this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
         
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
+            if (message.type === 'ping') {
+                this.ws.send(JSON.stringify({type: 'pong', data: {}}));
+                return;
+            }
             this.handleWebSocketMessage(message);
         };
         
@@ -566,22 +568,23 @@ class WitnessReplayApp {
             this.sendBtn.disabled = true;
             
             // Update connection status indicator
-            const statusDot = document.querySelector('.status-dot');
-            if (statusDot) {
-                statusDot.style.background = 'var(--accent-amber)';
-                statusDot.style.boxShadow = '0 0 8px var(--accent-amber)';
-                statusDot.style.animation = 'statusPulse 1.5s ease-in-out infinite';
-            }
+            this.updateConnectionStatus('reconnecting');
             
-            // Reconnect with backoff, max attempts
+            // Reconnect with exponential backoff, max attempts
             if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
+                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+                this.ui.showToast(
+                    `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+                    'warning',
+                    delay
+                );
                 this.reconnectTimer = setTimeout(() => {
+                    this.reconnectAttempts++;
                     this.connectWebSocket();
                 }, delay);
             } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
                 // Max attempts reached - show error state
+                this.updateConnectionStatus('disconnected');
                 this.ui.setStatus('Connection lost - Please reload', 'default');
                 this.ui.showToast(
                     '❌ Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts. Please reload the page.',
@@ -618,6 +621,28 @@ class WitnessReplayApp {
                 }
             }
         };
+    }
+    
+    updateConnectionStatus(status) {
+        const indicator = document.getElementById('connection-status');
+        if (!indicator) return;
+        const dot = indicator.querySelector('.status-dot');
+        const text = indicator.querySelector('.status-text');
+        
+        switch(status) {
+            case 'connected':
+                if (dot) { dot.style.background = '#22c55e'; dot.style.boxShadow = '0 0 8px #22c55e'; dot.style.animation = ''; }
+                if (text) text.textContent = 'Connected';
+                break;
+            case 'reconnecting':
+                if (dot) { dot.style.background = '#f59e0b'; dot.style.boxShadow = '0 0 8px #f59e0b'; dot.style.animation = 'statusPulse 1.5s ease-in-out infinite'; }
+                if (text) text.textContent = 'Reconnecting...';
+                break;
+            case 'disconnected':
+                if (dot) { dot.style.background = '#ef4444'; dot.style.boxShadow = '0 0 8px #ef4444'; dot.style.animation = ''; }
+                if (text) text.textContent = 'Disconnected';
+                break;
+        }
     }
     
     handleWebSocketMessage(message) {
@@ -994,6 +1019,7 @@ class WitnessReplayApp {
             const img = new Image();
             img.className = 'scene-image scene-entering';
             img.alt = 'Scene reconstruction';
+            img.loading = 'lazy';
             
             img.onload = () => {
                 // Smooth transition from entering to loaded
@@ -1038,6 +1064,7 @@ class WitnessReplayApp {
             const img = new Image();
             img.className = 'scene-image scene-entering';
             img.alt = 'Scene reconstruction';
+            img.loading = 'lazy';
             img.onload = () => {
                 setTimeout(() => {
                     img.classList.remove('scene-entering');
@@ -1145,6 +1172,7 @@ class WitnessReplayApp {
             img.className = 'scene-image fade-in';
             img.src = currentSrc;
             img.alt = 'Reconstructed scene';
+            img.loading = 'lazy';
             sceneContainer.appendChild(img);
             
             this.sceneDisplay.appendChild(sceneContainer);

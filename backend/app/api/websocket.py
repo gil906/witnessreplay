@@ -34,6 +34,7 @@ class WebSocketHandler:
         """Accept the WebSocket connection."""
         await self.websocket.accept()
         self.is_connected = True
+        self._heartbeat_task = asyncio.create_task(self._heartbeat())
         logger.info(f"WebSocket connected for session {self.session_id}")
         
         # Only send greeting if the session has no prior statements (i.e. fresh session, not reconnect)
@@ -47,8 +48,20 @@ class WebSocketHandler:
     async def disconnect(self):
         """Close the WebSocket connection."""
         self.is_connected = False
+        if hasattr(self, '_heartbeat_task'):
+            self._heartbeat_task.cancel()
         logger.info(f"WebSocket disconnected for session {self.session_id}")
     
+    async def _heartbeat(self):
+        """Send periodic heartbeat to keep connection alive."""
+        while self.is_connected:
+            try:
+                await asyncio.sleep(25)
+                if self.is_connected:
+                    await self.send_message("ping", {})
+            except Exception:
+                break
+
     async def send_message(self, message_type: str, data: dict):
         """Send a message to the client."""
         if not self.is_connected:
@@ -236,6 +249,9 @@ class WebSocketHandler:
             filled = sum(1 for v in categories.values() if v)
             completeness = filled / len(categories) if categories else 0
 
+            # Get witness confidence assessment
+            confidence = await self.agent.assess_confidence()
+
             await self.send_message("scene_state", {
                 "elements": elements_raw,
                 "completeness": round(completeness, 2),
@@ -243,6 +259,7 @@ class WebSocketHandler:
                 "contradictions": contradictions,
                 "complexity": round(complexity, 3),
                 "statement_count": statement_count,
+                "confidence": confidence,
             })
         except Exception as e:
             logger.error(f"Error sending scene_state: {e}")

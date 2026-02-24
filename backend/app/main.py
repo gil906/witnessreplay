@@ -2,8 +2,10 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from pathlib import Path
 import os
 import asyncio
 
@@ -38,6 +40,12 @@ async def lifespan(app: FastAPI):
             logger.info("Single API key mode (no rotation)")
     else:
         logger.info("Single API key mode (no rotation)")
+    
+    # Initialize SQLite database
+    from app.services.database import DatabaseService
+    db = DatabaseService()
+    await db.initialize()
+    logger.info("SQLite database initialized")
     
     # Start cache cleanup background task
     from app.services.cache import cache
@@ -99,10 +107,32 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers={"X-Request-ID": request_id}
     )
 
-# CORS middleware — allow all origins for hackathon demo
+# Security headers middleware (applied before CORS)
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    return response
+
+# Request size limit middleware
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
+        return JSONResponse(status_code=413, content={"detail": "Request too large"})
+    return await call_next(request)
+
+# GZip compression for responses >= 500 bytes
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -293,6 +323,20 @@ async def add_request_id(request, call_next):
     
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
+    return response
+
+
+# Static asset caching and API cache-control headers
+@app.middleware("http")
+async def add_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") or path.startswith("/css/") or path.startswith("/js/"):
+        if path.endswith(('.css', '.js', '.png', '.jpg', '.svg', '.ico')):
+            response.headers["Cache-Control"] = "public, max-age=3600"  # 1 hour
+    elif path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Vary"] = "Accept, Authorization"
     return response
 
 

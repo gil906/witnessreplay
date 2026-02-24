@@ -152,12 +152,14 @@ img {
    5. HEADER
    ========================================================= */
 .header {
-    background: var(--bg-secondary);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(30, 45, 61, 0.95) 100%);
     border: 1px solid var(--border-color);
+    border-bottom: 2px solid var(--accent-blue);
     border-radius: var(--panel-radius);
     margin-bottom: var(--spacing-md);
     padding: 0 var(--spacing-lg);
-    height: var(--header-height);
+    height: auto;
+    min-height: var(--header-height);
     flex-shrink: 0;
     animation: fadeIn 0.4s ease;
 }
@@ -166,20 +168,22 @@ img {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 100%;
+    min-height: var(--header-height);
     gap: var(--spacing-md);
+    padding: var(--spacing-sm) 0;
 }
 
 .logo-section {
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-md);
     flex-shrink: 0;
 }
 
 .logo-icon {
-    font-size: 1.5rem;
+    font-size: 2rem;
     line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(59, 130, 246, 0.3));
 }
 
 .logo-text {
@@ -189,17 +193,40 @@ img {
 }
 
 .logo-text h1 {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.01em;
+    background: linear-gradient(135deg, #e2e8f0, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .tagline {
     font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.tagline-sub {
+    font-size: 0.65rem;
     color: var(--text-muted);
     font-weight: 400;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
+}
+
+.challenge-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    background: var(--accent-blue-muted);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 20px;
+    padding: 3px 10px;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
 }
 
@@ -210,6 +237,53 @@ img {
     gap: var(--spacing-sm);
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+/* Connection Status Indicator */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    background: var(--bg-surface);
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    transition: all var(--transition-base);
+}
+
+.connection-status .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    animation: statusPulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.connection-status.connected .status-dot {
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+    animation: none;
+}
+
+.connection-status.reconnecting .status-dot {
+    background: var(--accent-amber);
+    box-shadow: 0 0 8px var(--accent-amber);
+    animation: statusPulse 1s ease-in-out infinite;
+}
+
+.connection-status.disconnected .status-dot {
+    background: var(--accent-red);
+    box-shadow: 0 0 8px var(--accent-red);
+    animation: none;
+}
+
+.connection-status .status-text {
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .session-status {
@@ -364,8 +438,9 @@ img {
 .chat-message {
     display: flex;
     gap: var(--spacing-sm);
-    animation: messageSlideIn 0.25s ease;
+    animation: messageSlideIn 0.3s ease;
     max-width: 85%;
+    padding: var(--spacing-xs) 0;
 }
 
 .chat-message.user {
@@ -378,43 +453,62 @@ img {
 }
 
 .message-avatar {
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: var(--bg-surface-alt);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     flex-shrink: 0;
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.chat-message.user .message-avatar {
+    background: var(--accent-blue-muted);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.chat-message.assistant .message-avatar {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.25);
 }
 
 .message-content {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: var(--card-radius);
+    border-radius: 12px 12px 12px 4px;
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: 0.9rem;
     line-height: 1.6;
     color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
 }
 
 .chat-message.user .message-content {
     background: var(--accent-blue-muted);
     border-color: rgba(59, 130, 246, 0.2);
+    border-radius: 12px 12px 4px 12px;
+}
+
+.chat-message.assistant .message-content {
+    background: rgba(30, 45, 61, 0.7);
+    border-color: rgba(34, 197, 94, 0.15);
 }
 
 .message-time {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--text-muted);
     margin-top: 4px;
+    opacity: 0.8;
 }
 
 @keyframes messageSlideIn {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(12px);
     }
     to {
         opacity: 1;
@@ -430,13 +524,15 @@ img {
     padding: var(--spacing-sm) var(--spacing-lg);
     color: var(--text-muted);
     font-size: 0.85rem;
+    animation: messageSlideIn 0.3s ease;
 }
 
 .typing-avatar {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
-    background: var(--bg-surface-alt);
+    background: rgba(34, 197, 94, 0.1);
+    border: 2px solid rgba(34, 197, 94, 0.25);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -448,13 +544,18 @@ img {
     display: flex;
     gap: 4px;
     align-items: center;
+    background: rgba(30, 45, 61, 0.7);
+    border: 1px solid rgba(34, 197, 94, 0.15);
+    border-radius: 12px;
+    padding: 8px 14px;
 }
 
 .typing-dots .dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--accent-green);
+    opacity: 0.6;
     animation: typingBounce 1.2s ease-in-out infinite;
 }
 .typing-dots .dot:nth-child(2) {
@@ -502,9 +603,9 @@ img {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-md);
     border-top: 1px solid var(--border-color);
-    background: var(--bg-surface);
+    background: var(--bg-secondary);
     flex-shrink: 0;
     /* Ensure text input is always visible */
     order: 10;
@@ -515,20 +616,21 @@ img {
 .text-input input,
 .text-input textarea {
     flex: 1;
-    background: var(--bg-secondary);
+    background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: var(--input-radius);
-    padding: 10px 14px;
+    border-radius: 20px;
+    padding: 10px 18px;
     color: var(--text-primary);
     font-size: 0.9rem;
     font-family: var(--font-family);
     outline: none;
-    transition: border-color var(--transition-base);
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
     resize: none;
 }
 .text-input input:focus,
 .text-input textarea:focus {
     border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 .text-input input::placeholder,
 .text-input textarea::placeholder {
@@ -537,9 +639,9 @@ img {
 
 .text-input button,
 .btn-mic {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
     border-radius: 50%;
     border: 1px solid var(--border-color);
     background: var(--bg-surface-alt);
@@ -557,6 +659,7 @@ img {
     background: var(--accent-blue-muted);
     border-color: var(--accent-blue);
     color: var(--accent-blue);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
 }
 
 /* =========================================================
