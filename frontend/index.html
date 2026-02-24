@@ -46,11 +46,14 @@
                         <span class="status-spinner"></span>
                         <span class="status-text">Connecting...</span>
                         <div class="connection-popup" id="connection-popup">
-                            <div class="connection-popup-header">Connection Details</div>
-                            <div class="connection-popup-state" id="popup-state">Connecting...</div>
-                            <div class="connection-popup-session" id="popup-session" style="display:none;"></div>
-                            <div class="connection-popup-error" id="popup-error" style="display:none;"></div>
-                            <button class="connection-popup-retry" id="popup-retry-btn">🔄 Retry</button>
+                            <div class="connection-popup-body">
+                                <div class="connection-popup-state" id="popup-state">⏳ Connecting to server...</div>
+                                <div class="connection-popup-detail" id="popup-ws-url" style="display:none;"></div>
+                                <div class="connection-popup-session" id="popup-session" style="display:none;"></div>
+                                <div class="connection-popup-error" id="popup-error" style="display:none;"></div>
+                                <div class="connection-popup-steps" id="popup-steps"></div>
+                            </div>
+                            <button class="connection-popup-retry" id="popup-retry-btn">Retry Connection</button>
                         </div>
                     </div>
                     <div class="session-status" style="display:none;">

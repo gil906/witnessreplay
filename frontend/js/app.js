@@ -71,15 +71,30 @@ class WitnessReplayApp {
     }
     
     async _autoCreateSession() {
+        this.connectionSteps = [];
+        this._addConnectionStep('Initializing...');
         this.updateConnectionStatus('connecting');
         this._updateMicState('connecting');
         try {
+            this._addConnectionStep('Creating session...');
             await this._createSessionWithTemplate(null);
         } catch (error) {
             console.error('Auto-create session failed:', error);
             this.connectionError = error.message || 'Failed to connect';
+            this._addConnectionStep(`❌ ${error.message || 'Failed'}`);
             this.updateConnectionStatus('disconnected');
             this._updateMicState('disconnected');
+        }
+    }
+    
+    _addConnectionStep(text) {
+        if (!this.connectionSteps) this.connectionSteps = [];
+        this.connectionSteps.push({ time: new Date().toLocaleTimeString(), text });
+        const stepsEl = document.getElementById('popup-steps');
+        if (stepsEl) {
+            stepsEl.innerHTML = this.connectionSteps.map(s => 
+                `<div class="step-line"><span class="step-time">${s.time}</span> ${s.text}</div>`
+            ).join('');
         }
     }
     
@@ -1019,6 +1034,15 @@ class WitnessReplayApp {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
         
+        this._addConnectionStep(`WebSocket → ${wsUrl}`);
+        
+        // Show WS URL in popup
+        const wsUrlEl = document.getElementById('popup-ws-url');
+        if (wsUrlEl) {
+            wsUrlEl.textContent = `WS: ${wsUrl}`;
+            wsUrlEl.style.display = '';
+        }
+        
         this.ui.setStatus('Connecting to Detective Ray...', 'processing');
         this.updateConnectionStatus('connecting');
         this._updateMicState('connecting');
@@ -1028,6 +1052,7 @@ class WitnessReplayApp {
         this.ws.onopen = () => {
             this.reconnectAttempts = 0;
             this.connectionError = null;
+            this._addConnectionStep('✅ Connected!');
             this.ui.setStatus('Ready — Press Space to speak', 'default');
             this.micBtn.disabled = false;
             if (this.chatMicBtn) this.chatMicBtn.disabled = false;
@@ -1055,11 +1080,18 @@ class WitnessReplayApp {
         
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
-            this.connectionError = 'WebSocket connection error';
+            this.connectionError = `WebSocket failed to connect to ${window.location.host}. This may be a CORS/origin issue.`;
+            this._addConnectionStep(`❌ WebSocket error (check browser console)`);
             this.ui.setStatus('Connection error', 'default');
         };
         
-        this.ws.onclose = () => {
+        this.ws.onclose = (event) => {
+            const reason = event.code === 1006 ? 'Connection refused (CORS or server down)' 
+                         : event.code === 403 ? 'Forbidden - origin not allowed'
+                         : event.reason || `Code: ${event.code}`;
+            this._addConnectionStep(`🔌 Closed: ${reason}`);
+            this.connectionError = reason;
+            
             this.ui.setStatus('Disconnected', 'default');
             this.micBtn.disabled = true;
             if (this.chatMicBtn) this.chatMicBtn.disabled = true;

@@ -410,15 +410,16 @@ img {
     position: absolute;
     top: calc(100% + 8px);
     right: 0;
-    min-width: 220px;
+    min-width: 260px;
+    max-width: 340px;
     background: var(--bg-surface);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
-    padding: 14px;
     box-shadow: var(--shadow-lg);
     z-index: 1000;
     text-align: left;
     animation: popupFadeIn 0.2s ease;
+    overflow: hidden;
 }
 
 .connection-status.popup-open .connection-popup {
@@ -430,13 +431,8 @@ img {
     to { opacity: 1; transform: translateY(0); }
 }
 
-.connection-popup-header {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    font-weight: 600;
+.connection-popup-body {
+    padding: 12px 14px;
 }
 
 .connection-popup-state {
@@ -446,37 +442,68 @@ img {
     margin-bottom: 6px;
 }
 
+.connection-popup-detail {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+    word-break: break-all;
+}
+
 .connection-popup-session {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
     word-break: break-all;
 }
 
 .connection-popup-error {
     font-size: 0.75rem;
     color: var(--accent-red);
-    margin-bottom: 8px;
+    margin: 8px 0 4px;
     padding: 6px 8px;
     background: rgba(239, 68, 68, 0.1);
     border-radius: 6px;
+    line-height: 1.4;
+}
+
+.connection-popup-steps {
+    margin-top: 8px;
+    max-height: 120px;
+    overflow-y: auto;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    border-top: 1px solid var(--glass-border);
+    padding-top: 6px;
+}
+
+.connection-popup-steps .step-line {
+    padding: 2px 0;
+    line-height: 1.4;
+}
+
+.connection-popup-steps .step-time {
+    color: var(--text-secondary);
+    margin-right: 6px;
 }
 
 .connection-popup-retry {
     width: 100%;
-    padding: 8px 12px;
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
-    background: var(--glass-bg);
-    color: var(--text-primary);
+    padding: 10px 12px;
+    border: none;
+    border-top: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--accent-blue);
     font-size: 0.8rem;
+    font-weight: 500;
     cursor: pointer;
     transition: all var(--transition-base);
 }
 
 .connection-popup-retry:hover {
     background: var(--accent-blue-muted);
-    border-color: rgba(96, 165, 250, 0.3);
 }
 
 .session-status {
