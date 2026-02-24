@@ -41,9 +41,17 @@
                 </div>
                 
                 <div class="session-info">
-                    <div class="connection-status" id="connection-status" title="Connection status">
+                    <div class="connection-status connecting" id="connection-status" title="Click for details" role="button" tabindex="0">
                         <span class="status-dot"></span>
+                        <span class="status-spinner"></span>
                         <span class="status-text">Connecting...</span>
+                        <div class="connection-popup" id="connection-popup">
+                            <div class="connection-popup-header">Connection Details</div>
+                            <div class="connection-popup-state" id="popup-state">Connecting...</div>
+                            <div class="connection-popup-session" id="popup-session" style="display:none;"></div>
+                            <div class="connection-popup-error" id="popup-error" style="display:none;"></div>
+                            <button class="connection-popup-retry" id="popup-retry-btn">🔄 Retry</button>
+                        </div>
                     </div>
                     <div class="session-status" style="display:none;">
                         <span class="status-dot"></span>
@@ -208,9 +216,10 @@
                         <div class="mic-wave-ring mic-wave-ring-3"></div>
                         <div class="waveform-ring" id="waveform-ring"></div>
                         <canvas id="audio-visualizer" width="140" height="140"></canvas>
-                        <button id="mic-btn" class="mic-btn" disabled aria-label="Start recording">
+                        <button id="mic-btn" class="mic-btn connecting" disabled aria-label="Start recording">
                             <span class="mic-icon">🎤</span>
-                            <span class="btn-text">Speak Now</span>
+                            <span class="btn-text">Connecting...</span>
+                            <span class="mic-status-hint" id="mic-status-hint">Setting up session</span>
                         </button>
                     </div>
                     <div class="status-indicator" id="status-indicator">

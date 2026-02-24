@@ -61,6 +61,93 @@ class WitnessReplayApp {
         
         // Show onboarding for first-time users
         this.checkOnboarding();
+        
+        // Initialize connection status popup
+        this.initializeConnectionPopup();
+        
+        // Auto-create session on page load so WebSocket connects immediately
+        this.connectionError = null;
+        this._autoCreateSession();
+    }
+    
+    async _autoCreateSession() {
+        this.updateConnectionStatus('connecting');
+        this._updateMicState('connecting');
+        try {
+            await this._createSessionWithTemplate(null);
+        } catch (error) {
+            console.error('Auto-create session failed:', error);
+            this.connectionError = error.message || 'Failed to connect';
+            this.updateConnectionStatus('disconnected');
+            this._updateMicState('disconnected');
+        }
+    }
+    
+    initializeConnectionPopup() {
+        const indicator = document.getElementById('connection-status');
+        const popup = document.getElementById('connection-popup');
+        const retryBtn = document.getElementById('popup-retry-btn');
+        
+        if (indicator) {
+            indicator.addEventListener('click', (e) => {
+                e.stopPropagation();
+                indicator.classList.toggle('popup-open');
+            });
+            indicator.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    indicator.classList.toggle('popup-open');
+                }
+            });
+        }
+        
+        // Close popup on outside click
+        document.addEventListener('click', () => {
+            if (indicator) indicator.classList.remove('popup-open');
+        });
+        if (popup) {
+            popup.addEventListener('click', (e) => e.stopPropagation());
+        }
+        
+        if (retryBtn) {
+            retryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (indicator) indicator.classList.remove('popup-open');
+                this.reconnectAttempts = 0;
+                this.connectionError = null;
+                this._autoCreateSession();
+            });
+        }
+    }
+    
+    _updateMicState(state) {
+        const micBtn = this.micBtn;
+        const hint = document.getElementById('mic-status-hint');
+        const btnText = micBtn?.querySelector('.btn-text');
+        if (!micBtn) return;
+        
+        micBtn.classList.remove('connecting', 'disconnected');
+        
+        switch (state) {
+            case 'connecting':
+                micBtn.disabled = true;
+                micBtn.classList.add('connecting');
+                if (btnText) btnText.textContent = 'Connecting...';
+                if (hint) { hint.textContent = 'Setting up session'; hint.style.display = ''; }
+                break;
+            case 'connected':
+                micBtn.disabled = false;
+                if (btnText) btnText.textContent = 'Speak Now';
+                if (hint) hint.style.display = 'none';
+                break;
+            case 'disconnected':
+                micBtn.disabled = false;
+                micBtn.classList.add('disconnected');
+                if (btnText) btnText.textContent = 'Tap to reconnect';
+                if (hint) { hint.textContent = 'Connection lost'; hint.style.display = ''; }
+                // Override click to reconnect
+                break;
+        }
     }
     
     /**
@@ -898,8 +985,11 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('Error creating session:', error);
+            this.connectionError = error.message || 'Failed to create session';
             this.ui.setStatus('Error creating session', 'default');
             this.ui.showToast('Failed to create session. Please try again.', 'error');
+            this.updateConnectionStatus('disconnected');
+            this._updateMicState('disconnected');
         }
     }
     
@@ -930,19 +1020,23 @@ class WitnessReplayApp {
         const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
         
         this.ui.setStatus('Connecting to Detective Ray...', 'processing');
+        this.updateConnectionStatus('connecting');
+        this._updateMicState('connecting');
         
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
             this.reconnectAttempts = 0;
+            this.connectionError = null;
             this.ui.setStatus('Ready — Press Space to speak', 'default');
             this.micBtn.disabled = false;
             if (this.chatMicBtn) this.chatMicBtn.disabled = false;
             this.textInput.disabled = false;
             this.sendBtn.disabled = false;
             
-            // Update connection status indicator
+            // Update connection status indicator and mic state
             this.updateConnectionStatus('connected');
+            this._updateMicState('connected');
             
             // Load witnesses for multi-witness support
             this.loadWitnesses();
@@ -961,6 +1055,7 @@ class WitnessReplayApp {
         
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
+            this.connectionError = 'WebSocket connection error';
             this.ui.setStatus('Connection error', 'default');
         };
         
@@ -973,6 +1068,7 @@ class WitnessReplayApp {
             
             // Update connection status indicator
             this.updateConnectionStatus('reconnecting');
+            this._updateMicState('connecting');
             
             // Reconnect with exponential backoff, max attempts
             if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -988,7 +1084,9 @@ class WitnessReplayApp {
                 }, delay);
             } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
                 // Max attempts reached - show error state
+                this.connectionError = 'Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts';
                 this.updateConnectionStatus('disconnected');
+                this._updateMicState('disconnected');
                 this.ui.setStatus('Connection lost - Please reload', 'default');
                 this.ui.showToast(
                     '❌ Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts. Please reload the page.',
@@ -1031,20 +1129,50 @@ class WitnessReplayApp {
         const indicator = document.getElementById('connection-status');
         if (!indicator) return;
         const text = indicator.querySelector('.status-text');
+        const popupState = document.getElementById('popup-state');
+        const popupSession = document.getElementById('popup-session');
+        const popupError = document.getElementById('popup-error');
         
         // Remove all status classes
-        indicator.classList.remove('connected', 'reconnecting', 'disconnected');
+        indicator.classList.remove('connected', 'reconnecting', 'disconnected', 'connecting');
         indicator.classList.add(status);
         
+        // Update popup details
+        if (popupSession) {
+            if (this.sessionId) {
+                popupSession.textContent = `Session: ${this.sessionId}`;
+                popupSession.style.display = '';
+            } else {
+                popupSession.style.display = 'none';
+            }
+        }
+        if (popupError) {
+            if (this.connectionError) {
+                popupError.textContent = this.connectionError;
+                popupError.style.display = '';
+            } else {
+                popupError.style.display = 'none';
+            }
+        }
+        
         switch(status) {
+            case 'connecting':
+                if (text) text.textContent = 'Connecting...';
+                if (popupState) popupState.textContent = '⏳ Connecting to server...';
+                break;
             case 'connected':
-                if (text) text.textContent = 'Connected';
+                if (text) text.textContent = 'Ready';
+                if (popupState) popupState.textContent = '✅ Connected and ready';
+                this.connectionError = null;
+                if (popupError) popupError.style.display = 'none';
                 break;
             case 'reconnecting':
                 if (text) text.textContent = 'Reconnecting...';
+                if (popupState) popupState.textContent = '🔄 Reconnecting...';
                 break;
             case 'disconnected':
                 if (text) text.textContent = 'Disconnected';
+                if (popupState) popupState.textContent = '❌ Disconnected';
                 break;
         }
     }
@@ -1223,6 +1351,13 @@ class WitnessReplayApp {
     }
     
     toggleRecording() {
+        // If disconnected, attempt reconnect instead of recording
+        if (this.micBtn.classList.contains('disconnected')) {
+            this.reconnectAttempts = 0;
+            this.connectionError = null;
+            this._autoCreateSession();
+            return;
+        }
         if (this.isRecording) {
             this.stopRecording();
         } else {
