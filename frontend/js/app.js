@@ -5719,6 +5719,147 @@ function openSketchModal(sketchId) {
             })
             .catch(err => console.error('Failed to load sketch:', err));
     }
+
+    // ── Feature 46: Onboarding Tour ─────────────────────────────
+    _showOnboardingTour() {
+        if (localStorage.getItem('wr_tour_done')) return;
+        const steps = [
+            { target: '.mic-main-btn', text: '🎤 Tap the microphone to start recording your witness statement' },
+            { target: '.chat-input', text: '⌨️ Or type your description here' },
+            { target: '#scene-canvas-container', text: '🎬 Watch your scene come to life as you describe it' },
+        ];
+
+        const overlay = document.createElement('div');
+        overlay.id = 'tour-overlay';
+        overlay.className = 'tour-overlay';
+        let step = 0;
+
+        const showStep = () => {
+            if (step >= steps.length) {
+                overlay.remove();
+                localStorage.setItem('wr_tour_done', 'true');
+                return;
+            }
+            const s = steps[step];
+            const el = document.querySelector(s.target);
+            overlay.innerHTML = `
+                <div class="tour-backdrop"></div>
+                <div class="tour-tooltip" style="${el ? `top: ${el.getBoundingClientRect().bottom + 10}px; left: ${Math.max(10, el.getBoundingClientRect().left)}px;` : 'top:50%;left:50%;transform:translate(-50%,-50%);'}">
+                    <div class="tour-text">${s.text}</div>
+                    <div class="tour-nav">
+                        <span class="tour-progress">${step + 1}/${steps.length}</span>
+                        <button class="tour-next-btn" onclick="document.getElementById('tour-overlay')._next()">
+                            ${step < steps.length - 1 ? 'Next →' : 'Got it! ✓'}
+                        </button>
+                    </div>
+                </div>
+            `;
+            overlay._next = () => { step++; showStep(); };
+        };
+
+        document.body.appendChild(overlay);
+        showStep();
+    }
+
+    // ── Feature 47: Witness Feedback Form ────────────────────────
+    _showFeedbackPrompt(sessionId) {
+        const modal = document.createElement('div');
+        modal.className = 'feedback-modal-overlay';
+        modal.innerHTML = `
+            <div class="feedback-modal">
+                <h3>📝 How was your experience?</h3>
+                <div class="feedback-stars" id="feedback-stars">
+                    ${[1,2,3,4,5].map(i => `<span class="star" data-rating="${i}" onclick="document.querySelector('.feedback-modal')._setRating(${i})">⭐</span>`).join('')}
+                </div>
+                <p id="feedback-rating-text" style="color:var(--text-secondary);font-size:0.85rem;">Tap to rate</p>
+                <div class="feedback-q">
+                    <label>How easy was it to use? (1-5)</label>
+                    <input type="range" id="feedback-ease" min="1" max="5" value="3">
+                </div>
+                <div class="feedback-q">
+                    <label>Did you feel heard? (1-5)</label>
+                    <input type="range" id="feedback-heard" min="1" max="5" value="3">
+                </div>
+                <textarea id="feedback-comments" placeholder="Any additional comments..." rows="2" style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn-primary" onclick="document.querySelector('.feedback-modal-overlay')._submit()">Submit</button>
+                    <button class="btn-secondary" onclick="document.querySelector('.feedback-modal-overlay').remove()">Skip</button>
+                </div>
+            </div>
+        `;
+        let rating = 0;
+        modal.querySelector('.feedback-modal')._setRating = (r) => {
+            rating = r;
+            const ratingText = document.getElementById('feedback-rating-text');
+            if (ratingText) ratingText.textContent = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][r];
+        };
+        modal._submit = async () => {
+            try {
+                await fetch(`/sessions/${sessionId}/feedback`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        rating,
+                        ease_of_use: parseInt(document.getElementById('feedback-ease')?.value || 3),
+                        felt_heard: parseInt(document.getElementById('feedback-heard')?.value || 3),
+                        comments: document.getElementById('feedback-comments')?.value || ''
+                    })
+                });
+            } catch(e) { console.error(e); }
+            modal.remove();
+        };
+        document.body.appendChild(modal);
+    }
+
+    // ── Feature 48: AI Confidence Visualization ──────────────────
+    _renderConfidenceBar(confidence) {
+        if (!confidence && confidence !== 0) return '';
+        const pct = Math.round(confidence * 100);
+        const color = pct > 80 ? '#22c55e' : pct > 50 ? '#eab308' : '#ef4444';
+        const label = pct > 80 ? 'High' : pct > 50 ? 'Medium' : 'Low';
+        return `<div class="confidence-bar" title="AI Confidence: ${pct}%"><div class="confidence-fill" style="width:${pct}%;background:${color}"></div><span class="confidence-label">${label} (${pct}%)</span></div>`;
+    }
+
+    // ── Feature 49: Quick Action Command Palette ─────────────────
+    _initCommandPalette() {
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                this._toggleCommandPalette();
+            }
+        });
+    }
+
+    _toggleCommandPalette() {
+        let palette = document.getElementById('command-palette');
+        if (palette) { palette.remove(); return; }
+
+        const actions = [
+            { icon: '🎤', label: 'Start Recording', action: () => this.toggleRecording?.() },
+            { icon: '📝', label: 'New Report', action: () => this.createNewSession?.() },
+            { icon: '🌙', label: 'Toggle Dark Mode', action: () => document.body.classList.toggle('light-mode') },
+            { icon: '📊', label: 'Open Admin', action: () => window.location.href = '/admin' },
+            { icon: '❓', label: 'Help & Tutorial', action: () => this._showOnboardingTour?.() },
+        ];
+
+        palette = document.createElement('div');
+        palette.id = 'command-palette';
+        palette.className = 'command-palette';
+        palette.innerHTML = `
+            <input type="text" class="cmd-input" placeholder="Type a command..." autofocus oninput="this.parentElement._filter(this.value)">
+            <div class="cmd-list" id="cmd-list">
+                ${actions.map((a, i) => `<div class="cmd-item" data-idx="${i}" onclick="document.getElementById('command-palette')._run(${i})">${a.icon} ${a.label}</div>`).join('')}
+            </div>
+        `;
+        palette._filter = (q) => {
+            const items = palette.querySelectorAll('.cmd-item');
+            items.forEach(item => { item.style.display = item.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none'; });
+        };
+        palette._run = (idx) => { actions[idx]?.action(); palette.remove(); };
+        palette.addEventListener('click', (e) => { if (e.target === palette) palette.remove(); });
+        document.body.appendChild(palette);
+        palette.querySelector('.cmd-input').focus();
+    }
 }
 
 // Orphaned class methods wrapped as standalone functions

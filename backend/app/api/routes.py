@@ -9689,6 +9689,87 @@ async def notify_case_witnesses(case_id: str, data: dict, auth=Depends(require_a
     return {"notifications_sent": len(notified), "type": notification_type, "recipients": notified, "note": "Notifications logged. Email delivery requires SMTP configuration."}
 
 
+# ==================== Dashboard Widgets (Feature 43) ====================
+
+@router.get("/admin/dashboard/widgets")
+async def get_dashboard_widgets(auth=Depends(require_admin_auth)):
+    """Get aggregated dashboard widget data."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        widgets = {}
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        cursor = await db._db.execute("SELECT COUNT(*) FROM sessions WHERE created_at LIKE ?", (f"{today}%",))
+        widgets["sessions_today"] = (await cursor.fetchone())[0]
+        cursor = await db._db.execute("SELECT COUNT(*) FROM cases")
+        widgets["total_cases"] = (await cursor.fetchone())[0]
+        cursor = await db._db.execute("SELECT COUNT(*) FROM cases WHERE status = 'open'")
+        widgets["open_cases"] = (await cursor.fetchone())[0]
+        cursor = await db._db.execute("SELECT COUNT(*) FROM users")
+        widgets["total_users"] = (await cursor.fetchone())[0]
+        cursor = await db._db.execute("SELECT COUNT(*) FROM sessions WHERE created_at >= datetime('now', '-7 days')")
+        widgets["sessions_this_week"] = (await cursor.fetchone())[0]
+        return widgets
+    except Exception as e:
+        logger.error(f"Error getting dashboard widgets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Global Search (Feature 44) ====================
+
+@router.get("/admin/search/global")
+async def global_search(q: str = "", auth=Depends(require_admin_auth)):
+    """Search across cases, sessions, and users."""
+    if len(q) < 2:
+        raise HTTPException(400, "Query too short")
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        results = {"cases": [], "sessions": [], "users": []}
+        cursor = await db._db.execute("SELECT id, title, status, case_number FROM cases WHERE title LIKE ? OR case_number LIKE ? LIMIT 10", (f"%{q}%", f"%{q}%"))
+        results["cases"] = [dict(r) for r in await cursor.fetchall()]
+        cursor = await db._db.execute("SELECT id, title, source_type, created_at FROM sessions WHERE title LIKE ? OR id LIKE ? LIMIT 10", (f"%{q}%", f"%{q}%"))
+        results["sessions"] = [dict(r) for r in await cursor.fetchall()]
+        cursor = await db._db.execute("SELECT id, username, email, role FROM users WHERE username LIKE ? OR email LIKE ? LIMIT 10", (f"%{q}%", f"%{q}%"))
+        results["users"] = [dict(r) for r in await cursor.fetchall()]
+        results["total"] = sum(len(v) for v in results.values())
+        return results
+    except Exception as e:
+        logger.error(f"Error in global search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Multi-Format Export (Feature 45) ====================
+
+@router.get("/cases/{case_id}/export")
+async def export_case(case_id: str, format: str = "json", auth=Depends(require_admin_auth)):
+    """Export case in multiple formats: json, csv, txt."""
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(404, "Case not found")
+    c = case if isinstance(case, dict) else case.model_dump()
+
+    if format == "csv":
+        import csv
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Field", "Value"])
+        for key, val in c.items():
+            writer.writerow([key, str(val)[:500]])
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=case_{case_id[:8]}.csv"})
+    elif format == "txt":
+        lines = [f"{k}: {v}" for k, v in c.items()]
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse("\n".join(lines), media_type="text/plain", headers={"Content-Disposition": f"attachment; filename=case_{case_id[:8]}.txt"})
+    else:
+        return c
+
+
 # ── Feature 36: Rate Limit Dashboard ──────────────────────────────────────
 
 @router.get("/admin/rate-limits")
