@@ -15,9 +15,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory session store (for demo purposes)
-# In production, use Redis or database
-active_sessions: Dict[str, datetime] = {}
+# Session store: token → {user_id, username, role, created_at}
+active_sessions: Dict[str, Dict] = {}
 
 # Session expiry
 SESSION_EXPIRY_HOURS = 24
@@ -55,30 +54,31 @@ def check_rate_limit(client_ip: str) -> bool:
     return True
 
 
-def create_session() -> str:
-    """Create a new admin session token."""
+def create_session(user_id: str = "superadmin", username: str = "admin", role: str = "admin") -> str:
+    """Create a new session token with user info."""
     token = secrets.token_urlsafe(32)
-    active_sessions[token] = datetime.now(timezone.utc)
-    logger.info(f"Created admin session: {token[:8]}...")
+    active_sessions[token] = {
+        "user_id": user_id,
+        "username": username,
+        "role": role,
+        "created_at": datetime.now(timezone.utc),
+    }
+    logger.info(f"Created session for {username}: {token[:8]}...")
     return token
 
 
-def validate_session(token: str) -> bool:
-    """Validate an admin session token."""
+def validate_session(token: str) -> Optional[Dict]:
+    """Validate session. Returns session dict with user info, or None."""
     if token not in active_sessions:
-        return False
-    
-    # Check if session has expired
-    session_time = active_sessions[token]
-    if datetime.now(timezone.utc) - session_time > timedelta(hours=SESSION_EXPIRY_HOURS):
-        # Session expired, remove it
+        return None
+    session = active_sessions[token]
+    if datetime.now(timezone.utc) - session["created_at"] > timedelta(hours=SESSION_EXPIRY_HOURS):
         del active_sessions[token]
         logger.info(f"Session expired: {token[:8]}...")
-        return False
-    
-    # Update session time (keep-alive)
-    active_sessions[token] = datetime.now(timezone.utc)
-    return True
+        return None
+    # Keep-alive
+    session["created_at"] = datetime.now(timezone.utc)
+    return session
 
 
 def revoke_session(token: str) -> bool:
@@ -91,34 +91,34 @@ def revoke_session(token: str) -> bool:
 
 
 def authenticate(password: str) -> Optional[str]:
-    """Authenticate with password and return session token if successful."""
+    """Legacy: authenticate with just admin password (superadmin fallback)."""
     if bcrypt.checkpw(password.encode('utf-8'), _get_hashed_password()):
-        return create_session()
+        return create_session(user_id="superadmin", username="admin", role="admin")
     return None
 
 
-def require_admin_auth(authorization: Optional[str] = Header(None)) -> None:
-    """Dependency to require admin authentication."""
+async def authenticate_user_credentials(username: str, password: str) -> Optional[tuple]:
+    """Authenticate with username+password. Returns (token, user_dict) or None."""
+    from app.services.user_service import user_service
+    user = await user_service.authenticate_user(username, password)
+    if user:
+        token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+        return token, user
+    return None
+
+
+def require_admin_auth(authorization: Optional[str] = Header(None)) -> Dict:
+    """Dependency to require admin authentication. Returns session info."""
     if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing authorization header"
-        )
-    
-    # Expected format: "Bearer <token>"
+        raise HTTPException(status_code=401, detail="Missing authorization header")
     if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authorization format"
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    token = authorization[7:]
+    session = validate_session(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session"
         )
-    
-    token = authorization[7:]  # Remove "Bearer " prefix
-    
-    if not validate_session(token):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired session"
-        )
+    return session
 
 
 # ─── Per-API-key rate limiter ─────────────────────────────

@@ -75,6 +75,11 @@ async def lifespan(app: FastAPI):
     await api_key_service.initialize()
     logger.info("API key service initialized")
 
+    # Initialize user service
+    from app.services.user_service import user_service
+    await user_service.initialize()
+    logger.info("User service initialized")
+
     # Ensure images directory exists
     os.makedirs("/app/data/images", exist_ok=True)
     

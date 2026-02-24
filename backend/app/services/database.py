@@ -223,6 +223,25 @@ class DatabaseService:
                 is_active INTEGER DEFAULT 1,
                 usage_count INTEGER DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE,
+                password_hash TEXT,
+                full_name TEXT DEFAULT '',
+                role TEXT DEFAULT 'officer',
+                auth_provider TEXT DEFAULT 'local',
+                provider_id TEXT,
+                avatar_url TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT,
+                last_login_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+            CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+            CREATE INDEX IF NOT EXISTS idx_users_provider ON users(auth_provider, provider_id);
         """)
         await self._db.commit()
 

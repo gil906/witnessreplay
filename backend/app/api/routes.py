@@ -69,7 +69,7 @@ from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
-from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key
+from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key, authenticate_user_credentials, create_session
 from app.services.api_key_service import api_key_service
 from google import genai
 import uuid
@@ -117,48 +117,139 @@ async def publish_event(event_type: str, data: dict):
             _sse_subscribers.remove(queue)
 
 
-# Authentication schemas
+# ─── Authentication ───────────────────────────────────────
+from app.services.user_service import user_service
+
 class LoginRequest(BaseModel):
+    username: Optional[str] = None
     password: str
+    # Legacy support: if username is None, try admin_password
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    full_name: str = ""
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class OAuthLoginRequest(BaseModel):
+    provider: str  # "google" or "github"
+    provider_id: str
+    email: str
+    full_name: str = ""
+    avatar_url: Optional[str] = None
 
 class LoginResponse(BaseModel):
     token: str
-    expires_in: int = 86400  # 24 hours in seconds
+    user: dict
+    expires_in: int = 86400
 
 class LogoutRequest(BaseModel):
     token: str
 
 
-# Authentication endpoints
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(request: LoginRequest, raw_request: Request):
-    """Admin login endpoint."""
+    """Login with username+password (or legacy admin password)."""
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     if not check_rate_limit(client_ip):
-        raise HTTPException(
-            status_code=429,
-            detail="Too many login attempts. Try again in 15 minutes."
-        )
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in 15 minutes.")
+    
+    # Try username+password first
+    if request.username:
+        result = await authenticate_user_credentials(request.username, request.password)
+        if result:
+            token, user = result
+            return LoginResponse(token=token, user=user)
+    
+    # Fallback: legacy admin password (no username)
     token = authenticate(request.password)
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid password"
+    if token:
+        return LoginResponse(token=token, user={"id": "superadmin", "username": "admin", "role": "admin", "full_name": "Administrator"})
+    
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+@router.post("/auth/register")
+async def register(request: RegisterRequest, raw_request: Request):
+    """Create a new user account."""
+    if len(request.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if not request.email or "@" not in request.email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+    
+    try:
+        user = await user_service.create_user(
+            username=request.username,
+            email=request.email,
+            password=request.password,
+            full_name=request.full_name,
+            role="officer",
         )
-    return LoginResponse(token=token)
+        # Auto-login after registration
+        token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+        return {"token": token, "user": user, "expires_in": 86400}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """Request password reset. (Logs the request — email service not configured.)"""
+    user = await user_service.get_user_by_email(request.email)
+    # Always return success to prevent email enumeration
+    logger.info(f"Password reset requested for: {request.email} (user found: {user is not None})")
+    return {"message": "If an account with that email exists, password reset instructions have been sent."}
+
+
+@router.post("/auth/oauth")
+async def oauth_login(request: OAuthLoginRequest):
+    """Login/register via OAuth provider (Google, GitHub)."""
+    if request.provider not in ("google", "github"):
+        raise HTTPException(status_code=400, detail="Unsupported OAuth provider")
+    
+    user = await user_service.find_or_create_oauth_user(
+        provider=request.provider,
+        provider_id=request.provider_id,
+        email=request.email,
+        full_name=request.full_name,
+        avatar_url=request.avatar_url,
+    )
+    token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+    return {"token": token, "user": user, "expires_in": 86400}
 
 
 @router.post("/auth/logout")
 async def logout(request: LogoutRequest):
-    """Admin logout endpoint."""
+    """Logout and revoke session."""
     revoke_session(request.token)
     return {"message": "Logged out successfully"}
 
 
 @router.get("/auth/verify")
 async def verify_auth(auth=Depends(require_admin_auth)):
-    """Verify admin authentication."""
-    return {"authenticated": True}
+    """Verify authentication and return user info."""
+    return {"authenticated": True, "user": {
+        "id": auth.get("user_id"),
+        "username": auth.get("username"),
+        "role": auth.get("role"),
+    }}
+
+
+@router.get("/auth/me")
+async def get_current_user(auth=Depends(require_admin_auth)):
+    """Get current user profile."""
+    user_id = auth.get("user_id")
+    if user_id == "superadmin":
+        return {"id": "superadmin", "username": "admin", "role": "admin", "full_name": "Administrator"}
+    user = await user_service.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @router.get("/health", response_model=HealthResponse)

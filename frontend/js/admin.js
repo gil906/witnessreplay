@@ -23,14 +23,19 @@ class AdminPortal {
         this.dashboardMapMarkers = [];
         this.investigators = [];
         this.workloadData = null;
+        this.currentUser = null;
         
         this.checkAuth();
     }
     
     checkAuth() {
         const token = sessionStorage.getItem('admin_token');
+        const userStr = sessionStorage.getItem('admin_user');
         if (token) {
             this.authToken = token;
+            if (userStr) {
+                try { this.currentUser = JSON.parse(userStr); } catch(e) {}
+            }
             this.verifyAuth();
         } else {
             this.showLogin();
@@ -40,20 +45,22 @@ class AdminPortal {
     async verifyAuth() {
         try {
             const response = await fetch('/api/auth/verify', {
-                headers: {
-                    'Authorization': `Bearer ${this.authToken}`
-                }
+                headers: { 'Authorization': `Bearer ${this.authToken}` }
             });
-            
             if (response.ok) {
+                const data = await response.json();
+                if (data.user) {
+                    this.currentUser = data.user;
+                    sessionStorage.setItem('admin_user', JSON.stringify(data.user));
+                }
                 this.hideLogin();
                 this.init();
             } else {
                 sessionStorage.removeItem('admin_token');
+                sessionStorage.removeItem('admin_user');
                 this.showLogin();
             }
         } catch (error) {
-            console.error('Auth verification failed:', error);
             this.showLogin();
         }
     }
@@ -62,47 +69,179 @@ class AdminPortal {
         document.getElementById('login-overlay').style.display = 'flex';
         document.getElementById('admin-content').style.display = 'none';
         
-        document.getElementById('login-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleLogin();
-        });
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const forgotForm = document.getElementById('forgot-form');
+        
+        // Prevent duplicate listeners
+        if (!loginForm._wired) {
+            loginForm._wired = true;
+            loginForm.addEventListener('submit', (e) => { e.preventDefault(); this.handleLogin(); });
+        }
+        if (registerForm && !registerForm._wired) {
+            registerForm._wired = true;
+            registerForm.addEventListener('submit', (e) => { e.preventDefault(); this.handleRegister(); });
+        }
+        if (forgotForm && !forgotForm._wired) {
+            forgotForm._wired = true;
+            forgotForm.addEventListener('submit', (e) => { e.preventDefault(); this.handleForgotPassword(); });
+        }
+        
+        // Wire OAuth buttons
+        const googleBtn = document.getElementById('google-login-btn');
+        const githubBtn = document.getElementById('github-login-btn');
+        if (googleBtn && !googleBtn._wired) {
+            googleBtn._wired = true;
+            googleBtn.addEventListener('click', () => this.handleOAuthLogin('google'));
+        }
+        if (githubBtn && !githubBtn._wired) {
+            githubBtn._wired = true;
+            githubBtn.addEventListener('click', () => this.handleOAuthLogin('github'));
+        }
     }
     
     hideLogin() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('admin-content').style.display = 'block';
+        // Show user in header
+        const userDisplay = document.getElementById('user-display');
+        if (userDisplay && this.currentUser) {
+            userDisplay.textContent = this.currentUser.full_name || this.currentUser.username || 'Admin';
+            userDisplay.style.display = '';
+        }
     }
     
     async handleLogin() {
-        const password = document.getElementById('admin-password').value;
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
         const errorEl = document.getElementById('login-error');
+        errorEl.style.display = 'none';
+        
+        if (!password) {
+            errorEl.textContent = 'Password is required.';
+            errorEl.style.display = 'block';
+            return;
+        }
         
         try {
+            const body = password && !username 
+                ? { password }  // Legacy admin-password-only login
+                : { username, password };
+            
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ password })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
             });
             
             if (response.ok) {
                 const data = await response.json();
                 this.authToken = data.token;
                 sessionStorage.setItem('admin_token', data.token);
+                if (data.user) {
+                    sessionStorage.setItem('admin_user', JSON.stringify(data.user));
+                    this.currentUser = data.user;
+                }
                 this.hideLogin();
                 this.init();
             } else {
-                errorEl.textContent = 'Invalid password. Please try again.';
+                const err = await response.json().catch(() => ({}));
+                errorEl.textContent = err.detail || 'Invalid credentials. Please try again.';
                 errorEl.style.display = 'block';
-                document.getElementById('admin-password').value = '';
-                document.getElementById('admin-password').focus();
             }
         } catch (error) {
-            console.error('Login failed:', error);
-            errorEl.textContent = 'Login failed. Please check your connection and try again.';
+            errorEl.textContent = 'Login failed. Please check your connection.';
             errorEl.style.display = 'block';
         }
+    }
+    
+    async handleRegister() {
+        const fullName = document.getElementById('reg-fullname').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const confirm = document.getElementById('reg-confirm').value;
+        const errorEl = document.getElementById('register-error');
+        errorEl.style.display = 'none';
+        
+        if (password !== confirm) {
+            errorEl.textContent = 'Passwords do not match.';
+            errorEl.style.display = 'block';
+            return;
+        }
+        if (password.length < 6) {
+            errorEl.textContent = 'Password must be at least 6 characters.';
+            errorEl.style.display = 'block';
+            return;
+        }
+        if (username.length < 3) {
+            errorEl.textContent = 'Username must be at least 3 characters.';
+            errorEl.style.display = 'block';
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password, full_name: fullName })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.authToken = data.token;
+                sessionStorage.setItem('admin_token', data.token);
+                if (data.user) {
+                    sessionStorage.setItem('admin_user', JSON.stringify(data.user));
+                    this.currentUser = data.user;
+                }
+                this.hideLogin();
+                this.init();
+            } else {
+                const err = await response.json().catch(() => ({}));
+                errorEl.textContent = err.detail || 'Registration failed.';
+                errorEl.style.display = 'block';
+            }
+        } catch (error) {
+            errorEl.textContent = 'Registration failed. Please check your connection.';
+            errorEl.style.display = 'block';
+        }
+    }
+    
+    async handleForgotPassword() {
+        const email = document.getElementById('forgot-email').value.trim();
+        const msgEl = document.getElementById('forgot-message');
+        msgEl.style.display = 'none';
+        
+        if (!email) {
+            msgEl.textContent = 'Please enter your email address.';
+            msgEl.style.display = 'block';
+            msgEl.className = 'login-error';
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/auth/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await response.json();
+            msgEl.textContent = data.message || 'If an account exists, reset instructions have been sent.';
+            msgEl.className = 'login-success';
+            msgEl.style.display = 'block';
+        } catch (error) {
+            msgEl.textContent = 'Request failed. Please try again.';
+            msgEl.className = 'login-error';
+            msgEl.style.display = 'block';
+        }
+    }
+    
+    handleOAuthLogin(provider) {
+        const errorEl = document.getElementById('login-error');
+        errorEl.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} login requires OAuth configuration. Contact your administrator.`;
+        errorEl.style.display = 'block';
+        errorEl.className = 'login-error login-info';
     }
     
     async logout() {
@@ -119,7 +258,9 @@ class AdminPortal {
         }
         
         sessionStorage.removeItem('admin_token');
+        sessionStorage.removeItem('admin_user');
         this.authToken = null;
+        this.currentUser = null;
         this.showLogin();
     }
     
