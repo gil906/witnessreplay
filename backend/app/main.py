@@ -111,6 +111,18 @@ if os.path.exists(frontend_path):
         if os.path.exists(index_path):
             return FileResponse(index_path)
         return {"message": "WitnessReplay API is running"}
+    
+    @app.get("/admin")
+    @app.get("/admin.html")
+    async def serve_admin_portal():
+        """Serve the admin portal HTML."""
+        admin_path = os.path.join(frontend_path, "admin.html")
+        if os.path.exists(admin_path):
+            return FileResponse(admin_path)
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Admin portal not found"}
+        )
 else:
     @app.get("/")
     async def root():

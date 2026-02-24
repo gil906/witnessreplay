@@ -133,7 +133,7 @@ class WitnessReplayApp {
         const adminPortalBtn = document.getElementById('admin-portal-btn');
         if (adminPortalBtn) {
             adminPortalBtn.addEventListener('click', () => {
-                window.location.href = '/static/admin.html';
+                window.location.href = '/admin';
             });
         }
         
