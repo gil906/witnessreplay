@@ -97,6 +97,14 @@ class LocationManager {
             return;
         }
 
+        // Geolocation requires a secure context (HTTPS) except on localhost
+        if (!window.isSecureContext &&
+            window.location.hostname !== 'localhost' &&
+            window.location.hostname !== '127.0.0.1') {
+            this.showToast('📍 GPS requires HTTPS. Please access this page over a secure connection.', 'error');
+            return;
+        }
+
         // Update button state
         if (this.gpsButton) {
             this.gpsButton.classList.add('loading');
@@ -151,13 +159,13 @@ class LocationManager {
         
         switch (error.code) {
             case error.PERMISSION_DENIED:
-                message = 'Location permission denied. Please enable location access.';
+                message = '📍 Please enable location in your browser settings';
                 break;
             case error.POSITION_UNAVAILABLE:
-                message = 'Location information unavailable.';
+                message = '📍 Location unavailable';
                 break;
             case error.TIMEOUT:
-                message = 'Location request timed out. Please try again.';
+                message = '📍 Location request timed out';
                 break;
         }
 
