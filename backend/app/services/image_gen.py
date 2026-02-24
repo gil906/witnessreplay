@@ -94,11 +94,23 @@ class ImageGenerationService:
         is_correction: bool = False,
         previous_description: Optional[str] = None,
     ) -> Optional[bytes]:
+        # Try Imagen AI generation first
+        try:
+            from app.services.imagen_service import imagen_service
+
+            imagen_bytes = await imagen_service.generate_scene(scene_description)
+            if imagen_bytes:
+                logger.info("Generated scene image via Imagen AI")
+                return imagen_bytes
+        except Exception as e:
+            logger.warning(f"Imagen generation failed, falling back to PIL: {e}")
+
+        # Fallback to PIL diagram
         try:
             image = self._create_scene_diagram(scene_description, elements)
             buf = BytesIO()
             image.save(buf, format="PNG")
-            logger.info("Generated scene diagram image")
+            logger.info("Generated scene diagram image (PIL fallback)")
             return buf.getvalue()
         except Exception as e:
             logger.error(f"Failed to generate scene image: {e}")
