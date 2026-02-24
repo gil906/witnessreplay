@@ -129,6 +129,14 @@ class WitnessReplayApp {
             infoBtn.addEventListener('click', () => this.showInfoModal());
         }
         
+        // Admin portal button
+        const adminPortalBtn = document.getElementById('admin-portal-btn');
+        if (adminPortalBtn) {
+            adminPortalBtn.addEventListener('click', () => {
+                window.location.href = '/static/admin.html';
+            });
+        }
+        
         // Start with a new session
         this.createNewSession();
         

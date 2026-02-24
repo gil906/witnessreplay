@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WitnessReplay Admin Portal - Case Management System">
+    <meta name="theme-color" content="#00d4ff">
+    <title>Admin Portal - WitnessReplay</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body class="admin-portal">
+    <div class="container admin-container">
+        <!-- Admin Header -->
+        <header class="header admin-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">🛡️</div>
+                    <div class="logo-text">
+                        <h1>Admin Portal</h1>
+                        <p class="tagline">Case Management & Witness Report Analytics</p>
+                    </div>
+                </div>
+                
+                <div class="admin-user-info">
+                    <div class="user-badge">
+                        <div class="user-avatar">👮</div>
+                        <div class="user-details">
+                            <h3 id="admin-user-name">Officer Admin</h3>
+                            <p>Administrator</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="admin-actions">
+                    <button id="refresh-btn" class="btn btn-secondary" data-tooltip="Refresh data">
+                        🔄 Refresh
+                    </button>
+                    <button id="witness-view-btn" class="btn btn-primary" data-tooltip="Switch to witness view">
+                        🎙️ Witness View
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Admin Dashboard -->
+        <div class="admin-dashboard">
+            <!-- Stats Overview -->
+            <section class="stats-overview">
+                <div class="stat-card admin-stat">
+                    <div class="stat-icon">📁</div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="total-cases">0</div>
+                        <div class="stat-label">Total Cases</div>
+                    </div>
+                </div>
+                <div class="stat-card admin-stat">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="total-witnesses">0</div>
+                        <div class="stat-label">Witness Reports</div>
+                    </div>
+                </div>
+                <div class="stat-card admin-stat">
+                    <div class="stat-icon">⏱️</div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="active-today">0</div>
+                        <div class="stat-label">Active Today</div>
+                    </div>
+                </div>
+                <div class="stat-card admin-stat">
+                    <div class="stat-icon">🎬</div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="total-scenes">0</div>
+                        <div class="stat-label">Scenes Generated</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search & Filter -->
+            <section class="admin-controls">
+                <div class="search-bar">
+                    <input type="text" id="case-search" placeholder="Search by case ID, type, or location..." class="search-input">
+                    <button id="search-btn" class="btn btn-primary">🔍 Search</button>
+                </div>
+                
+                <div class="filter-controls">
+                    <select id="filter-type" class="filter-select">
+                        <option value="">All Case Types</option>
+                        <option value="accident">Accident</option>
+                        <option value="crime">Crime</option>
+                        <option value="incident">Incident</option>
+                        <option value="other">Other</option>
+                    </select>
+                    
+                    <select id="filter-status" class="filter-select">
+                        <option value="">All Statuses</option>
+                        <option value="active">Active</option>
+                        <option value="complete">Complete</option>
+                        <option value="review">Under Review</option>
+                    </select>
+                    
+                    <select id="sort-by" class="filter-select">
+                        <option value="date-desc">Newest First</option>
+                        <option value="date-asc">Oldest First</option>
+                        <option value="witnesses-desc">Most Witnesses</option>
+                        <option value="scenes-desc">Most Scenes</option>
+                    </select>
+                    
+                    <button id="clear-filters-btn" class="btn btn-secondary">Clear Filters</button>
+                </div>
+            </section>
+
+            <!-- Cases List -->
+            <section class="cases-section">
+                <div class="section-header">
+                    <h2>Active Cases</h2>
+                    <button id="new-case-btn" class="btn btn-primary">➕ Create Case</button>
+                </div>
+                
+                <div id="cases-list" class="cases-list">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <p>Loading cases...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Case Detail Modal -->
+    <div id="case-detail-modal" class="modal">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h2 id="case-detail-title">Case Details</h2>
+                <button class="modal-close" data-modal="case-detail-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="case-detail-container">
+                    <!-- Case Info -->
+                    <section class="case-info">
+                        <h3>Case Information</h3>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Case ID:</label>
+                                <span id="detail-case-id">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Type:</label>
+                                <span id="detail-case-type">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Status:</label>
+                                <span id="detail-case-status">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Created:</label>
+                                <span id="detail-created">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Last Updated:</label>
+                                <span id="detail-updated">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Duration:</label>
+                                <span id="detail-duration">-</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Witness Reports -->
+                    <section class="witness-reports">
+                        <h3>Witness Statements (<span id="witness-count">0</span>)</h3>
+                        <div id="witness-statements" class="statements-list">
+                            <p class="empty-state">No statements recorded yet</p>
+                        </div>
+                    </section>
+
+                    <!-- Scene Reconstructions -->
+                    <section class="scene-gallery">
+                        <h3>Scene Reconstructions (<span id="scene-count">0</span>)</h3>
+                        <div id="scene-versions" class="scene-grid">
+                            <p class="empty-state">No scenes generated yet</p>
+                        </div>
+                    </section>
+
+                    <!-- Analytics -->
+                    <section class="case-analytics">
+                        <h3>Case Analytics</h3>
+                        <div class="analytics-grid">
+                            <div class="analytics-card">
+                                <h4>Completeness</h4>
+                                <div class="progress-bar">
+                                    <div id="completeness-bar" class="progress-fill" style="width: 0%"></div>
+                                </div>
+                                <span id="completeness-text">0%</span>
+                            </div>
+                            <div class="analytics-card">
+                                <h4>Contradictions</h4>
+                                <div id="contradictions-list">
+                                    <p class="empty-state">No contradictions detected</p>
+                                </div>
+                            </div>
+                            <div class="analytics-card">
+                                <h4>Key Elements</h4>
+                                <div id="key-elements-list" class="tag-list">
+                                    <p class="empty-state">No elements extracted</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Actions -->
+                    <section class="case-actions">
+                        <button id="export-case-btn" class="btn btn-primary">📥 Export Case</button>
+                        <button id="export-evidence-btn" class="btn btn-secondary">📋 Export Evidence</button>
+                        <button id="mark-complete-btn" class="btn btn-secondary">✅ Mark Complete</button>
+                        <button id="delete-case-btn" class="btn btn-danger">🗑️ Delete Case</button>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Case Modal -->
+    <div id="create-case-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Case</h2>
+                <button class="modal-close" data-modal="create-case-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="create-case-form">
+                    <div class="form-group">
+                        <label for="new-case-type">Case Type:</label>
+                        <select id="new-case-type" required>
+                            <option value="">Select type...</option>
+                            <option value="accident">Traffic Accident</option>
+                            <option value="crime">Criminal Investigation</option>
+                            <option value="incident">General Incident</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="new-case-location">Location:</label>
+                        <input type="text" id="new-case-location" placeholder="e.g., Main St & 5th Ave">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="new-case-description">Initial Description:</label>
+                        <textarea id="new-case-description" rows="4" placeholder="Brief description of the case..."></textarea>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Create Case</button>
+                        <button type="button" class="btn btn-secondary" data-modal="create-case-modal">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>
