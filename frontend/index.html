@@ -180,8 +180,8 @@
                     <button class="suggestion-btn" data-action="details" aria-label="Add more details">➕ Add more details</button>
                 </div>
 
-                <!-- Voice Control - collapsible, hidden by default -->
-                <div class="controls" id="voice-controls">
+                <!-- Voice Control - always visible, voice-first -->
+                <div class="controls expanded" id="voice-controls">
                     <!-- VAD Controls -->
                     <div class="vad-controls" id="vad-controls">
                         <div class="vad-toggle-row">
@@ -218,7 +218,7 @@
                         <div class="mic-wave-ring mic-wave-ring-2"></div>
                         <div class="mic-wave-ring mic-wave-ring-3"></div>
                         <div class="waveform-ring" id="waveform-ring"></div>
-                        <canvas id="audio-visualizer" width="140" height="140"></canvas>
+                        <canvas id="audio-visualizer" width="160" height="160"></canvas>
                         <button id="mic-btn" class="mic-btn connecting" disabled aria-label="Start recording">
                             <span class="mic-icon">🎤</span>
                             <span class="btn-text">Connecting...</span>
@@ -233,9 +233,9 @@
                     <div id="audio-quality-container" class="audio-quality-container"></div>
                 </div>
 
-                <!-- Text Input — always visible -->
-                <div class="text-input">
-                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record">🎤</button>
+                <!-- Text Input — collapsed bar, expandable (secondary to voice) -->
+                <div class="text-input text-input-collapsed" id="text-input-bar">
+                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record" style="display:none;">🎤</button>
                     <!-- Language Selector for Translation -->
                     <select id="language-selector" class="language-selector" aria-label="Select your language" title="Select your language">
                         <option value="en">🇺🇸 English</option>
@@ -266,6 +266,7 @@
                     </button>
                     <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)" aria-hidden="true">
                     <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)" aria-hidden="true">
+                    <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type instead...">⌨️ Type instead...</button>
                     <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input for testimony">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                     <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
@@ -952,6 +953,33 @@
         
         document.getElementById('skip-onboarding')?.addEventListener('click', closeOnboarding);
         document.getElementById('start-session-btn')?.addEventListener('click', closeOnboarding);
+        
+        // Voice-first: text input expand/collapse
+        (function() {
+            const bar = document.getElementById('text-input-bar');
+            const expandBtn = document.getElementById('text-input-expand-btn');
+            const textInput = document.getElementById('text-input');
+            if (expandBtn && bar) {
+                expandBtn.addEventListener('click', function() {
+                    bar.classList.toggle('text-input-collapsed');
+                    bar.classList.toggle('text-input-expanded');
+                    if (bar.classList.contains('text-input-expanded') && textInput) {
+                        textInput.focus();
+                    }
+                });
+            }
+            // Collapse when text input blurs and is empty
+            if (textInput && bar) {
+                textInput.addEventListener('blur', function() {
+                    if (!textInput.value.trim()) {
+                        setTimeout(function() {
+                            bar.classList.add('text-input-collapsed');
+                            bar.classList.remove('text-input-expanded');
+                        }, 200);
+                    }
+                });
+            }
+        })();
         
         // Initialize app
         window.app = new WitnessReplayApp();

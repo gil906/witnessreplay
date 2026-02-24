@@ -939,7 +939,7 @@ img {
     transform: translateY(0);
 }
 
-/* Text input area — Modern floating style */
+/* Text input area — Voice-first collapsed style */
 .text-input {
     display: flex;
     align-items: center;
@@ -1101,18 +1101,20 @@ img {
 }
 
 /* =========================================================
-   9. VOICE / MIC CONTROLS — Modern Glass Design
+   9. VOICE / MIC CONTROLS — Voice-First Design
    ========================================================= */
 .controls {
-    display: none;
+    display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--spacing-lg);
-    padding: var(--spacing-xl);
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-xl);
     border-top: 1px solid var(--glass-border);
     background: rgba(10, 14, 20, 0.5);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
+    flex-shrink: 0;
+    order: 8;
 }
 
 .controls.expanded {
@@ -1125,7 +1127,7 @@ img {
     align-items: center;
     gap: var(--spacing-sm);
     position: relative;
-    padding: 48px;
+    padding: 50px;
 }
 
 /* Position the audio visualizer canvas behind the mic button */
@@ -1139,18 +1141,18 @@ img {
     opacity: 0.75;
 }
 
-/* ===== MAIN MIC BUTTON — Modern Gradient Glass ===== */
+/* ===== MAIN MIC BUTTON — Voice-First Large Gradient Glass ===== */
 .mic-btn {
-    width: 100px;
-    height: 100px;
-    min-width: 100px;
+    width: 120px;
+    height: 120px;
+    min-width: 120px;
     border-radius: 50%;
     border: 2px solid rgba(96, 165, 250, 0.4);
     background: linear-gradient(145deg, rgba(30, 58, 95, 0.9) 0%, rgba(15, 39, 68, 0.95) 50%, rgba(26, 54, 93, 0.9) 100%);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     color: var(--accent-blue);
-    font-size: 2rem;
+    font-size: 2.2rem;
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -1169,7 +1171,7 @@ img {
 }
 
 .mic-icon {
-    font-size: 2.2rem;
+    font-size: 2.5rem;
     transition: transform 0.3s ease;
 }
 
@@ -1289,7 +1291,7 @@ img {
 }
 
 .btn-text {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 600;
     color: currentColor;
     opacity: 0.9;
@@ -1305,8 +1307,8 @@ img {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 100px;
-    height: 100px;
+    width: 120px;
+    height: 120px;
     transform: translate(-50%, -50%);
     border-radius: 50%;
     border: 2px solid rgba(59, 130, 246, 0.4);
@@ -1348,8 +1350,8 @@ img {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 100px;
-    height: 100px;
+    width: 120px;
+    height: 120px;
     transform: translate(-50%, -50%);
     border-radius: 50%;
     border: 3px solid rgba(239, 68, 68, 0);
@@ -1388,8 +1390,8 @@ img {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 120px;
-    height: 120px;
+    width: 140px;
+    height: 140px;
     transform: translate(-50%, -50%);
     border-radius: 50%;
     border: 2px solid transparent;
@@ -1417,17 +1419,20 @@ img {
     }
 }
 
-/* Status indicator */
+/* Status indicator — voice-first prominent */
 .status-indicator {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    padding: var(--spacing-xs) 0;
 }
 
 #status-text {
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 /* Keyboard hint */
@@ -1448,6 +1453,92 @@ img {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: 4px;
+}
+
+/* ===== MIC BUTTON: PROCESSING STATE ===== */
+.mic-btn.processing {
+    border-color: rgba(251, 191, 36, 0.5);
+    background: linear-gradient(145deg, rgba(60, 50, 20, 0.9) 0%, rgba(80, 60, 10, 0.95) 50%, rgba(60, 50, 20, 0.9) 100%);
+    color: var(--accent-amber);
+    cursor: wait;
+    animation: micProcessingPulse 1.5s ease-in-out infinite;
+    box-shadow: 
+        0 0 30px rgba(251, 191, 36, 0.25),
+        0 0 60px rgba(251, 191, 36, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.mic-btn.processing .mic-icon::after {
+    content: '⏳';
+    font-size: 2.5rem;
+}
+
+.mic-btn.processing .mic-icon {
+    font-size: 0;
+}
+
+@keyframes micProcessingPulse {
+    0%, 100% { 
+        opacity: 0.8;
+        box-shadow: 0 0 30px rgba(251, 191, 36, 0.25), 0 0 60px rgba(251, 191, 36, 0.1);
+    }
+    50% { 
+        opacity: 1;
+        box-shadow: 0 0 50px rgba(251, 191, 36, 0.4), 0 0 80px rgba(251, 191, 36, 0.2);
+    }
+}
+
+/* ===== MIC BUTTON: AI SPEAKING STATE ===== */
+.mic-btn.ai-speaking {
+    border-color: rgba(74, 222, 128, 0.5);
+    background: linear-gradient(145deg, rgba(20, 60, 30, 0.9) 0%, rgba(10, 80, 40, 0.95) 50%, rgba(20, 60, 30, 0.9) 100%);
+    color: var(--accent-green);
+    animation: micSpeakingPulse 1.2s ease-in-out infinite;
+    box-shadow: 
+        0 0 30px rgba(74, 222, 128, 0.25),
+        0 0 60px rgba(74, 222, 128, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.mic-btn.ai-speaking .mic-icon::after {
+    content: '🔊';
+    font-size: 2.5rem;
+}
+
+.mic-btn.ai-speaking .mic-icon {
+    font-size: 0;
+}
+
+@keyframes micSpeakingPulse {
+    0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 0 30px rgba(74, 222, 128, 0.25), 0 0 60px rgba(74, 222, 128, 0.1);
+    }
+    50% { 
+        transform: scale(1.03);
+        box-shadow: 0 0 50px rgba(74, 222, 128, 0.4), 0 0 80px rgba(74, 222, 128, 0.2);
+    }
+}
+
+/* ===== TEXT INPUT: COLLAPSED/EXPANDED (Voice-First) ===== */
+.text-input-expand-btn {
+    display: none;
+    background: none;
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    padding: 8px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all var(--transition-base);
+    flex-shrink: 0;
+}
+
+.text-input-expand-btn:hover {
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+    border-color: var(--border-color-hover);
 }
 
 /* =========================================================
@@ -3935,21 +4026,35 @@ img {
         display: none;
     }
 
-    /* Mic button larger and centered on mobile */
+    /* Mic button larger and centered on mobile — voice-first */
     .mic-btn {
-        width: 90px;
-        height: 90px;
-        min-width: 90px;
+        width: 130px;
+        height: 130px;
+        min-width: 130px;
+        font-size: 2.5rem;
     }
     
     .mic-container {
-        padding: 35px;
+        padding: 45px;
     }
     
     .mic-pulse-ring,
     .mic-wave-ring {
-        width: 90px;
-        height: 90px;
+        width: 130px;
+        height: 130px;
+    }
+
+    /* Voice controls always visible on mobile — voice-first */
+    .controls {
+        display: flex;
+        order: 8;
+        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
+    }
+    
+    /* VAD controls compact on mobile */
+    .controls .vad-controls {
+        width: 100%;
     }
 
     /* Full-width chat input - sticky at bottom, above any fixed overlays */
@@ -3961,10 +4066,37 @@ img {
         background: var(--bg-secondary);
         border-top: 1px solid var(--border-color);
         z-index: 950;
+        order: 9;
+    }
+    
+    /* Voice-first: text input collapsed by default on mobile */
+    .text-input-expand-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .text-input-collapsed #text-input,
+    .text-input-collapsed #send-btn,
+    .text-input-collapsed .language-selector,
+    .text-input-collapsed .evidence-upload-btn,
+    .text-input-collapsed #upload-sketch-btn {
+        display: none;
+    }
+    
+    .text-input-expanded .text-input-expand-btn {
+        display: none;
     }
 
     /* Hide help button on mobile to prevent overlap with chat input */
     .help-button {
+        display: none;
+    }
+    
+    /* Hide keyboard hint on mobile (touch interface) */
+    .keyboard-hint {
         display: none;
     }
     
@@ -3986,11 +4118,6 @@ img {
     
     .interview-comfort-panel {
         padding: var(--spacing-xs) var(--spacing-sm);
-    }
-    
-    /* Hide voice controls by default on mobile - use mic button in text-input */
-    .controls {
-        display: none;
     }
     
     /* Ensure suggested actions don't take too much space */
@@ -4105,10 +4232,11 @@ img {
     }
 
     .controls {
-        display: none;
+        display: flex;
+        padding: var(--spacing-sm);
     }
     
-    /* Make the text-input more prominent on phones */
+    /* Voice-first: even bigger mic button on phones */
     .text-input {
         padding: var(--spacing-sm) var(--spacing-xs);
         gap: var(--spacing-xs);
@@ -4119,16 +4247,13 @@ img {
         font-size: 16px; /* Prevents iOS zoom on focus */
     }
     
-    /* Larger speak button for touch */
+    /* Hide redundant chat-mic-btn on phones since we have the big mic */
     .chat-mic-btn,
     #chat-mic-btn {
-        width: 48px;
-        height: 48px;
-        min-width: 48px;
-        font-size: 1.3rem;
+        display: none !important;
     }
     
-    /* Hide less critical input buttons on small screens */
+    /* Hide less critical input buttons on small screens (handled by collapsed state) */
     .language-selector {
         display: none;
     }
@@ -4153,21 +4278,21 @@ img {
     }
 
     .mic-btn {
-        width: 90px;
-        height: 90px;
-        min-width: 90px;
-        font-size: 1.8rem;
+        width: 140px;
+        height: 140px;
+        min-width: 140px;
+        font-size: 2.8rem;
         margin: 0 auto;
     }
     
     .mic-container {
-        padding: 30px;
+        padding: 50px;
     }
     
     .mic-pulse-ring,
     .mic-wave-ring {
-        width: 90px;
-        height: 90px;
+        width: 140px;
+        height: 140px;
     }
 
     /* Touch-friendly sizes */
