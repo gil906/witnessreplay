@@ -1222,8 +1222,49 @@
         <span class="version-separator">•</span>
         <span class="version-challenge">Gemini Live Agent Challenge</span>
     </div>
+
+    <!-- Digital Signature Modal -->
+    <div id="signature-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:500px;">
+            <h3>✍️ Sign Your Statement</h3>
+            <p style="color:var(--text-secondary);font-size:0.85rem;">By signing, you confirm this statement is accurate to the best of your knowledge.</p>
+            <canvas id="signature-canvas" width="460" height="200" style="border:1px solid var(--glass-border);border-radius:8px;background:rgba(255,255,255,0.05);cursor:crosshair;display:block;margin:12px 0;"></canvas>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-secondary" onclick="clearSignature()">Clear</button>
+                <button class="btn btn-primary" onclick="submitSignature()">Submit Signature</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('signature-modal').style.display='none'">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    function initSignatureCanvas() {
+        const canvas = document.getElementById('signature-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        canvas.addEventListener('mousedown', (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); });
+        canvas.addEventListener('mousemove', (e) => { if (!drawing) return; ctx.lineWidth = 2; ctx.strokeStyle = '#60a5fa'; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); });
+        canvas.addEventListener('mouseup', () => drawing = false);
+        canvas.addEventListener('mouseleave', () => drawing = false);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); drawing = true; const r = canvas.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo(e.touches[0].clientX-r.left, e.touches[0].clientY-r.top); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!drawing) return; const r = canvas.getBoundingClientRect(); ctx.lineWidth = 2; ctx.strokeStyle = '#60a5fa'; ctx.lineTo(e.touches[0].clientX-r.left, e.touches[0].clientY-r.top); ctx.stroke(); });
+        canvas.addEventListener('touchend', () => drawing = false);
+    }
+    function clearSignature() { const c = document.getElementById('signature-canvas'); c?.getContext('2d').clearRect(0,0,c.width,c.height); }
+    function submitSignature() {
+        const canvas = document.getElementById('signature-canvas');
+        const data = canvas.toDataURL('image/png');
+        if (window.app?.ws?.readyState === WebSocket.OPEN) {
+            window.app.ws.send(JSON.stringify({type:'signature', data:{image: data.split(',')[1]}}));
+            window.app.displaySystemMessage('✍️ Statement signed successfully.');
+        }
+        document.getElementById('signature-modal').style.display = 'none';
+    }
+    document.addEventListener('DOMContentLoaded', initSignatureCanvas);
+    </script>
     
     <!-- Particle Background Canvas -->
     <canvas id="particle-canvas" class="particle-canvas"></canvas>
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js').catch(()=>{});</script>
 </body>
 </html>

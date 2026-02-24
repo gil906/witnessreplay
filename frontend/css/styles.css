@@ -9537,3 +9537,95 @@ img.loaded,
         height: calc(100dvh - 44px - var(--spacing-md) * 2) !important;
     }
 }
+
+/* ===== Feature 6: Emotion Detection Badge ===== */
+.emotion-badge {
+    display: inline-block;
+    font-size: 0.85rem;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* ===== Feature 8: Language Auto-Detect Indicator ===== */
+.lang-detect-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    background: var(--glass-bg, rgba(255,255,255,0.08));
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.15));
+    border-radius: 12px;
+    margin-left: 8px;
+    color: var(--text-secondary, #aaa);
+}
+
+/* ===== Feature 9: Child-Friendly Witness Mode ===== */
+.child-mode { font-size: 1.1rem; }
+.child-mode .mic-btn { width: 160px !important; height: 160px !important; }
+.child-mode .btn-text { font-size: 1.2rem !important; }
+.child-mode .message-content { font-size: 1.05rem; line-height: 1.7; }
+
+/* ===== Feature 7: Guided Mode Chip ===== */
+.guided-chip {
+    display: inline-block;
+    padding: 6px 14px;
+    margin: 4px;
+    background: var(--glass-bg, rgba(255,255,255,0.08));
+    border: 1px solid var(--accent-primary, #60a5fa);
+    border-radius: 16px;
+    font-size: 0.88rem;
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.guided-chip:hover { background: rgba(96,165,250,0.15); }
+#guided-suggestions { margin: 6px 0; text-align: center; }
+
+/* ===== Feature 10: Mode Toggle Buttons ===== */
+.mode-toggles {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+}
+.mode-toggle-btn {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.15));
+    background: var(--glass-bg, rgba(255,255,255,0.05));
+    color: var(--text-secondary, #aaa);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.mode-toggle-btn.active {
+    background: rgba(96,165,250,0.2);
+    border-color: var(--accent-primary, #60a5fa);
+    color: var(--text-primary, #fff);
+}
+
+/* ===== Feature 10: Enhanced Accessibility ===== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+.high-contrast {
+    --bg-primary: #000 !important;
+    --text-primary: #fff !important;
+    --accent-primary: #ffff00 !important;
+    --glass-bg: rgba(0,0,0,0.95) !important;
+    --glass-border: rgba(255,255,255,0.5) !important;
+}
+.high-contrast .btn { border: 2px solid #fff !important; }
+.high-contrast .message-content { font-size: 1.1rem; }
+
+*:focus-visible {
+    outline: 3px solid var(--accent-primary, #60a5fa) !important;
+    outline-offset: 2px;
+}
+
+.evidence-tag { display:inline-block; padding:2px 8px; background:rgba(251,191,36,0.15); color:#fbbf24; border-radius:12px; font-size:0.78rem; margin:2px; }

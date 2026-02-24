@@ -242,6 +242,79 @@ class DatabaseService:
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_users_provider ON users(auth_provider, provider_id);
+
+            CREATE TABLE IF NOT EXISTS interview_scripts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                incident_type TEXT,
+                questions TEXT DEFAULT '[]',
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS case_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                color TEXT DEFAULT '#60a5fa',
+                created_at TEXT,
+                UNIQUE(case_id, tag)
+            );
+            CREATE INDEX IF NOT EXISTS idx_case_tags_case ON case_tags(case_id);
+
+            CREATE TABLE IF NOT EXISTS case_notes (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                author_id TEXT,
+                author_name TEXT,
+                content TEXT NOT NULL,
+                created_at TEXT,
+                FOREIGN KEY (case_id) REFERENCES cases(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_case_notes_case ON case_notes(case_id);
+
+            CREATE TABLE IF NOT EXISTS case_deadlines (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                deadline_type TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                is_completed INTEGER DEFAULT 0,
+                created_at TEXT,
+                FOREIGN KEY (case_id) REFERENCES cases(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_deadlines_case ON case_deadlines(case_id);
+            CREATE INDEX IF NOT EXISTS idx_deadlines_due ON case_deadlines(due_date);
+
+            CREATE TABLE IF NOT EXISTS organizations (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, domain TEXT, max_users INTEGER DEFAULT 50, plan TEXT DEFAULT 'free', created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS org_members (
+                org_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT DEFAULT 'member', joined_at TEXT,
+                PRIMARY KEY (org_id, user_id),
+                FOREIGN KEY (org_id) REFERENCES organizations(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS user_2fa (
+                user_id TEXT PRIMARY KEY, secret TEXT NOT NULL, is_enabled INTEGER DEFAULT 0, backup_codes TEXT, created_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS witness_feedback (
+                id TEXT PRIMARY KEY, session_id TEXT, rating INTEGER, ease_of_use INTEGER, felt_heard INTEGER, comments TEXT, created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS webhooks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL,
+                events TEXT DEFAULT '["case.created"]',
+                secret TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT
+            );
         """)
         await self._db.commit()
 

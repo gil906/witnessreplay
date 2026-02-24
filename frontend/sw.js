@@ -1,36 +1,20 @@
-const CACHE_NAME = 'witnessreplay-v2';
-const STATIC_ASSETS = [
-    '/',
-    '/css/styles.css',
-    '/js/app.js',
-    '/js/ui.js',
-    '/js/audio.js',
-    '/manifest.json',
-];
+const CACHE_NAME = 'wr-v1';
+const STATIC_ASSETS = ['/', '/static/css/styles.css', '/static/js/app.js', '/static/js/audio.js', '/static/js/ui.js'];
 
-self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-    );
+self.addEventListener('install', (e) => {
+    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS)).then(() => self.skipWaiting()));
 });
 
-self.addEventListener('fetch', event => {
-    // Network first for API calls and WebSocket, cache first for static assets
-    if (event.request.url.includes('/api/') || event.request.url.includes('/ws/')) {
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
-        );
-    } else {
-        event.respondWith(
-            caches.match(event.request).then(response => response || fetch(event.request))
-        );
-    }
+self.addEventListener('activate', (e) => {
+    e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
-self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(names =>
-            Promise.all(names.filter(n => n !== CACHE_NAME).map(n => caches.delete(n)))
-        )
-    );
+self.addEventListener('fetch', (e) => {
+    // Network first, fallback to cache
+    if (e.request.method !== 'GET') return;
+    e.respondWith(fetch(e.request).then(r => {
+        const clone = r.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        return r;
+    }).catch(() => caches.match(e.request)));
 });

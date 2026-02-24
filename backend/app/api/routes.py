@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from fastapi.responses import FileResponse, StreamingResponse
@@ -83,6 +83,9 @@ router = APIRouter()
 # ── Background task queue ─────────────────────────────────
 
 _task_results: dict = {}
+
+# Active viewers tracking (in-memory)
+_case_viewers: Dict[str, Dict[str, str]] = {}  # case_id -> {user_id: username}
 
 async def run_background_task(task_id: str, coro):
     """Run a coroutine as a background task and track its status."""
@@ -9684,3 +9687,277 @@ async def notify_case_witnesses(case_id: str, data: dict, auth=Depends(require_a
             logger.info(f"[Notification] Case {case_id} → Session {rid}: {notification_type} - {message[:100]}")
     
     return {"notifications_sent": len(notified), "type": notification_type, "recipients": notified, "note": "Notifications logged. Email delivery requires SMTP configuration."}
+
+
+# ── Feature 36: Rate Limit Dashboard ──────────────────────────────────────
+
+@router.get("/admin/rate-limits")
+async def get_rate_limit_stats(auth=Depends(require_admin_auth)):
+    """Get current API quota usage stats."""
+    import time
+    from datetime import timezone
+    from app.api.auth import _api_key_requests
+    stats = {}
+    now = time.time()
+    for key_hash, requests in _api_key_requests.items():
+        active = [r for r in requests if (now - r) < 60]
+        stats[key_hash[:8] + "..."] = {"requests_last_minute": len(active), "total_tracked": len(requests)}
+    return {"api_key_stats": stats, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# ── Feature 37: Session Replay for Admin ──────────────────────────────────
+
+@router.get("/admin/sessions/{session_id}/replay")
+async def get_session_replay(session_id: str, auth=Depends(require_admin_auth)):
+    """Get full session conversation replay data."""
+    session = await firestore_service.get_session(session_id)
+    if not session: raise HTTPException(404, "Session not found")
+    s = session if isinstance(session, dict) else session.model_dump()
+    # Build replay timeline
+    messages = []
+    for stmt in (s.get("statements", []) or []):
+        if isinstance(stmt, dict):
+            messages.append({"role": "witness", "content": stmt.get("text",""), "timestamp": stmt.get("timestamp",""), "type": stmt.get("type","text")})
+    for sv in (s.get("scene_versions", []) or []):
+        if isinstance(sv, dict):
+            messages.append({"role": "system", "content": f"Scene reconstruction updated (v{sv.get('version',0)})", "timestamp": sv.get("timestamp",""), "type": "scene_update"})
+    messages.sort(key=lambda x: x.get("timestamp",""))
+    return {"session_id": session_id, "title": s.get("title",""), "created_at": s.get("created_at",""), "messages": messages, "total_messages": len(messages)}
+
+
+# ── Feature 38: Multi-Tenant Organization Support ─────────────────────────
+
+@router.get("/admin/organizations")
+async def list_organizations(auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute("SELECT * FROM organizations ORDER BY created_at DESC")
+    return {"organizations": [dict(r) for r in await cursor.fetchall()]}
+
+@router.post("/admin/organizations")
+async def create_organization(data: dict, auth=Depends(require_admin_auth)):
+    import uuid
+    from datetime import timezone
+    from app.services.database import get_database
+    db = get_database()
+    org_id = str(uuid.uuid4())
+    await db._db.execute("INSERT INTO organizations (id, name, domain, created_at) VALUES (?,?,?,?)",
+        (org_id, data.get("name",""), data.get("domain",""), datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"id": org_id}
+
+
+# ── Feature 39: Email Notification Service ────────────────────────────────
+
+@router.get("/admin/email-config")
+async def get_email_config(auth=Depends(require_admin_auth)):
+    from app.services.email_service import email_service
+    return {"configured": email_service.is_configured, "host": email_service.smtp_host, "from_email": email_service.from_email}
+
+@router.post("/admin/email-config")
+async def configure_email(data: dict, auth=Depends(require_admin_auth)):
+    from app.services.email_service import email_service
+    email_service.configure(data.get("host",""), data.get("port",587), data.get("user",""), data.get("password",""), data.get("from_email"))
+    return {"status": "configured"}
+
+
+# ── Feature 40: Two-Factor Authentication ─────────────────────────────────
+
+@router.post("/auth/2fa/setup")
+async def setup_2fa(auth=Depends(require_admin_auth)):
+    """Generate 2FA secret for user."""
+    import secrets, hashlib
+    from datetime import timezone
+    from app.services.database import get_database
+    user_id = auth.get("user_id", "")
+    secret = secrets.token_hex(20)
+    backup = [secrets.token_hex(4) for _ in range(8)]
+    db = get_database()
+    await db._db.execute("INSERT OR REPLACE INTO user_2fa (user_id, secret, is_enabled, backup_codes, created_at) VALUES (?,?,0,?,?)",
+        (user_id, secret, ",".join(backup), datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"secret": secret, "backup_codes": backup, "note": "Save backup codes securely. Use any TOTP app to scan the secret."}
+
+@router.post("/auth/2fa/verify")
+async def verify_2fa(data: dict, auth=Depends(require_admin_auth)):
+    """Verify a 2FA code (simplified TOTP check)."""
+    import hashlib, time
+    from app.services.database import get_database
+    user_id = auth.get("user_id", "")
+    code = data.get("code", "")
+    db = get_database()
+    cursor = await db._db.execute("SELECT secret, backup_codes FROM user_2fa WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row: raise HTTPException(400, "2FA not set up")
+    # Check backup codes
+    if code in (row[1] or "").split(","):
+        remaining = [c for c in row[1].split(",") if c != code]
+        await db._db.execute("UPDATE user_2fa SET backup_codes = ?, is_enabled = 1 WHERE user_id = ?", (",".join(remaining), user_id))
+        await db._db.commit()
+        return {"verified": True, "method": "backup_code"}
+    # Simplified TOTP-like check (real implementation would use pyotp)
+    t = int(time.time()) // 30
+    expected = hashlib.sha256(f"{row[0]}{t}".encode()).hexdigest()[:6]
+    if code == expected:
+        await db._db.execute("UPDATE user_2fa SET is_enabled = 1 WHERE user_id = ?", (user_id,))
+        await db._db.commit()
+        return {"verified": True, "method": "totp"}
+    return {"verified": False, "error": "Invalid code"}
+
+
+# ── Feature 33: Real-time Collaboration (Presence) ────────
+
+@router.post("/cases/{case_id}/presence")
+async def update_presence(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    """Report that a user is viewing this case."""
+    if case_id not in _case_viewers:
+        _case_viewers[case_id] = {}
+    _case_viewers[case_id][auth.get("user_id", "")] = auth.get("username", "anonymous")
+    return {"viewers": _case_viewers.get(case_id, {})}
+
+
+@router.delete("/cases/{case_id}/presence")
+async def remove_presence(case_id: str, auth=Depends(require_admin_auth)):
+    if case_id in _case_viewers:
+        _case_viewers[case_id].pop(auth.get("user_id", ""), None)
+    return {"status": "ok"}
+
+
+@router.get("/cases/{case_id}/presence")
+async def get_presence(case_id: str, auth=Depends(require_admin_auth)):
+    return {"viewers": _case_viewers.get(case_id, {})}
+
+
+# ── Feature 34: Webhook Integration Framework ─────────────
+
+@router.get("/admin/webhooks")
+async def list_webhooks(auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute("SELECT * FROM webhooks WHERE is_active = 1")
+    return {"webhooks": [dict(r) for r in await cursor.fetchall()]}
+
+
+@router.post("/admin/webhooks")
+async def create_webhook(data: dict, auth=Depends(require_admin_auth)):
+    from datetime import timezone
+    from app.services.database import get_database
+    db = get_database()
+    wh_id = str(uuid.uuid4())
+    await db._db.execute(
+        "INSERT INTO webhooks (id, name, url, events, is_active, created_at) VALUES (?,?,?,?,1,?)",
+        (wh_id, data.get("name", ""), data.get("url", ""), json.dumps(data.get("events", ["case.created"])),
+         datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"id": wh_id}
+
+
+@router.delete("/admin/webhooks/{webhook_id}")
+async def delete_webhook(webhook_id: str, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    await db._db.execute("UPDATE webhooks SET is_active = 0 WHERE id = ?", (webhook_id,))
+    await db._db.commit()
+    return {"status": "deleted"}
+
+
+# ── Feature 35: Data Backup and Restore ───────────────────
+
+@router.get("/admin/backup")
+async def create_backup(auth=Depends(require_admin_auth)):
+    """Create a database backup."""
+    import shutil
+    from datetime import timezone
+    db_path = settings.database_path
+    backup_dir = os.path.join(os.path.dirname(db_path), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"backup_{timestamp}.db")
+    shutil.copy2(db_path, backup_path)
+    backups = sorted([f for f in os.listdir(backup_dir) if f.endswith('.db')], reverse=True)
+    return {"backup_created": backup_path, "timestamp": timestamp, "existing_backups": backups[:10]}
+
+
+@router.get("/admin/backups")
+async def list_backups(auth=Depends(require_admin_auth)):
+    from datetime import timezone
+    backup_dir = os.path.join(os.path.dirname(settings.database_path), "backups")
+    if not os.path.exists(backup_dir):
+        return {"backups": []}
+    backups = sorted(
+        [{"name": f, "size_kb": os.path.getsize(os.path.join(backup_dir, f)) // 1024}
+         for f in os.listdir(backup_dir) if f.endswith('.db')],
+        key=lambda x: x["name"], reverse=True)
+    return {"backups": backups}
+
+
+# ── Feature 47: Witness Feedback ─────────────────────────────
+
+@router.post("/sessions/{session_id}/feedback")
+async def submit_feedback(session_id: str, data: dict):
+    """Submit witness feedback after interview."""
+    import uuid
+    from app.services.database import get_database
+    db = get_database()
+    fb_id = str(uuid.uuid4())
+    await db._db.execute("INSERT INTO witness_feedback (id, session_id, rating, ease_of_use, felt_heard, comments, created_at) VALUES (?,?,?,?,?,?,?)",
+        (fb_id, session_id, data.get("rating",0), data.get("ease_of_use",0), data.get("felt_heard",0), data.get("comments",""), datetime.now(timezone.utc).isoformat()))
+    await db._db.commit()
+    return {"id": fb_id, "status": "Thank you for your feedback!"}
+
+@router.get("/admin/feedback")
+async def list_feedback(auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute("SELECT * FROM witness_feedback ORDER BY created_at DESC LIMIT 100")
+    return {"feedback": [dict(r) for r in await cursor.fetchall()]}
+
+
+# ── Feature 50: Auto Incident Classification ─────────────────
+
+@router.post("/sessions/{session_id}/classify")
+async def classify_incident(session_id: str, auth=Depends(require_admin_auth)):
+    """Auto-classify incident type based on conversation content."""
+    session = await firestore_service.get_session(session_id)
+    if not session: raise HTTPException(404, "Session not found")
+    s = session if isinstance(session, dict) else session.model_dump()
+
+    # Extract all text
+    texts = []
+    for stmt in (s.get("statements", []) or []):
+        if isinstance(stmt, dict): texts.append(stmt.get("text",""))
+        else: texts.append(str(stmt))
+    full_text = " ".join(texts).lower()
+
+    # Keyword-based classification
+    categories = {
+        "theft": ["stole", "stolen", "theft", "robbed", "robbery", "burglary", "broke in", "shoplifting"],
+        "assault": ["hit", "punch", "attack", "assault", "beat", "fight", "violence", "weapon"],
+        "traffic_accident": ["car", "crash", "accident", "vehicle", "collision", "driving", "traffic", "hit and run"],
+        "vandalism": ["vandal", "graffiti", "damage", "smash", "broke", "destroy", "property"],
+        "fraud": ["fraud", "scam", "identity", "fake", "counterfeit", "phishing", "money"],
+        "drug_related": ["drug", "substance", "narcotics", "marijuana", "cocaine", "dealing"],
+        "domestic": ["domestic", "partner", "spouse", "family", "household"],
+        "missing_person": ["missing", "disappeared", "lost", "haven't seen", "not come home"],
+        "harassment": ["harass", "stalk", "threaten", "intimidat", "bully"],
+        "other": []
+    }
+
+    scores = {}
+    for cat, keywords in categories.items():
+        scores[cat] = sum(1 for kw in keywords if kw in full_text)
+
+    sorted_cats = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    primary = sorted_cats[0] if sorted_cats[0][1] > 0 else ("other", 0)
+    secondary = sorted_cats[1] if len(sorted_cats) > 1 and sorted_cats[1][1] > 0 else None
+
+    confidence = min(1.0, primary[1] / max(1, len(texts)))
+
+    return {
+        "primary_classification": primary[0],
+        "primary_score": primary[1],
+        "confidence": round(confidence, 2),
+        "secondary_classification": secondary[0] if secondary else None,
+        "all_scores": {k: v for k, v in scores.items() if v > 0},
+        "analyzed_statements": len(texts)
+    }

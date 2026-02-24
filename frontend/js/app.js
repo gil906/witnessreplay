@@ -82,9 +82,13 @@ class WitnessReplayApp {
         this.initializeComfortFeatures(); // Initialize interview comfort features
         this.initializeLanguageSelector(); // Initialize translation language selector
         this.fetchAndDisplayVersion(); // Fetch version from API
+        this._initOfflineQueue(); // Initialize offline message queue
+        this._initAutoTheme(); // Auto dark/light theme detection
+        this._initCommandPalette(); // Feature 49: Command palette (Ctrl+K)
         
         // Show onboarding for first-time users
         this.checkOnboarding();
+        this._showOnboardingTour(); // Feature 46: One-time welcome tour
         
         // Initialize connection status popup
         this.initializeConnectionPopup();
@@ -94,6 +98,52 @@ class WitnessReplayApp {
         this._autoCreateSession();
     }
     
+    _initAutoTheme() {
+        const saved = localStorage.getItem('wr_theme');
+        if (!saved || saved === 'auto') {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+            this._applyTheme(prefersDark.matches ? 'dark' : 'light');
+            prefersDark.addEventListener('change', (e) => {
+                if (localStorage.getItem('wr_theme') === 'auto' || !localStorage.getItem('wr_theme')) {
+                    this._applyTheme(e.matches ? 'dark' : 'light');
+                }
+            });
+        }
+    }
+
+    _applyTheme(theme) {
+        document.body.classList.toggle('light-mode', theme === 'light');
+        document.body.classList.toggle('dark-mode', theme === 'dark');
+    }
+
+    _initOfflineQueue() {
+        this.offlineQueue = [];
+        window.addEventListener('online', () => this._flushOfflineQueue());
+    }
+
+    _queueOfflineMessage(data) {
+        this.offlineQueue.push(data);
+        localStorage.setItem('wr_offline_queue', JSON.stringify(this.offlineQueue));
+        this.ui?.showToast('📴 Message saved offline. Will send when connected.', 'info', 3000);
+    }
+
+    async _flushOfflineQueue() {
+        const stored = localStorage.getItem('wr_offline_queue');
+        if (stored) {
+            try { this.offlineQueue = JSON.parse(stored); } catch(e) { this.offlineQueue = []; }
+        }
+        if (!this.offlineQueue.length) return;
+        this.ui?.showToast('🔄 Sending offline messages...', 'info', 2000);
+        for (const msg of this.offlineQueue) {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(msg));
+                await new Promise(r => setTimeout(r, 500));
+            }
+        }
+        this.offlineQueue = [];
+        localStorage.removeItem('wr_offline_queue');
+    }
+
     async _autoCreateSession() {
         this.connectionSteps = [];
         this._addConnectionStep('Initializing...');
@@ -1468,6 +1518,14 @@ class WitnessReplayApp {
                 this.handleLanguageChanged(message.data);
                 break;
             
+            case 'evidence_tags':
+                const tags = message.data?.tags || [];
+                if (tags.length) {
+                    const tagHtml = tags.map(t => `<span class="evidence-tag">${t}</span>`).join(' ');
+                    this.displaySystemMessage(`🏷️ Evidence detected: ${tagHtml}`);
+                }
+                break;
+            
             default:
                 console.warn('Unknown message type:', message.type);
         }
@@ -1750,9 +1808,7 @@ class WitnessReplayApp {
                 const base64Audio = reader.result.split(',')[1];
                 
                 if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                    console.error('[Audio] WebSocket not open, state:', this.ws?.readyState);
-                    this.setStatus('Connection lost — reconnecting...');
-                    this.ui?.showToast('⚠️ Not connected. Tap mic to try again.', 'error', 4000);
+                    this._queueOfflineMessage({ type: 'audio', data: { audio: base64Audio, format: 'webm' } });
                     return;
                 }
                 
@@ -1811,6 +1867,15 @@ class WitnessReplayApp {
         // Check for distress signals and provide support
         if (this.comfortManager) {
             this.comfortManager.detectDistress(text);
+        }
+        
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            const messageData = { text: text };
+            if (this.activeWitnessId) messageData.witness_id = this.activeWitnessId;
+            this._queueOfflineMessage({ type: 'text', data: messageData });
+            this.displayMessage(text, 'user');
+            this.textInput.value = '';
+            return;
         }
         
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -2977,6 +3042,30 @@ class WitnessReplayApp {
         
         this.chatTranscript.appendChild(messageDiv);
         this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+    }
+    
+    async handlePhotoUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target.result.split(',')[1];
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({type: 'evidence_upload', data: {file_name: file.name, file_type: file.type, file_data: base64}}));
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = 'chat-evidence-image';
+                img.style.cssText = 'max-width:200px;border-radius:8px;margin:8px 0;';
+                this.displayMessage(`📸 Uploaded: ${file.name}`, 'user');
+            }
+        };
+        reader.readAsDataURL(file);
+        event.target.value = '';
+    }
+    
+    showSignaturePrompt() {
+        const modal = document.getElementById('signature-modal');
+        if (modal) modal.style.display = 'flex';
     }
     
     /**
@@ -5177,6 +5266,133 @@ Corrections: ${reliability.correction_count || 0}`;
             console.warn('[App] Failed to load sketches:', error);
         }
     }
+
+    showStreetView(lat, lng) {
+        const container = document.getElementById('scene-editor-canvas') || document.getElementById('scene-preview');
+        if (!container) return;
+        const iframe = document.createElement('iframe');
+        iframe.id = 'street-view-frame';
+        iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:8px;position:absolute;top:0;left:0;z-index:4;';
+        // Use OpenStreetMap embed as free alternative
+        iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.002},${lat-0.002},${lng+0.002},${lat+0.002}&layer=mapnik&marker=${lat},${lng}`;
+        container.style.position = 'relative';
+        container.appendChild(iframe);
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕ Close Map';
+        closeBtn.className = 'btn btn-sm btn-secondary';
+        closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:5;';
+        closeBtn.onclick = () => { iframe.remove(); closeBtn.remove(); };
+        container.appendChild(closeBtn);
+    }
+    
+    // ===== Feature 6: Emotion Detection =====
+    _detectEmotion(text) {
+        const t = text.toLowerCase();
+        if (/scared|afraid|terrified|fear|panic/.test(t)) return 'distressed';
+        if (/angry|furious|mad|rage/.test(t)) return 'angry';
+        if (/confused|unsure|don't know|not sure/.test(t)) return 'confused';
+        if (/sad|crying|devastated|upset/.test(t)) return 'sad';
+        if (/nervous|anxious|worried|shaking/.test(t)) return 'anxious';
+        return 'neutral';
+    }
+    
+    _getEmotionEmoji(text) {
+        const emotion = this._detectEmotion(text);
+        return this.emotionEmojis[emotion] || '😐';
+    }
+    
+    // ===== Feature 7: Guided Walkthrough =====
+    _initModeToggles() {
+        const guidedBtn = document.getElementById('guided-mode-btn');
+        const childBtn = document.getElementById('child-mode-btn');
+        const hcBtn = document.getElementById('high-contrast-btn');
+        
+        if (guidedBtn) guidedBtn.addEventListener('click', () => this.toggleGuidedMode());
+        if (childBtn) childBtn.addEventListener('click', () => this.toggleChildMode());
+        if (hcBtn) hcBtn.addEventListener('click', () => this.toggleHighContrast());
+    }
+    
+    toggleGuidedMode() {
+        this.guidedMode = !this.guidedMode;
+        const btn = document.getElementById('guided-mode-btn');
+        if (btn) btn.classList.toggle('active', this.guidedMode);
+        const suggestionsEl = document.getElementById('guided-suggestions');
+        if (this.guidedMode) {
+            this.guidedStep = 0;
+            this._showGuidedChip();
+        } else if (suggestionsEl) {
+            suggestionsEl.style.display = 'none';
+        }
+    }
+    
+    _showGuidedChip() {
+        const el = document.getElementById('guided-suggestions');
+        if (!el || this.guidedStep >= this.guidedQuestions.length) {
+            if (el) el.style.display = 'none';
+            return;
+        }
+        el.style.display = 'block';
+        const q = this.guidedQuestions[this.guidedStep];
+        el.innerHTML = `<span class="guided-chip" id="guided-chip">💡 ${q}</span>`;
+        document.getElementById('guided-chip')?.addEventListener('click', () => {
+            if (this.textInput) { this.textInput.value = ''; }
+            this.textInput.focus();
+            this.textInput.setAttribute('placeholder', q);
+        });
+    }
+    
+    _advanceGuidedStep() {
+        this.guidedStep++;
+        this._showGuidedChip();
+    }
+    
+    // ===== Feature 8: Language Auto-Detection =====
+    _detectLanguage(text) {
+        const nonAscii = (text.match(/[^\x00-\x7F]/g) || []).length;
+        if (nonAscii > text.length * 0.3) return 'auto';
+        if (/\b(el|la|los|las|que|de|en|por|con|una|como)\b/i.test(text)) return 'es';
+        if (/\b(le|la|les|des|une|que|dans|pour|avec)\b/i.test(text)) return 'fr';
+        return 'en';
+    }
+    
+    _showLangDetectBadge(lang) {
+        const names = { es: '🇪🇸 Spanish', fr: '🇫🇷 French', auto: '🌐 Auto' };
+        const header = document.querySelector('.header-left');
+        if (!header || document.getElementById('lang-detect-badge')) return;
+        const badge = document.createElement('span');
+        badge.id = 'lang-detect-badge';
+        badge.className = 'lang-detect-badge';
+        badge.textContent = names[lang] || `🌐 ${lang.toUpperCase()}`;
+        header.appendChild(badge);
+    }
+    
+    // ===== Feature 9: Child-Friendly Mode =====
+    toggleChildMode() {
+        this.childMode = !this.childMode;
+        document.body.classList.toggle('child-mode', this.childMode);
+        const btn = document.getElementById('child-mode-btn');
+        if (btn) btn.classList.toggle('active', this.childMode);
+        if (this.childMode) {
+            this.displayMessage("Hi there! 👋 I'm here to help. Can you tell me what happened? Take your time, there's no rush. 😊", 'agent');
+        }
+    }
+    
+    // ===== Feature 10: Enhanced Accessibility =====
+    toggleHighContrast() {
+        document.body.classList.toggle('high-contrast');
+        const btn = document.getElementById('high-contrast-btn');
+        if (btn) btn.classList.toggle('active', document.body.classList.contains('high-contrast'));
+    }
+    
+    _initKeyboardAccessibility() {
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'm') {
+                e.preventDefault();
+                this.isRecording ? this.stopRecording() : this.startRecording();
+            }
+        });
+    }
 }
 
 // ==================== GLOBAL FUNCTIONS (Items 24-30) ====================
@@ -5503,23 +5719,26 @@ function openSketchModal(sketchId) {
             })
             .catch(err => console.error('Failed to load sketch:', err));
     }
+}
 
-    async uploadReferencePhoto(file) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const base64 = e.target.result.split(',')[1];
-            try {
-                await fetch(`/api/sessions/${this.sessionId}/photo-overlay`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({photo: base64})
-                });
-                this.ui?.showToast('📸 Reference photo uploaded', 'success', 3000);
-            } catch(err) { console.error('Photo overlay error:', err); }
-        };
-        reader.readAsDataURL(file);
-    }
+// Orphaned class methods wrapped as standalone functions
+async function uploadReferencePhoto(file) {
+    if (!window.app) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        try {
+            await fetch(`/api/sessions/${window.app.sessionId}/photo-overlay`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({photo: base64})
+            });
+            window.app.ui?.showToast('📸 Reference photo uploaded', 'success', 3000);
+        } catch(err) { console.error('Photo overlay error:', err); }
+    };
+    reader.readAsDataURL(file);
+}
 
-    renderEvidenceHeatmap(elements) {
+function renderEvidenceHeatmap(elements) {
         const canvas = document.createElement('canvas');
         canvas.id = 'evidence-heatmap';
         canvas.width = 400; canvas.height = 300;
@@ -5536,7 +5755,6 @@ function openSketchModal(sketchId) {
         });
         const container = document.getElementById('scene-editor-canvas');
         if (container) { container.style.position = 'relative'; container.appendChild(canvas); }
-    }
 }
 
 // App is initialized from index.html inline script.
