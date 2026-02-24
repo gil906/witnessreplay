@@ -20,10 +20,15 @@ class WitnessReplayApp {
         this.reconnectTimer = null;
         this.hasReceivedGreeting = false;
         this.fetchTimeout = 10000; // 10 second timeout for API calls
+        this.soundEnabled = localStorage.getItem('soundEnabled') !== 'false'; // Default true
+        this.sounds = {}; // Sound effect cache
+        this.comparisonMode = false; // Scene comparison mode
+        this.previousSceneUrl = null; // For before/after comparison
         
         this.initializeUI();
         this.initializeAudio();
         this.initializeModals();
+        this.initializeSounds();
     }
     
     /**
@@ -132,6 +137,93 @@ class WitnessReplayApp {
         
         // Initialize keyboard shortcuts
         this._initKeyboardShortcuts();
+        
+        // Sound toggle button (add dynamically if not in HTML)
+        this._addSoundToggle();
+    }
+    
+    _addSoundToggle() {
+        const sessionInfo = document.querySelector('.session-info');
+        if (!sessionInfo || document.getElementById('sound-toggle-btn')) return;
+        
+        const soundBtn = document.createElement('button');
+        soundBtn.id = 'sound-toggle-btn';
+        soundBtn.className = 'btn btn-secondary';
+        soundBtn.setAttribute('data-tooltip', 'Toggle sound effects');
+        soundBtn.innerHTML = this.soundEnabled ? '🔊' : '🔇';
+        soundBtn.addEventListener('click', () => this.toggleSound());
+        
+        sessionInfo.appendChild(soundBtn);
+    }
+    
+    toggleSound() {
+        this.soundEnabled = !this.soundEnabled;
+        localStorage.setItem('soundEnabled', this.soundEnabled);
+        
+        const soundBtn = document.getElementById('sound-toggle-btn');
+        if (soundBtn) {
+            soundBtn.innerHTML = this.soundEnabled ? '🔊' : '🔇';
+        }
+        
+        this.ui.showToast(
+            this.soundEnabled ? '🔊 Sound effects enabled' : '🔇 Sound effects disabled',
+            'success',
+            2000
+        );
+    }
+    
+    initializeSounds() {
+        // Simple sound effects using Web Audio API
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    playSound(type) {
+        if (!this.soundEnabled || !this.audioContext) return;
+        
+        const ctx = this.audioContext;
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        // Different sounds for different actions
+        switch (type) {
+            case 'click':
+                oscillator.frequency.value = 800;
+                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.1);
+                break;
+            case 'success':
+                oscillator.frequency.value = 1200;
+                gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.2);
+                break;
+            case 'scene-ready':
+                // Two-tone notification
+                oscillator.frequency.value = 600;
+                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.15);
+                
+                setTimeout(() => {
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(ctx.destination);
+                    osc2.frequency.value = 800;
+                    gain2.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                    osc2.start(ctx.currentTime);
+                    osc2.stop(ctx.currentTime + 0.15);
+                }, 100);
+                break;
+        }
     }
     
     _initKeyboardShortcuts() {
@@ -843,6 +935,125 @@ class WitnessReplayApp {
             };
             img.src = `data:image/png;base64,${data.base64_image}`;
             sceneContainer.appendChild(img);
+            this.sceneDisplay.appendChild(sceneContainer);
+            
+            const controls = this.sceneDisplay.querySelector('.scene-controls');
+            if (controls) controls.classList.remove('hidden');
+        }
+        
+        // Play success sound for scene generation
+        this.playSound('scene-ready');
+        
+        // Save current scene URL for comparison
+        const currentImg = this.sceneDisplay.querySelector('.scene-image');
+        if (currentImg && currentImg.src && !this.comparisonMode) {
+            this.previousSceneUrl = currentImg.src;
+            
+            // Add comparison button if we have previous version
+            if (this.currentVersion > 1) {
+                this.addComparisonButton();
+            }
+        }
+    }
+    
+    addComparisonButton() {
+        const sceneControls = this.sceneDisplay.querySelector('.scene-controls');
+        if (!sceneControls || sceneControls.querySelector('#compare-btn')) return;
+        
+        const compareBtn = document.createElement('button');
+        compareBtn.id = 'compare-btn';
+        compareBtn.className = 'scene-control-btn';
+        compareBtn.setAttribute('data-tooltip', 'Compare versions');
+        compareBtn.setAttribute('aria-label', 'Compare with previous version');
+        compareBtn.textContent = '🔀';
+        compareBtn.addEventListener('click', () => this.toggleComparisonMode());
+        
+        // Insert before fullscreen button
+        const fullscreenBtn = sceneControls.querySelector('#fullscreen-btn');
+        if (fullscreenBtn) {
+            sceneControls.insertBefore(compareBtn, fullscreenBtn);
+        } else {
+            sceneControls.appendChild(compareBtn);
+        }
+    }
+    
+    toggleComparisonMode() {
+        if (!this.previousSceneUrl) {
+            this.ui.showToast('No previous version to compare', 'warning', 2000);
+            return;
+        }
+        
+        this.comparisonMode = !this.comparisonMode;
+        const compareBtn = document.getElementById('compare-btn');
+        
+        if (this.comparisonMode) {
+            this.showComparison();
+            if (compareBtn) compareBtn.classList.add('active');
+            this.playSound('click');
+        } else {
+            const currentImgSrc = this.sceneDisplay.querySelector('.comparison-side:last-child img')?.src;
+            this.hideComparison(currentImgSrc);
+            if (compareBtn) compareBtn.classList.remove('active');
+        }
+    }
+    
+    showComparison() {
+        const currentImg = this.sceneDisplay.querySelector('.scene-image');
+        if (!currentImg || !this.previousSceneUrl) return;
+        
+        const currentSrc = currentImg.src;
+        
+        // Create comparison container
+        this.sceneDisplay.innerHTML = '';
+        this.sceneDisplay.classList.add('comparison-mode');
+        
+        const comparisonContainer = document.createElement('div');
+        comparisonContainer.className = 'scene-comparison-container';
+        comparisonContainer.innerHTML = `
+            <div class="comparison-side">
+                <div class="comparison-label">Before (v${this.currentVersion - 1})</div>
+                <img src="${this.previousSceneUrl}" alt="Previous version" class="fade-in">
+            </div>
+            <div class="comparison-divider"></div>
+            <div class="comparison-side">
+                <div class="comparison-label">After (v${this.currentVersion})</div>
+                <img src="${currentSrc}" alt="Current version" class="fade-in">
+            </div>
+        `;
+        
+        this.sceneDisplay.appendChild(comparisonContainer);
+        this.ui.showToast('Comparing versions — Click compare button again to exit', 'info', 3000);
+    }
+    
+    hideComparison(currentSrc) {
+        this.sceneDisplay.classList.remove('comparison-mode');
+        
+        // Restore single image view
+        if (currentSrc) {
+            this.sceneDisplay.innerHTML = '';
+            
+            const sceneContainer = document.createElement('div');
+            sceneContainer.style.position = 'relative';
+            sceneContainer.style.width = '100%';
+            sceneContainer.style.height = '100%';
+            sceneContainer.style.display = 'flex';
+            sceneContainer.style.alignItems = 'center';
+            sceneContainer.style.justifyContent = 'center';
+            
+            const versionBadge = document.createElement('div');
+            versionBadge.className = 'scene-version-badge';
+            versionBadge.innerHTML = `
+                <span class="badge-icon">🎬</span>
+                <span>Version ${this.currentVersion}</span>
+            `;
+            sceneContainer.appendChild(versionBadge);
+            
+            const img = document.createElement('img');
+            img.className = 'scene-image fade-in';
+            img.src = currentSrc;
+            img.alt = 'Reconstructed scene';
+            sceneContainer.appendChild(img);
+            
             this.sceneDisplay.appendChild(sceneContainer);
             
             const controls = this.sceneDisplay.querySelector('.scene-controls');
@@ -1700,44 +1911,145 @@ class WitnessReplayApp {
         this.ui.showModal('analytics-modal');
         
         try {
-            const response = await this.fetchWithTimeout('/api/analytics/stats');
+            // Load both regular analytics and session insights
+            const [statsResponse, insightsResponse, timelineResponse] = await Promise.all([
+                this.fetchWithTimeout('/api/analytics/stats').catch(() => null),
+                this.sessionId ? this.fetchWithTimeout(`/api/sessions/${this.sessionId}/insights`).catch(() => null) : null,
+                this.sessionId ? this.fetchWithTimeout(`/api/sessions/${this.sessionId}/timeline`).catch(() => null) : null
+            ]);
             
-            if (!response.ok) {
-                throw new Error('Failed to load analytics');
+            // Handle regular analytics
+            if (statsResponse && statsResponse.ok) {
+                const data = await statsResponse.json();
+                
+                // Update overall statistics
+                document.getElementById('analytics-total-sessions').textContent = data.total_sessions || 0;
+                document.getElementById('analytics-active-sessions').textContent = data.active_sessions || 0;
+                document.getElementById('analytics-total-scenes').textContent = data.total_scenes_generated || 0;
+                
+                // Format average duration
+                const avgDuration = data.avg_session_duration_minutes || 0;
+                const durationText = avgDuration < 1 
+                    ? '<1m' 
+                    : avgDuration >= 60 
+                        ? `${Math.floor(avgDuration / 60)}h ${Math.round(avgDuration % 60)}m`
+                        : `${Math.round(avgDuration)}m`;
+                document.getElementById('analytics-avg-duration').textContent = durationText;
+                
+                // Element insights
+                if (data.top_elements && data.top_elements.length > 0) {
+                    const topElements = data.top_elements.slice(0, 5).map(e => e.type).join(', ');
+                    document.getElementById('analytics-top-elements').textContent = topElements;
+                } else {
+                    document.getElementById('analytics-top-elements').textContent = 'No data yet';
+                }
+                
+                const avgConf = data.avg_confidence || 0;
+                document.getElementById('analytics-avg-confidence').textContent = 
+                    avgConf > 0 ? `${Math.round(avgConf * 100)}%` : 'N/A';
             }
             
-            const data = await response.json();
-            
-            // Update overall statistics
-            document.getElementById('analytics-total-sessions').textContent = data.total_sessions || 0;
-            document.getElementById('analytics-active-sessions').textContent = data.active_sessions || 0;
-            document.getElementById('analytics-total-scenes').textContent = data.total_scenes_generated || 0;
-            
-            // Format average duration
-            const avgDuration = data.avg_session_duration_minutes || 0;
-            const durationText = avgDuration < 1 
-                ? '<1m' 
-                : avgDuration >= 60 
-                    ? `${Math.floor(avgDuration / 60)}h ${Math.round(avgDuration % 60)}m`
-                    : `${Math.round(avgDuration)}m`;
-            document.getElementById('analytics-avg-duration').textContent = durationText;
-            
-            // Element insights
-            if (data.top_elements && data.top_elements.length > 0) {
-                const topElements = data.top_elements.slice(0, 5).map(e => e.type).join(', ');
-                document.getElementById('analytics-top-elements').textContent = topElements;
-            } else {
-                document.getElementById('analytics-top-elements').textContent = 'No data yet';
+            // Handle session insights (NEW!)
+            if (insightsResponse && insightsResponse.ok) {
+                const insights = await insightsResponse.json();
+                this._displaySessionInsights(insights);
             }
             
-            const avgConf = data.avg_confidence || 0;
-            document.getElementById('analytics-avg-confidence').textContent = 
-                avgConf > 0 ? `${Math.round(avgConf * 100)}%` : 'N/A';
+            // Handle timeline events (NEW!)
+            if (timelineResponse && timelineResponse.ok) {
+                const timeline = await timelineResponse.json();
+                this._displaySessionTimeline(timeline);
+            }
             
         } catch (error) {
             console.error('Error loading analytics:', error);
             this.ui.showToast('Failed to load analytics data', 'error');
         }
+    }
+    
+    _displaySessionInsights(insights) {
+        // Add a new section to the analytics modal for session-specific insights
+        const analyticsModal = document.querySelector('#analytics-modal .analytics-dashboard');
+        if (!analyticsModal) return;
+        
+        // Remove existing insights section if any
+        const existingSection = analyticsModal.querySelector('.session-insights-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+        
+        const insightsSection = document.createElement('div');
+        insightsSection.className = 'session-insights-section';
+        insightsSection.innerHTML = `
+            <h3 style="margin-top: 2rem;">🔍 Current Session Insights</h3>
+            <div class="insight-cards">
+                <div class="insight-card">
+                    <div class="insight-icon">📊</div>
+                    <div class="insight-title">Quality Score</div>
+                    <div class="insight-value">${Math.round((insights.quality_score || 0) * 100)}%</div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-icon">📝</div>
+                    <div class="insight-title">Completeness</div>
+                    <div class="insight-value">${Math.round((insights.completeness || 0) * 100)}%</div>
+                </div>
+                <div class="insight-card ${insights.contradictions_count > 0 ? 'warning' : ''}">
+                    <div class="insight-icon">⚠️</div>
+                    <div class="insight-title">Contradictions</div>
+                    <div class="insight-value">${insights.contradictions_count || 0}</div>
+                </div>
+            </div>
+            ${insights.recommendations && insights.recommendations.length > 0 ? `
+                <div class="recommendations">
+                    <h4>💡 Recommendations</h4>
+                    <ul>
+                        ${insights.recommendations.map(r => `<li>${this._escapeHtml(r)}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        `;
+        
+        analyticsModal.appendChild(insightsSection);
+    }
+    
+    _displaySessionTimeline(timeline) {
+        // Add timeline visualization to analytics modal
+        const analyticsModal = document.querySelector('#analytics-modal .analytics-dashboard');
+        if (!analyticsModal) return;
+        
+        // Remove existing timeline section if any
+        const existingSection = analyticsModal.querySelector('.session-timeline-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+        
+        const timelineSection = document.createElement('div');
+        timelineSection.className = 'session-timeline-section';
+        
+        let timelineHTML = '<h3 style="margin-top: 2rem;">⏱️ Session Timeline</h3>';
+        
+        if (timeline.events && timeline.events.length > 0) {
+            timelineHTML += '<div class="timeline-events-list">';
+            timeline.events.forEach(event => {
+                const icon = event.type === 'statement' ? '💬' : event.type === 'scene_generation' ? '🎬' : '📌';
+                timelineHTML += `
+                    <div class="timeline-event-item">
+                        <div class="event-icon">${icon}</div>
+                        <div class="event-details">
+                            <div class="event-type">${event.type.replace('_', ' ')}</div>
+                            <div class="event-time">${event.timestamp}</div>
+                            ${event.delta_seconds ? `<div class="event-delta">+${Math.round(event.delta_seconds)}s</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            timelineHTML += '</div>';
+        } else {
+            timelineHTML += '<p class="empty-state">No timeline events yet</p>';
+        }
+        
+        timelineSection.innerHTML = timelineHTML;
+        analyticsModal.appendChild(timelineSection);
     }
     
     async showInfoModal() {
