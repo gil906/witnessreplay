@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ElementRelationship(BaseModel):
@@ -76,6 +76,9 @@ class ReconstructionSession(BaseModel):
     source_type: str = "chat"  # chat, phone, voice, email
     report_number: str = ""  # e.g. "RPT-2026-0001"
     case_id: Optional[str] = None
+    witness_name: Optional[str] = None
+    witness_contact: Optional[str] = None
+    witness_location: Optional[str] = None
     witness_statements: List[WitnessStatement] = []
     scene_versions: List[SceneVersion] = []
     timeline: List[TimelineEvent] = []
@@ -87,9 +90,27 @@ class ReconstructionSession(BaseModel):
 
 class SessionCreate(BaseModel):
     """Request model for creating a new session."""
-    title: Optional[str] = "Untitled Session"
-    source_type: Optional[str] = "chat"
+    title: str = "Untitled Session"
+    source_type: str = "chat"
+    witness_name: Optional[str] = None
+    witness_contact: Optional[str] = None
+    witness_location: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = {}
+
+    @field_validator('source_type')
+    @classmethod
+    def validate_source_type(cls, v):
+        valid = ['chat', 'phone', 'voice', 'email']
+        if v not in valid:
+            raise ValueError(f'source_type must be one of {valid}')
+        return v
+
+    @field_validator('title')
+    @classmethod
+    def validate_title(cls, v):
+        if len(v) > 200:
+            raise ValueError('Title must be 200 characters or less')
+        return v.strip()
 
 
 class SessionUpdate(BaseModel):
@@ -111,6 +132,9 @@ class SessionResponse(BaseModel):
     source_type: str = "chat"
     report_number: str = ""
     case_id: Optional[str] = None
+    witness_name: Optional[str] = None
+    witness_contact: Optional[str] = None
+    witness_location: Optional[str] = None
 
 
 class WebSocketMessage(BaseModel):
@@ -179,9 +203,16 @@ class Case(BaseModel):
 
 
 class CaseCreate(BaseModel):
-    title: Optional[str] = "Untitled Case"
+    title: str = "Untitled Case"
     location: Optional[str] = ""
     metadata: Optional[Dict[str, Any]] = {}
+
+    @field_validator('title')
+    @classmethod
+    def validate_case_title(cls, v):
+        if not v or len(v.strip()) < 3:
+            raise ValueError('Case title must be at least 3 characters')
+        return v.strip()
 
 
 class CaseResponse(BaseModel):
@@ -197,3 +228,30 @@ class CaseResponse(BaseModel):
     scene_image_url: Optional[str] = None
     timeframe: Dict[str, Any] = {}
     incident_type: Optional[str] = None
+
+
+class SceneGenerateRequest(BaseModel):
+    """Request to generate a scene image."""
+    description: Optional[str] = None
+    quality: str = "standard"
+
+    @field_validator('quality')
+    @classmethod
+    def validate_quality(cls, v):
+        valid = ['fast', 'standard', 'hd']
+        if v not in valid:
+            raise ValueError(f'quality must be one of {valid}')
+        return v
+
+
+class BackgroundTaskResponse(BaseModel):
+    """Response for a background task submission."""
+    task_id: str
+    status: str = "pending"
+    message: str = ""
+
+
+class SearchRequest(BaseModel):
+    """Semantic search query."""
+    q: str
+    limit: int = 10

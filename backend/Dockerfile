@@ -23,8 +23,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data
+# Create data directory for SQLite and generated images
+RUN mkdir -p /app/data /app/data/images
 
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local

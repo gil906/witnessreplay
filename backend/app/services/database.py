@@ -93,6 +93,38 @@ class DatabaseService:
                 details TEXT,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT,
+                description TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS embeddings (
+                key TEXT PRIMARY KEY,
+                vector TEXT NOT NULL,
+                created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS generated_images (
+                id TEXT PRIMARY KEY,
+                entity_type TEXT,
+                entity_id TEXT,
+                image_path TEXT,
+                model_used TEXT,
+                prompt TEXT,
+                created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS background_tasks (
+                id TEXT PRIMARY KEY,
+                task_type TEXT,
+                status TEXT DEFAULT 'pending',
+                result TEXT,
+                error TEXT,
+                created_at TEXT,
+                completed_at TEXT
+            );
         """)
         await self._db.commit()
 
@@ -317,6 +349,75 @@ class DatabaseService:
             return True
         except Exception:
             return False
+
+    # ── Background Tasks ─────────────────────────────────
+
+    async def save_background_task(self, task_dict: dict) -> bool:
+        try:
+            now = datetime.utcnow().isoformat()
+            await self._db.execute(
+                """INSERT OR REPLACE INTO background_tasks
+                   (id, task_type, status, result, error, created_at, completed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    task_dict.get("id"),
+                    task_dict.get("task_type"),
+                    task_dict.get("status", "pending"),
+                    task_dict.get("result"),
+                    task_dict.get("error"),
+                    task_dict.get("created_at", now),
+                    task_dict.get("completed_at"),
+                ),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_background_task error: {e}")
+            return False
+
+    async def get_background_task(self, task_id: str) -> Optional[dict]:
+        async with self._db.execute(
+            "SELECT * FROM background_tasks WHERE id = ?", (task_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+        return None
+
+    # ── Generated Images ─────────────────────────────────
+
+    async def save_generated_image(self, image_dict: dict) -> bool:
+        try:
+            now = datetime.utcnow().isoformat()
+            await self._db.execute(
+                """INSERT OR REPLACE INTO generated_images
+                   (id, entity_type, entity_id, image_path, model_used, prompt, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    image_dict.get("id"),
+                    image_dict.get("entity_type"),
+                    image_dict.get("entity_id"),
+                    image_dict.get("image_path"),
+                    image_dict.get("model_used"),
+                    image_dict.get("prompt"),
+                    image_dict.get("created_at", now),
+                ),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_generated_image error: {e}")
+            return False
+
+    async def list_images_for_entity(self, entity_type: str, entity_id: str) -> List[dict]:
+        rows = []
+        async with self._db.execute(
+            "SELECT * FROM generated_images WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC",
+            (entity_type, entity_id),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(self._row_to_dict(row))
+        return rows
 
 
 def get_database() -> DatabaseService:

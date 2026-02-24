@@ -1,10 +1,14 @@
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
+from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import io
 import asyncio
+import json
+import os
 
 from app.models.schemas import (
     ReconstructionSession,
@@ -20,6 +24,8 @@ from app.models.schemas import (
     CaseCreate,
     CaseResponse,
     WitnessStatement,
+    SceneGenerateRequest,
+    BackgroundTaskResponse,
 )
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
@@ -35,6 +41,44 @@ import uuid
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ── Background task queue ─────────────────────────────────
+
+_task_results: dict = {}
+
+async def run_background_task(task_id: str, coro):
+    """Run a coroutine as a background task and track its status."""
+    try:
+        _task_results[task_id] = {"status": "running", "started_at": datetime.utcnow().isoformat()}
+        result = await coro
+        _task_results[task_id] = {
+            "status": "completed",
+            "result": str(result) if result else None,
+            "completed_at": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Background task {task_id} failed: {e}")
+        _task_results[task_id] = {"status": "failed", "error": str(e)}
+    # Persist to DB best-effort
+    try:
+        await firestore_service.save_background_task({"id": task_id, **_task_results[task_id]})
+    except Exception:
+        pass
+
+
+# ── SSE event system ──────────────────────────────────────
+
+_sse_subscribers: List[asyncio.Queue] = []
+
+async def publish_event(event_type: str, data: dict):
+    """Publish an event to all SSE subscribers."""
+    message = f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
+    for queue in _sse_subscribers[:]:
+        try:
+            queue.put_nowait(message)
+        except asyncio.QueueFull:
+            _sse_subscribers.remove(queue)
 
 
 # Authentication schemas
@@ -176,6 +220,9 @@ async def create_session(session_data: SessionCreate):
             id=str(uuid.uuid4()),
             title=session_data.title or "Untitled Session",
             source_type=session_data.source_type if hasattr(session_data, 'source_type') and session_data.source_type else "chat",
+            witness_name=session_data.witness_name,
+            witness_contact=session_data.witness_contact,
+            witness_location=session_data.witness_location,
             metadata=session_data.metadata or {}
         )
         
@@ -195,8 +242,18 @@ async def create_session(session_data: SessionCreate):
         greeting = await agent.start_interview()
         
         logger.info(f"Created session {session.id}")
+
+        # Publish SSE event for new report
+        await publish_event("new_report", {
+            "report_id": session.id,
+            "title": session.title,
+            "report_number": session.report_number,
+        })
+
         return session
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         raise HTTPException(
@@ -2788,4 +2845,215 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Background Task Status ────────────────────────────────
 
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Get the status of a background task."""
+    result = _task_results.get(task_id)
+    if result:
+        return result
+    # Try persistent storage
+    stored = await firestore_service.get_background_task(task_id)
+    if stored:
+        return stored
+    return {"status": "not_found"}
+
+
+# ── Quota Status (all AI models) ─────────────────────────
+
+@router.get("/models/all-quota")
+async def get_all_quota_status():
+    """Get real-time quota usage for all AI models including Imagen and embeddings."""
+    try:
+        from app.services.model_selector import model_selector
+        from app.services.imagen_service import imagen_service
+        from app.services.embedding_service import embedding_service
+
+        return {
+            "models": await model_selector.quota.get_quota_status() if hasattr(model_selector, 'quota') else {},
+            "imagen": imagen_service.get_quota_status(),
+            "embeddings": embedding_service.get_quota_status(),
+        }
+    except Exception as e:
+        logger.error(f"Error getting all quota status: {e}")
+        return {"models": {}, "imagen": {}, "embeddings": {}, "error": str(e)}
+
+
+# ── SSE Events Stream ────────────────────────────────────
+
+@router.get("/events")
+async def sse_events(request: Request):
+    """Server-Sent Events endpoint for real-time updates."""
+    queue = asyncio.Queue(maxsize=50)
+    _sse_subscribers.append(queue)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=30)
+                    yield message
+                except asyncio.TimeoutError:
+                    yield "event: heartbeat\ndata: {}\n\n"
+        finally:
+            if queue in _sse_subscribers:
+                _sse_subscribers.remove(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Semantic Search ───────────────────────────────────────
+
+@router.get("/search")
+async def semantic_search(q: str, limit: int = 10):
+    """Search cases and reports using semantic similarity."""
+    try:
+        cases = await case_manager.search_cases(q, limit=limit)
+        reports = await case_manager.search_reports(q, limit=limit)
+        return {
+            "query": q,
+            "cases": [{"id": cid, "score": score} for cid, score in cases],
+            "reports": [{"id": rid, "score": score} for rid, score in reports],
+        }
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Scene Image Generation ───────────────────────────────
+
+@router.post("/cases/{case_id}/generate-scene", response_model=BackgroundTaskResponse)
+async def generate_case_scene(case_id: str, body: SceneGenerateRequest = None):
+    """Generate an AI scene image for a case (runs in background)."""
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    task_id = f"scene-case-{case_id}-{uuid.uuid4().hex[:8]}"
+    description = (body.description if body and body.description else case.summary) or case.title
+
+    async def _generate():
+        from app.services.imagen_service import imagen_service
+        path = await imagen_service.generate_case_scene(case_id, case.summary or "", description)
+        if path:
+            case.scene_image_url = path
+            await firestore_service.update_case(case)
+            await firestore_service.save_generated_image({
+                "id": task_id,
+                "entity_type": "case",
+                "entity_id": case_id,
+                "image_path": path,
+                "model_used": "imagen",
+                "prompt": description[:500],
+            })
+            await publish_event("image_generated", {"entity_type": "case", "entity_id": case_id, "image_path": path})
+        return path
+
+    asyncio.create_task(run_background_task(task_id, _generate()))
+    return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene generation started")
+
+
+@router.post("/sessions/{session_id}/generate-scene", response_model=BackgroundTaskResponse)
+async def generate_report_scene(session_id: str, body: SceneGenerateRequest = None):
+    """Generate an AI scene image for a report (runs in background)."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    task_id = f"scene-report-{session_id}-{uuid.uuid4().hex[:8]}"
+    description = (body.description if body and body.description else session.title)
+    elements = [e.model_dump() for e in session.current_scene_elements[:10]]
+
+    async def _generate():
+        from app.services.imagen_service import imagen_service
+        path = await imagen_service.generate_report_scene(session_id, description, elements)
+        if path:
+            await firestore_service.save_generated_image({
+                "id": task_id,
+                "entity_type": "report",
+                "entity_id": session_id,
+                "image_path": path,
+                "model_used": "imagen",
+                "prompt": description[:500],
+            })
+            await publish_event("image_generated", {"entity_type": "report", "entity_id": session_id, "image_path": path})
+        return path
+
+    asyncio.create_task(run_background_task(task_id, _generate()))
+    return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene generation started")
+
+
+@router.post("/cases/{case_id}/regenerate-scene", response_model=BackgroundTaskResponse)
+async def regenerate_case_scene(case_id: str, body: SceneGenerateRequest = None):
+    """Force regenerate a scene image for a case."""
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    task_id = f"regen-case-{case_id}-{uuid.uuid4().hex[:8]}"
+    description = (body.description if body and body.description else case.summary) or case.title
+    quality = body.quality if body else "standard"
+
+    async def _regenerate():
+        from app.services.imagen_service import imagen_service
+        path = await imagen_service.regenerate_scene("case", case_id, description, quality=quality)
+        if path:
+            case.scene_image_url = path
+            await firestore_service.update_case(case)
+            await publish_event("image_generated", {"entity_type": "case", "entity_id": case_id, "image_path": path})
+        return path
+
+    asyncio.create_task(run_background_task(task_id, _regenerate()))
+    return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene regeneration started")
+
+
+# ── Image Listing ─────────────────────────────────────────
+
+@router.get("/cases/{case_id}/images")
+async def list_case_images(case_id: str):
+    """List all generated images for a case."""
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    try:
+        from app.services.imagen_service import imagen_service
+        fs_images = await imagen_service.get_images_for_case(case_id)
+    except Exception:
+        fs_images = []
+    db_images = await firestore_service.list_images_for_entity("case", case_id)
+    return {"case_id": case_id, "images": fs_images, "records": db_images}
+
+
+@router.get("/sessions/{session_id}/images")
+async def list_report_images(session_id: str):
+    """List all generated images for a report."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        from app.services.imagen_service import imagen_service
+        fs_images = await imagen_service.get_images_for_report(session_id)
+    except Exception:
+        fs_images = []
+    db_images = await firestore_service.list_images_for_entity("report", session_id)
+    return {"report_id": session_id, "images": fs_images, "records": db_images}
+
+
+# ── Image Serving ─────────────────────────────────────────
+
+@router.get("/images/{filename}")
+async def serve_image(filename: str):
+    """Serve a generated image file."""
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath = os.path.join("/app/data/images", filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(filepath, media_type="image/png")

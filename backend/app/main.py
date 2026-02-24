@@ -1,5 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
+from collections import defaultdict
+from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -20,6 +22,27 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+# ── Per-IP API rate limiter ───────────────────────────────
+
+class APIRateLimiter:
+    """Simple per-IP rate limiter for API endpoints."""
+
+    def __init__(self, requests_per_minute: int = 60):
+        self._requests: dict = defaultdict(list)
+        self._rpm = requests_per_minute
+
+    def check(self, client_ip: str) -> bool:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(minutes=1)
+        self._requests[client_ip] = [t for t in self._requests[client_ip] if t > cutoff]
+        if len(self._requests[client_ip]) >= self._rpm:
+            return False
+        self._requests[client_ip].append(now)
+        return True
+
+api_rate_limiter = APIRateLimiter(requests_per_minute=60)
 
 
 @asynccontextmanager
@@ -46,6 +69,9 @@ async def lifespan(app: FastAPI):
     db = DatabaseService()
     await db.initialize()
     logger.info("SQLite database initialized")
+
+    # Ensure images directory exists
+    os.makedirs("/app/data/images", exist_ok=True)
     
     # Start cache cleanup background task
     from app.services.cache import cache
@@ -143,6 +169,20 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # Include API routes
 app.include_router(api_router, prefix="/api", tags=["api"])
+
+# API versioning: mount same router under /api/v1/ as alias
+app.include_router(api_router, prefix="/api/v1", tags=["api-v1"])
+
+# Serve generated images from /data/images/
+@app.get("/data/images/{filename}")
+async def serve_data_image(filename: str):
+    """Serve generated image files from the data directory."""
+    if ".." in filename or "/" in filename:
+        return JSONResponse(status_code=400, content={"detail": "Invalid filename"})
+    filepath = os.path.join("/app/data/images", filename)
+    if not os.path.exists(filepath):
+        return JSONResponse(status_code=404, content={"detail": "Image not found"})
+    return FileResponse(filepath, media_type="image/png")
 
 # WebSocket endpoint
 @app.websocket("/ws/{session_id}")
@@ -256,6 +296,21 @@ async def rate_limit_middleware(request: Request, call_next):
     response.headers["X-RateLimit-Reset"] = str(int(usage.get("next_reset_timestamp", 0)))
     
     return response
+
+
+# Per-IP API rate limiting middleware
+@app.middleware("http")
+async def api_ip_rate_limit(request: Request, call_next):
+    """Per-IP rate limiting for all API endpoints."""
+    if request.url.path.startswith("/api/"):
+        client_ip = request.client.host if request.client else "unknown"
+        if not api_rate_limiter.check(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Try again shortly."},
+                headers={"Retry-After": "60"},
+            )
+    return await call_next(request)
 
 
 # Request logging middleware

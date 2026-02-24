@@ -350,6 +350,46 @@ class FirestoreService:
         # In-memory is always healthy
         return True
 
+    # ── Generated Image Records ──────────────────────────
+
+    async def save_generated_image(self, image_dict: dict) -> bool:
+        """Save a generated image record to SQLite."""
+        try:
+            db = await self._get_sqlite()
+            return await db.save_generated_image(image_dict)
+        except Exception as e:
+            logger.warning(f"save_generated_image failed: {e}")
+            return False
+
+    async def list_images_for_entity(self, entity_type: str, entity_id: str) -> list:
+        """List generated images for a given entity."""
+        try:
+            db = await self._get_sqlite()
+            return await db.list_images_for_entity(entity_type, entity_id)
+        except Exception as e:
+            logger.warning(f"list_images_for_entity failed: {e}")
+            return []
+
+    # ── Background Task Records ──────────────────────────
+
+    async def save_background_task(self, task_dict: dict) -> bool:
+        """Persist background task status to SQLite."""
+        try:
+            db = await self._get_sqlite()
+            return await db.save_background_task(task_dict)
+        except Exception as e:
+            logger.warning(f"save_background_task failed: {e}")
+            return False
+
+    async def get_background_task(self, task_id: str) -> Optional[dict]:
+        """Get background task status from SQLite."""
+        try:
+            db = await self._get_sqlite()
+            return await db.get_background_task(task_id)
+        except Exception as e:
+            logger.warning(f"get_background_task failed: {e}")
+            return None
+
 
 # Global instance
 firestore_service = FirestoreService()
