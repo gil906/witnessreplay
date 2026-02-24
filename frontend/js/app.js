@@ -2640,7 +2640,5 @@ class WitnessReplayApp {
     }
 }
 
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.app = new WitnessReplayApp();
-});
+// App is initialized from index.html inline script.
+// Do NOT add a second instantiation here to avoid duplicate toasts/notifications.
