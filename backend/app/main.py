@@ -38,10 +38,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Single API key mode (no rotation)")
     
+    # Start cache cleanup background task
+    from app.services.cache import cache
+    async def cleanup_cache_periodically():
+        while True:
+            await asyncio.sleep(300)  # Run every 5 minutes
+            await cache.cleanup_expired()
+    
+    cleanup_task = asyncio.create_task(cleanup_cache_periodically())
+    logger.info("Started cache cleanup background task")
+    
     # Startup
     yield
     
     # Shutdown
+    cleanup_task.cancel()
     logger.info("Shutting down WitnessReplay application")
 
 

@@ -6,6 +6,7 @@ from google.api_core import exceptions as gcp_exceptions
 
 from app.config import settings
 from app.models.schemas import ReconstructionSession
+from app.services.cache import cache, cached
 
 logger = logging.getLogger(__name__)
 
@@ -49,21 +50,38 @@ class FirestoreService:
         return True
     
     async def get_session(self, session_id: str) -> Optional[ReconstructionSession]:
-        """Retrieve a session from Firestore or in-memory."""
+        """Retrieve a session from cache, Firestore, or in-memory."""
+        # Try cache first
+        cached_session = await cache.get(f"session:{session_id}")
+        if cached_session:
+            logger.debug(f"Cache hit for session {session_id}")
+            return cached_session
+        
+        session = None
         if self.client:
             try:
                 doc = await self.client.collection(self.collection_name).document(session_id).get()
                 if doc.exists:
                     data = doc.to_dict()
-                    return ReconstructionSession(**data)
+                    session = ReconstructionSession(**data)
             except Exception as e:
                 logger.error(f"Failed to get session from Firestore: {e}")
         
         # In-memory fallback
-        return self._memory_store.get(session_id)
+        if not session:
+            session = self._memory_store.get(session_id)
+        
+        # Cache the result for 5 minutes
+        if session:
+            await cache.set(f"session:{session_id}", session, ttl_seconds=300)
+        
+        return session
     
     async def update_session(self, session: ReconstructionSession) -> bool:
-        """Update an existing session in Firestore or in-memory."""
+        """Update an existing session in Firestore or in-memory and invalidate cache."""
+        # Invalidate cache
+        await cache.delete(f"session:{session.id}")
+        
         if self.client:
             try:
                 session.updated_at = datetime.utcnow()

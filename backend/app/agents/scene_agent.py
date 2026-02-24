@@ -293,11 +293,43 @@ class SceneReconstructionAgent:
                         position=elem_data.get("position"),
                         color=elem_data.get("color"),
                         size=elem_data.get("size"),
-                        confidence=elem_data.get("confidence", 0.5)
+                        confidence=elem_data.get("confidence", 0.5),
+                        relationships=[],
+                        evidence_tags=[]
                     )
                     self.current_elements.append(element)
                 
                 logger.info(f"Extracted {len(self.current_elements)} scene elements")
+                
+                # Auto-detect relationships from latest statement
+                if self.conversation_history:
+                    latest_statement = next(
+                        (msg['content'] for msg in reversed(self.conversation_history) 
+                         if msg['role'] == 'user'),
+                        ""
+                    )
+                    if latest_statement:
+                        from app.services.relationships import relationship_tracker
+                        detected_rels = relationship_tracker.extract_relationships_from_statement(
+                            latest_statement,
+                            self.current_elements
+                        )
+                        for rel in detected_rels:
+                            relationship_tracker.add_relationship(rel)
+                            # Link relationship IDs to elements
+                            for elem in self.current_elements:
+                                if elem.id == rel.element_a_id or elem.id == rel.element_b_id:
+                                    elem.relationships.append(rel.id)
+                        
+                        logger.info(f"Detected {len(detected_rels)} relationships")
+                        
+                        # Auto-tag evidence
+                        from app.services.evidence import evidence_manager
+                        for elem in self.current_elements:
+                            tags = evidence_manager.auto_tag_element(elem, latest_statement)
+                            elem.evidence_tags = [tag.id for tag in tags]
+                        
+                        logger.info(f"Auto-tagged {len(self.current_elements)} elements with evidence categories")
                 
                 # Detect contradictions
                 await self._detect_contradictions(scene_data)

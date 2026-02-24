@@ -2069,3 +2069,176 @@ async def get_admin_analytics(auth=Depends(require_admin_auth)):
             detail="Failed to get admin analytics"
         )
 
+
+# ==================== RELATIONSHIPS AND EVIDENCE ENDPOINTS ====================
+
+@router.get("/sessions/{session_id}/relationships")
+async def get_session_relationships(session_id: str):
+    """
+    Get spatial and temporal relationships for a session.
+    Returns relationship graph and timeline sequence.
+    """
+    try:
+        session = await storage.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.relationships import relationship_tracker
+        
+        # Get relationships from session
+        relationships = session.element_relationships
+        
+        # Build spatial graph
+        spatial_graph = {}
+        temporal_sequence = []
+        
+        for rel in relationships:
+            if rel.relationship_type in ["next_to", "in_front_of", "behind", "above", "below", "inside"]:
+                if rel.element_a_id not in spatial_graph:
+                    spatial_graph[rel.element_a_id] = []
+                spatial_graph[rel.element_a_id].append({
+                    "element_id": rel.element_b_id,
+                    "relationship": rel.relationship_type,
+                    "confidence": rel.confidence
+                })
+            elif rel.relationship_type in ["before", "after", "during", "simultaneous"]:
+                temporal_sequence.append({
+                    "element_a": rel.element_a_id,
+                    "element_b": rel.element_b_id,
+                    "relationship": rel.relationship_type,
+                    "confidence": rel.confidence
+                })
+        
+        # Get consistency warnings
+        tracker = relationship_tracker
+        # Temporarily load relationships into tracker for validation
+        original_rels = tracker.relationships.copy()
+        tracker.relationships = {rel.id: rel for rel in relationships}
+        warnings = tracker.validate_consistency()
+        tracker.relationships = original_rels
+        
+        return {
+            "session_id": session_id,
+            "spatial_graph": spatial_graph,
+            "temporal_sequence": temporal_sequence,
+            "total_relationships": len(relationships),
+            "consistency_warnings": warnings
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting relationships for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get relationships"
+        )
+
+
+@router.get("/sessions/{session_id}/evidence")
+async def get_session_evidence(session_id: str):
+    """
+    Get evidence summary and categorization for a session.
+    Returns breakdown by category and quality tags.
+    """
+    try:
+        session = await storage.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.evidence import evidence_manager
+        
+        # Get evidence tags from session
+        tags = session.evidence_tags
+        
+        # Build summary
+        category_breakdown = {}
+        quality_breakdown = {}
+        critical_elements = []
+        disputed_elements = []
+        
+        for tag in tags:
+            # Count by category
+            category_breakdown[tag.category] = category_breakdown.get(tag.category, 0) + 1
+            
+            # Count by quality tag
+            if tag.tag in ["critical", "corroborated", "disputed", "uncertain"]:
+                quality_breakdown[tag.tag] = quality_breakdown.get(tag.tag, 0) + 1
+            
+            # Collect critical and disputed items
+            if tag.tag == "critical":
+                element = next((e for e in session.current_scene_elements if e.id == tag.element_id), None)
+                if element:
+                    critical_elements.append({
+                        "id": element.id,
+                        "description": element.description,
+                        "type": element.type
+                    })
+            elif tag.tag == "disputed":
+                element = next((e for e in session.current_scene_elements if e.id == tag.element_id), None)
+                if element:
+                    disputed_elements.append({
+                        "id": element.id,
+                        "description": element.description,
+                        "type": element.type
+                    })
+        
+        return {
+            "session_id": session_id,
+            "total_tags": len(tags),
+            "category_breakdown": category_breakdown,
+            "quality_breakdown": quality_breakdown,
+            "critical_evidence": critical_elements,
+            "disputed_evidence": disputed_elements,
+            "elements_tagged": len(set(tag.element_id for tag in tags)),
+            "total_elements": len(session.current_scene_elements)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting evidence for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get evidence data"
+        )
+
+
+@router.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache statistics (hit rate, entries, etc.)."""
+    try:
+        from app.services.cache import cache
+        return cache.get_stats()
+    except Exception as e:
+        logger.error(f"Error getting cache stats: {e}")
+        return {
+            "entries": 0,
+            "hits": 0,
+            "misses": 0,
+            "total_requests": 0,
+            "hit_rate": 0
+        }
+
+
+@router.post("/cache/clear")
+async def clear_cache(auth=Depends(require_admin_auth)):
+    """Clear all cache entries (admin only)."""
+    try:
+        from app.services.cache import cache
+        await cache.clear()
+        return {"message": "Cache cleared successfully"}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to clear cache"
+        )
+
+

@@ -3,6 +3,27 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
+class ElementRelationship(BaseModel):
+    """Represents a spatial or temporal relationship between scene elements."""
+    id: str
+    element_a_id: str
+    element_b_id: str
+    relationship_type: str  # "next_to", "in_front_of", "behind", "above", "below", "inside", "before", "after"
+    description: str
+    confidence: float = 0.5
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EvidenceTag(BaseModel):
+    """Represents an evidence tag for categorizing scene elements."""
+    id: str
+    element_id: str
+    category: str  # "physical_evidence", "witness_observation", "environmental", "temporal"
+    tag: str  # "critical", "corroborated", "disputed", "uncertain"
+    notes: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SceneElement(BaseModel):
     """Represents a single element in the reconstructed scene."""
     id: str
@@ -13,6 +34,8 @@ class SceneElement(BaseModel):
     size: Optional[str] = None
     confidence: float = 0.5
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    relationships: List[str] = []  # IDs of related ElementRelationship objects
+    evidence_tags: List[str] = []  # IDs of related EvidenceTag objects
 
 
 class TimelineEvent(BaseModel):
@@ -54,6 +77,8 @@ class ReconstructionSession(BaseModel):
     scene_versions: List[SceneVersion] = []
     timeline: List[TimelineEvent] = []
     current_scene_elements: List[SceneElement] = []
+    element_relationships: List[ElementRelationship] = []
+    evidence_tags: List[EvidenceTag] = []
     metadata: Dict[str, Any] = {}
 
 
