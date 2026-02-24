@@ -120,12 +120,33 @@ class AdminPortal {
     }
     
     initializeUI() {
-        // Modal handlers
-        document.querySelectorAll('.modal-close, [data-modal]').forEach(el => {
+        // Modal handlers - close buttons
+        document.querySelectorAll('.modal-close').forEach(el => {
             el.addEventListener('click', (e) => {
-                const modalId = e.target.dataset.modal;
+                e.preventDefault();
+                const modalId = el.getAttribute('data-modal') || el.closest('.modal')?.id;
                 if (modalId) {
                     this.hideModal(modalId);
+                }
+            });
+        });
+        
+        // Cancel buttons
+        document.querySelectorAll('.cancel-modal-btn').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                const modalId = el.getAttribute('data-modal');
+                if (modalId) {
+                    this.hideModal(modalId);
+                }
+            });
+        });
+        
+        // Modal backdrop clicks
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    this.hideModal(modal.id);
                 }
             });
         });

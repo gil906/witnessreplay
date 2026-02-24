@@ -123,3 +123,8 @@ class UsageQuota(BaseModel):
 class ModelConfigUpdate(BaseModel):
     """Request to update model configuration."""
     model_name: str
+
+
+class ModelsListResponse(BaseModel):
+    """Response containing list of available models."""
+    models: List[ModelInfo]

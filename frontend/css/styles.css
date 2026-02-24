@@ -1563,11 +1563,15 @@ html {
     height: 100%;
     background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(8px);
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     animation: modalFadeIn 0.3s ease-out;
+}
+
+.modal.active {
+    display: flex;
 }
 
 @keyframes modalFadeIn {

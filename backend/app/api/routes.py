@@ -13,6 +13,7 @@ from app.models.schemas import (
     SessionResponse,
     HealthResponse,
     ModelInfo,
+    ModelsListResponse,
     UsageQuota,
     ModelConfigUpdate,
 )
@@ -942,7 +943,7 @@ async def search_sessions_by_element(
 
 
 
-@router.get("/models", response_model=List[ModelInfo])
+@router.get("/models", response_model=ModelsListResponse)
 async def list_models():
     """
     List available Gemini models with their capabilities.
@@ -972,7 +973,7 @@ async def list_models():
                     description=f"Gemini model: {model_name} (API key not configured - using fallback list)",
                     supported_generation_methods=["generateContent"],
                 ))
-            return models_list
+            return {"models": models_list}
         
         # Run blocking API call in thread pool to avoid blocking event loop
         def fetch_models():
