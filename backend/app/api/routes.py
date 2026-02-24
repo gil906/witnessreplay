@@ -99,12 +99,12 @@ def _check_usage_tracker_health() -> bool:
 
 
 
-@router.get("/sessions", response_model=List[SessionResponse])
+@router.get("/sessions")
 async def list_sessions(limit: int = 50):
     """List all reconstruction sessions."""
     try:
         sessions = await firestore_service.list_sessions(limit=limit)
-        return [
+        sessions_list = [
             SessionResponse(
                 id=session.id,
                 title=session.title,
@@ -116,6 +116,8 @@ async def list_sessions(limit: int = 50):
             )
             for session in sessions
         ]
+        # Return object with sessions key for admin portal
+        return {"sessions": sessions_list}
     except Exception as e:
         logger.error(f"Error listing sessions: {e}")
         raise HTTPException(
@@ -1001,7 +1003,8 @@ async def list_models():
                 ))
         
         logger.info(f"Returning {len(models_list)} available models")
-        return models_list
+        # Return object with models key for frontend compatibility
+        return {"models": models_list}
     
     except Exception as e:
         logger.error(f"Error listing models: {e}")
@@ -1014,7 +1017,7 @@ async def list_models():
                 description=f"Gemini model: {model_name}",
                 supported_generation_methods=["generateContent"],
             ))
-        return models_list
+        return {"models": models_list}
 
 
 
@@ -1024,10 +1027,10 @@ async def get_quota_info(model: Optional[str] = None):
     Get quota and usage information for Gemini models.
     
     Args:
-        model: Optional specific model name. If not provided, returns all.
+        model: Optional specific model name. If not provided, uses current model.
     
     Returns:
-        Usage and quota information with rate limits.
+        Usage and quota information with rate limits in frontend-compatible format.
         
     Note:
         Gemini API does not provide programmatic quota endpoints.
@@ -1035,18 +1038,35 @@ async def get_quota_info(model: Optional[str] = None):
         Counts are approximate and reset at midnight Pacific Time.
     """
     try:
-        if model:
-            # Get specific model usage
-            usage = usage_tracker.get_usage(model)
-            return usage
-        else:
-            # Get all models usage
-            all_usage = usage_tracker.get_all_usage()
-            return {
-                "models": all_usage,
-                "current_model": settings.gemini_model,
-                "note": "Usage tracking is approximate and based on local counting"
-            }
+        # Use specified model or default to current model
+        target_model = model or settings.gemini_model
+        
+        # Get usage for the target model
+        usage = usage_tracker.get_usage(target_model)
+        
+        # Transform to frontend-expected format
+        # Frontend expects flat structure with requests_per_minute, requests_per_day, tokens_per_day
+        return {
+            "selected_model": target_model,
+            "tier": usage.get("tier", "free"),
+            "requests_per_minute": {
+                "used": usage.get("requests", {}).get("minute", {}).get("used", 0),
+                "limit": usage.get("requests", {}).get("minute", {}).get("limit", 15),
+                "remaining": usage.get("requests", {}).get("minute", {}).get("remaining", 15)
+            },
+            "requests_per_day": {
+                "used": usage.get("requests", {}).get("day", {}).get("used", 0),
+                "limit": usage.get("requests", {}).get("day", {}).get("limit", 1500),
+                "remaining": usage.get("requests", {}).get("day", {}).get("remaining", 1500)
+            },
+            "tokens_per_day": {
+                "used": usage.get("tokens", {}).get("day", {}).get("used", 0),
+                "limit": usage.get("tokens", {}).get("day", {}).get("limit", 15000000),
+                "remaining": usage.get("tokens", {}).get("day", {}).get("remaining", 15000000)
+            },
+            "reset_time": usage.get("reset_time", "Midnight Pacific Time"),
+            "note": usage.get("note", "Usage tracking is approximate and based on local counting")
+        }
     
     except Exception as e:
         logger.error(f"Error getting quota info: {e}")

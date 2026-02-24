@@ -104,6 +104,14 @@ if not os.path.exists(frontend_path):
 if os.path.exists(frontend_path):
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
     
+    # Add convenience aliases for /css/ and /js/ paths
+    css_path = os.path.join(frontend_path, "css")
+    js_path = os.path.join(frontend_path, "js")
+    if os.path.exists(css_path):
+        app.mount("/css", StaticFiles(directory=css_path), name="css")
+    if os.path.exists(js_path):
+        app.mount("/js", StaticFiles(directory=js_path), name="js")
+    
     @app.get("/")
     async def serve_frontend():
         """Serve the frontend HTML."""

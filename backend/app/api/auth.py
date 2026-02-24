@@ -4,7 +4,7 @@ Simple password-based authentication for admin portal
 """
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 from fastapi import HTTPException, Header
 import logging
@@ -23,7 +23,7 @@ SESSION_EXPIRY_HOURS = 24
 def create_session() -> str:
     """Create a new admin session token."""
     token = secrets.token_urlsafe(32)
-    active_sessions[token] = datetime.utcnow()
+    active_sessions[token] = datetime.now(timezone.utc)
     logger.info(f"Created admin session: {token[:8]}...")
     return token
 
@@ -35,14 +35,14 @@ def validate_session(token: str) -> bool:
     
     # Check if session has expired
     session_time = active_sessions[token]
-    if datetime.utcnow() - session_time > timedelta(hours=SESSION_EXPIRY_HOURS):
+    if datetime.now(timezone.utc) - session_time > timedelta(hours=SESSION_EXPIRY_HOURS):
         # Session expired, remove it
         del active_sessions[token]
         logger.info(f"Session expired: {token[:8]}...")
         return False
     
     # Update session time (keep-alive)
-    active_sessions[token] = datetime.utcnow()
+    active_sessions[token] = datetime.now(timezone.utc)
     return True
 
 
