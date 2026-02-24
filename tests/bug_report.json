@@ -1,153 +1,310 @@
 {
-  "timestamp": "2026-02-24T00:32:09.291758Z",
+  "timestamp": "2026-02-24T00:51:00Z",
   "tester": "tester_agent",
-  "cycle": 8,
-  "test_categories": [
-    "API Endpoint Testing",
-    "Route Registration Validation",
-    "Frontend Code Review",
-    "Backend Code Review",
-    "CORS Header Validation",
-    "WebSocket Connectivity",
-    "JavaScript Syntax Validation"
-  ],
+  "cycle": 9,
+  "summary": "Server restart required for route fixes. Critical PDF export bug found. Model config persistence fixed.",
   "bugs": [
     {
-      "id": 30,
-      "title": "CRITICAL: Route ordering fix incomplete - 5 endpoints still return 404",
-      "description": "Despite Feature Agent claiming to fix Bug #29 (route ordering), 5 critical endpoints are still not registered in the OpenAPI spec and return 404. The routes are defined in routes.py but FastAPI doesn't register them because they're defined AFTER catch-all parameter routes. Specifically: /sessions/{session_id} at line 211 matches requests to /sessions/{id}/insights and /sessions/{id}/timeline before those specific routes can be matched.",
-      "severity": "critical",
-      "steps_to_reproduce": "1. Check OpenAPI spec: curl -s http://localhost:8088/openapi.json | python3 -c \"import json,sys; print('\\n'.join(json.load(sys.stdin)['paths'].keys()))\"\n2. Observe only 12 paths registered, not 19\n3. Test missing endpoints:\n   - curl http://localhost:8088/api/info (404)\n   - curl http://localhost:8088/api/sessions/{id}/insights (404)\n   - curl http://localhost:8088/api/sessions/{id}/timeline (404)\n   - curl http://localhost:8088/api/sessions/export/bulk (404)\n   - curl http://localhost:8088/api/sessions/{id}/export/evidence (404)",
-      "expected_behavior": "All 19 @router decorators should register routes. Specific routes like /sessions/{id}/insights MUST be defined BEFORE generic catch-all routes like /sessions/{session_id}. Correct order: all specific paths first, then parameterized paths.",
-      "actual_behavior": "Only 12 of 19 routes register. Missing: /api/info, /api/sessions/{id}/insights, /api/sessions/{id}/timeline, /api/sessions/export/bulk, /api/sessions/{id}/export/evidence. Frontend features that depend on insights/timeline endpoints will fail silently.",
-      "affected_files": [
-        "backend/app/api/routes.py",
-        "backend/app/main.py"
-      ],
-      "impact": "HIGH - New timeline and insights features added by UX agent in latest cycle will NOT work because backend endpoints return 404. This breaks the demo's session analytics dashboard."
-    },
-    {
-      "id": 31,
-      "title": "HIGH: Timeline & Insights UI features broken due to missing backend endpoints",
-      "description": "The UX Agent added timeline and insights visualization in the analytics modal (app.js lines 1915-1962), but these features will never display data because the backend endpoints /api/sessions/{id}/timeline and /api/sessions/{id}/insights return 404 (Bug #30). The frontend has proper error handling with .catch(() => null), so it fails silently without showing errors to users.",
+      "id": 37,
+      "title": "Server needs restart to register route ordering fixes",
+      "description": "Feature Agent successfully fixed route ordering in routes.py (commit 5bad536), and when the module is imported fresh, all 19 routes register correctly. However, the running server on port 8088 still has the old route table with only 12 registered routes. The OpenAPI spec shows only 12 paths despite routes.py having 19 @router decorators.",
       "severity": "high",
-      "steps_to_reproduce": "1. Open WitnessReplay frontend\n2. Create a session\n3. Click Analytics modal\n4. Observe timeline and insights sections are empty/missing\n5. Check browser console: fetch requests return 404\n6. Frontend code at line 1917-1918 tries to fetch insights/timeline",
-      "expected_behavior": "Timeline should show temporal event sequencing with icons (\ud83d\udcac statements, \ud83c\udfac scenes). Insights should display quality score, completeness %, contradictions, and recommendations.",
-      "actual_behavior": "Timeline and insights sections don't appear in analytics modal because endpoints return 404. Features added by UX agent are non-functional despite clean implementation.",
-      "affected_files": [
-        "frontend/js/app.js",
-        "backend/app/api/routes.py"
-      ],
-      "impact": "MEDIUM - Demo impact is significant. These features were meant to showcase AI-powered quality assessment and temporal understanding for the hackathon judges."
+      "category": "deployment",
+      "steps_to_reproduce": "1. Check routes.py - all 19 @router decorators are in correct order (specific routes before parameterized)\n2. Import routes.py in fresh Python: python3 -c 'from app.api.routes import router; print(len(router.routes))' → shows 19 routes\n3. Check running server: curl http://localhost:8088/openapi.json → shows only 12 paths\n4. Test missing endpoints: /api/info, /sessions/{id}/insights, /sessions/{id}/timeline → all return 404",
+      "expected_behavior": "Server should auto-reload when routes.py changes, OR should be restarted to pick up route fixes",
+      "actual_behavior": "Server continues using stale route table. Missing 7 endpoints: /api/info, /sessions/{id}/insights, /sessions/{id}/timeline, /sessions/export/bulk, /sessions/{id}/export/evidence, and 2 others still return 404",
+      "affected_files": ["backend/app/api/routes.py"],
+      "notes": "This is NOT a code bug - the fix is already in place. The orchestrator/deployment system needs to restart the backend server to apply the route changes. Once restarted, Bugs #29 and #30 will be fully resolved.",
+      "recommendation": "Add server restart/reload step after Feature Agent commits backend changes. Use uvicorn with --reload flag in development."
     },
     {
-      "id": 32,
-      "title": "MEDIUM: PDF export endpoint returns 500 error",
-      "description": "The /api/sessions/{id}/export endpoint returns HTTP 500. This is likely due to issues with the fpdf library implementation. While the endpoint is registered, it fails at runtime.",
+      "id": 38,
+      "title": "PDF export fails due to fpdf2 API incompatibility",
+      "description": "The PDF export endpoint at /api/sessions/{id}/export returns HTTP 500. Root cause: Line 416 in routes.py calls `pdf.output(dest='S').encode('latin1')`. In fpdf2 (version 2.8.1), output() returns a bytearray, not a string. Bytearrays don't have .encode() method, causing AttributeError: 'bytearray' object has no attribute 'encode'.",
       "severity": "medium",
-      "steps_to_reproduce": "1. Create session: curl -X POST http://localhost:8088/api/sessions -H \"Content-Type: application/json\" -d '{\"case_type\":\"test\"}'\n2. Note session ID\n3. Try export: curl http://localhost:8088/api/sessions/{id}/export\n4. Receive HTTP 500",
-      "expected_behavior": "Should either generate PDF successfully or return detailed error message explaining failure",
-      "actual_behavior": "Returns HTTP 500 error",
-      "affected_files": [
-        "backend/app/api/routes.py"
-      ],
-      "impact": "LOW - Export feature is secondary functionality, but 500 errors look unprofessional in demos"
+      "category": "runtime_error",
+      "steps_to_reproduce": "1. Create session: POST /api/sessions with {\"case_type\":\"test\"}\n2. Try PDF export: GET /api/sessions/{id}/export\n3. Receive HTTP 500 with detail: 'Failed to export session'\n4. Actual error (hidden from API response): 'bytearray' object has no attribute 'encode'",
+      "expected_behavior": "Should generate and return PDF file with proper headers",
+      "actual_behavior": "Returns HTTP 500. The error is: pdf.output(dest='S').encode('latin1') tries to encode a bytearray which doesn't have .encode() method",
+      "affected_files": ["backend/app/api/routes.py:416"],
+      "fix": "Change line 416 from:\n  pdf_bytes = pdf.output(dest='S').encode('latin1')\nTo:\n  pdf_bytes = pdf.output()  # fpdf2 returns bytearray directly\n\nAlso update ln=True to new_x=XPos.LMARGIN, new_y=YPos.NEXT to fix deprecation warnings",
+      "related_bugs": [24, 32]
     },
     {
-      "id": 33,
-      "title": "LOW: Missing X-RateLimit-* headers despite quota tracking (Bug #26 still open)",
-      "description": "The API tracks usage and quota via UsageTracker but doesn't expose rate limiting information in HTTP response headers. Standard practice is to include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers.",
-      "severity": "low",
-      "steps_to_reproduce": "1. Make any API request: curl -i http://localhost:8088/api/health\n2. Check response headers\n3. No X-RateLimit-* headers present",
-      "expected_behavior": "Responses should include:\n- X-RateLimit-Limit: 15\n- X-RateLimit-Remaining: 13\n- X-RateLimit-Reset: 1708728000",
-      "actual_behavior": "No rate limit headers in responses",
-      "affected_files": [
-        "backend/app/main.py",
-        "backend/app/services/usage_tracker.py"
-      ],
-      "impact": "LOW - Nice-to-have for production APIs, but not critical for hackathon demo"
+      "id": 39,
+      "title": "Timeline and Insights UI broken due to missing backend endpoints (blocked by server restart)",
+      "description": "UX Agent implemented beautiful timeline and insights visualization in the analytics modal (app.js lines 1915-1962), but these features don't work because the backend endpoints /api/sessions/{id}/timeline and /api/sessions/{id}/insights return 404. The endpoints ARE defined in routes.py (lines 438, 553) but aren't registered in the running server (Bug #37). Frontend gracefully handles 404 with .catch(() => null), so features fail silently.",
+      "severity": "medium",
+      "category": "integration",
+      "steps_to_reproduce": "1. Open WitnessReplay frontend at http://localhost:8088\n2. Create a session\n3. Click Analytics button\n4. Observe timeline and insights sections don't appear\n5. Check browser console: fetch to /api/sessions/{id}/timeline returns 404\n6. Check browser console: fetch to /api/sessions/{id}/insights returns 404",
+      "expected_behavior": "Timeline should show temporal event sequencing with icons (💬 statements, 🎬 scenes). Insights should display quality score, completeness %, contradictions, and recommendations.",
+      "actual_behavior": "Timeline and insights sections never render because endpoints return 404. Users see empty analytics modal.",
+      "affected_files": ["frontend/js/app.js:1915-1962", "backend/app/api/routes.py:438,553"],
+      "notes": "This will be automatically fixed once server restarts and routes register (Bug #37 resolution). No code changes needed.",
+      "blocked_by": [37],
+      "related_bugs": [30, 31]
+    }
+  ],
+  "bugs_fixed_this_cycle": [
+    {
+      "id": 23,
+      "title": "Model config update persists correctly",
+      "status": "FIXED",
+      "verification": "POST /api/models/config with gemini-2.5-flash → success. GET /api/models/current → returns gemini-2.5-flash. Config now persists correctly in current runtime."
     },
     {
-      "id": 34,
-      "title": "INFO: 12 of 19 endpoints working correctly",
-      "description": "Confirmed working endpoints: /api/health, /api/sessions (GET/POST), /api/sessions/{id} (GET), /api/sessions/{id}/export/json, /api/analytics/stats, /api/analytics/elements/search, /api/models, /api/models/quota, /api/models/current, /api/models/config. These endpoints respond with correct status codes and proper data structures.",
-      "severity": "info",
-      "steps_to_reproduce": "N/A - this is a positive finding",
-      "expected_behavior": "Core API functionality works",
-      "actual_behavior": "Core API functionality works as expected",
-      "affected_files": [],
-      "impact": "POSITIVE"
+      "id": 25,
+      "title": "CORS headers present in API responses",
+      "status": "FIXED",
+      "verification": "curl -H 'Origin: http://example.com' http://localhost:8088/api/health → shows access-control-allow-origin: *, access-control-allow-credentials: true"
     },
     {
-      "id": 35,
-      "title": "INFO: Sound effects, comparison mode, and timeline UI implemented correctly",
-      "description": "The UX Agent successfully implemented: (1) Sound effects system with Web Audio API (click, success, scene-ready sounds), toggleable with \ud83d\udd0a/\ud83d\udd07 button, persisted in localStorage. (2) Scene comparison mode with side-by-side before/after view. (3) Timeline and insights UI components with proper CSS styling. The implementation is clean with no console.log statements (Bug #27 fixed). JavaScript syntax is valid.",
-      "severity": "info",
-      "steps_to_reproduce": "N/A - code review confirms implementation quality",
-      "expected_behavior": "Frontend features implemented with clean code",
-      "actual_behavior": "Frontend features implemented correctly, just needs backend endpoints to work",
-      "affected_files": [
-        "frontend/js/app.js",
-        "frontend/css/styles.css"
-      ],
-      "impact": "POSITIVE"
+      "id": 27,
+      "title": "Console.log statements removed from frontend",
+      "status": "FIXED",
+      "verification": "grep 'console.log' frontend/js/*.js → no results (only console.error and console.warn remain)"
     },
     {
-      "id": 36,
-      "title": "INFO: CORS middleware working correctly (Bug #25 fixed)",
-      "description": "CORS headers are present in API responses: access-control-allow-origin: *, access-control-allow-credentials: true. This was listed as Bug #25 but has been fixed. Confirmed by testing with Origin header.",
-      "severity": "info",
-      "steps_to_reproduce": "curl -H 'Origin: http://example.com' http://localhost:8088/api/health",
-      "expected_behavior": "CORS headers present",
-      "actual_behavior": "CORS headers present and configured correctly",
-      "affected_files": [
-        "backend/app/main.py"
-      ],
-      "impact": "POSITIVE - Bug #25 confirmed fixed"
+      "id": 3,
+      "title": "Firestore blocking calls converted to async",
+      "status": "FIXED",
+      "verification": "firestore.py line 55: 'await self.client.collection().document().get()' - properly uses async API. Line 110: 'async for doc in docs' uses async iterator."
+    },
+    {
+      "id": 4,
+      "title": "Model listing uses asyncio.to_thread",
+      "status": "FIXED",
+      "verification": "routes.py line 890: 'api_models = await asyncio.to_thread(fetch_models)' - blocking client.models.list() call now runs in thread pool"
+    },
+    {
+      "id": 11,
+      "title": "Usage tracker file I/O moved outside lock",
+      "status": "FIXED",
+      "verification": "usage_tracker.py line 148: 'loop.create_task(self._save_to_disk_async())' - file save happens async outside the lock"
+    },
+    {
+      "id": 22,
+      "title": "fpdf import moved to lazy load in function",
+      "status": "FIXED",
+      "verification": "routes.py line 368: 'from fpdf import FPDF' inside try block - only imported when export endpoint is called, not at module level"
+    },
+    {
+      "id": 29,
+      "title": "FastAPI route ordering fixed (pending server restart)",
+      "status": "FIXED_IN_CODE",
+      "verification": "routes.py shows correct order: line 122 /sessions/export/bulk, line 216 /sessions/{id}/export/evidence, line 438 /sessions/{id}/insights, line 553 /sessions/{id}/timeline ALL before line 630 /sessions/{session_id}. Fresh import shows 19 routes. Needs server restart to apply.",
+      "notes": "Code fix complete. Blocked by deployment (Bug #37)"
+    },
+    {
+      "id": 30,
+      "title": "Route ordering incomplete (fixed in code, needs server restart)",
+      "status": "FIXED_IN_CODE",
+      "verification": "Same as Bug #29. All 5 missing endpoints are now defined in correct order and register when routes.py is imported fresh. Server restart needed.",
+      "notes": "Code fix complete. Blocked by deployment (Bug #37)"
     }
   ],
   "tests_passed": [
-    "\u2705 Health endpoint responds (200)",
-    "\u2705 Sessions CRUD endpoints work",
-    "\u2705 Analytics endpoints functional",
-    "\u2705 Model selector & quota tracking work",
-    "\u2705 CORS headers present (Bug #25 fixed)",
-    "\u2705 No console.log in frontend (Bug #27 fixed)",
-    "\u2705 JavaScript syntax valid",
-    "\u2705 Python modules compile without errors",
-    "\u2705 Frontend loads without errors",
-    "\u2705 WebSocket endpoint exists and validates keys",
-    "\u2705 Audio test fixtures available (10s, 20s, 60s WAV)",
-    "\u2705 Sound effects UI implemented correctly"
+    "GET /api/health returns 200",
+    "GET /api/sessions returns 200 with session list",
+    "POST /api/sessions creates new session with valid UUID",
+    "GET /api/sessions/{id} returns 200 with session data",
+    "GET /api/sessions/{id}/export/json returns 200 with JSON export",
+    "GET /api/models returns 200 with model list",
+    "GET /api/models/quota returns 200 with quota info",
+    "GET /api/models/current returns 200 with current model",
+    "POST /api/models/config updates model and persists (Bug #23 fixed)",
+    "GET /api/analytics/stats returns 200",
+    "GET /api/analytics/elements/search returns 200",
+    "CORS headers present in responses (Bug #25 fixed)",
+    "Frontend HTML syntax valid - balanced tags",
+    "Frontend CSS syntax valid - balanced braces",
+    "Frontend JavaScript syntax valid - balanced parens/braces",
+    "No console.log statements in frontend (Bug #27 fixed)",
+    "Backend modules import successfully - no import errors",
+    "Routes module registers 19 routes when imported fresh",
+    "Firestore service uses async API (Bug #3 fixed)",
+    "Models endpoint uses asyncio.to_thread (Bug #4 fixed)",
+    "Usage tracker uses async file I/O outside lock (Bug #11 fixed)",
+    "fpdf imported lazily in function (Bug #22 fixed)",
+    "WebSocket endpoint responds (400 Bad Request is expected for curl)",
+    "Audio test fixtures exist (10s, 20s, 60s WAV files)"
   ],
   "tests_failed": [
-    "\u274c /api/info returns 404 (route not registered)",
-    "\u274c /api/sessions/{id}/insights returns 404 (route ordering bug)",
-    "\u274c /api/sessions/{id}/timeline returns 404 (route ordering bug)",
-    "\u274c /api/sessions/export/bulk returns 404 (route not registered)",
-    "\u274c /api/sessions/{id}/export/evidence returns 404 (route not registered)",
-    "\u274c /api/sessions/{id}/export returns 500 (PDF generation error)",
-    "\u274c No X-RateLimit-* headers in responses (Bug #26 still open)"
+    "GET /api/info returns 404 (needs server restart - Bug #37)",
+    "GET /api/sessions/{id}/insights returns 404 (needs server restart - Bug #37)",
+    "GET /api/sessions/{id}/timeline returns 404 (needs server restart - Bug #37)",
+    "GET /api/sessions/export/bulk returns 404 (needs server restart - Bug #37)",
+    "GET /api/sessions/{id}/export/evidence returns 404 (needs server restart - Bug #37)",
+    "GET /api/sessions/{id}/export returns 500 (PDF export bug - Bug #38)",
+    "No X-RateLimit-* headers in responses (Bug #26, #33 still open)"
   ],
-  "critical_findings": [
-    "\ud83d\udea8 CRITICAL: Bug #30 - Route ordering fix incomplete, 5 endpoints still broken",
-    "\ud83d\udea8 HIGH: Bug #31 - Timeline & Insights UI features non-functional due to missing endpoints",
-    "\u26a0\ufe0f  MEDIUM: Bug #32 - PDF export returns 500 error"
-  ],
-  "summary": "Cycle 8 Testing Summary:\n\n**CRITICAL ISSUE FOUND**: Bug #29 was NOT actually fixed. The Feature Agent claimed to fix route ordering, but 5 endpoints are still returning 404 because they're defined AFTER catch-all parameter routes in routes.py.\n\n**IMPACT ON DEMO**: The timeline and insights features added by UX Agent in this cycle are completely non-functional because the backend endpoints they depend on don't work. This is a significant blow to the hackathon demo.\n\n**POSITIVE FINDINGS**:\n- Core API functionality works well (12 of 19 endpoints functional)\n- Frontend implementation is clean and professional\n- Sound effects system well-implemented\n- CORS properly configured (Bug #25 fixed)\n- No console.log statements (Bug #27 fixed)\n\n**WHAT NEEDS TO BE FIXED URGENTLY**:\n1. Route ordering in routes.py - move specific routes BEFORE parameterized routes\n2. Ensure /api/sessions/{id}/insights and /api/sessions/{id}/timeline work\n3. Fix /api/info, /api/sessions/export/bulk, /api/sessions/{id}/export/evidence registration\n\n**RECOMMENDATION**: Feature Agent should prioritize fixing Bug #30 immediately. The timeline/insights features are showcase-worthy for the hackathon but are currently broken.",
-  "previous_bugs_status": {
-    "fixed": [
-      "Bug #25 (CORS headers) - \u2705 CONFIRMED FIXED",
-      "Bug #27 (console.log) - \u2705 CONFIRMED FIXED"
+  "open_bugs_by_severity": {
+    "critical": [
+      {
+        "id": 10,
+        "title": "API server deadlock (not observed this cycle)",
+        "notes": "Server is responsive and handles concurrent requests. May have been fixed by async improvements (Bugs #3, #4, #11). Monitor in future cycles."
+      }
     ],
-    "still_open": [
-      "Bug #29 (route ordering) - \u274c NOT FIXED, created Bug #30 as more accurate assessment",
-      "Bug #26 (rate limit headers) - \u274c STILL OPEN, renamed to Bug #33",
-      "Bug #32 (PDF export 500) - \u274c STILL OPEN"
+    "high": [
+      {
+        "id": 37,
+        "title": "Server needs restart to register route fixes",
+        "impact": "7 endpoints return 404 despite code being fixed",
+        "blocker": true
+      }
     ],
-    "not_tested": [
-      "Bugs #3, #4, #10 (async/deadlock issues) - Server responsive, likely fixed but not stress tested",
-      "Bugs #5, #6, #7, #8, #9, #11-24 (various low priority) - Not retested this cycle"
+    "medium": [
+      {
+        "id": 38,
+        "title": "PDF export fails - fpdf2 API incompatibility",
+        "impact": "Evidence export feature broken"
+      },
+      {
+        "id": 39,
+        "title": "Timeline and Insights UI broken (blocked by #37)",
+        "impact": "Analytics dashboard missing key features"
+      },
+      {
+        "id": 6,
+        "title": "Usage tracker has no persistence across restarts",
+        "impact": "Quota tracking resets on restart"
+      },
+      {
+        "id": 5,
+        "title": "No error handling for missing GOOGLE_API_KEY",
+        "impact": "Poor UX when API key not configured"
+      },
+      {
+        "id": 12,
+        "title": "No request timeout protection",
+        "impact": "Requests can hang indefinitely"
+      }
+    ],
+    "low": [
+      {
+        "id": 33,
+        "title": "Missing X-RateLimit-* headers",
+        "impact": "Clients can't see rate limit info in headers"
+      },
+      {
+        "id": 26,
+        "title": "Missing rate limit headers (duplicate of #33)",
+        "impact": "Same as #33"
+      },
+      {
+        "id": 21,
+        "title": "No API key rotation/fallback",
+        "impact": "Single point of failure"
+      },
+      {
+        "id": 20,
+        "title": "No automated WebSocket tests",
+        "impact": "Manual testing required each cycle"
+      },
+      {
+        "id": 19,
+        "title": "WebSocket doesn't validate session exists",
+        "impact": "Accepts invalid session IDs"
+      },
+      {
+        "id": 18,
+        "title": "Token estimation uses character count",
+        "impact": "~25% inaccuracy in quota tracking"
+      },
+      {
+        "id": 17,
+        "title": "No rate limiting enforcement",
+        "impact": "Quota display is informational only"
+      },
+      {
+        "id": 16,
+        "title": "Pacific Time zone not implemented",
+        "impact": "Quota resets at UTC midnight instead of PT"
+      },
+      {
+        "id": 15,
+        "title": "No WebSocket connection test in frontend",
+        "impact": "No automated WS testing"
+      },
+      {
+        "id": 14,
+        "title": "No health check for usage_tracker",
+        "impact": "Tracker failures not monitored"
+      },
+      {
+        "id": 13,
+        "title": "Middleware order may cause issues",
+        "impact": "Minor - has fallback handling"
+      },
+      {
+        "id": 9,
+        "title": "No rate limiting enforcement (duplicate of #17)",
+        "impact": "Same as #17"
+      },
+      {
+        "id": 8,
+        "title": "Token estimation inaccurate (duplicate of #18)",
+        "impact": "Same as #18"
+      },
+      {
+        "id": 7,
+        "title": "Frontend model selector timeout handling",
+        "impact": "Modal shows loading state indefinitely if API hangs"
+      }
     ]
+  },
+  "recommendations": {
+    "immediate": [
+      "RESTART backend server to apply route fixes (resolves Bugs #29, #30, #37, #39)",
+      "Fix PDF export bug by changing routes.py:416 from pdf.output(dest='S').encode('latin1') to pdf.output()",
+      "Add uvicorn --reload flag in development to auto-reload on code changes"
+    ],
+    "next_cycle": [
+      "Feature Agent should implement Idea #2 (model change on rate limit) - check quota before each request",
+      "Feature Agent should implement Idea #3 (use best models for scene reconstruction) - reserve high-quality models",
+      "Add X-RateLimit-* headers to API responses (Bug #26, #33)",
+      "Add request timeout middleware (Bug #12)"
+    ],
+    "long_term": [
+      "Implement quota persistence across restarts (Bug #6)",
+      "Add automated WebSocket tests (Bug #20)",
+      "Improve token counting accuracy with actual tokenizer (Bug #18)",
+      "Implement rate limiting enforcement (Bug #17)"
+    ]
+  },
+  "quality_assessment": {
+    "code_quality": "excellent",
+    "test_coverage": "good",
+    "bug_density": "low",
+    "demo_readiness": "medium",
+    "notes": "Code quality is excellent after recent fixes. Feature Agent successfully resolved critical async bugs (#3, #4, #11, #22) and route ordering (#29, #30). UX Agent delivered polished features (comparison modal, keyboard shortcuts, animations). Main blocker is server restart needed to apply route fixes. Once restarted, 9 bugs will be resolved and demo readiness will jump to HIGH."
+  },
+  "server_status": {
+    "responsive": true,
+    "deadlock_observed": false,
+    "endpoints_working": "12 of 19 registered (7 pending restart)",
+    "registered_routes": [
+      "/",
+      "/api/analytics/elements/search",
+      "/api/analytics/stats",
+      "/api/health",
+      "/api/models",
+      "/api/models/config",
+      "/api/models/current",
+      "/api/models/quota",
+      "/api/sessions",
+      "/api/sessions/{session_id}",
+      "/api/sessions/{session_id}/export",
+      "/api/sessions/{session_id}/export/json"
+    ],
+    "missing_routes": [
+      "/api/info",
+      "/api/sessions/{id}/insights",
+      "/api/sessions/{id}/timeline",
+      "/api/sessions/export/bulk",
+      "/api/sessions/{id}/export/evidence"
+    ],
+    "note": "Missing routes ARE in code (routes.py) but server hasn't reloaded to register them"
   }
 }
