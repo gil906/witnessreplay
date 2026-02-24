@@ -219,6 +219,13 @@ class WebSocketHandler:
                 try:
                     import base64
                     audio_bytes = base64.b64decode(audio_base64)
+                    audio_size_kb = len(audio_bytes) / 1024
+                    logger.info(f"Received audio: {audio_size_kb:.1f}KB, format={audio_format}")
+                    
+                    if audio_size_kb < 1:
+                        logger.warning(f"Audio too small ({audio_size_kb:.1f}KB) — likely empty recording")
+                        await self.send_message("error", {"message": "Recording was too short. Hold the mic button and speak, then release."})
+                        return
                     
                     mime_map = {
                         "webm": "audio/webm",
@@ -231,6 +238,7 @@ class WebSocketHandler:
                     # Use Gemini multimodal to transcribe
                     from google.genai import types
                     from app.config import settings as app_settings
+                    logger.info(f"Sending to Gemini ({app_settings.gemini_model}) for transcription...")
                     transcription_response = await asyncio.to_thread(
                         self.agent.client.models.generate_content,
                         model=app_settings.gemini_model,
@@ -242,10 +250,10 @@ class WebSocketHandler:
                         ]
                     )
                     
-                    transcribed_text = transcription_response.text.strip()
+                    transcribed_text = transcription_response.text.strip() if transcription_response.text else ""
                     
                     if transcribed_text:
-                        logger.info(f"Transcribed audio: {transcribed_text[:100]}")
+                        logger.info(f"Transcribed audio ({audio_size_kb:.1f}KB): {transcribed_text[:100]}")
                         await self.send_message("text", {
                             "text": transcribed_text,
                             "speaker": "user"
@@ -253,15 +261,23 @@ class WebSocketHandler:
                         await self.handle_text({"text": transcribed_text})
                         return
                     else:
-                        await self.send_message("error", {"message": "Could not transcribe audio. Please try again or type your statement."})
+                        logger.warning(f"Gemini returned empty transcription for {audio_size_kb:.1f}KB audio")
+                        await self.send_message("error", {"message": "Could not understand the audio. Please try again or type your statement."})
                         return
                         
                 except Exception as e:
-                    logger.warning(f"Gemini audio transcription failed: {e}")
-                    await self.send_message("status", {
-                        "status": "error",
-                        "message": "Audio transcription failed. Please type your statement instead."
-                    })
+                    error_str = str(e)
+                    logger.error(f"Gemini audio transcription failed: {error_str}", exc_info=True)
+                    
+                    # Send specific error back to client
+                    if "429" in error_str or "quota" in error_str.lower():
+                        user_msg = "API quota reached. Please type your statement instead."
+                    elif "400" in error_str:
+                        user_msg = f"Audio format issue. Try speaking longer. ({error_str[:80]})"
+                    else:
+                        user_msg = f"Transcription error: {error_str[:100]}. Try typing instead."
+                    
+                    await self.send_message("error", {"message": user_msg})
                     return
             
             await self.send_message("error", {

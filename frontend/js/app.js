@@ -1578,13 +1578,32 @@ class WitnessReplayApp {
                 const stream = await this.audioRecorder.start();
                 this.isRecording = true;
                 
-                // Start audio quality analysis
+                // Start audio quality analysis on raw stream
                 if (this.audioQualityAnalyzer && stream) {
                     this.audioQualityAnalyzer.onWarning = (type, message) => {
-                        // Log to console only — no intrusive toasts during recording
                         console.log(`[AudioQuality] ${type}: ${message}`);
                     };
                     await this.audioQualityAnalyzer.start(stream);
+                }
+                
+                // Wire AGC stats to quality indicator if processor available
+                const processor = this.audioRecorder.processor;
+                if (processor && this.audioQualityIndicator) {
+                    processor.onStatsUpdate = (stats) => {
+                        // Override quality label with AGC info
+                        const label = this.audioQualityIndicator.label;
+                        if (label) {
+                            if (stats.isNoiseGated) {
+                                label.textContent = 'Ready';
+                            } else if (stats.currentGain > 2.0) {
+                                label.textContent = 'Boosting';
+                            } else if (stats.currentGain < 0.8) {
+                                label.textContent = 'Reducing';
+                            } else {
+                                label.textContent = 'Good';
+                            }
+                        }
+                    };
                 }
                 if (this.audioQualityIndicator) {
                     this.audioQualityIndicator.show();
@@ -1690,31 +1709,43 @@ class WitnessReplayApp {
             reader.onloadend = () => {
                 const base64Audio = reader.result.split(',')[1];
                 
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    const messageData = {
-                        type: 'audio',
-                        data: {
-                            audio: base64Audio,
-                            format: 'webm'
-                        }
-                    };
-                    
-                    // Include quality metrics if available
-                    if (qualityMetrics) {
-                        messageData.data.quality = {
-                            score: qualityMetrics.qualityScore,
-                            avgVolume: Math.round(qualityMetrics.avgVolume * 100) / 100,
-                            peakVolume: Math.round(qualityMetrics.peakVolume * 100) / 100,
-                            clippingEvents: qualityMetrics.clippingEvents,
-                            tooQuietSamples: qualityMetrics.tooQuietSamples,
-                            tooLoudSamples: qualityMetrics.tooLoudSamples,
-                            duration: qualityMetrics.duration
-                        };
-                    }
-                    
-                    this.ws.send(JSON.stringify(messageData));
-                    this.setStatus('Detective Ray is thinking...');
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    console.error('[Audio] WebSocket not open, state:', this.ws?.readyState);
+                    this.setStatus('Connection lost — reconnecting...');
+                    this.ui?.showToast('⚠️ Not connected. Tap mic to try again.', 'error', 4000);
+                    return;
                 }
+                
+                const audioSizeKB = Math.round(base64Audio.length * 0.75 / 1024);
+                console.log(`[Audio] Sending ${audioSizeKB}KB audio via WebSocket`);
+                
+                const messageData = {
+                    type: 'audio',
+                    data: {
+                        audio: base64Audio,
+                        format: 'webm'
+                    }
+                };
+                
+                // Include quality metrics if available
+                if (qualityMetrics) {
+                    messageData.data.quality = {
+                        score: qualityMetrics.qualityScore,
+                        avgVolume: Math.round(qualityMetrics.avgVolume * 100) / 100,
+                        peakVolume: Math.round(qualityMetrics.peakVolume * 100) / 100,
+                        clippingEvents: qualityMetrics.clippingEvents,
+                        tooQuietSamples: qualityMetrics.tooQuietSamples,
+                        tooLoudSamples: qualityMetrics.tooLoudSamples,
+                        duration: qualityMetrics.duration
+                    };
+                }
+                
+                this.ws.send(JSON.stringify(messageData));
+                this.setStatus('Detective Ray is thinking...');
+            };
+            reader.onerror = (err) => {
+                console.error('[Audio] FileReader error:', err);
+                this.setStatus('Error processing audio');
             };
             reader.readAsDataURL(audioBlob);
         } catch (error) {

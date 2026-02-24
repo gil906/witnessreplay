@@ -7,24 +7,35 @@ class AudioRecorder {
     constructor() {
         this.mediaRecorder = null;
         this.audioChunks = [];
-        this.stream = null;
+        this.stream = null;          // raw mic stream
+        this.processedStream = null; // after AGC + noise cancellation
+        this.processor = null;       // DynamicAudioProcessor instance
         this.isRecording = false;
     }
     
     async start() {
         try {
-            // Request microphone access
+            // Request microphone access (raw stream)
             this.stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
+                    autoGainControl: true,
                     sampleRate: 44100
                 }
             });
             
-            // Create MediaRecorder
+            // Apply dynamic audio processing (AGC + noise cancellation)
+            if (window.DynamicAudioProcessor) {
+                this.processor = new DynamicAudioProcessor();
+                this.processedStream = await this.processor.start(this.stream);
+            } else {
+                this.processedStream = this.stream;
+            }
+            
+            // Create MediaRecorder on the PROCESSED stream
             const mimeType = this.getSupportedMimeType();
-            this.mediaRecorder = new MediaRecorder(this.stream, {
+            this.mediaRecorder = new MediaRecorder(this.processedStream, {
                 mimeType: mimeType
             });
             
@@ -41,7 +52,7 @@ class AudioRecorder {
             this.mediaRecorder.start(100); // Collect data every 100ms
             this.isRecording = true;
             
-            // Return the stream for quality analysis
+            // Return the RAW stream for quality visualization (green bar)
             return this.stream;
             
         } catch (error) {
@@ -66,12 +77,19 @@ class AudioRecorder {
                 const mimeType = this.mediaRecorder.mimeType;
                 const audioBlob = new Blob(this.audioChunks, {type: mimeType});
                 
-                // Stop all tracks
+                // Stop processor first (releases audio context)
+                if (this.processor) {
+                    this.processor.stop();
+                    this.processor = null;
+                }
+                
+                // Stop all raw mic tracks
                 if (this.stream) {
                     this.stream.getTracks().forEach(track => track.stop());
                 }
                 
                 this.isRecording = false;
+                this.processedStream = null;
                 
                 resolve(audioBlob);
             };
