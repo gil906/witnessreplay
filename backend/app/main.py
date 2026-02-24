@@ -26,6 +26,18 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
     
+    # Initialize API key rotation if multiple keys configured
+    if settings.google_api_keys:
+        from app.services.api_key_manager import initialize_key_manager
+        keys = [k.strip() for k in settings.google_api_keys.split(',') if k.strip()]
+        if len(keys) > 1:
+            initialize_key_manager(keys)
+            logger.info(f"API key rotation enabled with {len(keys)} keys")
+        else:
+            logger.info("Single API key mode (no rotation)")
+    else:
+        logger.info("Single API key mode (no rotation)")
+    
     # Startup
     yield
     

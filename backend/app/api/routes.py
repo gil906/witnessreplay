@@ -1104,7 +1104,7 @@ async def get_quota_info(model: Optional[str] = None):
 
 
 
-@router.post("/models/config")
+@router.patch("/models/config")
 async def update_model_config(config: ModelConfigUpdate):
     """
     Update the model configuration (which model to use).
@@ -1862,3 +1862,41 @@ async def compare_sessions(session_id_1: str, session_id_2: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to compare sessions: {str(e)}"
         )
+
+
+
+@router.get("/admin/api-keys/status")
+async def get_api_key_status(auth=Depends(require_admin_auth)):
+    """
+    Get the status of API key rotation/fallback system.
+    
+    Returns information about:
+    - Total configured keys
+    - Healthy vs rate-limited vs failed keys
+    - Cooldown status for each key
+    
+    Requires admin authentication.
+    """
+    try:
+        from app.services.api_key_manager import get_key_manager
+        
+        key_manager = get_key_manager()
+        if not key_manager:
+            return {
+                "enabled": False,
+                "message": "API key rotation not enabled (single key mode)",
+                "total_keys": 1,
+                "healthy_keys": 1
+            }
+        
+        status = key_manager.get_status()
+        status["enabled"] = True
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error getting API key status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get API key status"
+        )
+

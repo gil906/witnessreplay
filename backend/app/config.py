@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     
     # Google AI Configuration
     google_api_key: str = ""
+    google_api_keys: str = ""  # Comma-separated list for rotation/fallback
     
     # Google Cloud Project Configuration
     gcp_project_id: str = ""
