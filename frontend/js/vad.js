@@ -78,7 +78,7 @@ class VoiceActivityDetector {
             // Start checking for voice activity
             this.checkIntervalId = setInterval(() => this.checkVoiceActivity(), this.config.checkInterval);
             
-            console.log('[VAD] Started listening for voice activity');
+            console.debug('[VAD] Started listening for voice activity');
             return true;
         } catch (error) {
             console.error('[VAD] Error starting:', error);
@@ -117,7 +117,7 @@ class VoiceActivityDetector {
         this.analyser = null;
         this.dataArray = null;
         
-        console.log('[VAD] Stopped listening');
+        console.debug('[VAD] Stopped listening');
     }
     
     /**
@@ -186,7 +186,7 @@ class VoiceActivityDetector {
      */
     setSensitivity(value) {
         this.config.sensitivity = Math.max(0.001, Math.min(0.1, value));
-        console.log('[VAD] Sensitivity set to:', this.config.sensitivity);
+        console.debug('[VAD] Sensitivity set to:', this.config.sensitivity);
     }
     
     /**
@@ -194,7 +194,7 @@ class VoiceActivityDetector {
      */
     setSilenceThreshold(seconds) {
         this.config.silenceThreshold = Math.max(0.5, Math.min(10, seconds));
-        console.log('[VAD] Silence threshold set to:', this.config.silenceThreshold);
+        console.debug('[VAD] Silence threshold set to:', this.config.silenceThreshold);
     }
     
     /**

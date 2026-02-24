@@ -115,7 +115,7 @@ class DynamicAudioProcessor {
         // Start the AGC analysis loop
         this._agcLoop();
 
-        console.log('[AudioProcessor] Started — AGC + noise cancellation active');
+        console.debug('[AudioProcessor] Started — AGC + noise cancellation active');
         return this.outputStream;
     }
 
@@ -220,7 +220,7 @@ class DynamicAudioProcessor {
         this.outputStream = null;
         this.noiseFloorHistory = [];
 
-        console.log('[AudioProcessor] Stopped');
+        console.debug('[AudioProcessor] Stopped');
     }
 }
 

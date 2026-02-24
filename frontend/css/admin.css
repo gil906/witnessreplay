@@ -4307,3 +4307,30 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .strength-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
 .strength-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0; }
 .strength-text { font-size: 0.7rem; margin-top: 2px; display: inline-block; }
+
+/* Mobile: Notification Panel */
+@media (max-width: 768px) {
+    .notification-panel {
+        width: 100%;
+        right: 0;
+        top: 0;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+    .notification-panel .notif-header {
+        padding: 16px;
+    }
+}
+
+/* Mobile: Admin Portal Responsive */
+@media (max-width: 768px) {
+    .admin-header { flex-wrap: wrap; padding: 8px; gap: 4px; }
+    .admin-header .tab-btn { font-size: 0.75rem; padding: 6px 8px; }
+    .global-search-wrap { width: 100%; order: 10; }
+    .global-search-input { width: 100%; }
+    .global-search-results { width: 100%; }
+    .case-grid { grid-template-columns: 1fr !important; }
+    .case-detail-panel { width: 100% !important; position: fixed !important; left: 0 !important; }
+    .settings-section { padding: 12px; }
+    .api-docs-table { font-size: 0.75rem; overflow-x: auto; display: block; }
+}

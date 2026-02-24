@@ -25,7 +25,7 @@ class SceneElementLibrary {
             this.renderPalette();
             this.setupEventListeners();
             this.isInitialized = true;
-            console.log('[SceneElements] Library initialized with', this.categories.length, 'categories');
+            console.debug('[SceneElements] Library initialized with', this.categories.length, 'categories');
         } catch (error) {
             console.error('[SceneElements] Failed to initialize:', error);
         }
@@ -287,7 +287,7 @@ class SceneElementLibrary {
             detail: placedElement
         }));
 
-        console.log('[SceneElements] Placed element:', placedElement.name, 'at', x, y);
+        console.debug('[SceneElements] Placed element:', placedElement.name, 'at', x, y);
         return placedElement;
     }
 

@@ -26,7 +26,7 @@ class Scene3DViewer {
             console.warn('[Scene3D] Three.js not loaded, loading dynamically...');
             await this.loadThreeJS();
         }
-        console.log('[Scene3D] Initialized');
+        console.debug('[Scene3D] Initialized');
     }
 
     /**
@@ -96,7 +96,7 @@ class Scene3DViewer {
         // Handle resize
         window.addEventListener('resize', () => this.handleResize());
 
-        console.log('[Scene3D] Scene created');
+        console.debug('[Scene3D] Scene created');
     }
 
     /**
@@ -308,7 +308,7 @@ class Scene3DViewer {
         // Add label sprite
         this.addLabel(mesh, element);
 
-        console.log('[Scene3D] Added element:', element.name);
+        console.debug('[Scene3D] Added element:', element.name);
     }
 
     /**
@@ -386,7 +386,7 @@ class Scene3DViewer {
         const elements = window.sceneElementLibrary.getPlacedElements();
         elements.forEach(el => this.addElement(el));
         
-        console.log('[Scene3D] Synced', elements.length, 'elements from 2D');
+        console.debug('[Scene3D] Synced', elements.length, 'elements from 2D');
     }
 
     /**
@@ -435,7 +435,7 @@ class Scene3DViewer {
         this.syncFromLibrary();
         this.animate();
         
-        console.log('[Scene3D] Activated');
+        console.debug('[Scene3D] Activated');
     }
 
     /**
@@ -455,7 +455,7 @@ class Scene3DViewer {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
         }
         
-        console.log('[Scene3D] Deactivated');
+        console.debug('[Scene3D] Deactivated');
     }
 
     /**

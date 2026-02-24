@@ -516,7 +516,7 @@ class WitnessReplayApp {
         this._autoListenTimer = setTimeout(() => {
             this._autoListenTimer = null;
             if (!this.isRecording && !this._isSpeakingResponse && this.ws && this.ws.readyState === WebSocket.OPEN) {
-                console.log('[VoiceConversation] Auto-listen: starting recording');
+                console.debug('[VoiceConversation] Auto-listen: starting recording');
                 this.startRecording();
             }
         }, 1000);
@@ -880,7 +880,7 @@ class WitnessReplayApp {
             }
             
             this.setStatus('Listening for voice...');
-            console.log('[VAD] Started listening');
+            console.debug('[VAD] Started listening');
             
         } catch (error) {
             console.error('[VAD] Failed to start:', error);
@@ -911,13 +911,13 @@ class WitnessReplayApp {
         }
         
         this.setStatus('Ready to listen');
-        console.log('[VAD] Stopped listening');
+        console.debug('[VAD] Stopped listening');
     }
     
     onVADSpeechStart() {
         if (this.isRecording || this.vadAutoRecording) return;
         
-        console.log('[VAD] Speech detected - starting recording');
+        console.debug('[VAD] Speech detected - starting recording');
         this.vadAutoRecording = true;
         
         // Update indicator
@@ -933,7 +933,7 @@ class WitnessReplayApp {
     onVADSpeechEnd(silenceDuration) {
         if (!this.vadAutoRecording || !this.isRecording) return;
         
-        console.log(`[VAD] Silence detected (${silenceDuration.toFixed(1)}s) - stopping recording`);
+        console.debug(`[VAD] Silence detected (${silenceDuration.toFixed(1)}s) - stopping recording`);
         this.vadAutoRecording = false;
         
         // Update indicator back to listening
@@ -1363,7 +1363,7 @@ class WitnessReplayApp {
         }
         const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempt), this._maxReconnectDelay);
         this._reconnectAttempt++;
-        console.log(`WebSocket reconnect attempt ${this._reconnectAttempt} in ${delay}ms`);
+        console.debug(`WebSocket reconnect attempt ${this._reconnectAttempt} in ${delay}ms`);
         this.ui.showToast(
             `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this._reconnectAttempt}/10)`,
             'warning',
@@ -1712,7 +1712,7 @@ class WitnessReplayApp {
                 // Start audio quality analysis on raw stream
                 if (this.audioQualityAnalyzer && stream) {
                     this.audioQualityAnalyzer.onWarning = (type, message) => {
-                        console.log(`[AudioQuality] ${type}: ${message}`);
+                        console.debug(`[AudioQuality] ${type}: ${message}`);
                     };
                     await this.audioQualityAnalyzer.start(stream);
                 }
@@ -1846,7 +1846,7 @@ class WitnessReplayApp {
                 }
                 
                 const audioSizeKB = Math.round(base64Audio.length * 0.75 / 1024);
-                console.log(`[Audio] Sending ${audioSizeKB}KB audio via WebSocket`);
+                console.debug(`[Audio] Sending ${audioSizeKB}KB audio via WebSocket`);
                 
                 const messageData = {
                     type: 'audio',
@@ -4656,7 +4656,7 @@ class WitnessReplayApp {
         // Update placeholder text based on language
         this.updatePlaceholderForLanguage(languageCode);
         
-        console.log(`Language set to: ${languageCode}`);
+        console.debug(`Language set to: ${languageCode}`);
     }
     
     /**
@@ -5505,7 +5505,7 @@ async function updateEnvironmentalConditions() {
                 }
             );
             if (response.ok) {
-                console.log('[Environmental] Conditions saved:', { weather, lighting, visibility });
+                console.debug('[Environmental] Conditions saved:', { weather, lighting, visibility });
             }
         } catch (error) {
             console.warn('[Environmental] Failed to save conditions:', error);

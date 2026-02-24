@@ -48,7 +48,7 @@ class SceneAnimator {
         }
         this.render();
         this.setupEventListeners();
-        console.log('[SceneAnimator] Initialized');
+        console.debug('[SceneAnimator] Initialized');
     }
 
     createContainer() {
@@ -204,7 +204,7 @@ class SceneAnimator {
             this.setStatus('Ready');
             this.seek(0);
             
-            console.log('[SceneAnimator] Loaded animation:', this.animation);
+            console.debug('[SceneAnimator] Loaded animation:', this.animation);
             return this.animation;
             
         } catch (error) {

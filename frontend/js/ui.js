@@ -19,8 +19,20 @@ class UIManager {
     
     // ==================== TOAST NOTIFICATIONS ====================
     showToast(message, type = 'info', duration = 3000) {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed;top:10px;right:10px;z-index:99999;display:flex;flex-direction:column;gap:8px;max-width:350px;pointer-events:none;';
+            document.body.appendChild(container);
+        }
+        // Limit to 3 visible toasts
+        while (container.children.length >= 3) {
+            container.firstChild.remove();
+        }
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
+        toast.style.cssText = 'pointer-events:auto;';
         
         const icons = {
             success: '✅',
@@ -35,7 +47,7 @@ class UIManager {
             <button class="toast-close" aria-label="Close">&times;</button>
         `;
         
-        this.toastContainer.appendChild(toast);
+        container.appendChild(toast);
         
         // Close button
         toast.querySelector('.toast-close').addEventListener('click', () => {

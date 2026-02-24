@@ -19,7 +19,7 @@ class SceneTemplateManager {
         try {
             await this.loadTemplates();
             this.isInitialized = true;
-            console.log('[SceneTemplates] Manager initialized with', this.templates.length, 'templates');
+            console.debug('[SceneTemplates] Manager initialized with', this.templates.length, 'templates');
         } catch (error) {
             console.error('[SceneTemplates] Failed to initialize:', error);
         }
@@ -122,7 +122,7 @@ class SceneTemplateManager {
         if (!templateId) {
             // Blank canvas selected
             this.clearAndPrepareCanvas();
-            console.log('[SceneTemplates] Starting with blank canvas');
+            console.debug('[SceneTemplates] Starting with blank canvas');
             return;
         }
 
@@ -137,7 +137,7 @@ class SceneTemplateManager {
 
             // Apply template to canvas
             this.applyTemplate(template);
-            console.log('[SceneTemplates] Applied template:', template.name);
+            console.debug('[SceneTemplates] Applied template:', template.name);
         } catch (error) {
             console.error('[SceneTemplates] Failed to apply template:', error);
             alert('Failed to load template. Please try again.');
