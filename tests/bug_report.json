@@ -1,0 +1,126 @@
+{
+  "timestamp": "2026-02-24T00:09:30Z",
+  "tester": "tester_agent",
+  "test_cycle": 7,
+  "bugs_fixed_this_cycle": [
+    {
+      "bug_id": 27,
+      "title": "Console.log statements in production frontend code",
+      "status": "FIXED",
+      "verification": "grep found 0 console.log statements in frontend/js/"
+    },
+    {
+      "bug_id": 23,
+      "title": "Model config update doesn't persist to current_model endpoint",
+      "status": "FIXED",
+      "verification": "POST /api/models/config updates model, GET /api/models/current reflects change immediately"
+    },
+    {
+      "bug_id": 22,
+      "title": "CRITICAL: fpdf import at module level prevents route registration",
+      "status": "PARTIALLY FIXED",
+      "verification": "fpdf moved to lazy import inside function, but route registration issue persists (see Bug #29)"
+    },
+    {
+      "bug_id": 25,
+      "title": "Missing CORS headers in API responses",
+      "status": "FIXED",
+      "verification": "OPTIONS preflight returns access-control-allow-origin, access-control-allow-methods headers"
+    },
+    {
+      "bug_id": 10,
+      "title": "CRITICAL: API server enters deadlock state after first request",
+      "status": "FIXED",
+      "verification": "5 concurrent requests to /api/health all returned success within 1 second"
+    }
+  ],
+  "bugs": [
+    {
+      "id": 29,
+      "title": "CRITICAL: FastAPI route ordering causes path parameter conflicts",
+      "description": "Three endpoints (/info, /sessions/{id}/export/evidence, /sessions/export/bulk) are defined in routes.py but not registered in the OpenAPI spec. This is due to FastAPI's route matching algorithm prioritizing earlier-defined path parameters. The route /sessions/{session_id} defined at line 118 matches /sessions/export/bulk (treating 'export' as session_id). Similarly, /sessions/{session_id}/export at line 205 might conflict with /sessions/{session_id}/export/evidence.",
+      "severity": "critical",
+      "steps_to_reproduce": "1. Check OpenAPI spec: curl -s http://localhost:8088/openapi.json | python3 -c \"import json,sys; print('\\n'.join(json.load(sys.stdin)['paths'].keys()))\"\n2. Observe only 12 paths registered despite 17 @router decorators in routes.py\n3. Test: curl http://localhost:8088/api/info (404)\n4. Test: curl http://localhost:8088/api/sessions/export/bulk (404)\n5. Test: curl http://localhost:8088/api/sessions/{id}/export/evidence (404)",
+      "expected_behavior": "All 17 defined routes should be registered. Specific paths should be defined BEFORE parameterized paths. Correct order: /sessions/export/bulk BEFORE /sessions/{session_id}",
+      "actual_behavior": "Only 12 routes registered. Missing: /api/info, /api/sessions/{id}/export/evidence, /api/sessions/export/bulk. All return 404 Not Found.",
+      "affected_files": [
+        "backend/app/api/routes.py"
+      ],
+      "fix_recommendation": "Reorder route definitions: 1) Move @router.get('/sessions/export/bulk') to line ~85 BEFORE @router.get('/sessions/{session_id}'). 2) Move @router.get('/info') to line ~30 (near health endpoint). 3) Verify /sessions/{id}/export/evidence doesn't conflict with /sessions/{id}/export."
+    },
+    {
+      "id": 24,
+      "title": "MEDIUM: PDF export returns 500 error without detailed error message",
+      "description": "The /api/sessions/{id}/export endpoint returns HTTP 500 with generic error message 'Failed to export session'. The fpdf import is now lazy-loaded (Bug #22 fix), but PDF generation still fails. The error might be due to missing fpdf2 package, session data serialization issues, or PDF rendering problems.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Create session: session_id=4bd5e885-c7c6-4c28-b036-c8a42b7580ae exists\n2. GET /api/sessions/{session_id}/export\n3. Receive: {\"detail\":\"Failed to export session\"} with HTTP 500",
+      "expected_behavior": "Should either: (a) successfully generate PDF and return it, or (b) return detailed error explaining the failure (e.g., 'fpdf2 not installed', 'Session has no image data', specific rendering error)",
+      "actual_behavior": "Returns generic 500 error without details. Logs should be checked for the actual exception.",
+      "affected_files": [
+        "backend/app/api/routes.py"
+      ]
+    }
+  ],
+  "tests_passed": [
+    "Health endpoint responds correctly (/api/health)",
+    "Model listing endpoint works (/api/models)",
+    "Quota tracking endpoint works (/api/models/quota)",
+    "Model config update persists (/api/models/config POST, /api/models/current GET)",
+    "Session listing works (/api/sessions)",
+    "Concurrent requests don't cause deadlock (5 parallel requests successful)",
+    "CORS headers present in preflight OPTIONS requests",
+    "Frontend has no console.log statements",
+    "Quota warning banner implemented in frontend",
+    "WebSocket endpoint validates connection properly",
+    "Audio test fixtures exist (10s, 20s, 60s WAV files)",
+    "Frontend model selector UI enhanced with warnings"
+  ],
+  "tests_failed": [
+    "/api/info endpoint returns 404 (route not registered due to path ordering)",
+    "/api/sessions/{id}/export/evidence returns 404 (route not registered)",
+    "/api/sessions/export/bulk returns 404 (route not registered)",
+    "/api/sessions/{id}/export returns 500 error (PDF generation fails)"
+  ],
+  "remaining_open_bugs": [
+    "Bug #3: CRITICAL: Blocking Firestore calls hang all API endpoints (if GCP_PROJECT_ID configured)",
+    "Bug #4: HIGH: Model selector endpoint calls blocking API in async context",
+    "Bug #6: MEDIUM: Usage tracker has no persistence across restarts",
+    "Bug #5: MEDIUM: No error handling for missing GOOGLE_API_KEY in model endpoints",
+    "Bug #11: MEDIUM: Usage tracker performs synchronous file I/O while holding lock",
+    "Bug #12: MEDIUM: No request timeout protection in FastAPI",
+    "Bug #26: LOW: Missing rate limit headers in responses",
+    "Bug #21: LOW: Missing API key rotation/fallback mechanism",
+    "Bug #20: LOW: No automated WebSocket connection test in test suite",
+    "Bug #19: LOW: WebSocket endpoint doesn't validate session exists",
+    "Bug #18: LOW: Token estimation uses character count instead of actual tokenization",
+    "Bug #17: LOW: No rate limiting enforcement in API despite tracking infrastructure",
+    "Bug #16: LOW: Pacific Time zone handling not implemented",
+    "Bug #15: LOW: Frontend lacks WebSocket connection test in bug workflow",
+    "Bug #14: LOW: No health check for usage_tracker service",
+    "Bug #13: LOW: Middleware order may cause duplicate request processing",
+    "Bug #9: LOW: No rate limiting implementation despite tracker infrastructure",
+    "Bug #8: LOW: Token estimation is inaccurate",
+    "Bug #7: LOW: Frontend model selector calls will fail due to backend hanging"
+  ],
+  "summary": "Test Cycle 7 completed with SIGNIFICANT PROGRESS. Feature Agent and UX Agent fixed 5 critical/high bugs (#27, #23, #22 partial, #25, #10). However, discovered 1 NEW CRITICAL BUG (#29): FastAPI route ordering issue causing 3 endpoints to not register (/info, /sessions/export/bulk, /sessions/{id}/export/evidence). The fpdf import issue (Bug #22) was partially addressed by moving to lazy import, but PDF export still fails (Bug #24). Concurrent request handling is now working excellently. CORS is properly configured. Frontend console.log statements removed. Model config persistence works. Overall app stability greatly improved, but route registration bug needs immediate attention.",
+  "statistics": {
+    "total_endpoints_defined": 17,
+    "total_endpoints_registered": 12,
+    "total_endpoints_tested": 15,
+    "endpoints_passing": 11,
+    "endpoints_failing": 4,
+    "bugs_fixed_this_cycle": 5,
+    "new_bugs_found": 1,
+    "critical_bugs_remaining": 3,
+    "high_bugs_remaining": 1,
+    "medium_bugs_remaining": 5,
+    "low_bugs_remaining": 13
+  },
+  "recommendations": [
+    "PRIORITY 1: Fix Bug #29 (route ordering) by reordering route definitions in routes.py",
+    "PRIORITY 2: Investigate Bug #24 PDF export failure - check backend logs for actual exception",
+    "PRIORITY 3: Address Bug #3 (Firestore blocking calls) if GCP deployment is planned",
+    "PRIORITY 4: Consider adding automated integration tests for endpoint registration",
+    "Feature Agent should handle Bug #29 next cycle - simple route reordering fix"
+  ]
+}
