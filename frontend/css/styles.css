@@ -4707,3 +4707,373 @@ input:focus-visible {
         max-width: none;
     }
 }
+
+/* ======================================
+   ENHANCED UX: Button Ripple Effects
+   ====================================== */
+
+.btn, .mic-btn, .scene-control-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before, .mic-btn::before, .scene-control-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease, height 0.6s ease;
+    pointer-events: none;
+}
+
+.btn:active::before, .mic-btn:active::before, .scene-control-btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* Enhanced button focus for accessibility */
+.btn:focus-visible, 
+.mic-btn:focus-visible, 
+.scene-control-btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid var(--accent-blue);
+    outline-offset: 3px;
+}
+
+/* ======================================
+   ENHANCED UX: Scene Loading Skeleton
+   ====================================== */
+
+.scene-skeleton {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary) 0%,
+        var(--bg-tertiary) 20%,
+        var(--bg-secondary) 40%,
+        var(--bg-tertiary) 60%,
+        var(--bg-secondary) 80%,
+        var(--bg-secondary) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    animation: skeletonPulse 2s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+    0%, 100% {
+        background-position: 0% 0%;
+        opacity: 0.6;
+    }
+    50% {
+        background-position: 100% 0%;
+        opacity: 0.8;
+    }
+}
+
+.scene-skeleton::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 150%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 212, 255, 0.15) 50%,
+        transparent 100%
+    );
+    animation: skeletonShine 2.5s infinite;
+}
+
+@keyframes skeletonShine {
+    0% { left: -150%; }
+    100% { left: 150%; }
+}
+
+.scene-skeleton .skeleton-text {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    z-index: 1;
+}
+
+/* ======================================
+   ENHANCED UX: Comparison Slider
+   ====================================== */
+
+.comparison-slider-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: col-resize;
+    user-select: none;
+}
+
+.comparison-slider-before,
+.comparison-slider-after {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: opacity 0.3s ease;
+}
+
+.comparison-slider-after {
+    clip-path: inset(0 50% 0 0);
+}
+
+.comparison-slider-handle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 4px;
+    height: 100%;
+    background: var(--accent-blue);
+    cursor: col-resize;
+    z-index: 10;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.comparison-slider-handle::before {
+    content: '⇄';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    background: var(--accent-blue);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: var(--bg-primary);
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
+}
+
+.comparison-slider-handle:hover::before {
+    transform: translate(-50%, -50%) scale(1.15);
+}
+
+/* Labels for comparison */
+.comparison-label {
+    position: absolute;
+    top: 20px;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    z-index: 5;
+}
+
+.comparison-label.before {
+    left: 20px;
+    color: var(--accent-red);
+}
+
+.comparison-label.after {
+    right: 20px;
+    color: var(--accent-green);
+}
+
+/* ======================================
+   ENHANCED UX: Progress Indicator Animations
+   ====================================== */
+
+.progress-bar-fill {
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: progressShine 2s infinite;
+}
+
+@keyframes progressShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* ======================================
+   ENHANCED UX: Smooth Hover Transitions
+   ====================================== */
+
+.timeline-item,
+.stat-card,
+.evidence-card,
+.case-card {
+    transition: all var(--transition-base);
+}
+
+.timeline-item:hover {
+    transform: translateX(8px);
+    background: rgba(0, 212, 255, 0.08);
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 212, 255, 0.2);
+}
+
+.evidence-card:hover,
+.case-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-blue);
+    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.15);
+}
+
+/* ======================================
+   ENHANCED UX: Loading States
+   ====================================== */
+
+.loading-dots::after {
+    content: '';
+    animation: loadingDots 1.5s steps(4, end) infinite;
+}
+
+@keyframes loadingDots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}
+
+/* Spinner with gradient */
+.spinner-gradient {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        var(--accent-blue) 0deg,
+        transparent 90deg,
+        transparent 270deg,
+        var(--accent-blue) 360deg
+    );
+    animation: spinGradient 1s linear infinite;
+}
+
+@keyframes spinGradient {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ======================================
+   ENHANCED UX: Micro-interactions
+   ====================================== */
+
+.interactive-icon {
+    display: inline-block;
+    transition: transform var(--transition-fast);
+}
+
+.interactive-icon:hover {
+    transform: scale(1.2) rotate(5deg);
+}
+
+/* Card flip effect on click */
+.flip-card {
+    perspective: 1000px;
+}
+
+.flip-card.flipped .flip-card-inner {
+    transform: rotateY(180deg);
+}
+
+.flip-card-inner {
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+/* Smooth color transitions */
+.color-transition {
+    transition: color var(--transition-base), 
+                background-color var(--transition-base),
+                border-color var(--transition-base);
+}
+
+/* ======================================
+   ENHANCED UX: Tooltip Improvements
+   ====================================== */
+
+[data-tooltip]:hover::after {
+    animation: tooltipFadeIn 0.2s ease forwards;
+}
+
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* ======================================
+   ENHANCED UX: Focus Within Highlights
+   ====================================== */
+
+.form-group:focus-within {
+    transform: translateX(4px);
+}
+
+.form-group:focus-within label {
+    color: var(--accent-blue);
+}
+
+/* ======================================
+   ENHANCED UX: Pulse Animations for Alerts
+   ====================================== */
+
+@keyframes alertPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(255, 71, 87, 0);
+    }
+}
+
+.alert-danger,
+.contradiction-card {
+    animation: alertPulse 2s infinite;
+}

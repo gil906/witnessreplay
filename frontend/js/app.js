@@ -934,19 +934,23 @@ class WitnessReplayApp {
     }
     
     showSceneLoadingSkeleton() {
-        // Show loading skeleton before scene generation
+        // Show enhanced loading skeleton before scene generation
         const skeleton = document.createElement('div');
         skeleton.className = 'scene-skeleton';
         skeleton.innerHTML = `
-            <svg class="progress-ring" viewBox="0 0 60 60">
-                <circle cx="30" cy="30" r="26"></circle>
-            </svg>
+            <div class="skeleton-overlay">
+                <div class="spinner-gradient"></div>
+                <p class="skeleton-text">🎨 Reconstructing scene...</p>
+                <p class="skeleton-subtext" style="font-size: 0.8rem; margin-top: 0.5rem; color: var(--text-muted);">
+                    Detective Ray is analyzing your description
+                </p>
+            </div>
         `;
         
         this.sceneDisplay.innerHTML = '';
         this.sceneDisplay.appendChild(skeleton);
         
-        this.sceneDescription.innerHTML = '<p class="text-muted">Detective Ray is generating the scene...</p>';
+        this.sceneDescription.innerHTML = '<p class="text-muted loading-dots">Generating scene</p>';
     }
     
     setSceneImage(data) {
@@ -1096,26 +1100,8 @@ class WitnessReplayApp {
         
         const currentSrc = currentImg.src;
         
-        // Create comparison container
-        this.sceneDisplay.innerHTML = '';
-        this.sceneDisplay.classList.add('comparison-mode');
-        
-        const comparisonContainer = document.createElement('div');
-        comparisonContainer.className = 'scene-comparison-container';
-        comparisonContainer.innerHTML = `
-            <div class="comparison-side">
-                <div class="comparison-label">Before (v${this.currentVersion - 1})</div>
-                <img src="${this.previousSceneUrl}" alt="Previous version" class="fade-in">
-            </div>
-            <div class="comparison-divider"></div>
-            <div class="comparison-side">
-                <div class="comparison-label">After (v${this.currentVersion})</div>
-                <img src="${currentSrc}" alt="Current version" class="fade-in">
-            </div>
-        `;
-        
-        this.sceneDisplay.appendChild(comparisonContainer);
-        this.ui.showToast('Comparing versions — Click compare button again to exit', 'info', 3000);
+        // Use enhanced comparison slider
+        this.showEnhancedComparison(this.previousSceneUrl, currentSrc);
     }
     
     hideComparison(currentSrc) {
@@ -1152,6 +1138,112 @@ class WitnessReplayApp {
             const controls = this.sceneDisplay.querySelector('.scene-controls');
             if (controls) controls.classList.remove('hidden');
         }
+    }
+    
+    /**
+     * Show enhanced comparison with draggable slider
+     * @param {string} beforeSrc - URL of before image
+     * @param {string} afterSrc - URL of after image
+     */
+    showEnhancedComparison(beforeSrc, afterSrc) {
+        this.sceneDisplay.innerHTML = '';
+        this.sceneDisplay.classList.add('comparison-mode');
+        
+        const sliderContainer = document.createElement('div');
+        sliderContainer.className = 'comparison-slider-container';
+        sliderContainer.innerHTML = `
+            <div class="comparison-slider-before" style="background-image: url('${beforeSrc}');"></div>
+            <div class="comparison-slider-after" style="background-image: url('${afterSrc}');"></div>
+            <div class="comparison-slider-handle"></div>
+            <div class="comparison-label before">Before v${this.currentVersion - 1}</div>
+            <div class="comparison-label after">After v${this.currentVersion}</div>
+        `;
+        
+        this.sceneDisplay.appendChild(sliderContainer);
+        
+        // Initialize drag functionality
+        this.initializeComparisonSlider(sliderContainer);
+        
+        this.ui.showToast('Drag the slider to compare versions', 'info', 3000);
+    }
+    
+    /**
+     * Initialize draggable comparison slider
+     * @param {HTMLElement} container - The slider container element
+     */
+    initializeComparisonSlider(container) {
+        const handle = container.querySelector('.comparison-slider-handle');
+        const afterImage = container.querySelector('.comparison-slider-after');
+        let isDragging = false;
+        
+        const updateSliderPosition = (clientX) => {
+            const rect = container.getBoundingClientRect();
+            let position = ((clientX - rect.left) / rect.width) * 100;
+            position = Math.max(0, Math.min(100, position)); // Clamp between 0-100
+            
+            // Update clip path
+            afterImage.style.clipPath = `inset(0 ${100 - position}% 0 0)`;
+            handle.style.left = `${position}%`;
+        };
+        
+        // Mouse events
+        const handleMouseDown = (e) => {
+            isDragging = true;
+            container.style.cursor = 'col-resize';
+            e.preventDefault();
+        };
+        
+        const handleMouseMove = (e) => {
+            if (!isDragging) return;
+            updateSliderPosition(e.clientX);
+        };
+        
+        const handleMouseUp = () => {
+            isDragging = false;
+            container.style.cursor = 'default';
+        };
+        
+        // Touch events
+        const handleTouchStart = (e) => {
+            isDragging = true;
+            e.preventDefault();
+        };
+        
+        const handleTouchMove = (e) => {
+            if (!isDragging) return;
+            const touch = e.touches[0];
+            updateSliderPosition(touch.clientX);
+            e.preventDefault();
+        };
+        
+        const handleTouchEnd = () => {
+            isDragging = false;
+        };
+        
+        // Attach events to handle
+        handle.addEventListener('mousedown', handleMouseDown);
+        handle.addEventListener('touchstart', handleTouchStart);
+        
+        // Attach events to document for dragging
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+        
+        // Click anywhere to move slider
+        container.addEventListener('click', (e) => {
+            if (e.target === container || e.target.classList.contains('comparison-slider-before') || e.target.classList.contains('comparison-slider-after')) {
+                updateSliderPosition(e.clientX);
+            }
+        });
+        
+        // Cleanup function (store for later)
+        container._cleanupSlider = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+        };
     }
     
     showSceneError(message, data) {

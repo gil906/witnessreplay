@@ -222,21 +222,53 @@ class AdminPortal {
     
     async loadCases() {
         try {
-            const response = await this.fetchWithTimeout('/api/sessions');
+            // Load both cases and analytics in parallel
+            const [casesResponse, analyticsResponse] = await Promise.all([
+                this.fetchWithTimeout('/api/sessions'),
+                this.fetchWithTimeout('/api/admin/analytics').catch(() => null)
+            ]);
             
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+            if (!casesResponse.ok) {
+                throw new Error(`Server error: ${casesResponse.status}`);
             }
             
-            const data = await response.json();
+            const data = await casesResponse.json();
             this.cases = data.sessions || [];
-            this.updateStats();
+            
+            // Load analytics if available
+            if (analyticsResponse?.ok) {
+                const analytics = await analyticsResponse.json();
+                this.updateStatsWithAnalytics(analytics);
+            } else {
+                this.updateStats();
+            }
+            
             this.filterCases();
             this.showToast('Cases loaded successfully', 'success');
         } catch (error) {
             console.error('Error loading cases:', error);
             this.showToast('Failed to load cases: ' + error.message, 'error');
             this.renderEmptyState();
+        }
+    }
+    
+    updateStatsWithAnalytics(analytics) {
+        // Enhanced stats using analytics data from backend
+        if (analytics.overview) {
+            document.getElementById('total-cases').textContent = analytics.overview.total_sessions || this.cases.length;
+            document.getElementById('total-witnesses').textContent = analytics.overview.total_statements || 0;
+            document.getElementById('total-scenes').textContent = analytics.overview.total_reconstructions || 0;
+            
+            // Active today - use recent activity or calculate
+            const today = new Date().toDateString();
+            const activeToday = analytics.recent_activity?.filter(c => {
+                if (!c.created_at) return false;
+                return new Date(c.created_at).toDateString() === today;
+            }).length || 0;
+            document.getElementById('active-today').textContent = activeToday;
+        } else {
+            // Fallback to basic stats
+            this.updateStats();
         }
     }
     

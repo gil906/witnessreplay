@@ -783,3 +783,156 @@
         width: 100%;
     }
 }
+
+/* Enhanced UX: Modal animations */
+.modal {
+    animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(8px);
+    }
+}
+
+.modal-content {
+    animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px) scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Enhanced UX: Case card hover effects */
+.case-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.case-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-blue);
+    box-shadow: 0 8px 24px rgba(0, 212, 255, 0.2);
+}
+
+.case-card:hover .case-badge {
+    transform: scale(1.1);
+}
+
+/* Enhanced UX: Stat card animations */
+.admin-stat {
+    transition: all 0.3s ease;
+}
+
+.admin-stat:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 30px rgba(0, 212, 255, 0.25);
+}
+
+.admin-stat .stat-icon {
+    transition: transform 0.3s ease;
+}
+
+.admin-stat:hover .stat-icon {
+    transform: scale(1.2) rotate(5deg);
+}
+
+/* Enhanced UX: Button ripple effect */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease, height 0.6s ease;
+    pointer-events: none;
+}
+
+.btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* Enhanced UX: Loading state for cases list */
+.cases-list.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(0, 212, 255, 0.1) 50%,
+        transparent 100%
+    );
+    animation: loadingSweep 1.5s infinite;
+    pointer-events: none;
+}
+
+@keyframes loadingSweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Enhanced UX: Focus styles for accessibility */
+.search-input:focus,
+.filter-select:focus,
+input:focus,
+select:focus,
+textarea:focus,
+.btn:focus-visible {
+    outline: 3px solid var(--accent-blue);
+    outline-offset: 3px;
+}
+
+/* Enhanced UX: Smooth transitions for interactive elements */
+.case-badge,
+.case-meta span,
+.stat-value {
+    transition: all 0.2s ease;
+}
+
+/* Enhanced UX: Tag list animations */
+.tag-list .tag {
+    animation: tagFadeIn 0.3s ease-out backwards;
+}
+
+.tag-list .tag:nth-child(1) { animation-delay: 0.05s; }
+.tag-list .tag:nth-child(2) { animation-delay: 0.1s; }
+.tag-list .tag:nth-child(3) { animation-delay: 0.15s; }
+.tag-list .tag:nth-child(4) { animation-delay: 0.2s; }
+.tag-list .tag:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes tagFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
