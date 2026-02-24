@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="WitnessReplay Admin Portal - Case Management System">
+    <meta name="description" content="WitnessReplay Law Enforcement Dashboard - Case Review Portal">
     <meta name="theme-color" content="#00d4ff">
-    <title>Admin Portal - WitnessReplay</title>
+    <title>Law Enforcement Dashboard - WitnessReplay</title>
     
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
     <link rel="stylesheet" href="/static/css/styles.css">
@@ -51,8 +51,8 @@
                 <div class="logo-section">
                     <div class="logo-icon">🛡️</div>
                     <div class="logo-text">
-                        <h1>Admin Portal</h1>
-                        <p class="tagline">Case Management & Witness Report Analytics</p>
+                        <h1>Law Enforcement Dashboard</h1>
+                        <p class="tagline">View and manage witness reports</p>
                     </div>
                 </div>
                 
@@ -151,8 +151,7 @@
             <!-- Cases List -->
             <section class="cases-section">
                 <div class="section-header">
-                    <h2>Active Cases</h2>
-                    <button id="new-case-btn" class="btn btn-primary">➕ Create Case</button>
+                    <h2>Submitted Reports</h2>
                 </div>
                 
                 <div id="cases-list" class="cases-list">
@@ -260,46 +259,7 @@
         </div>
     </div>
 
-    <!-- Create Case Modal -->
-    <div id="create-case-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Create New Case</h2>
-                <button class="modal-close" data-modal="create-case-modal">&times;</button>
-            </div>
-            
-            <div class="modal-body">
-                <form id="create-case-form">
-                    <div class="form-group">
-                        <label for="new-case-type">Case Type:</label>
-                        <select id="new-case-type" required>
-                            <option value="">Select type...</option>
-                            <option value="accident">Traffic Accident</option>
-                            <option value="crime">Criminal Investigation</option>
-                            <option value="incident">General Incident</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="new-case-location">Location:</label>
-                        <input type="text" id="new-case-location" placeholder="e.g., Main St & 5th Ave">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="new-case-description">Initial Description:</label>
-                        <textarea id="new-case-description" rows="4" placeholder="Brief description of the case..."></textarea>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Create Case</button>
-                        <button type="button" class="btn btn-secondary cancel-modal-btn" data-modal="create-case-modal">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    </div> <!-- End admin-content -->
+
 
     <!-- Toast Notifications Container -->
     <div id="toast-container" class="toast-container"></div>

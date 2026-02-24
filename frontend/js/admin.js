@@ -168,15 +168,6 @@ class AdminPortal {
         document.getElementById('sort-by').addEventListener('change', () => this.filterCases());
         document.getElementById('clear-filters-btn').addEventListener('click', () => this.clearFilters());
         
-        // Case creation
-        document.getElementById('new-case-btn').addEventListener('click', () => {
-            this.showModal('create-case-modal');
-        });
-        document.getElementById('create-case-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.createCase();
-        });
-        
         // Case detail actions
         document.getElementById('export-case-btn')?.addEventListener('click', () => this.exportCase());
         document.getElementById('export-evidence-btn')?.addEventListener('click', () => this.exportEvidence());
@@ -508,51 +499,6 @@ class AdminPortal {
         }
     }
     
-    async createCase() {
-        const caseType = document.getElementById('new-case-type').value;
-        const location = document.getElementById('new-case-location').value;
-        const description = document.getElementById('new-case-description').value;
-        
-        if (!caseType) {
-            this.showToast('Please select a case type', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await this.fetchWithTimeout('/api/sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    case_type: caseType,
-                    metadata: {
-                        location,
-                        description,
-                        status: 'active'
-                    }
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to create case');
-            }
-            
-            const data = await response.json();
-            this.showToast('Case created successfully', 'success');
-            this.hideModal('create-case-modal');
-            document.getElementById('create-case-form').reset();
-            await this.loadCases();
-            
-            // Open the new case
-            const newCase = this.cases.find(c => c.id === data.session_id);
-            if (newCase) {
-                this.showCaseDetail(newCase);
-            }
-        } catch (error) {
-            console.error('Error creating case:', error);
-            this.showToast('Failed to create case: ' + error.message, 'error');
-        }
-    }
-    
     async exportCase() {
         if (!this.currentCase) return;
         
@@ -690,10 +636,7 @@ class AdminPortal {
     renderEmptyState() {
         document.getElementById('cases-list').innerHTML = `
             <div class="empty-state">
-                <p>No cases found. Create a new case to get started.</p>
-                <button class="btn btn-primary" onclick="document.getElementById('new-case-btn').click()">
-                    ➕ Create First Case
-                </button>
+                <p>No witness reports have been submitted yet. Reports will appear here when witnesses submit them through the main portal.</p>
             </div>
         `;
     }
