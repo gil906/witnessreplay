@@ -412,8 +412,8 @@ async def export_session(session_id: str):
                     pdf.cell(0, 10, f"Image: {version.image_url}", ln=True)
                 pdf.ln(5)
         
-        # Output PDF
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        # Output PDF (fpdf2 returns bytearray, no need to encode)
+        pdf_bytes = pdf.output()
         
         from fastapi.responses import Response
         return Response(
@@ -1050,6 +1050,43 @@ async def get_current_model():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get current model"
+        )
+
+
+@router.get("/models/status")
+async def get_models_status():
+    """
+    Get status of all available models, including rate limit information.
+    Implements Idea #2: Check what models are rate limited without spending tokens.
+    
+    Returns:
+        List of models with their availability and rate limit status
+    """
+    from app.services.model_selector import model_selector
+    
+    try:
+        statuses = await model_selector.get_all_models_status()
+        
+        # Add current model selection info
+        chat_model = await model_selector.get_best_model_for_chat()
+        scene_model = await model_selector.get_best_model_for_scene()
+        
+        return {
+            "models": statuses,
+            "recommended": {
+                "chat": chat_model,
+                "scene_reconstruction": scene_model
+            },
+            "current_selection": {
+                "default": settings.gemini_model,
+                "vision": settings.gemini_vision_model
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting model status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get model status: {str(e)}"
         )
 
 

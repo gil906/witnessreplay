@@ -8,6 +8,7 @@ from google import genai
 from app.config import settings
 from app.models.schemas import SceneElement, WitnessStatement, SceneVersion
 from app.services.usage_tracker import usage_tracker
+from app.services.model_selector import model_selector
 from app.agents.prompts import (
     SYSTEM_PROMPT,
     INITIAL_GREETING,
@@ -41,14 +42,7 @@ class SceneReconstructionAgent:
         try:
             if settings.google_api_key:
                 self.client = genai.Client(api_key=settings.google_api_key)
-                # Initialize chat with system instruction
-                self.chat = self.client.chats.create(
-                    model=settings.gemini_model,
-                    config={
-                        "system_instruction": SYSTEM_PROMPT,
-                        "temperature": 0.7,
-                    }
-                )
+                # Note: Chat is initialized lazily to use best available model
                 logger.info(f"Initialized scene agent for session {self.session_id}")
             else:
                 logger.warning("GOOGLE_API_KEY not set, agent not initialized")
@@ -75,24 +69,64 @@ class SceneReconstructionAgent:
         Returns:
             Tuple of (agent_response, should_generate_image)
         """
-        if not self.chat:
+        if not self.client:
             return "I'm sorry, I'm having technical difficulties. Please try again later.", False
         
         try:
+            # Initialize chat if not already done (lazy init with best model)
+            if not self.chat:
+                chat_model = await model_selector.get_best_model_for_chat()
+                self.chat = self.client.chats.create(
+                    model=chat_model,
+                    config={
+                        "system_instruction": SYSTEM_PROMPT,
+                        "temperature": 0.7,
+                    }
+                )
+                logger.info(f"Initialized chat with model {chat_model}")
+            
             # Add context if this is a correction
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
             
-            # Send to Gemini with retry on rate limit
+            # Send to Gemini with automatic model fallback on rate limit
             response = None
+            current_model = None
+            
             for attempt in range(3):
                 try:
                     response = await asyncio.to_thread(self.chat.send_message, statement)
                     break
                 except Exception as e:
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        # Mark current model as rate limited
+                        if hasattr(self.chat, '_model'):
+                            current_model = self.chat._model
+                        elif hasattr(self.chat, 'model'):
+                            current_model = self.chat.model
+                        else:
+                            current_model = settings.gemini_model
+                        
+                        logger.warning(f"Rate limited on model {current_model}, switching model...")
+                        await model_selector.mark_rate_limited(current_model)
+                        
+                        # Try a different model
+                        new_model = await model_selector.get_best_model_for_chat()
+                        if new_model != current_model:
+                            logger.info(f"Switching from {current_model} to {new_model}")
+                            self.chat = self.client.chats.create(
+                                model=new_model,
+                                config={
+                                    "system_instruction": SYSTEM_PROMPT,
+                                    "temperature": 0.7,
+                                }
+                            )
+                            # Retry with new model immediately
+                            continue
+                        
+                        # If same model (all are rate limited), wait and retry
                         wait_time = (attempt + 1) * 10
-                        logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt+1}/3)")
+                        logger.warning(f"All models rate limited, waiting {wait_time}s (attempt {attempt+1}/3)")
                         await asyncio.sleep(wait_time)
                     else:
                         raise
@@ -169,7 +203,7 @@ class SceneReconstructionAgent:
     async def _extract_scene_information(self):
         """
         Extract structured scene information from the conversation.
-        Uses Gemini to analyze the conversation and extract scene elements.
+        Uses best model for scene reconstruction (Idea #3).
         """
         if not self.client:
             return
@@ -184,18 +218,52 @@ class SceneReconstructionAgent:
             # Ask Gemini to extract structured information
             extraction_prompt = f"{SCENE_EXTRACTION_PROMPT}\n\nConversation:\n{conversation_text}"
             
-            # Use client to generate content (wrapped in thread pool)
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=settings.gemini_model,
-                contents=extraction_prompt
-            )
+            # Use best model for scene extraction (Idea #3: Use best models for scene reconstruction)
+            scene_model = await model_selector.get_best_model_for_scene()
+            logger.info(f"Using {scene_model} for scene extraction")
+            
+            # Generate content using the best available model
+            def extract():
+                try:
+                    response = self.client.models.generate_content(
+                        model=scene_model,
+                        contents=extraction_prompt,
+                        config={
+                            "temperature": 0.3,  # Lower temperature for more consistent extraction
+                        }
+                    )
+                    return response
+                except Exception as e:
+                    # Handle rate limits
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        logger.warning(f"Scene model {scene_model} rate limited during extraction")
+                        raise
+                    raise
+            
+            response = None
+            for attempt in range(2):
+                try:
+                    response = await asyncio.to_thread(extract)
+                    break
+                except Exception as e:
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        # Mark as rate limited and try fallback
+                        await model_selector.mark_rate_limited(scene_model)
+                        scene_model = await model_selector.get_best_model_for_scene()
+                        logger.info(f"Retrying with fallback model {scene_model}")
+                        continue
+                    else:
+                        raise
+            
+            if not response:
+                logger.warning("Failed to extract scene information after retries")
+                return
             
             # Track usage for extraction
             extraction_tokens_in = len(extraction_prompt) // 4
             extraction_tokens_out = len(response.text) // 4
             usage_tracker.record_request(
-                model_name=settings.gemini_model,
+                model_name=scene_model,
                 input_tokens=extraction_tokens_in,
                 output_tokens=extraction_tokens_out
             )

@@ -9,6 +9,7 @@ from google import genai
 
 from app.config import settings
 from app.models.schemas import SceneElement
+from app.services.model_selector import model_selector
 
 logger = logging.getLogger(__name__)
 
