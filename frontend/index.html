@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="description" content="WitnessReplay — Professional incident reporting system. Report accidents and crimes by speaking or typing with an AI-guided interview.">
-    <meta name="theme-color" content="#00d4ff">
+    <meta name="theme-color" content="#60a5fa">
     <title>WitnessReplay - Report an Incident</title>
     
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    
+    <!-- Modern Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="/static/manifest.json">
@@ -193,10 +198,19 @@
                     </div>
                     
                     <div class="mic-container">
+                        <!-- Animated pulse rings -->
+                        <div class="mic-pulse-ring mic-pulse-ring-1"></div>
+                        <div class="mic-pulse-ring mic-pulse-ring-2"></div>
+                        <div class="mic-pulse-ring mic-pulse-ring-3"></div>
+                        <!-- Sound wave rings (visible when recording) -->
+                        <div class="mic-wave-ring mic-wave-ring-1"></div>
+                        <div class="mic-wave-ring mic-wave-ring-2"></div>
+                        <div class="mic-wave-ring mic-wave-ring-3"></div>
                         <div class="waveform-ring" id="waveform-ring"></div>
                         <canvas id="audio-visualizer" width="140" height="140"></canvas>
                         <button id="mic-btn" class="mic-btn" disabled aria-label="Start recording">
-                            🎤 <span class="btn-text">Speak Now</span>
+                            <span class="mic-icon">🎤</span>
+                            <span class="btn-text">Speak Now</span>
                         </button>
                     </div>
                     <div class="status-indicator" id="status-indicator">

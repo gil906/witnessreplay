@@ -125,11 +125,17 @@ class AdminPortal {
     
     async init() {
         this.initializeUI();
+        this.restoreCasesViewMode();
         await this.loadCases();
         this.startAutoRefresh();
         this.fetchAndDisplayVersion();
         this.loadQuotaDashboard();
         this.startQuotaRefresh();
+    }
+    
+    restoreCasesViewMode() {
+        const savedMode = localStorage.getItem('adminCasesViewMode') || 'compact';
+        this.switchCasesViewMode(savedMode);
     }
     
     initializeUI() {
@@ -175,6 +181,11 @@ class AdminPortal {
         // View toggle tabs
         document.querySelectorAll('.view-tab').forEach(tab => {
             tab.addEventListener('click', () => this.switchView(tab.dataset.view));
+        });
+        
+        // Cases view mode toggle (compact/expanded)
+        document.querySelectorAll('.view-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.switchCasesViewMode(btn.dataset.mode));
         });
         
         // Search and filters
@@ -228,6 +239,23 @@ class AdminPortal {
         } else if (view === 'map') {
             setTimeout(() => this.initMap(), 100);
         }
+    }
+    
+    switchCasesViewMode(mode) {
+        const casesList = document.getElementById('cases-list');
+        document.querySelectorAll('.view-mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+        
+        if (mode === 'compact') {
+            casesList.classList.add('cases-compact');
+            casesList.classList.remove('cases-expanded');
+        } else {
+            casesList.classList.remove('cases-compact');
+            casesList.classList.add('cases-expanded');
+        }
+        
+        localStorage.setItem('adminCasesViewMode', mode);
     }
     
     async fetchWithTimeout(url, options = {}) {
@@ -444,7 +472,7 @@ class AdminPortal {
                     <div class="case-header">
                         <div>
                             <h3 class="case-title">${caseData.title || 'Untitled Case'}</h3>
-                            <div class="case-id">${caseData.case_number || caseData.id}</div>
+                            <div class="case-id">${caseData.case_number || caseData.id} <span class="compact-date">· ${this.formatDateShort(caseData.created_at)}</span></div>
                         </div>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
                             ${priorityBadge}
@@ -2558,6 +2586,12 @@ class AdminPortal {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
     
+    formatDateShort(date) {
+        if (!date) return '';
+        const d = new Date(date);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    
     formatDateTime(date) {
         if (!date) return 'Unknown';
         const d = new Date(date);
@@ -2577,105 +2611,86 @@ class AdminPortal {
     }
     
     // ======================================
-    // Quota Dashboard Widget
+    // Compact Quota Widget
     // ======================================
     
+    initQuotaToggle() {
+        const toggleBtn = document.getElementById('quota-toggle');
+        const content = document.getElementById('quota-content');
+        const dashboard = document.getElementById('quota-dashboard');
+        if (toggleBtn && content) {
+            toggleBtn.addEventListener('click', () => {
+                const isExpanded = content.style.display !== 'none';
+                content.style.display = isExpanded ? 'none' : 'block';
+                dashboard.classList.toggle('expanded', !isExpanded);
+            });
+        }
+    }
+    
     async loadQuotaDashboard() {
+        this.initQuotaToggle();
         try {
             const response = await this.fetchWithTimeout('/api/quota/status');
             if (!response.ok) {
-                console.error('Failed to fetch quota status');
                 this.renderQuotaError();
                 return;
             }
             const data = await response.json();
             this.renderQuotaDashboard(data);
         } catch (error) {
-            console.error('Error loading quota dashboard:', error);
+            console.error('Error loading quota:', error);
             this.renderQuotaError();
         }
     }
     
     renderQuotaDashboard(data) {
-        const modelsContainer = document.getElementById('quota-models');
+        const table = document.getElementById('quota-models');
         const timerEl = document.getElementById('quota-reset-timer');
         const updatedEl = document.getElementById('quota-updated');
         
-        if (!modelsContainer) return;
+        if (!table) return;
         
-        // Update reset timer
         if (timerEl && data.reset) {
             timerEl.textContent = data.reset.formatted;
         }
         
-        // Update last updated time
         if (updatedEl) {
-            const now = new Date();
-            updatedEl.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+            updatedEl.textContent = new Date().toLocaleTimeString();
         }
         
-        // Filter to only show models with usage or known limits
         const activeModels = Object.entries(data.models || {}).filter(([name, model]) => {
-            // Show models that have been used or have non-zero limits
             return model.rpd?.used > 0 || model.rpm?.used > 0 || model.tpm?.used > 0 ||
                    model.rpd?.limit > 0 || model.rpm?.limit > 0 || model.tpm?.limit > 0;
         });
         
         if (activeModels.length === 0) {
-            modelsContainer.innerHTML = '<div class="quota-loading">No quota data available</div>';
+            table.innerHTML = '<thead><tr><th>Model</th><th>RPM</th><th>TPM</th><th>RPD</th></tr></thead><tbody><tr><td colspan="4" class="quota-loading">No data</td></tr></tbody>';
             return;
         }
         
-        // Sort by usage (most used first)
         activeModels.sort((a, b) => {
             const aUsage = (a[1].rpd?.percent || 0) + (a[1].tpm?.percent || 0);
             const bUsage = (b[1].rpd?.percent || 0) + (b[1].tpm?.percent || 0);
             return bUsage - aUsage;
         });
         
-        // Render model cards
-        modelsContainer.innerHTML = activeModels.map(([name, model]) => {
-            return `
-                <div class="quota-model-card">
-                    <div class="quota-model-name">
-                        ${this.getModelIcon(name)} ${name}
-                        <span class="quota-model-tier">${model.tier || 'free'}</span>
-                    </div>
-                    ${this.renderQuotaMetric('RPM', model.rpm)}
-                    ${this.renderQuotaMetric('TPM', model.tpm)}
-                    ${this.renderQuotaMetric('RPD', model.rpd)}
-                </div>
-            `;
+        const rows = activeModels.map(([name, model]) => {
+            return `<tr>
+                <td class="model-name">${name}</td>
+                <td>${this.formatQuotaCell(model.rpm)}</td>
+                <td>${this.formatQuotaCell(model.tpm)}</td>
+                <td>${this.formatQuotaCell(model.rpd)}</td>
+            </tr>`;
         }).join('');
+        
+        table.innerHTML = `<thead><tr><th>Model</th><th>RPM</th><th>TPM</th><th>RPD</th></tr></thead><tbody>${rows}</tbody>`;
     }
     
-    renderQuotaMetric(label, metric) {
-        if (!metric || metric.limit === 0) return '';
-        
-        const percent = metric.percent || 0;
-        const colorClass = percent < 50 ? 'green' : percent < 80 ? 'yellow' : 'red';
-        const usedFormatted = this.formatNumber(metric.used);
-        const limitFormatted = this.formatNumber(metric.limit);
-        
-        return `
-            <div class="quota-metric">
-                <div class="quota-metric-header">
-                    <span class="quota-metric-label">${label}</span>
-                    <span class="quota-metric-value">${usedFormatted} / ${limitFormatted}</span>
-                </div>
-                <div class="quota-progress">
-                    <div class="quota-progress-bar ${colorClass}" style="width: ${Math.min(percent, 100)}%"></div>
-                </div>
-            </div>
-        `;
-    }
-    
-    getModelIcon(modelName) {
-        if (modelName.includes('imagen')) return '🎨';
-        if (modelName.includes('embedding')) return '🔗';
-        if (modelName.includes('gemma')) return '💎';
-        if (modelName.includes('tts') || modelName.includes('audio')) return '🔊';
-        return '🤖';
+    formatQuotaCell(metric) {
+        if (!metric || metric.limit === 0) return '-';
+        const pct = metric.percent || 0;
+        const cls = pct < 50 ? 'usage-ok' : pct < 80 ? 'usage-warn' : 'usage-high';
+        return `<span class="${cls}">${this.formatNumber(metric.used)}/${this.formatNumber(metric.limit)}</span>`;
     }
     
     formatNumber(num) {
@@ -2685,14 +2700,13 @@ class AdminPortal {
     }
     
     renderQuotaError() {
-        const modelsContainer = document.getElementById('quota-models');
-        if (modelsContainer) {
-            modelsContainer.innerHTML = '<div class="quota-loading">Failed to load quota data</div>';
+        const table = document.getElementById('quota-models');
+        if (table) {
+            table.innerHTML = '<thead><tr><th>Model</th><th>RPM</th><th>TPM</th><th>RPD</th></tr></thead><tbody><tr><td colspan="4" class="quota-loading">Failed to load</td></tr></tbody>';
         }
     }
     
     startQuotaRefresh() {
-        // Refresh quota data every 30 seconds
         this.quotaRefreshInterval = setInterval(() => {
             this.loadQuotaDashboard();
         }, 30000);

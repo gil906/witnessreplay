@@ -129,21 +129,24 @@
                 </div>
             </section>
 
-            <!-- Quota Dashboard Widget -->
-            <section class="quota-dashboard" id="quota-dashboard">
-                <div class="quota-header">
-                    <h3>📊 API Quota Usage</h3>
-                    <div class="quota-reset-timer">
-                        <span class="quota-timer-label">Reset in:</span>
-                        <span class="quota-timer-value" id="quota-reset-timer">--:--</span>
+            <!-- Compact Quota Widget -->
+            <section class="quota-compact" id="quota-dashboard">
+                <button class="quota-toggle" id="quota-toggle" type="button">
+                    <span class="quota-toggle-icon">▸</span> API Usage
+                    <span class="quota-timer-badge" id="quota-reset-timer">--:--</span>
+                </button>
+                <div class="quota-content" id="quota-content" style="display: none;">
+                    <table class="quota-table" id="quota-models">
+                        <thead>
+                            <tr><th>Model</th><th>RPM</th><th>TPM</th><th>RPD</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="4" class="quota-loading">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="quota-footer">
+                        <span class="quota-updated" id="quota-updated">--</span>
                     </div>
-                </div>
-                <div class="quota-models" id="quota-models">
-                    <div class="quota-loading">Loading quota data...</div>
-                </div>
-                <div class="quota-footer">
-                    <span class="quota-updated" id="quota-updated">Last updated: --</span>
-                    <span class="quota-note">Usage is approximate (local tracking)</span>
                 </div>
             </section>
 
@@ -238,9 +241,13 @@
             <section class="cases-section" id="cases-section">
                 <div class="section-header">
                     <h2>Cases <span class="section-subtitle" id="cases-count-subtitle"></span></h2>
+                    <div class="cases-view-mode">
+                        <button class="view-mode-btn active" data-mode="compact" title="Compact View">▦</button>
+                        <button class="view-mode-btn" data-mode="expanded" title="Expanded View">▣</button>
+                    </div>
                 </div>
                 
-                <div id="cases-list" class="cases-list">
+                <div id="cases-list" class="cases-list cases-compact">
                     <div class="loading-state">
                         <div class="spinner"></div>
                         <p>Loading cases...</p>
