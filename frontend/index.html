@@ -17,6 +17,9 @@
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
+    <!-- Skip to content link (Accessibility) -->
+    <a href="#chat-transcript" class="skip-to-content">Skip to main content</a>
+
     <!-- Main Container -->
     <div class="container">
         <!-- Header -->
@@ -49,6 +52,9 @@
                     <button id="quota-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Model & Quota">🤖 Model</button>
                     <button id="analytics-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View analytics">📊 Analytics</button>
                     <button id="info-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Server info">ℹ️ Info</button>
+                    <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme">
+                        <span class="theme-icon">🌙</span>
+                    </button>
                     <button id="admin-portal-btn" class="btn btn-primary" data-tooltip="Admin Portal">
                         🛡️ Admin
                     </button>
@@ -67,8 +73,46 @@
                     <div class="step"><span class="step-num">3</span> Review &amp; Export</div>
                 </div>
 
+                <!-- Interview Progress Phases (Item 25) -->
+                <div id="interview-progress" class="interview-progress">
+                    <div class="progress-phases">
+                        <div class="phase active" data-phase="intro">
+                            <div class="phase-icon">👋</div>
+                            <span>Introduction</span>
+                        </div>
+                        <div class="phase" data-phase="narrative">
+                            <div class="phase-icon">📝</div>
+                            <span>Free Narrative</span>
+                        </div>
+                        <div class="phase" data-phase="details">
+                            <div class="phase-icon">🔍</div>
+                            <span>Specific Details</span>
+                        </div>
+                        <div class="phase" data-phase="review">
+                            <div class="phase-icon">✅</div>
+                            <span>Review</span>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="interview-progress-fill" style="width: 10%"></div>
+                    </div>
+                </div>
+
+                <!-- Scene Preview Panel (Item 24) -->
+                <div id="scene-preview-panel" class="scene-preview" style="display:none;" role="complementary" aria-label="Scene reconstruction preview">
+                    <div class="scene-preview-header">
+                        <h3>🔍 Scene Reconstruction</h3>
+                        <span class="scene-preview-badge">Live</span>
+                        <button onclick="toggleScenePreview()" class="scene-preview-toggle" aria-label="Toggle scene preview">▼</button>
+                    </div>
+                    <div class="scene-preview-content">
+                        <img id="scene-preview-image" src="" alt="Scene reconstruction preview">
+                        <div id="scene-elements-count">0 elements detected</div>
+                    </div>
+                </div>
+
                 <!-- Chat transcript -->
-                <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite">
+                <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite" aria-label="Interview conversation">
                     <p class="empty-state">Your conversation will appear here. Start by describing what happened.</p>
                 </div>
 
@@ -82,9 +126,9 @@
 
                 <!-- Suggested Actions -->
                 <div class="suggested-actions" id="suggested-actions">
-                    <button class="suggestion-btn" data-action="correct">✏️ Correct something</button>
-                    <button class="suggestion-btn" data-action="generate">🎬 Generate scene</button>
-                    <button class="suggestion-btn" data-action="details">➕ Add more details</button>
+                    <button class="suggestion-btn" data-action="correct" aria-label="Correct something">✏️ Correct something</button>
+                    <button class="suggestion-btn" data-action="generate" aria-label="Generate scene">🎬 Generate scene</button>
+                    <button class="suggestion-btn" data-action="details" aria-label="Add more details">➕ Add more details</button>
                 </div>
 
                 <!-- Voice Control - collapsible, hidden by default -->
@@ -104,8 +148,15 @@
                 <!-- Text Input — always visible -->
                 <div class="text-input">
                     <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record">🎤</button>
-                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input">
+                    <button id="upload-evidence-btn" class="evidence-upload-btn" onclick="uploadEvidence()" aria-label="Attach photo evidence" title="Attach photo">
+                        📎
+                    </button>
+                    <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)" aria-hidden="true">
+                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input for testimony">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
+                    <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
+                        📋
+                    </button>
                 </div>
 
                 <div class="keyboard-hint">
@@ -480,6 +531,56 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
+
+    <!-- Witness Information Form (Item 27) -->
+    <div id="witness-info-overlay" class="witness-info-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Witness information form">
+        <div class="witness-form">
+            <h3>Witness Information <span class="optional-badge">Optional</span></h3>
+            <p class="form-note">This information helps officers follow up. You may remain anonymous.</p>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="witness-name">Name</label>
+                    <input type="text" id="witness-name" placeholder="Your name (optional)" aria-label="Witness name">
+                </div>
+                <div class="form-group">
+                    <label for="witness-contact">Contact</label>
+                    <input type="text" id="witness-contact" placeholder="Phone or email (optional)" aria-label="Contact information">
+                </div>
+                <div class="form-group">
+                    <label for="witness-location">Location at time of incident</label>
+                    <input type="text" id="witness-location" placeholder="Where were you?" aria-label="Location at time of incident">
+                </div>
+            </div>
+            <div class="witness-form-actions">
+                <button onclick="startInterview()" class="btn btn-primary">Begin Interview</button>
+                <button onclick="skipInfo()" class="btn-text-link">Skip &amp; Start Anonymous Interview</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Testimony Summary Modal (Item 26) -->
+    <div id="testimony-summary-modal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="testimony-summary-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="testimony-summary-title">📋 Testimony Summary</h2>
+                <button class="modal-close" onclick="closeSummary()" aria-label="Close summary">&times;</button>
+            </div>
+            <div id="summary-content">
+                <div class="summary-section">
+                    <h3>Your Statements</h3>
+                    <div id="summary-statements"></div>
+                </div>
+                <div class="summary-section">
+                    <h3>Key Details Mentioned</h3>
+                    <div id="summary-elements"></div>
+                </div>
+            </div>
+            <div class="summary-actions">
+                <button onclick="closeSummary()" class="btn btn-secondary">Continue Interview</button>
+                <button onclick="submitTestimony()" class="btn btn-primary">Submit Testimony</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Help Button -->
     <button class="help-button" id="help-btn" data-tooltip="Help & Tutorial" aria-label="Help">

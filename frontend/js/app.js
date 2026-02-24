@@ -495,6 +495,15 @@ class WitnessReplayApp {
             // Connect WebSocket
             this.connectWebSocket();
             
+            // Item 27: Show witness info form for first session if not previously shown
+            if (!localStorage.getItem('witnessreplay-witness-info-shown')) {
+                const overlay = document.getElementById('witness-info-overlay');
+                if (overlay) overlay.style.display = 'flex';
+            }
+            
+            // Reset interview progress
+            this.updateInterviewProgress();
+            
         } catch (error) {
             console.error('Error creating session:', error);
             this.ui.setStatus('Error creating session', 'default');
@@ -670,6 +679,14 @@ class WitnessReplayApp {
                 this.updateScene(message.data);
                 this.ui.playSound('sceneGenerated');
                 this.ui.showToast('Scene updated', 'success', 2000);
+                
+                // Item 24: Update scene preview from scene_update
+                if (message.data.image_data) {
+                    const previewPanel = document.getElementById('scene-preview-panel');
+                    const previewImage = document.getElementById('scene-preview-image');
+                    if (previewPanel) previewPanel.style.display = 'block';
+                    if (previewImage) previewImage.src = 'data:image/png;base64,' + message.data.image_data;
+                }
                 
                 // Show contradictions if any
                 if (message.data.contradictions && message.data.contradictions.length > 0) {
@@ -888,6 +905,7 @@ class WitnessReplayApp {
         
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message-${speaker}`;
+        messageDiv.setAttribute('role', 'listitem');
         
         const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
         const labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
@@ -904,6 +922,9 @@ class WitnessReplayApp {
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
         }
+        
+        // Update interview progress phases
+        this.updateInterviewProgress();
     }
     
     _escapeHtml(text) {
@@ -1599,6 +1620,21 @@ class WitnessReplayApp {
         const barEl = document.getElementById('progress-bar-fill');
         if (pctEl) pctEl.textContent = Math.round(completeness * 100) + '%';
         if (barEl) barEl.style.width = Math.round(completeness * 100) + '%';
+        
+        // Item 24: Update scene preview panel
+        if (data.image_data) {
+            const previewPanel = document.getElementById('scene-preview-panel');
+            const previewImage = document.getElementById('scene-preview-image');
+            const elemCount = document.getElementById('scene-elements-count');
+            if (previewPanel) previewPanel.style.display = 'block';
+            if (previewImage) previewImage.src = 'data:image/png;base64,' + data.image_data;
+            if (elemCount) elemCount.textContent = `${(data.elements || []).length} elements detected`;
+        } else if (data.elements && data.elements.length > 0) {
+            const previewPanel = document.getElementById('scene-preview-panel');
+            const elemCount = document.getElementById('scene-elements-count');
+            if (previewPanel) previewPanel.style.display = 'block';
+            if (elemCount) elemCount.textContent = `${data.elements.length} elements detected`;
+        }
         
         // Update checklist
         const checklist = document.getElementById('progress-checklist');
@@ -2666,6 +2702,232 @@ class WitnessReplayApp {
             sceneImage.style.transform = `scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
         }
     }
+
+    // ==================== ITEM 25: Interview Progress Phases ====================
+    updateInterviewProgress() {
+        const totalMessages = this.chatTranscript ? this.chatTranscript.querySelectorAll('.message').length : 0;
+        const phases = document.querySelectorAll('#interview-progress .phase');
+        const fill = document.getElementById('interview-progress-fill');
+        if (!phases.length || !fill) return;
+
+        let currentPhase = 'intro';
+        let pct = 10;
+
+        if (totalMessages <= 2) {
+            currentPhase = 'intro';
+            pct = 10;
+        } else if (totalMessages <= 6) {
+            currentPhase = 'narrative';
+            pct = 20 + ((totalMessages - 2) / 4) * 30;
+        } else if (totalMessages <= 14) {
+            currentPhase = 'details';
+            pct = 50 + ((totalMessages - 6) / 8) * 30;
+        } else {
+            currentPhase = 'review';
+            pct = Math.min(80 + ((totalMessages - 14) / 4) * 20, 100);
+        }
+
+        const phaseOrder = ['intro', 'narrative', 'details', 'review'];
+        const currentIdx = phaseOrder.indexOf(currentPhase);
+
+        phases.forEach(ph => {
+            const phName = ph.getAttribute('data-phase');
+            const phIdx = phaseOrder.indexOf(phName);
+            ph.classList.remove('active', 'completed');
+            if (phIdx < currentIdx) ph.classList.add('completed');
+            else if (phIdx === currentIdx) ph.classList.add('active');
+        });
+
+        fill.style.width = Math.round(pct) + '%';
+
+        // Show review testimony button once in details or review phase
+        const reviewBtn = document.getElementById('review-testimony-btn');
+        if (reviewBtn && totalMessages >= 6) {
+            reviewBtn.style.display = 'flex';
+        }
+    }
+
+    // ==================== ITEM 29: Evidence Photo Upload ====================
+    handleEvidenceUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            this.ui.showToast('Please select an image file', 'warning');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            this.ui.showToast('Image must be under 10MB', 'warning');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64Data = e.target.result;
+
+            // Display thumbnail in chat
+            if (this.chatTranscript.querySelector('.empty-state')) {
+                this.chatTranscript.innerHTML = '';
+            }
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message message-user';
+            msgDiv.setAttribute('role', 'listitem');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            msgDiv.innerHTML = `<span class="msg-avatar">👤</span><strong>You</strong><span class="msg-time">${timeStr}</span><br>📎 Evidence photo attached<br><img src="${base64Data}" alt="Evidence photo uploaded by witness" class="evidence-thumbnail">`;
+            this.chatTranscript.appendChild(msgDiv);
+            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+
+            // Send via WebSocket if connected
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'evidence_photo',
+                    data: {
+                        image: base64Data.split(',')[1],
+                        filename: file.name,
+                        mime_type: file.type
+                    }
+                }));
+            }
+
+            this.statementCount++;
+            if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this.updateInterviewProgress();
+        };
+        reader.readAsDataURL(file);
+
+        // Reset input so the same file can be re-selected
+        event.target.value = '';
+    }
+}
+
+// ==================== GLOBAL FUNCTIONS (Items 24-30) ====================
+
+// Item 24: Toggle scene preview panel collapse
+function toggleScenePreview() {
+    const panel = document.getElementById('scene-preview-panel');
+    if (panel) panel.classList.toggle('collapsed');
+}
+
+// Item 26: Show testimony summary modal
+function showTestimonySummary() {
+    const modal = document.getElementById('testimony-summary-modal');
+    if (!modal) return;
+
+    // Collect user statements from chat
+    const messages = document.querySelectorAll('#chat-transcript .message-user');
+    const statementsEl = document.getElementById('summary-statements');
+    if (statementsEl) {
+        if (messages.length === 0) {
+            statementsEl.innerHTML = '<p class="empty-state">No statements recorded yet.</p>';
+        } else {
+            let html = '';
+            messages.forEach(msg => {
+                const textContent = msg.textContent.replace(/^👤You\d{1,2}:\d{2}\s*(AM|PM)?/i, '').trim();
+                if (textContent) {
+                    html += `<div class="summary-statement">${textContent}</div>`;
+                }
+            });
+            statementsEl.innerHTML = html || '<p class="empty-state">No statements recorded yet.</p>';
+        }
+    }
+
+    // Collect evidence elements from evidence board
+    const elementsEl = document.getElementById('summary-elements');
+    if (elementsEl) {
+        const cards = document.querySelectorAll('#evidence-cards .evidence-card');
+        if (cards.length === 0) {
+            elementsEl.innerHTML = '<p class="empty-state">No key details extracted yet.</p>';
+        } else {
+            let html = '';
+            cards.forEach(card => {
+                const desc = card.querySelector('.ev-desc');
+                const type = card.querySelector('.ev-type');
+                if (desc) {
+                    html += `<span class="summary-element-tag">${type ? type.textContent + ': ' : ''}${desc.textContent}</span>`;
+                }
+            });
+            elementsEl.innerHTML = html;
+        }
+    }
+
+    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
+    modal.classList.add('active');
+}
+
+function closeSummary() {
+    const modal = document.getElementById('testimony-summary-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.classList.add('hidden');
+        setTimeout(() => { modal.style.display = 'none'; }, 300);
+    }
+}
+
+function submitTestimony() {
+    // Gather witness info
+    const witnessInfo = {
+        name: document.getElementById('witness-name')?.value || '',
+        contact: document.getElementById('witness-contact')?.value || '',
+        location: document.getElementById('witness-location')?.value || ''
+    };
+
+    // Send submit via WebSocket if connected
+    if (window.app && window.app.ws && window.app.ws.readyState === WebSocket.OPEN) {
+        window.app.ws.send(JSON.stringify({
+            type: 'submit_testimony',
+            data: { witness_info: witnessInfo }
+        }));
+    }
+
+    closeSummary();
+    if (window.app && window.app.ui) {
+        window.app.ui.showToast('✅ Testimony submitted successfully', 'success', 3000);
+    }
+}
+
+// Item 27: Witness info form
+function startInterview() {
+    document.getElementById('witness-info-overlay').style.display = 'none';
+    localStorage.setItem('witnessreplay-witness-info-shown', 'true');
+}
+
+function skipInfo() {
+    document.getElementById('witness-info-overlay').style.display = 'none';
+    localStorage.setItem('witnessreplay-witness-info-shown', 'true');
+}
+
+// Item 28: Theme toggle
+function toggleTheme() {
+    const html = document.documentElement;
+    const currentTheme = html.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', newTheme);
+    localStorage.setItem('witnessreplay-theme', newTheme);
+
+    const icon = document.querySelector('#theme-toggle .theme-icon');
+    if (icon) icon.textContent = newTheme === 'dark' ? '🌙' : '☀️';
+}
+
+// Apply saved theme on load
+(function() {
+    const saved = localStorage.getItem('witnessreplay-theme');
+    if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+        const icon = document.querySelector('#theme-toggle .theme-icon');
+        if (icon) icon.textContent = saved === 'dark' ? '🌙' : '☀️';
+    }
+})();
+
+// Item 29: Evidence upload trigger
+function uploadEvidence() {
+    document.getElementById('evidence-file-input')?.click();
+}
+
+function handleEvidenceUpload(event) {
+    if (window.app) window.app.handleEvidenceUpload(event);
 }
 
 // App is initialized from index.html inline script.

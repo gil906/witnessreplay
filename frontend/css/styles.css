@@ -2817,3 +2817,481 @@ img {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* =========================================================
+   ITEM 28: LIGHT THEME
+   ========================================================= */
+[data-theme="light"] {
+    --bg-primary: #f1f5f9;
+    --bg-secondary: #ffffff;
+    --bg-surface: #f8fafc;
+    --bg-surface-alt: #e2e8f0;
+    --border-color: rgba(0, 0, 0, 0.1);
+    --border-color-hover: rgba(0, 0, 0, 0.18);
+
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .header {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+}
+
+[data-theme="light"] .logo-text h1 {
+    background: linear-gradient(135deg, #1e293b, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+[data-theme="light"] .modal-content {
+    background: #ffffff;
+}
+
+[data-theme="light"] .message-user {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+[data-theme="light"] .message-agent {
+    background: rgba(34, 197, 94, 0.06);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--btn-radius);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background var(--transition-base), border-color var(--transition-base);
+}
+
+.theme-toggle:hover {
+    background: var(--bg-surface-alt);
+    border-color: var(--border-color-hover);
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+/* =========================================================
+   ITEM 30: ACCESSIBILITY — Skip-to-content & Focus
+   ========================================================= */
+.skip-to-content {
+    position: absolute;
+    top: -100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-blue);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: var(--btn-radius);
+    z-index: 10000;
+    font-weight: 600;
+    text-decoration: none;
+    transition: top 0.2s ease;
+}
+
+.skip-to-content:focus {
+    top: 8px;
+}
+
+/* Enhanced focus indicators for all interactive elements */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+/* =========================================================
+   ITEM 25: INTERVIEW PROGRESS PHASES
+   ========================================================= */
+.interview-progress {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.progress-phases {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.progress-phases .phase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    opacity: 0.4;
+    transition: opacity var(--transition-base), transform var(--transition-base);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.progress-phases .phase.active {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+.progress-phases .phase.completed {
+    opacity: 0.8;
+}
+
+.progress-phases .phase-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.interview-progress .progress-bar {
+    height: 4px;
+    background: var(--bg-surface);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.interview-progress .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+
+/* =========================================================
+   ITEM 24: SCENE PREVIEW PANEL
+   ========================================================= */
+.scene-preview {
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
+    margin: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-surface);
+    overflow: hidden;
+    animation: fadeIn 0.3s ease;
+}
+
+.scene-preview-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-surface-alt);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.scene-preview-header h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
+
+.scene-preview-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--accent-green-muted);
+    color: var(--accent-green);
+    padding: 2px 8px;
+    border-radius: 10px;
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.scene-preview-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 4px;
+    transition: transform var(--transition-base);
+}
+
+.scene-preview.collapsed .scene-preview-toggle {
+    transform: rotate(-90deg);
+}
+
+.scene-preview-content {
+    padding: var(--spacing-sm);
+    text-align: center;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    max-height: 400px;
+    overflow: hidden;
+}
+
+.scene-preview.collapsed .scene-preview-content {
+    max-height: 0;
+    padding: 0 var(--spacing-sm);
+    opacity: 0;
+}
+
+.scene-preview-content img {
+    max-width: 100%;
+    max-height: 250px;
+    border-radius: var(--card-radius);
+    margin: 0 auto var(--spacing-xs);
+    object-fit: contain;
+}
+
+#scene-elements-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* =========================================================
+   ITEM 29: EVIDENCE UPLOAD BUTTON
+   ========================================================= */
+.evidence-upload-btn {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--btn-radius);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background var(--transition-base), border-color var(--transition-base);
+    flex-shrink: 0;
+}
+
+.evidence-upload-btn:hover {
+    background: var(--bg-surface-alt);
+    border-color: var(--border-color-hover);
+}
+
+.evidence-upload-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
+/* Evidence thumbnail in chat */
+.evidence-thumbnail {
+    max-width: 200px;
+    max-height: 150px;
+    border-radius: var(--card-radius);
+    border: 1px solid var(--border-color);
+    margin-top: var(--spacing-xs);
+    cursor: pointer;
+    transition: transform var(--transition-base);
+}
+
+.evidence-thumbnail:hover {
+    transform: scale(1.02);
+}
+
+/* Review testimony button */
+.review-testimony-btn {
+    flex-shrink: 0;
+    font-size: 1rem;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* =========================================================
+   ITEM 27: WITNESS INFORMATION FORM
+   ========================================================= */
+.witness-info-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-lg);
+}
+
+.witness-form {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--panel-radius);
+    padding: var(--spacing-xl);
+    max-width: 520px;
+    width: 100%;
+    box-shadow: var(--shadow-lg);
+}
+
+.witness-form h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.optional-badge {
+    font-size: 0.7rem;
+    font-weight: 500;
+    background: var(--accent-amber-muted);
+    color: var(--accent-amber);
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: var(--spacing-xs);
+    vertical-align: middle;
+}
+
+.form-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-lg);
+}
+
+.form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--input-radius);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition: border-color var(--transition-base);
+}
+
+.form-group input:focus {
+    border-color: var(--accent-blue);
+    outline: none;
+}
+
+.form-group input::placeholder {
+    color: var(--text-muted);
+}
+
+.witness-form-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.btn-text-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    transition: color var(--transition-base);
+}
+
+.btn-text-link:hover {
+    color: var(--text-secondary);
+}
+
+/* =========================================================
+   ITEM 26: TESTIMONY SUMMARY MODAL
+   ========================================================= */
+.summary-section {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.summary-section:last-child {
+    border-bottom: none;
+}
+
+.summary-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.summary-statement {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-surface);
+    border-radius: var(--card-radius);
+    margin-bottom: var(--spacing-xs);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--accent-blue);
+}
+
+.summary-element-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--accent-blue-muted);
+    color: var(--accent-blue);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin: 2px;
+}
+
+.summary-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+}
+
+/* =========================================================
+   RESPONSIVE: New components mobile
+   ========================================================= */
+@media (max-width: 768px) {
+    .progress-phases .phase span {
+        font-size: 0.6rem;
+    }
+    .progress-phases .phase-icon {
+        font-size: 1rem;
+    }
+    .scene-preview-content img {
+        max-height: 150px;
+    }
+    .witness-form {
+        padding: var(--spacing-md);
+    }
+    .summary-actions {
+        flex-direction: column;
+    }
+    .theme-toggle {
+        width: 32px;
+        height: 32px;
+    }
+}
