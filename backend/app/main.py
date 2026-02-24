@@ -10,6 +10,7 @@ import asyncio
 from app.config import settings
 from app.api.routes import router as api_router
 from app.api.websocket import websocket_endpoint
+from app.middleware.request_logging import RequestLoggingMiddleware, request_metrics
 
 # Configure logging
 logging.basicConfig(
@@ -106,6 +107,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # Include API routes
 app.include_router(api_router, prefix="/api", tags=["api"])

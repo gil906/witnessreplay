@@ -2242,3 +2242,229 @@ async def clear_cache(auth=Depends(require_admin_auth)):
         )
 
 
+# ============================================================================
+# AI Intelligence Endpoints - Contradiction, Questions, Complexity
+# ============================================================================
+
+@router.get("/sessions/{session_id}/contradictions")
+async def get_session_contradictions(
+    session_id: str,
+    unresolved_only: bool = False
+):
+    """
+    Get detected contradictions in witness statements.
+    Returns list of contradictions with original and new values.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.contradiction_detector import contradiction_detector
+        
+        contradictions = contradiction_detector.get_contradictions(
+            session_id,
+            unresolved_only=unresolved_only
+        )
+        
+        return {
+            "session_id": session_id,
+            "total": len(contradictions),
+            "unresolved": sum(1 for c in contradictions if not c['resolved']),
+            "contradictions": contradictions
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting contradictions for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving contradictions: {str(e)}"
+        )
+
+
+@router.post("/sessions/{session_id}/contradictions/{contradiction_id}/resolve")
+async def resolve_contradiction(
+    session_id: str,
+    contradiction_id: str,
+    resolution: Dict[str, str]
+):
+    """
+    Mark a contradiction as resolved with a resolution note.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.contradiction_detector import contradiction_detector
+        
+        resolution_note = resolution.get('resolution_note', '')
+        if not resolution_note:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="resolution_note is required"
+            )
+        
+        success = contradiction_detector.resolve_contradiction(
+            session_id,
+            contradiction_id,
+            resolution_note
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Contradiction {contradiction_id} not found"
+            )
+        
+        return {
+            "success": True,
+            "message": "Contradiction resolved",
+            "contradiction_id": contradiction_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resolving contradiction {contradiction_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error resolving contradiction: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/next-question")
+async def get_next_question(session_id: str):
+    """
+    Get AI-generated next question to ask the witness.
+    Uses scene state, contradictions, and conversation history.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.question_generator import question_generator
+        from app.services.contradiction_detector import contradiction_detector
+        
+        # Get scene elements and conversation history
+        scene_elements = session.get('scene_elements', [])
+        conversation = session.get('conversation_history', [])
+        
+        # Get unresolved contradictions
+        contradictions = contradiction_detector.get_contradictions(
+            session_id,
+            unresolved_only=True
+        )
+        
+        # Generate next question
+        next_question = question_generator.get_next_question(
+            session_id,
+            scene_elements,
+            conversation,
+            contradictions
+        )
+        
+        return {
+            "session_id": session_id,
+            "question": next_question,
+            "has_question": next_question is not None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating next question for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating question: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/complexity")
+async def get_scene_complexity(session_id: str):
+    """
+    Get scene complexity score and generation readiness.
+    Returns score breakdown and recommendation.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found"
+            )
+        
+        from app.services.complexity_scorer import complexity_scorer
+        from app.services.contradiction_detector import contradiction_detector
+        
+        # Get scene data
+        scene_elements = session.get('scene_elements', [])
+        conversation = session.get('conversation_history', [])
+        conversation_turns = len([m for m in conversation if m.get('role') == 'user'])
+        
+        # Get unresolved contradictions count
+        contradictions = contradiction_detector.get_contradictions(
+            session_id,
+            unresolved_only=True
+        )
+        
+        # Calculate complexity
+        complexity = complexity_scorer.calculate_complexity_score(
+            scene_elements,
+            conversation_turns,
+            len(contradictions)
+        )
+        
+        return {
+            "session_id": session_id,
+            **complexity
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating complexity for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating complexity: {str(e)}"
+        )
+
+
+@router.get("/metrics/requests")
+async def get_request_metrics():
+    """
+    Get request metrics and performance statistics.
+    Returns uptime, request counts, error rates, and per-endpoint stats.
+    """
+    try:
+        from app.middleware.request_logging import request_metrics
+        
+        metrics = request_metrics.get_metrics()
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            **metrics
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving request metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving metrics: {str(e)}"
+        )
+
+
+
