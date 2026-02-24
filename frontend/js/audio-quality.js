@@ -17,11 +17,11 @@ class AudioQualityAnalyzer {
         
         // Quality thresholds
         this.thresholds = {
-            volumeMin: 0.05,      // Below this is too quiet
+            volumeMin: 0.02,      // Below this is too quiet
             volumeMax: 0.95,      // Above this risks clipping
             volumeIdeal: 0.3,     // Ideal volume level
             noiseFloor: 0.02,     // Background noise threshold
-            clippingThreshold: 0.98  // Clipping detection threshold
+            clippingThreshold: 0.99  // Clipping detection threshold
         };
         
         // Quality metrics (accumulated during recording)
@@ -41,7 +41,11 @@ class AudioQualityAnalyzer {
         
         // Warning cooldowns (prevent spam)
         this.lastWarnings = {};
-        this.warningCooldown = 3000; // 3 seconds between same warnings
+        this.warningCooldown = 10000; // 10 seconds between same warnings
+        
+        // Warm-up: suppress warnings for first 3 seconds after start
+        this.startedAt = 0;
+        this.warmupMs = 3000;
     }
     
     resetMetrics() {
@@ -78,6 +82,7 @@ class AudioQualityAnalyzer {
             this.dataArray = new Float32Array(this.analyser.fftSize);
             this.metrics = this.resetMetrics();
             this.metrics.startTime = Date.now();
+            this.startedAt = Date.now();
             this.isAnalyzing = true;
             
             this.analyze();
@@ -197,14 +202,17 @@ class AudioQualityAnalyzer {
     checkWarnings(rms, peak, isClipping) {
         const now = Date.now();
         
-        // Clipping warning
+        // Skip warnings during warm-up period
+        if (now - this.startedAt < this.warmupMs) return;
+        
+        // Clipping warning - require sustained clipping (consecutive samples)
         if (isClipping && this.canWarn('clipping', now)) {
-            this.emitWarning('clipping', '⚠️ Audio clipping detected! Move away from the microphone.');
+            this.emitWarning('clipping', '⚠️ Audio clipping detected. Try moving slightly away from the microphone.');
         }
         
-        // Too quiet warning
-        if (rms < this.thresholds.volumeMin && rms > 0.001 && this.canWarn('quiet', now)) {
-            this.emitWarning('quiet', '🔇 Volume is very low. Speak closer to the microphone.');
+        // Too quiet warning - only if actively trying to speak (rms > 0.005)
+        if (rms < this.thresholds.volumeMin && rms > 0.005 && this.canWarn('quiet', now)) {
+            this.emitWarning('quiet', '🔇 Volume is low. Try speaking a bit closer to the microphone.');
         }
         
         // Too loud warning
