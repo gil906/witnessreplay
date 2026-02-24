@@ -1,0 +1,125 @@
+{
+  "timestamp": "2026-02-24T02:41:00Z",
+  "tester": "tester_agent",
+  "cycle": 12,
+  "bugs": [
+    {
+      "id": 46,
+      "title": "/api/models returns array instead of {models: []} object",
+      "description": "The /api/models endpoint returns a raw array of models, but frontend expects an object with a 'models' key. This causes the model selector to display 'No models available' even though models are being returned.",
+      "severity": "high",
+      "steps_to_reproduce": "1. Call GET /api/models\n2. Observe response is an array: [{name: '...'}]\n3. Check frontend code at app.js:1752\n4. Frontend expects data.models (object with 'models' key)\n5. Frontend fails with 'No models available'",
+      "expected_behavior": "API should return {\"models\": [{name: \"...\"}]} to match frontend expectations",
+      "actual_behavior": "API returns [{name: \"...\"}] (raw array)",
+      "affected_files": ["backend/app/api/routes.py", "frontend/js/app.js"],
+      "code_location": "backend/app/api/routes.py - /api/models endpoint"
+    },
+    {
+      "id": 47,
+      "title": "/api/models/quota returns wrong structure for frontend",
+      "description": "The /api/models/quota endpoint returns {models: {...}, current_model: '...'} but frontend expects {requests_per_minute: {used, limit, remaining}, requests_per_day: {...}, tokens_per_day: {...}}. This causes quota display to show all zeros.",
+      "severity": "high",
+      "steps_to_reproduce": "1. Call GET /api/models/quota\n2. Response has {models: {model1: {...}, model2: {...}}, current_model: '...'}\n3. Frontend code at app.js:1898-1920 expects flat structure\n4. Frontend looks for quotaData.requests_per_minute which doesn't exist\n5. Quota dashboard shows 0/0 for all metrics",
+      "expected_behavior": "API should return flat structure for current model: {requests_per_minute: {used, limit, remaining}, requests_per_day: {...}, tokens_per_day: {...}, selected_model: '...', reset_time: '...'}",
+      "actual_behavior": "API returns nested structure with all models: {models: {...}, current_model: '...'}",
+      "affected_files": ["backend/app/api/routes.py", "frontend/js/app.js"],
+      "code_location": "backend/app/api/routes.py - /api/models/quota endpoint, frontend/js/app.js:1898"
+    },
+    {
+      "id": 48,
+      "title": "Admin portal expects wrong sessions response format",
+      "description": "The GET /api/sessions endpoint returns a raw array of sessions, but admin.js expects an object with a 'sessions' key at line 211. This causes admin portal to show empty state.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Call GET /api/sessions\n2. Response is array: [{id: '...'}]\n3. Admin.js line 211: this.cases = data.sessions || []\n4. data.sessions is undefined, falls back to empty array\n5. Admin portal shows 'No cases found'",
+      "expected_behavior": "Either API should return {sessions: [...]} OR admin.js should expect raw array",
+      "actual_behavior": "API returns array, frontend expects object.sessions",
+      "affected_files": ["backend/app/api/routes.py", "frontend/js/admin.js"],
+      "code_location": "frontend/js/admin.js:211"
+    },
+    {
+      "id": 49,
+      "title": "Auth module uses deprecated datetime.utcnow()",
+      "description": "The auth.py module uses datetime.utcnow() which is deprecated in Python 3.12+. Should use datetime.now(timezone.utc) instead.",
+      "severity": "low",
+      "steps_to_reproduce": "1. Check backend/app/api/auth.py lines 26, 38, 45\n2. All use datetime.utcnow()\n3. Python 3.12+ will show deprecation warnings\n4. Future Python versions may remove this function",
+      "expected_behavior": "Use datetime.now(timezone.utc) for timezone-aware timestamps",
+      "actual_behavior": "Uses datetime.utcnow() (deprecated)",
+      "affected_files": ["backend/app/api/auth.py"],
+      "code_location": "backend/app/api/auth.py:26,38,45"
+    },
+    {
+      "id": 50,
+      "title": "Static files 404 when accessed via /css/ and /js/ paths",
+      "description": "Frontend HTML references /static/css/styles.css and /static/js/app.js, but direct access via /css/styles.css returns 404. This inconsistency may confuse developers and break direct file access patterns.",
+      "severity": "low",
+      "steps_to_reproduce": "1. curl http://localhost:8088/css/styles.css - returns 404\n2. curl http://localhost:8088/js/app.js - returns 404\n3. curl http://localhost:8088/static/css/styles.css - works (200)\n4. Frontend HTML correctly uses /static/ prefix\n5. But direct /css/ and /js/ paths don't work",
+      "expected_behavior": "Static files accessible via /static/ prefix (current behavior is correct, but could add aliases)",
+      "actual_behavior": "Only /static/ prefix works, /css/ and /js/ return 404",
+      "affected_files": ["backend/app/main.py"],
+      "code_location": "backend/app/main.py:105 - StaticFiles mount"
+    }
+  ],
+  "bugs_verified_fixed": [
+    {
+      "id": 5,
+      "title": "API key validation and error handling",
+      "status": "verified_fixed",
+      "notes": "Confirmed in previous cycle - proper error handling exists"
+    },
+    {
+      "id": 16,
+      "title": "Pacific Time zone handling",
+      "status": "verified_fixed",
+      "notes": "Confirmed usage_tracker.py uses ZoneInfo for PT"
+    },
+    {
+      "id": 17,
+      "title": "Rate limiting enforcement",
+      "status": "verified_fixed",
+      "notes": "Enforcement exists with ENFORCE_RATE_LIMITS env var"
+    },
+    {
+      "id": 18,
+      "title": "Token estimation accuracy",
+      "status": "verified_fixed",
+      "notes": "Improved to word-based estimation in latest commit"
+    },
+    {
+      "id": 44,
+      "title": "Version badge position",
+      "status": "verified_fixed",
+      "notes": "Version badge now bottom-left with reduced opacity"
+    },
+    {
+      "id": 45,
+      "title": "HTML version numbers outdated",
+      "status": "verified_fixed",
+      "notes": "Updated to 0.051 in both index.html and admin.html"
+    }
+  ],
+  "tests_passed": [
+    "Health endpoint returns 200 with service status",
+    "Session creation works (POST /api/sessions)",
+    "Session listing works (GET /api/sessions) - returns array",
+    "Invalid session returns 404 with proper error",
+    "CORS headers present on responses",
+    "Frontend HTML files accessible (index.html, admin.html)",
+    "Static files accessible via /static/ prefix",
+    "Auth login endpoint works (POST /api/auth/login)",
+    "Auth logout endpoint works (POST /api/auth/logout)",
+    "Auth token verification works (GET /api/auth/verify)",
+    "Python syntax validation passed on all backend files",
+    "Audio test fixtures exist (10s, 20s, 60s WAV files)"
+  ],
+  "tests_failed": [
+    "Model selector - frontend expects {models: []} but API returns []",
+    "Quota display - frontend expects flat structure but API returns nested",
+    "Admin portal - expects {sessions: []} but API returns []",
+    "WebSocket endpoint returns 400 (may be expected without valid session)"
+  ],
+  "critical_issues": [
+    "Model selector completely broken due to API/frontend mismatch (#46)",
+    "Quota dashboard completely broken due to API/frontend mismatch (#47)"
+  ],
+  "summary": "Testing cycle 12 found 5 new bugs (2 HIGH, 1 MEDIUM, 2 LOW severity). The authentication system works correctly, but there are critical API response format mismatches preventing the model selector and quota dashboard from functioning. Admin portal has a similar but less severe issue. Six previously reported bugs have been verified as fixed. Overall app health is good except for the model/quota features which are currently non-functional due to frontend/backend contract mismatches."
+}
