@@ -9,8 +9,107 @@ class AdminPortal {
         this.filteredCases = [];
         this.currentCase = null;
         this.fetchTimeout = 10000; // 10 second timeout
+        this.authToken = null;
         
-        this.init();
+        this.checkAuth();
+    }
+    
+    checkAuth() {
+        // Check if already authenticated
+        const token = sessionStorage.getItem('admin_token');
+        if (token) {
+            this.authToken = token;
+            this.verifyAuth();
+        } else {
+            this.showLogin();
+        }
+    }
+    
+    async verifyAuth() {
+        try {
+            const response = await fetch('/api/auth/verify', {
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`
+                }
+            });
+            
+            if (response.ok) {
+                this.hideLogin();
+                this.init();
+            } else {
+                sessionStorage.removeItem('admin_token');
+                this.showLogin();
+            }
+        } catch (error) {
+            console.error('Auth verification failed:', error);
+            this.showLogin();
+        }
+    }
+    
+    showLogin() {
+        document.getElementById('login-overlay').style.display = 'flex';
+        document.getElementById('admin-content').style.display = 'none';
+        
+        // Add login form handler
+        document.getElementById('login-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleLogin();
+        });
+    }
+    
+    hideLogin() {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('admin-content').style.display = 'block';
+    }
+    
+    async handleLogin() {
+        const password = document.getElementById('admin-password').value;
+        const errorEl = document.getElementById('login-error');
+        
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.authToken = data.token;
+                sessionStorage.setItem('admin_token', data.token);
+                this.hideLogin();
+                this.init();
+            } else {
+                errorEl.textContent = 'Invalid password. Please try again.';
+                errorEl.style.display = 'block';
+                document.getElementById('admin-password').value = '';
+                document.getElementById('admin-password').focus();
+            }
+        } catch (error) {
+            console.error('Login failed:', error);
+            errorEl.textContent = 'Login failed. Please check your connection and try again.';
+            errorEl.style.display = 'block';
+        }
+    }
+    
+    async logout() {
+        try {
+            await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token: this.authToken })
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+        
+        sessionStorage.removeItem('admin_token');
+        this.authToken = null;
+        this.showLogin();
     }
     
     async init() {
@@ -33,6 +132,7 @@ class AdminPortal {
         
         // Header actions
         document.getElementById('refresh-btn').addEventListener('click', () => this.loadCases());
+        document.getElementById('logout-btn').addEventListener('click', () => this.logout());
         document.getElementById('witness-view-btn').addEventListener('click', () => {
             window.location.href = '/static/index.html';
         });
@@ -67,12 +167,28 @@ class AdminPortal {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.fetchTimeout);
         
+        // Add auth header if authenticated
+        const headers = {
+            ...options.headers
+        };
+        if (this.authToken) {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+        
         try {
             const response = await fetch(url, {
                 ...options,
+                headers,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+            
+            // Check for auth errors
+            if (response.status === 401) {
+                this.logout();
+                throw new Error('Session expired. Please login again.');
+            }
+            
             return response;
         } catch (error) {
             clearTimeout(timeoutId);

@@ -2027,10 +2027,15 @@ textarea:focus-visible {
     .header-content {
         flex-direction: column;
         text-align: center;
+        gap: var(--spacing-md);
     }
     
     .logo-text h1 {
-        font-size: 2rem;
+        font-size: 1.75rem;
+    }
+    
+    .tagline {
+        font-size: 0.875rem;
     }
     
     .detective-badge {
@@ -2038,15 +2043,24 @@ textarea:focus-visible {
         justify-content: center;
     }
     
+    .session-info {
+        justify-content: center;
+    }
+    
+    .session-info .btn {
+        flex: 0 1 auto;
+        white-space: nowrap;
+    }
+    
     .mic-btn {
-        width: 100px;
-        height: 100px;
-        font-size: 2.5rem;
+        width: 90px;
+        height: 90px;
+        font-size: 2.25rem;
     }
     
     .waveform-ring {
-        width: 130px;
-        height: 130px;
+        width: 120px;
+        height: 120px;
     }
     
     .toast-container {
@@ -2056,6 +2070,26 @@ textarea:focus-visible {
     
     .toast {
         min-width: auto;
+    }
+    
+    .modal-content {
+        width: 95%;
+        max-width: 500px;
+        margin: var(--spacing-md);
+    }
+    
+    .scene-stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+    
+    .stat-card {
+        padding: 0.75rem;
+    }
+    
+    .version-badge {
+        font-size: 0.6rem;
+        padding: 0.2rem 0.4rem;
     }
 }
 
@@ -4297,16 +4331,22 @@ input:focus-visible {
 .version-badge {
     position: fixed;
     bottom: 1rem;
-    right: 1rem;
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    border: 1px solid var(--glass-border);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--accent-blue);
-    z-index: 10;
+    left: 1rem;
+    background: rgba(20, 20, 31, 0.4);
+    backdrop-filter: blur(5px);
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.65rem;
+    font-weight: 400;
+    color: rgba(180, 185, 197, 0.5);
+    z-index: 5;
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+.version-badge:hover {
+    opacity: 1;
 }
 
 .comparison-description {

@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel
 import io
 import asyncio
 
@@ -21,6 +22,7 @@ from app.services.image_gen import image_service
 from app.services.usage_tracker import usage_tracker
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
+from app.api.auth import authenticate, require_admin_auth, revoke_session
 from google import genai
 import uuid
 
@@ -28,6 +30,43 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# Authentication schemas
+class LoginRequest(BaseModel):
+    password: str
+
+class LoginResponse(BaseModel):
+    token: str
+    expires_in: int = 86400  # 24 hours in seconds
+
+class LogoutRequest(BaseModel):
+    token: str
+
+
+# Authentication endpoints
+@router.post("/auth/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """Admin login endpoint."""
+    token = authenticate(request.password)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid password"
+        )
+    return LoginResponse(token=token)
+
+
+@router.post("/auth/logout")
+async def logout(request: LogoutRequest):
+    """Admin logout endpoint."""
+    revoke_session(request.token)
+    return {"message": "Logged out successfully"}
+
+
+@router.get("/auth/verify")
+async def verify_auth(auth=Depends(require_admin_auth)):
+    """Verify admin authentication."""
+    return {"authenticated": True}
 
 
 @router.get("/health", response_model=HealthResponse)
