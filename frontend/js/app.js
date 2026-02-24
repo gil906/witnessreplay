@@ -1373,6 +1373,9 @@ class WitnessReplayApp {
                     if (previewImage) previewImage.src = 'data:image/png;base64,' + message.data.image_data;
                 }
                 
+                // Update mobile scene preview strip
+                this._updateMobileSceneStrip(message.data);
+                
                 // Display inline scene card in chat transcript
                 this._displaySceneCard(message.data);
                 
@@ -2963,6 +2966,37 @@ class WitnessReplayApp {
         }
         overlay.classList.add('visible');
     }
+
+    /**
+     * Update the mobile scene preview strip with the latest scene image
+     */
+    _updateMobileSceneStrip(data) {
+        const strip = document.getElementById('mobile-scene-strip');
+        const stripImg = document.getElementById('mobile-scene-strip-img');
+        if (!strip || !stripImg) return;
+
+        let imageUrl = null;
+        if (data.image_data) {
+            imageUrl = 'data:image/png;base64,' + data.image_data;
+        } else if (data.base64_image) {
+            imageUrl = 'data:image/png;base64,' + data.base64_image;
+        } else if (data.image_url) {
+            imageUrl = data.image_url;
+        }
+        if (!imageUrl) return;
+
+        stripImg.src = imageUrl;
+        strip.classList.add('visible');
+
+        // Wire up tap-to-fullscreen (once)
+        if (!strip._tapWired) {
+            strip._tapWired = true;
+            strip.addEventListener('click', () => {
+                const src = stripImg.src;
+                if (src) this._showFullscreenImage(src, this.currentVersion || '');
+            });
+        }
+    }
     _getSeverityIcon(level) {
         const icons = {
             'low': '🔵',
@@ -3026,6 +3060,8 @@ class WitnessReplayApp {
             if (previewPanel) previewPanel.style.display = 'block';
             if (previewImage) previewImage.src = 'data:image/png;base64,' + data.image_data;
             if (elemCount) elemCount.textContent = `${(data.elements || []).length} elements detected`;
+            // Update mobile scene preview strip
+            this._updateMobileSceneStrip(data);
         } else if (data.elements && data.elements.length > 0) {
             const previewPanel = document.getElementById('scene-preview-panel');
             const elemCount = document.getElementById('scene-elements-count');
