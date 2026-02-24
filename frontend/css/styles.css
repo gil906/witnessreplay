@@ -9378,3 +9378,138 @@ img.loaded,
         padding: 2px var(--spacing-md);
     }
 }
+
+/* =========================================================
+   HAMBURGER MENU — Desktop: hidden, Mobile: visible
+   ========================================================= */
+
+/* Hamburger button — hidden on desktop */
+.hamburger-menu-btn {
+    display: none;
+}
+
+/* Mobile dropdown menu — hidden on desktop */
+.mobile-menu-dropdown {
+    display: none;
+}
+
+/* Mobile: hamburger menu and slim header */
+@media (max-width: 768px) {
+    /* Hamburger button */
+    .hamburger-menu-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        font-size: 1.3rem;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 8px;
+        color: var(--text-primary);
+        cursor: pointer;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Hide toolbar items on mobile — they go in hamburger menu */
+    .header-menu-item {
+        display: none !important;
+    }
+
+    /* Hide comfort panel on mobile — items in hamburger menu */
+    .interview-comfort-panel {
+        display: none !important;
+    }
+
+    /* Slim header: max 44px */
+    .header {
+        min-height: 44px;
+        max-height: 44px;
+        padding: 0 var(--spacing-sm);
+        overflow: visible;
+    }
+
+    .header-content {
+        flex-wrap: nowrap;
+        min-height: 44px;
+        max-height: 44px;
+        padding: 0;
+        gap: var(--spacing-sm);
+    }
+
+    /* Compact logo */
+    .logo-section {
+        gap: var(--spacing-xs);
+    }
+    .logo-icon {
+        font-size: 1.2rem;
+    }
+
+    /* Session info: just connection dot + hamburger, no wrapping */
+    .session-info {
+        width: auto;
+        flex-shrink: 0;
+        overflow: visible;
+        padding-bottom: 0;
+        gap: var(--spacing-xs);
+    }
+
+    /* Keep connection status dot compact */
+    .connection-status {
+        padding: 4px 6px;
+    }
+
+    /* Mobile dropdown menu */
+    .mobile-menu-dropdown {
+        display: none;
+        position: absolute;
+        top: 44px;
+        right: var(--spacing-sm);
+        z-index: 9999;
+        background: var(--bg-primary, #1e293b);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        padding: var(--spacing-xs) 0;
+        min-width: 200px;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+    }
+    .mobile-menu-dropdown.open {
+        display: block;
+    }
+
+    .mobile-menu-item {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        width: 100%;
+        padding: 10px 16px;
+        font-size: 0.88rem;
+        color: var(--text-primary);
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+    }
+    .mobile-menu-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+    }
+    .mobile-menu-info {
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: default;
+    }
+    .mobile-menu-divider {
+        border: none;
+        border-top: 1px solid var(--glass-border);
+        margin: var(--spacing-xs) 0;
+    }
+
+    /* Fix main content height for slimmer header */
+    .main-content {
+        height: calc(100vh - 44px - var(--spacing-md) * 2) !important;
+        height: calc(100dvh - 44px - var(--spacing-md) * 2) !important;
+    }
+}

@@ -112,11 +112,7 @@ class SceneReconstructionAgent:
         template_name = self.template.get("name", "incident")
         first_question = self.template.get("initial_questions", [INITIAL_GREETING])[0]
         
-        greeting = f"""Hello, I'm Detective Ray — an AI scene reconstruction specialist here to help document what you witnessed.
-
-I understand you're here to report a **{template_name}**. Everything you share helps build an accurate picture of what happened. Take your time, and don't worry if you can't remember every detail.
-
-{first_question}"""
+        greeting = f"""Hi, I'm Detective Ray. I'll help you report a **{template_name}**. Just speak naturally — {first_question}"""
         
         return greeting
     

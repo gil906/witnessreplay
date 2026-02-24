@@ -60,7 +60,7 @@
                         <span class="status-dot"></span>
                         <span id="session-id">Initializing...</span>
                     </div>
-                    <button id="new-session-btn" class="btn btn-secondary">
+                    <button id="new-session-btn" class="btn btn-secondary header-menu-item">
                         ➕ New Report
                     </button>
                     <!-- Hidden technical buttons (IDs preserved for app.js) -->
@@ -68,12 +68,27 @@
                     <button id="quota-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Model & Quota">🤖 Model</button>
                     <button id="analytics-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View analytics">📊 Analytics</button>
                     <button id="info-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Server info">ℹ️ Info</button>
-                    <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme">
+                    <button id="theme-toggle" class="theme-toggle header-menu-item" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme">
                         <span class="theme-icon">🌙</span>
                     </button>
-                    <button id="admin-portal-btn" class="btn btn-primary" data-tooltip="Admin Portal">
+                    <button id="admin-portal-btn" class="btn btn-primary header-menu-item" data-tooltip="Admin Portal">
                         🛡️ Admin
                     </button>
+                    <!-- Hamburger menu button (mobile only) -->
+                    <button id="hamburger-menu-btn" class="hamburger-menu-btn" aria-label="Open menu" onclick="document.getElementById('mobile-menu-dropdown').classList.toggle('open')">
+                        ☰
+                    </button>
+                </div>
+                <!-- Mobile dropdown menu -->
+                <div id="mobile-menu-dropdown" class="mobile-menu-dropdown">
+                    <button onclick="document.getElementById('new-session-btn').click(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">➕ New Report</button>
+                    <button onclick="toggleTheme(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">🌙 Dark Mode</button>
+                    <button onclick="document.getElementById('admin-portal-btn').click(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">🛡️ Admin</button>
+                    <hr class="mobile-menu-divider">
+                    <button onclick="document.getElementById('comfort-pause-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">⏸️ Pause</button>
+                    <button onclick="document.getElementById('comfort-break-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">☕ Take Break</button>
+                    <button onclick="document.getElementById('comfort-support-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open');" class="mobile-menu-item">💚 Support</button>
+                    <div class="mobile-menu-item mobile-menu-info">⏱️ Duration: <span id="mobile-duration-display">0:00</span></div>
                 </div>
             </div>
         </header>
@@ -850,6 +865,27 @@
     <script src="/static/js/location.js"></script>
     <script src="/static/js/interview-comfort.js"></script>
     <script src="/static/js/app.js"></script>
+    
+    <!-- Sync mobile menu duration + close on outside click -->
+    <script>
+        (function() {
+            // Sync duration display to mobile menu
+            const src = document.getElementById('interview-duration-display');
+            const dst = document.getElementById('mobile-duration-display');
+            if (src && dst) {
+                new MutationObserver(function() { dst.textContent = src.textContent; })
+                    .observe(src, { childList: true, characterData: true, subtree: true });
+            }
+            // Close mobile menu on outside click
+            document.addEventListener('click', function(e) {
+                const menu = document.getElementById('mobile-menu-dropdown');
+                const btn = document.getElementById('hamburger-menu-btn');
+                if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+                    menu.classList.remove('open');
+                }
+            });
+        })();
+    </script>
     
     <!-- Initialize Scene Element Library and 3D Viewer -->
     <script>

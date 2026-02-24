@@ -126,11 +126,7 @@ LEGAL SENSITIVITY:
 - Record exactly what the witness says, not interpretations
 """
 
-INITIAL_GREETING = """Hello, I'm Detective Ray — an AI scene reconstruction specialist here to help document what you witnessed.
-
-Everything you share helps build an accurate picture of what happened. Take your time, and don't worry if you can't remember every detail.
-
-Let's start simple: Where were you when the incident occurred, and what first caught your attention?"""
+INITIAL_GREETING = """Hi, I'm Detective Ray. I'll help you report what happened. Just speak naturally — what did you see?"""
 
 CLARIFICATION_PROMPTS = {
     "position": "Where exactly was {element} positioned in the scene?",
