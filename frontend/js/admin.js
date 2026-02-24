@@ -3095,6 +3095,30 @@ class AdminPortal {
     
     _ago(d) { const m=Math.floor((Date.now()-new Date(d))/60000); return m<1?'Just now':m<60?m+'m ago':m<1440?Math.floor(m/60)+'h ago':Math.floor(m/1440)+'d ago'; }
     _esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+    async showSceneComparison(caseId) {
+        const resp = await fetch(`/api/admin/cases?case_id=${caseId}`, {headers: {'Authorization': `Bearer ${this.authToken}`}});
+        const data = await resp.json();
+        const section = document.getElementById('detail-comparison-section');
+        const grid = document.getElementById('comparison-grid');
+        if (!section || !grid) return;
+        grid.innerHTML = '';
+        const sessions = data.sessions || [];
+        if (sessions.length === 0) { section.style.display = 'none'; return; }
+        sessions.forEach((s, i) => {
+            const card = document.createElement('div');
+            card.className = 'comparison-card';
+            card.innerHTML = `<div class="witness-label">Witness ${i + 1} — ${s.id || 'Unknown'}</div>`;
+            if (s.scene_image) {
+                const img = document.createElement('img');
+                img.src = s.scene_image;
+                img.alt = `Scene from witness ${i + 1}`;
+                card.prepend(img);
+            }
+            grid.appendChild(card);
+        });
+        section.style.display = '';
+    }
 }
 
 // Initialize when DOM is ready

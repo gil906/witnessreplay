@@ -204,6 +204,14 @@
                     <button class="suggestion-btn" data-action="generate" aria-label="Generate scene">🎬 Generate scene</button>
                     <button class="suggestion-btn" data-action="details" aria-label="Add more details">➕ Add more details</button>
                 </div>
+                <!-- Guided Mode Suggestions -->
+                <div id="guided-suggestions" style="display:none;"></div>
+                <!-- Mode Toggles -->
+                <div class="mode-toggles" id="mode-toggles">
+                    <button class="mode-toggle-btn" id="guided-mode-btn" aria-label="Toggle guided interview mode">📋 Guided</button>
+                    <button class="mode-toggle-btn" id="child-mode-btn" aria-label="Toggle child-friendly mode">🧒 Child Mode</button>
+                    <button class="mode-toggle-btn" id="high-contrast-btn" aria-label="Toggle high contrast mode">🔲 High Contrast</button>
+                </div>
 
                 <!-- Voice Control - always visible, voice-first -->
                 <div class="voice-first-label">Voice-first — click mic or type below</div>
@@ -245,7 +253,7 @@
                         <div class="mic-wave-ring mic-wave-ring-3"></div>
                         <div class="waveform-ring" id="waveform-ring"></div>
                         <canvas id="audio-visualizer" width="160" height="160"></canvas>
-                        <button id="mic-btn" class="mic-btn connecting" disabled aria-label="Start recording">
+                        <button id="mic-btn" class="mic-btn connecting" disabled aria-label="Record voice message">
                             <span class="mic-icon">🎤</span>
                             <span class="btn-text">Connecting...</span>
                             <span class="mic-status-hint" id="mic-status-hint">Setting up session</span>
@@ -290,10 +298,12 @@
                     <button id="upload-sketch-btn" class="evidence-upload-btn" onclick="uploadSketch()" aria-label="Upload hand-drawn sketch" title="Upload Sketch">
                         ✏️
                     </button>
+                    <button id="camera-btn" class="btn btn-secondary" title="Take Photo" onclick="document.getElementById('camera-input').click()">📸</button>
+                    <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" style="display:none;" onchange="window.app?.handlePhotoUpload(event)">
                     <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)" aria-hidden="true">
                     <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)" aria-hidden="true">
                     <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type instead...">⌨️ Type instead...</button>
-                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input for testimony">
+                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Type your statement">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                     <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
                         📋
@@ -417,6 +427,7 @@
                             <div class="view-toggle-group">
                                 <button class="view-toggle-btn active" id="view-2d-btn" onclick="toggleSceneView('2d')" title="2D View">2D</button>
                                 <button class="view-toggle-btn" id="view-3d-btn" onclick="toggleSceneView('3d')" title="3D View">3D</button>
+                                <button id="aerial-view-btn" class="btn btn-sm btn-secondary" onclick="toggleAerialView()" title="Bird's eye diagram">🗺️ Diagram</button>
                             </div>
                             <div class="perspective-toggle-group" id="perspective-toggle-group">
                                 <button class="perspective-toggle-btn active" id="view-bird-btn" onclick="togglePerspective('bird')" title="Bird's Eye View">🦅</button>
@@ -1031,6 +1042,13 @@
         
         // Initialize app
         window.app = new WitnessReplayApp();
+
+        // Anonymous tip mode: hide witness info popup if ?anonymous=true
+        if (window.location.search.includes('anonymous=true')) {
+            window._anonymousMode = true;
+            const witnessOverlay = document.getElementById('witness-info-overlay');
+            if (witnessOverlay) witnessOverlay.style.display = 'none';
+        }
     </script>
 
     <!-- Comparison Modal -->

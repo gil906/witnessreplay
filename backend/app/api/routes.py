@@ -539,6 +539,8 @@ async def create_session(session_data: SessionCreate):
         
         # Store template info in metadata
         metadata = session_data.metadata or {}
+        if session_data.is_anonymous:
+            metadata['is_anonymous'] = True
         if template:
             metadata['template_id'] = template['id']
             metadata['template_name'] = template['name']
@@ -8983,6 +8985,61 @@ async def revoke_api_key(key_id: str, auth=Depends(require_admin_auth)):
     return {"status": "revoked"}
 
 
+# ─── Interview Links ─────────────────────────────────────
+
+
+@router.post("/admin/interview-links", dependencies=[Depends(require_admin_auth)])
+async def create_interview_link(data: dict):
+    """Generate a unique interview link for a witness."""
+    import secrets
+    token = secrets.token_urlsafe(16)
+    session = ReconstructionSession(
+        id=str(uuid.uuid4()),
+        title=data.get("title", "Phone Interview"),
+        source_type="phone_link",
+        metadata={"interview_token": token, "created_by": "admin"}
+    )
+    await firestore_service.create_session(session)
+    base_url = data.get("base_url", "")
+    return {"token": token, "session_id": session.id, "link": f"{base_url}/interview?token={token}&session={session.id}"}
+
+
+# ─── Interview Scripts CRUD ──────────────────────────────
+
+
+@router.get("/admin/interview-scripts")
+async def list_scripts(auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    cursor = await db._db.execute("SELECT * FROM interview_scripts WHERE is_active = 1 ORDER BY name")
+    rows = await cursor.fetchall()
+    return {"scripts": [dict(r) for r in rows]}
+
+
+@router.post("/admin/interview-scripts")
+async def create_script(data: dict, auth=Depends(require_admin_auth)):
+    from datetime import timezone
+    from app.services.database import get_database
+    script_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_database()
+    await db._db.execute(
+        "INSERT INTO interview_scripts (id, name, incident_type, questions, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+        (script_id, data["name"], data.get("incident_type", "general"), json.dumps(data.get("questions", [])), now, now)
+    )
+    await db._db.commit()
+    return {"id": script_id, "name": data["name"]}
+
+
+@router.delete("/admin/interview-scripts/{script_id}")
+async def delete_script(script_id: str, auth=Depends(require_admin_auth)):
+    from app.services.database import get_database
+    db = get_database()
+    await db._db.execute("UPDATE interview_scripts SET is_active = 0 WHERE id = ?", (script_id,))
+    await db._db.commit()
+    return {"status": "deleted"}
+
+
 # ─── Public API (API Key Authenticated) ──────────────────
 
 
@@ -9267,3 +9324,50 @@ async def api_status(api_key=Depends(require_api_key)):
         "permissions": api_key.get("permissions"),
         "rate_limit_rpm": api_key.get("rate_limit_rpm"),
     }
+
+
+@router.post("/sessions/{session_id}/photo-overlay")
+async def create_photo_overlay(session_id: str, data: dict):
+    """Accept a base64 photo and return scene overlay description."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    # Store reference photo in session metadata
+    metadata = session.metadata if isinstance(session.metadata, dict) else {}
+    metadata["reference_photo"] = data.get("photo", "")[:100] + "..."  # Store truncated for metadata
+    session.metadata = metadata
+    await firestore_service.update_session(session)
+    return {"status": "photo_received", "message": "Reference photo stored. Scene reconstruction will use this as background."}
+
+
+@router.get("/weather")
+async def get_weather(lat: float = 0, lon: float = 0, dt: str = ""):
+    """Fetch weather conditions for a location and time (uses Open-Meteo free API)."""
+    import httpx
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                weather = data.get("current_weather", {})
+                return {
+                    "temperature": weather.get("temperature"),
+                    "windspeed": weather.get("windspeed"),
+                    "weathercode": weather.get("weathercode"),
+                    "is_day": weather.get("is_day"),
+                    "description": _weather_code_to_text(weather.get("weathercode", 0))
+                }
+        return {"error": "Weather service unavailable"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _weather_code_to_text(code):
+    codes = {0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog",
+             48: "Depositing rime fog", 51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+             61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain", 71: "Slight snow",
+             73: "Moderate snow", 75: "Heavy snow", 80: "Slight rain showers",
+             81: "Moderate rain showers", 82: "Violent rain showers", 95: "Thunderstorm",
+             96: "Thunderstorm with hail"}
+    return codes.get(code, "Unknown")

@@ -50,6 +50,25 @@ class WitnessReplayApp {
         // Interview Comfort Manager
         this.comfortManager = null;
         
+        // Feature 6: Emotion detection
+        this.emotionEmojis = { distressed: '😰', angry: '😠', confused: '😕', sad: '😢', anxious: '😟', neutral: '😐' };
+        
+        // Feature 7: Guided walkthrough mode
+        this.guidedMode = false;
+        this.guidedStep = 0;
+        this.guidedQuestions = [
+            "Let's start. What type of incident are you reporting? (accident, assault, theft, vandalism, other)",
+            "Where did this happen? Please describe the location as specifically as you can.",
+            "When did this happen? The date and approximate time.",
+            "What did you see? Describe what happened from the beginning.",
+            "How many people were involved? Describe each person you saw.",
+            "Were there any vehicles involved? Describe them.",
+            "Is there anything else important you'd like to add?"
+        ];
+        
+        // Feature 9: Child-friendly mode
+        this.childMode = false;
+        
         this.initializeUI();
         this.initializeAudio();
         this.initializeVAD();
@@ -81,6 +100,19 @@ class WitnessReplayApp {
         this.updateConnectionStatus('connecting');
         this._updateMicState('connecting');
         try {
+            // Check for interview link token/session params
+            const urlParams = new URLSearchParams(window.location.search);
+            const tokenParam = urlParams.get('token');
+            const sessionParam = urlParams.get('session');
+            if (tokenParam && sessionParam) {
+                this._addConnectionStep('Joining interview session...');
+                this.sessionId = sessionParam;
+                this.sessionIdEl.textContent = `Session: ${sessionParam.substring(0, 8)}...`;
+                this.sessionStartTime = Date.now();
+                this.startDurationTimer();
+                this.connectWebSocket();
+                return;
+            }
             this._addConnectionStep('Creating session...');
             await this._createSessionWithTemplate(null);
         } catch (error) {
@@ -294,6 +326,10 @@ class WitnessReplayApp {
         
         // Auto-listen toggle for voice conversation — near mic only, not header
         this._addAutoListenToggle();
+        
+        // Feature 7/9/10: Mode toggles and accessibility
+        this._initModeToggles();
+        this._initKeyboardAccessibility();
     }
     
     _addSoundToggle() {
@@ -549,9 +585,10 @@ class WitnessReplayApp {
                 this.toggleRecording();
             }
             
-            // Escape: Close any open modal or shortcuts overlay
+            // Escape: Close any open modal or shortcuts overlay, or stop recording
             if (e.code === 'Escape') {
                 e.preventDefault();
+                if (this.isRecording) { this.stopRecording(); return; }
                 const shortcutsOverlay = document.getElementById('shortcuts-overlay');
                 if (shortcutsOverlay && !shortcutsOverlay.classList.contains('hidden')) {
                     shortcutsOverlay.classList.add('hidden');
@@ -1019,6 +1056,9 @@ class WitnessReplayApp {
             };
             if (templateId) {
                 requestBody.template_id = templateId;
+            }
+            if (window.location.search.includes('anonymous')) {
+                requestBody.is_anonymous = true;
             }
             
             // Call API to create session
@@ -1757,6 +1797,17 @@ class WitnessReplayApp {
         const text = this.textInput.value.trim();
         if (!text) return;
         
+        // Feature 8: Auto-detect language on first user message
+        if (this.statementCount === 0) {
+            const detected = this._detectLanguage(text);
+            if (detected !== 'en') {
+                this.setWitnessLanguage(detected);
+                const sel = document.getElementById('language-selector');
+                if (sel) sel.value = detected;
+                this._showLangDetectBadge(detected);
+            }
+        }
+        
         // Check for distress signals and provide support
         if (this.comfortManager) {
             this.comfortManager.detectDistress(text);
@@ -1777,6 +1828,9 @@ class WitnessReplayApp {
             this.displayMessage(text, 'user');
             this.textInput.value = '';
             this.setStatus('Detective Ray is thinking...');
+            
+            // Feature 7: Advance guided mode step
+            if (this.guidedMode) this._advanceGuidedStep();
             
             // Refresh witness statement counts after a brief delay
             setTimeout(() => this.loadWitnesses(), 1500);
@@ -1809,7 +1863,7 @@ class WitnessReplayApp {
             }
         }
         
-        messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span><br>${this._escapeHtml(text)}`;
+        messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span>${speaker === 'user' ? `<span class="emotion-badge">${this._getEmotionEmoji(text)}</span>` : ''}<br>${this._escapeHtml(text)}`;
         
         this.chatTranscript.appendChild(messageDiv);
         this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
@@ -1878,9 +1932,12 @@ class WitnessReplayApp {
                 </div>`;
         }
         
+        // Emotion badge for user messages (Feature 6)
+        let emotionBadge = speaker === 'user' ? `<span class="emotion-badge">${this._getEmotionEmoji(text)}</span>` : '';
+        
         messageDiv.innerHTML = `
             <span class="msg-avatar">${avatar}</span>
-            <strong>${labelText}</strong>${witnessBadge}${languageBadge}
+            <strong>${labelText}</strong>${witnessBadge}${languageBadge}${emotionBadge}
             <span class="msg-time">${timeStr}</span><br>
             ${this._escapeHtml(text)}
             ${translationInfo}`;
@@ -5446,7 +5503,71 @@ function openSketchModal(sketchId) {
             })
             .catch(err => console.error('Failed to load sketch:', err));
     }
+
+    async uploadReferencePhoto(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const base64 = e.target.result.split(',')[1];
+            try {
+                await fetch(`/api/sessions/${this.sessionId}/photo-overlay`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({photo: base64})
+                });
+                this.ui?.showToast('📸 Reference photo uploaded', 'success', 3000);
+            } catch(err) { console.error('Photo overlay error:', err); }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    renderEvidenceHeatmap(elements) {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'evidence-heatmap';
+        canvas.width = 400; canvas.height = 300;
+        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;opacity:0.5;pointer-events:none;z-index:3;';
+        const ctx = canvas.getContext('2d');
+        (elements || []).forEach(el => {
+            const x = (el.x || Math.random()) * 400;
+            const y = (el.y || Math.random()) * 300;
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 60);
+            gradient.addColorStop(0, 'rgba(239,68,68,0.6)');
+            gradient.addColorStop(1, 'rgba(239,68,68,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x-60, y-60, 120, 120);
+        });
+        const container = document.getElementById('scene-editor-canvas');
+        if (container) { container.style.position = 'relative'; container.appendChild(canvas); }
+    }
 }
 
 // App is initialized from index.html inline script.
 // Do NOT add a second instantiation here to avoid duplicate toasts/notifications.
+
+function toggleAerialView() {
+    const container = document.getElementById('scene-editor-canvas') || document.getElementById('scene-preview');
+    if (!container) return;
+    const existing = document.getElementById('aerial-diagram');
+    if (existing) { existing.remove(); return; }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'aerial-diagram';
+    svg.setAttribute('viewBox', '0 0 400 300');
+    svg.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;background:rgba(0,0,0,0.8);z-index:5;';
+    for (let i = 0; i <= 400; i += 40) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', i); line.setAttribute('y1', 0); line.setAttribute('x2', i); line.setAttribute('y2', 300);
+        line.setAttribute('stroke', 'rgba(96,165,250,0.15)'); line.setAttribute('stroke-width', '0.5');
+        svg.appendChild(line);
+    }
+    for (let i = 0; i <= 300; i += 40) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', 0); line.setAttribute('y1', i); line.setAttribute('x2', 400); line.setAttribute('y2', i);
+        line.setAttribute('stroke', 'rgba(96,165,250,0.15)'); line.setAttribute('stroke-width', '0.5');
+        svg.appendChild(line);
+    }
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', 200); text.setAttribute('y', 20); text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', '#60a5fa'); text.setAttribute('font-size', '12');
+    text.textContent = 'Aerial View — Scene elements will appear here';
+    svg.appendChild(text);
+    container.style.position = 'relative';
+    container.appendChild(svg);
+}
