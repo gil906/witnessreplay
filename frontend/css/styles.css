@@ -9202,9 +9202,26 @@ img.loaded,
     z-index: 10001;
 }
 
-/* ─── Auto-listen button active state ───────────────────── */
-#auto-listen-btn {
-    font-size: 1rem;
+/* ─── Auto-listen & TTS buttons near mic ────────────────── */
+#auto-listen-btn,
+#tts-toggle-btn {
+    font-size: 0.82rem;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+#auto-listen-btn:hover,
+#tts-toggle-btn:hover {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: var(--accent-primary);
+}
+.mic-area-btn {
+    order: 8;
 }
 
 /* =========================================================
@@ -9410,10 +9427,17 @@ img.loaded,
         cursor: pointer;
         flex-shrink: 0;
         -webkit-tap-highlight-color: transparent;
+        order: 99;
+        margin-left: auto;
     }
 
     /* Hide toolbar items on mobile — they go in hamburger menu */
     .header-menu-item {
+        display: none !important;
+    }
+    
+    /* Hide mic-area control buttons on mobile — accessible via hamburger */
+    .mic-area-btn {
         display: none !important;
     }
 
@@ -9460,13 +9484,13 @@ img.loaded,
         padding: 4px 6px;
     }
 
-    /* Mobile dropdown menu */
+    /* Mobile dropdown menu — positioned fixed to avoid header overflow:hidden clipping */
     .mobile-menu-dropdown {
         display: none;
-        position: absolute;
-        top: 44px;
+        position: fixed;
+        top: 48px;
         right: var(--spacing-sm);
-        z-index: 9999;
+        z-index: 99999;
         background: var(--bg-primary, #1e293b);
         border: 1px solid var(--glass-border);
         border-radius: 12px;

@@ -42,7 +42,7 @@ class WitnessReplayApp {
         this.ttsPlayer = null;
         this.initializeTTS();
         
-        // Voice conversation mode
+        // Voice conversation mode — auto-listen ON by default
         this.autoListenEnabled = localStorage.getItem('autoListenEnabled') !== 'false';
         this._isSpeakingResponse = false;
         this._autoListenTimer = null;
@@ -286,58 +286,49 @@ class WitnessReplayApp {
         // Initialize keyboard shortcuts
         this._initKeyboardShortcuts();
         
-        // Sound toggle button (add dynamically if not in HTML)
-        this._addSoundToggle();
+        // Sound toggle button — add to controls area (near mic), not header
+        // _addSoundToggle removed from header — speakers controlled by phone volume
         
-        // TTS toggle button for accessibility
+        // TTS toggle — add near mic controls instead of header
         this._addTTSToggle();
         
-        // Auto-listen toggle for voice conversation
+        // Auto-listen toggle for voice conversation — near mic only, not header
         this._addAutoListenToggle();
     }
     
     _addSoundToggle() {
-        const sessionInfo = document.querySelector('.session-info');
-        if (!sessionInfo || document.getElementById('sound-toggle-btn')) return;
-        
-        const soundBtn = document.createElement('button');
-        soundBtn.id = 'sound-toggle-btn';
-        soundBtn.className = 'btn btn-secondary';
-        soundBtn.setAttribute('data-tooltip', 'Toggle sound effects');
-        soundBtn.innerHTML = this.soundEnabled ? '🔊' : '🔇';
-        soundBtn.addEventListener('click', () => this.toggleSound());
-        
-        sessionInfo.appendChild(soundBtn);
+        // Sound effects controlled by phone volume — no separate button needed
+        // Keeping the method stub for backward compatibility
     }
     
     _addTTSToggle() {
-        const sessionInfo = document.querySelector('.session-info');
-        if (!sessionInfo || document.getElementById('tts-toggle-btn')) return;
+        const controls = document.querySelector('.controls') || document.querySelector('.session-info');
+        if (!controls || document.getElementById('tts-toggle-btn')) return;
         
         const ttsBtn = document.createElement('button');
         ttsBtn.id = 'tts-toggle-btn';
-        ttsBtn.className = 'btn btn-secondary';
-        ttsBtn.setAttribute('data-tooltip', 'Text-to-Speech (Accessibility)');
-        ttsBtn.setAttribute('aria-label', 'Toggle text-to-speech for AI responses');
-        ttsBtn.innerHTML = this.ttsPlayer && this.ttsPlayer.isEnabled() ? '🔈' : '🔇';
+        ttsBtn.className = 'btn btn-secondary mic-area-btn';
+        ttsBtn.setAttribute('data-tooltip', 'Speaker — hear AI responses');
+        ttsBtn.setAttribute('aria-label', 'Toggle speaker for AI responses');
+        ttsBtn.innerHTML = this.ttsPlayer && this.ttsPlayer.isEnabled() ? '🔊' : '🔇';
         ttsBtn.addEventListener('click', () => this.toggleTTS());
         
-        sessionInfo.appendChild(ttsBtn);
+        controls.appendChild(ttsBtn);
     }
     
     _addAutoListenToggle() {
-        const sessionInfo = document.querySelector('.session-info');
-        if (!sessionInfo || document.getElementById('auto-listen-btn')) return;
+        const controls = document.querySelector('.controls') || document.querySelector('.session-info');
+        if (!controls || document.getElementById('auto-listen-btn')) return;
         
         const btn = document.createElement('button');
         btn.id = 'auto-listen-btn';
-        btn.className = 'btn btn-secondary';
+        btn.className = 'btn btn-secondary mic-area-btn';
         btn.setAttribute('data-tooltip', 'Auto-listen after AI speaks');
         btn.setAttribute('aria-label', 'Toggle auto-listen mode');
-        btn.innerHTML = this.autoListenEnabled ? '🔁' : '⏸️';
+        btn.innerHTML = this.autoListenEnabled ? '🔁 Auto' : '⏸️ Manual';
         btn.addEventListener('click', () => this.toggleAutoListen());
         
-        sessionInfo.appendChild(btn);
+        controls.appendChild(btn);
     }
     
     toggleAutoListen() {
@@ -345,7 +336,7 @@ class WitnessReplayApp {
         localStorage.setItem('autoListenEnabled', this.autoListenEnabled.toString());
         
         const btn = document.getElementById('auto-listen-btn');
-        if (btn) btn.innerHTML = this.autoListenEnabled ? '🔁' : '⏸️';
+        if (btn) btn.innerHTML = this.autoListenEnabled ? '🔁 Auto' : '⏸️ Manual';
         
         this.ui.showToast(
             this.autoListenEnabled
@@ -1590,7 +1581,8 @@ class WitnessReplayApp {
                 // Start audio quality analysis
                 if (this.audioQualityAnalyzer && stream) {
                     this.audioQualityAnalyzer.onWarning = (type, message) => {
-                        if (this.ui) this.ui.showToast(message, 'warning', 3000);
+                        // Log to console only — no intrusive toasts during recording
+                        console.log(`[AudioQuality] ${type}: ${message}`);
                     };
                     await this.audioQualityAnalyzer.start(stream);
                 }
