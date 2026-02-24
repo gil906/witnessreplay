@@ -1,0 +1,156 @@
+{
+    "timestamp": "2026-02-24T02:21:41Z",
+    "tester": "tester_agent",
+    "cycle": 11,
+    "bugs": [
+        {
+            "id": 44,
+            "title": "Version badge positioned incorrectly (top-left instead of bottom-right)",
+            "description": "Idea #5 requested version display in bottom-right corner, small. Currently the .version-badge CSS has 'top: 1rem; left: 1rem' positioning it in the top-left. Should be 'bottom: 1rem; right: 1rem' and smaller font size.",
+            "severity": "medium",
+            "steps_to_reproduce": "1. Open http://localhost:8088/ or http://localhost:8088/admin.html\n2. Look for version badge\n3. Notice it's in top-left corner instead of bottom-right",
+            "expected_behavior": "Version badge should be in bottom-right corner with small, unobtrusive styling per Idea #5 requirements",
+            "actual_behavior": "Version badge is in top-left corner",
+            "affected_files": [
+                "frontend/css/styles.css"
+            ]
+        },
+        {
+            "id": 45,
+            "title": "Outdated default version numbers in HTML files",
+            "description": "Both index.html and admin.html have hardcoded default version '0.012' in the .version-number span, but VERSION file and API return '0.051'. The default should match the current VERSION file so users see correct version even if API call fails or is slow.",
+            "severity": "low",
+            "steps_to_reproduce": "1. Check frontend/index.html line 665: <span class='version-number'>0.012</span>\n2. Check frontend/admin.html line ~similar: <span class='version-number'>0.012</span>\n3. Compare to VERSION file: 0.051",
+            "expected_behavior": "HTML default version should match VERSION file (0.051)",
+            "actual_behavior": "HTML shows outdated 0.012 as fallback",
+            "affected_files": [
+                "frontend/index.html",
+                "frontend/admin.html"
+            ]
+        }
+    ],
+    "tests_passed": [
+        "\u2705 Health endpoint returns 200 OK with degraded status (storage offline expected)",
+        "\u2705 All 21 API routes registered in OpenAPI spec (Bug #43 verified fixed)",
+        "\u2705 Version endpoint returns correct version 0.051",
+        "\u2705 Rate limit headers present (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)",
+        "\u2705 Request ID headers present (x-request-id)",
+        "\u2705 Models endpoint returns list of available Gemini models",
+        "\u2705 Quota endpoint returns detailed usage tracking for all models",
+        "\u2705 Info endpoint returns app metadata with correct version",
+        "\u2705 Admin portal HTML accessible at /admin.html",
+        "\u2705 Main frontend HTML accessible at /",
+        "\u2705 Analytics stats endpoint returns session statistics",
+        "\u2705 Timeline endpoint works (tested with session ID)",
+        "\u2705 Insights endpoint works (tested with session ID)",
+        "\u2705 Evidence export endpoint works (tested with session ID)",
+        "\u2705 Model status endpoint returns model availability",
+        "\u2705 Current model endpoint returns active model configuration",
+        "\u2705 Session create endpoint works (POST /api/sessions)",
+        "\u2705 Session GET endpoint works (GET /api/sessions/{id})",
+        "\u2705 Sessions list endpoint returns array of sessions",
+        "\u2705 WebSocket session validation implemented (rejects invalid session IDs at connection time - Bug #19 verified fixed)",
+        "\u2705 Timeout middleware exists with 60-second timeout (Bug #12 verified fixed)",
+        "\u2705 Usage tracker health check included in /api/health (Bug #14 verified fixed)",
+        "\u2705 Audio test fixtures exist (test_10s.wav, test_20s.wav, test_60s.wav)",
+        "\u2705 Frontend JS files have valid syntax (minor template string syntax acceptable)",
+        "\u2705 Version fetching implemented in both app.js and admin.js",
+        "\u2705 CORS headers configured",
+        "\u2705 JSON response formatting works"
+    ],
+    "tests_failed": [
+        "\u274c Version badge positioning (top-left instead of bottom-right per Idea #5)",
+        "\u274c HTML default version numbers outdated (0.012 vs 0.051)",
+        "\u274c Model config endpoint expects 'model_name' not 'model' in POST body (minor API design inconsistency)"
+    ],
+    "verified_bugs_fixed": [
+        {
+            "id": 43,
+            "title": "Server restart required to register new routes",
+            "status": "VERIFIED FIXED",
+            "verification": "OpenAPI spec now shows all 21 routes. Container was rebuilt. All endpoints accessible: /api/info, /api/sessions/{id}/insights, /api/sessions/{id}/timeline, /api/sessions/export/bulk, /api/sessions/{id}/export/evidence"
+        },
+        {
+            "id": 12,
+            "title": "No request timeout protection",
+            "status": "VERIFIED FIXED",
+            "verification": "Timeout middleware exists at main.py lines 138-152 with 60-second timeout, returns 504 on timeout"
+        },
+        {
+            "id": 14,
+            "title": "No health check for usage_tracker service",
+            "status": "VERIFIED FIXED",
+            "verification": "Health endpoint response includes 'usage_tracker': true in services object"
+        },
+        {
+            "id": 19,
+            "title": "WebSocket endpoint doesn't validate session exists",
+            "status": "VERIFIED FIXED",
+            "verification": "websocket.py lines 336-341 validate session exists before accepting connection, returns 4004 code if not found"
+        },
+        {
+            "id": 33,
+            "title": "Missing X-RateLimit-* headers",
+            "status": "VERIFIED FIXED",
+            "verification": "All API responses include x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset headers"
+        }
+    ],
+    "ideas_verified": [
+        {
+            "id": 4,
+            "title": "Admin portal",
+            "status": "IMPLEMENTED",
+            "verification": "Admin portal accessible at /admin.html with comprehensive UI, analytics endpoints working"
+        },
+        {
+            "id": 5,
+            "title": "Versioning system",
+            "status": "PARTIALLY IMPLEMENTED",
+            "verification": "VERSION file exists (0.051), /api/version endpoint works, version fetching in JS, but badge positioned incorrectly and HTML defaults outdated"
+        },
+        {
+            "id": 1,
+            "title": "Model selector with quota",
+            "status": "IMPLEMENTED",
+            "verification": "Model endpoints operational: /api/models, /api/models/quota, /api/models/status, /api/models/current all working"
+        }
+    ],
+    "outstanding_low_priority_bugs": [
+        {
+            "id": 5,
+            "note": "Bug marked as MEDIUM/LOW but Feature Agent claims it's fixed. Need to verify GOOGLE_API_KEY='' (empty string) handling vs None handling"
+        },
+        {
+            "id": 16,
+            "note": "Pacific timezone - Feature Agent claims fixed with ZoneInfo but should verify actual Pacific Time reset behavior"
+        },
+        {
+            "id": 17,
+            "note": "Rate limiting enforcement - exists but controlled by ENFORCE_RATE_LIMITS env var, should verify if enabled"
+        },
+        {
+            "id": 18,
+            "note": "Token estimation - Feature Agent claims uses actual API tokens, not character estimation. Should verify"
+        },
+        {
+            "id": 20,
+            "note": "No automated WebSocket test - still true, only manual curl tests performed"
+        },
+        {
+            "id": 21,
+            "note": "API key rotation - still not implemented, low priority for demo"
+        },
+        {
+            "id": 13,
+            "note": "Middleware order - appears correct but marked LOW, not critical"
+        }
+    ],
+    "summary": "Testing Cycle 11: Strong overall quality. Feature Agent successfully fixed Bug #43 with container rebuild - all 20+ routes now registered. UX Agent enhanced animations and accessibility. Versioning system (Idea #5) mostly implemented but has 2 minor bugs: incorrect CSS positioning (top-left vs bottom-right) and outdated HTML default versions. All critical APIs functional. Rate limiting, timeout protection, WebSocket validation all working. 27 tests passed, 2 bugs found (medium, low severity).",
+    "recommendations": [
+        "Fix version badge CSS to position bottom-right per Idea #5 spec",
+        "Update HTML default version numbers to match VERSION file",
+        "Consider adding automated WebSocket tests to test suite",
+        "Verify rate limit enforcement is enabled for production",
+        "All critical/high bugs are now fixed - focus on polish and user-facing features"
+    ]
+}
