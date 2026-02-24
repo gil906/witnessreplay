@@ -1900,3 +1900,172 @@ async def get_api_key_status(auth=Depends(require_admin_auth)):
             detail="Failed to get API key status"
         )
 
+
+@router.get("/admin/cases")
+async def get_admin_cases(
+    auth=Depends(require_admin_auth),
+    limit: int = 50,
+    status_filter: Optional[str] = None
+):
+    """
+    Get all cases (sessions) for admin portal. Alias for /api/sessions endpoint.
+    
+    Returns sessions grouped by status with summary statistics.
+    Requires admin authentication.
+    """
+    try:
+        # Get all sessions
+        sessions = await firestore_service.list_sessions(limit=limit)
+        
+        # Filter by status if requested
+        if status_filter:
+            sessions = [s for s in sessions if s.status == status_filter]
+        
+        # Group by status
+        cases_by_status = {
+            "active": [],
+            "completed": [],
+            "archived": []
+        }
+        
+        for session in sessions:
+            session_data = SessionResponse(
+                id=session.id,
+                title=session.title,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+                status=session.status,
+                statement_count=len(session.witness_statements),
+                version_count=len(session.scene_versions)
+            )
+            
+            status_key = session.status if session.status in cases_by_status else "active"
+            cases_by_status[status_key].append(session_data)
+        
+        return {
+            "cases": cases_by_status,
+            "summary": {
+                "total": len(sessions),
+                "active": len(cases_by_status["active"]),
+                "completed": len(cases_by_status["completed"]),
+                "archived": len(cases_by_status["archived"])
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting admin cases: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get admin cases"
+        )
+
+
+@router.get("/admin/analytics")
+async def get_admin_analytics(auth=Depends(require_admin_auth)):
+    """
+    Get analytics dashboard data for admin portal.
+    
+    Returns:
+    - Total sessions, statements, reconstructions
+    - Average statements per session
+    - Most common scene elements
+    - System usage statistics
+    - Recent activity timeline
+    
+    Requires admin authentication.
+    """
+    try:
+        # Get all sessions
+        sessions = await firestore_service.list_sessions(limit=1000)
+        
+        # Calculate statistics
+        total_sessions = len(sessions)
+        total_statements = sum(len(s.witness_statements) for s in sessions)
+        total_reconstructions = sum(len(s.scene_versions) for s in sessions)
+        total_corrections = sum(
+            sum(1 for stmt in s.witness_statements if stmt.is_correction)
+            for s in sessions
+        )
+        
+        avg_statements = total_statements / total_sessions if total_sessions > 0 else 0
+        avg_reconstructions = total_reconstructions / total_sessions if total_sessions > 0 else 0
+        
+        # Find most common scene elements
+        element_counts = {}
+        for session in sessions:
+            for element in session.current_scene_elements:
+                desc = element.description.lower()
+                element_counts[desc] = element_counts.get(desc, 0) + 1
+        
+        top_elements = sorted(
+            element_counts.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]
+        
+        # Status distribution
+        status_counts = {
+            "active": sum(1 for s in sessions if s.status == "active"),
+            "completed": sum(1 for s in sessions if s.status == "completed"),
+            "archived": sum(1 for s in sessions if s.status == "archived")
+        }
+        
+        # Recent activity (last 10 sessions)
+        recent_sessions = sorted(
+            sessions,
+            key=lambda s: s.updated_at or s.created_at or datetime.min,
+            reverse=True
+        )[:10]
+        
+        recent_activity = [
+            {
+                "id": s.id,
+                "title": s.title,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+                "status": s.status,
+                "statements": len(s.witness_statements)
+            }
+            for s in recent_sessions
+        ]
+        
+        # Get usage tracker stats
+        usage_stats = {}
+        try:
+            from app.services.usage_tracker import usage_tracker
+            models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+            for model in models:
+                usage = usage_tracker.get_usage(model)
+                if usage["requests"]["today"] > 0:
+                    usage_stats[model] = {
+                        "requests_today": usage["requests"]["today"],
+                        "tokens_today": usage["tokens"]["today"]
+                    }
+        except Exception as e:
+            logger.warning(f"Could not get usage stats: {e}")
+        
+        return {
+            "overview": {
+                "total_sessions": total_sessions,
+                "total_statements": total_statements,
+                "total_reconstructions": total_reconstructions,
+                "total_corrections": total_corrections,
+                "avg_statements_per_session": round(avg_statements, 1),
+                "avg_reconstructions_per_session": round(avg_reconstructions, 1)
+            },
+            "status_distribution": status_counts,
+            "top_scene_elements": [
+                {"element": elem, "count": count}
+                for elem, count in top_elements
+            ],
+            "recent_activity": recent_activity,
+            "usage_statistics": usage_stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting admin analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get admin analytics"
+        )
+
