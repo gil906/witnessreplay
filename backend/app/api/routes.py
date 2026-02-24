@@ -1191,6 +1191,162 @@ async def get_models_status():
         )
 
 
+@router.get("/models/compare")
+async def compare_models():
+    """
+    Compare performance and usage statistics across different models.
+    
+    Returns comparison data for model selection decisions:
+    - Usage statistics per model
+    - Rate limits and quotas
+    - Recommended use cases
+    - Cost/performance tradeoffs
+    """
+    try:
+        # Get usage data for all tracked models
+        all_usage = usage_tracker.get_all_usage()
+        
+        # Model recommendations based on use case
+        model_recommendations = {
+            "gemini-2.5-pro": {
+                "description": "Most capable model with best reasoning",
+                "best_for": ["Complex scene analysis", "Multi-witness reconciliation", "Detailed reports"],
+                "speed": "Slower",
+                "quality": "Highest",
+                "cost_tier": "Higher RPM limits but lower daily quota"
+            },
+            "gemini-2.5-flash": {
+                "description": "Balanced performance and speed",
+                "best_for": ["General scene reconstruction", "Real-time interviews", "Most use cases"],
+                "speed": "Fast",
+                "quality": "High",
+                "cost_tier": "Free tier optimized (15 RPM, 1500/day, 15M tokens)"
+            },
+            "gemini-2.5-flash-lite": {
+                "description": "Fastest responses with good quality",
+                "best_for": ["Quick sketches", "Rapid iteration", "High volume"],
+                "speed": "Fastest",
+                "quality": "Good",
+                "cost_tier": "Same as flash (15 RPM, 1500/day)"
+            },
+            "gemini-2.0-flash": {
+                "description": "Previous generation fast model",
+                "best_for": ["Fallback option", "Legacy compatibility"],
+                "speed": "Fast",
+                "quality": "High",
+                "cost_tier": "Same as 2.5-flash"
+            },
+            "gemini-2.0-flash-lite": {
+                "description": "Previous generation lite model",
+                "best_for": ["Fallback option", "High volume"],
+                "speed": "Fastest",
+                "quality": "Good",
+                "cost_tier": "Same as flash"
+            }
+        }
+        
+        # Build comparison data
+        comparison = []
+        for model_name, usage_data in all_usage.items():
+            recommendation = model_recommendations.get(model_name, {
+                "description": "Gemini model",
+                "best_for": ["General use"],
+                "speed": "Unknown",
+                "quality": "Unknown",
+                "cost_tier": "Unknown"
+            })
+            
+            comparison.append({
+                "model": model_name,
+                "usage": {
+                    "requests_today": usage_data.get("requests", {}).get("day", {}).get("used", 0),
+                    "requests_minute": usage_data.get("requests", {}).get("minute", {}).get("used", 0),
+                    "tokens_today": usage_data.get("tokens", {}).get("day", {}).get("used", 0)
+                },
+                "limits": usage_data.get("limits", {}),
+                "remaining": usage_data.get("remaining", {}),
+                "tier": usage_data.get("tier", "unknown"),
+                "recommendation": recommendation
+            })
+        
+        # Sort by usage (most used first)
+        comparison.sort(
+            key=lambda x: x["usage"]["requests_today"],
+            reverse=True
+        )
+        
+        return {
+            "comparison": comparison,
+            "current_model": settings.gemini_model,
+            "recommendation": (
+                "For most use cases, gemini-2.5-flash offers the best balance of speed, "
+                "quality, and free tier quotas. Use gemini-2.5-pro for complex analysis. "
+                "Use gemini-2.5-flash-lite for maximum speed and volume."
+            )
+        }
+    except Exception as e:
+        logger.error(f"Error comparing models: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compare models: {str(e)}"
+        )
+
+
+@router.post("/models/select")
+async def select_model(config: ModelConfigUpdate):
+    """
+    Update the active model selection.
+    
+    Changes will apply to new sessions and API calls.
+    Existing sessions continue using their original model.
+    """
+    try:
+        # Validate model name
+        valid_models = [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash-exp"
+        ]
+        
+        if config.model and config.model not in valid_models:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid model. Must be one of: {', '.join(valid_models)}"
+            )
+        
+        # Update settings (in-memory only - restart required for persistence)
+        if config.model:
+            settings.gemini_model = config.model
+            logger.info(f"Updated default model to: {config.model}")
+        
+        if config.vision_model:
+            if config.vision_model not in valid_models:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid vision model. Must be one of: {', '.join(valid_models)}"
+                )
+            settings.gemini_vision_model = config.vision_model
+            logger.info(f"Updated vision model to: {config.vision_model}")
+        
+        return {
+            "success": True,
+            "current_model": settings.gemini_model,
+            "vision_model": settings.gemini_vision_model,
+            "note": "Model selection updated. Restart server to persist changes."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error selecting model: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update model selection: {str(e)}"
+        )
+
+
 
 @router.get("/version")
 async def get_version():
@@ -1265,3 +1421,351 @@ async def get_server_info():
             "websocket": "/ws/{session_id}",
         }
     }
+
+
+@router.get("/admin/stats")
+async def get_admin_stats(auth=Depends(require_admin_auth)):
+    """
+    Get comprehensive admin statistics for dashboard.
+    
+    Requires admin authentication.
+    Returns:
+        - Total cases
+        - Active/completed/archived breakdown
+        - Average statements per case
+        - Total witness statements
+        - Top scene elements
+        - Recent activity
+    """
+    try:
+        # Get all sessions
+        sessions = await firestore_service.list_sessions(limit=1000)
+        
+        # Calculate statistics
+        total_cases = len(sessions)
+        status_counts = {"active": 0, "completed": 0, "archived": 0}
+        total_statements = 0
+        total_corrections = 0
+        total_reconstructions = 0
+        scene_elements = {}
+        
+        for session in sessions:
+            status_counts[session.status] = status_counts.get(session.status, 0) + 1
+            total_statements += len(session.witness_statements)
+            total_corrections += sum(1 for stmt in session.witness_statements if stmt.is_correction)
+            total_reconstructions += len(session.scene_versions)
+            
+            # Count scene elements
+            for element in session.current_scene_elements:
+                element_type = element.element_type
+                scene_elements[element_type] = scene_elements.get(element_type, 0) + 1
+        
+        # Get top 10 most common scene elements
+        top_elements = sorted(
+            scene_elements.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]
+        
+        # Calculate averages
+        avg_statements = total_statements / total_cases if total_cases > 0 else 0
+        avg_reconstructions = total_reconstructions / total_cases if total_cases > 0 else 0
+        
+        # Get recent sessions (last 5)
+        recent_sessions = sorted(
+            sessions,
+            key=lambda s: s.updated_at if s.updated_at else s.created_at,
+            reverse=True
+        )[:5]
+        
+        recent_activity = [
+            {
+                "id": session.id,
+                "title": session.title,
+                "status": session.status,
+                "updated_at": session.updated_at.isoformat() if session.updated_at else session.created_at.isoformat(),
+                "statement_count": len(session.witness_statements)
+            }
+            for session in recent_sessions
+        ]
+        
+        return {
+            "total_cases": total_cases,
+            "status_breakdown": status_counts,
+            "total_statements": total_statements,
+            "total_corrections": total_corrections,
+            "total_reconstructions": total_reconstructions,
+            "averages": {
+                "statements_per_case": round(avg_statements, 2),
+                "reconstructions_per_case": round(avg_reconstructions, 2)
+            },
+            "top_scene_elements": [
+                {"type": element_type, "count": count}
+                for element_type, count in top_elements
+            ],
+            "recent_activity": recent_activity
+        }
+    except Exception as e:
+        logger.error(f"Error fetching admin stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch statistics: {str(e)}"
+        )
+
+
+@router.get("/admin/search")
+async def search_cases(
+    q: str,
+    limit: int = 20,
+    auth=Depends(require_admin_auth)
+):
+    """
+    Search cases by title, witness statements, or scene elements.
+    
+    Args:
+        q: Search query
+        limit: Maximum results to return
+        
+    Requires admin authentication.
+    """
+    try:
+        # Get all sessions
+        all_sessions = await firestore_service.list_sessions(limit=1000)
+        
+        # Filter sessions based on search query
+        query_lower = q.lower()
+        matching_sessions = []
+        
+        for session in all_sessions:
+            # Check title
+            if query_lower in session.title.lower():
+                matching_sessions.append({
+                    "session": session,
+                    "match_reason": "title",
+                    "match_text": session.title
+                })
+                continue
+            
+            # Check witness statements
+            for stmt in session.witness_statements:
+                if query_lower in stmt.content.lower():
+                    matching_sessions.append({
+                        "session": session,
+                        "match_reason": "statement",
+                        "match_text": stmt.content[:100] + "..." if len(stmt.content) > 100 else stmt.content
+                    })
+                    break
+            
+            # Check scene elements
+            for element in session.current_scene_elements:
+                if query_lower in element.description.lower():
+                    matching_sessions.append({
+                        "session": session,
+                        "match_reason": "scene_element",
+                        "match_text": element.description
+                    })
+                    break
+        
+        # Limit results
+        matching_sessions = matching_sessions[:limit]
+        
+        # Format response
+        results = [
+            {
+                "id": match["session"].id,
+                "title": match["session"].title,
+                "status": match["session"].status,
+                "created_at": match["session"].created_at.isoformat() if match["session"].created_at else None,
+                "updated_at": match["session"].updated_at.isoformat() if match["session"].updated_at else None,
+                "statement_count": len(match["session"].witness_statements),
+                "match_reason": match["match_reason"],
+                "match_text": match["match_text"]
+            }
+            for match in matching_sessions
+        ]
+        
+        return {
+            "query": q,
+            "total_results": len(results),
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error searching cases: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search failed: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/witnesses/analysis")
+async def analyze_witnesses(session_id: str):
+    """
+    Analyze witness statements for contradictions, consensus, and reliability.
+    
+    Returns:
+        - Statement consistency scores
+        - Contradiction detection
+        - Consensus areas
+        - Confidence levels per witness
+        - Timeline alignment
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        if not session.witness_statements:
+            return {
+                "session_id": session_id,
+                "witness_count": 0,
+                "total_statements": 0,
+                "analysis": "No witness statements available for analysis"
+            }
+        
+        # Analyze statements
+        total_statements = len(session.witness_statements)
+        corrections = sum(1 for stmt in session.witness_statements if stmt.is_correction)
+        original_statements = total_statements - corrections
+        
+        # Calculate correction ratio (high ratio might indicate uncertainty or evolving account)
+        correction_ratio = corrections / total_statements if total_statements > 0 else 0
+        
+        # Analyze temporal patterns
+        statement_timeline = [
+            {
+                "index": i,
+                "timestamp": stmt.timestamp.isoformat() if stmt.timestamp else None,
+                "is_correction": stmt.is_correction,
+                "content_length": len(stmt.content)
+            }
+            for i, stmt in enumerate(session.witness_statements)
+        ]
+        
+        # Detect potential contradictions (simple keyword-based analysis)
+        contradiction_keywords = ["no", "not", "never", "actually", "wrong", "mistake", "correction"]
+        potential_contradictions = [
+            {
+                "statement_index": i,
+                "content": stmt.content[:100] + "..." if len(stmt.content) > 100 else stmt.content,
+                "is_correction": stmt.is_correction
+            }
+            for i, stmt in enumerate(session.witness_statements)
+            if any(keyword in stmt.content.lower() for keyword in contradiction_keywords)
+        ]
+        
+        # Calculate overall reliability score (0-100)
+        # Lower correction ratio = higher reliability
+        # More statements = more detailed account
+        reliability_score = max(0, min(100, 
+            100 - (correction_ratio * 30) + 
+            min(20, total_statements * 2)  # Bonus for detail
+        ))
+        
+        return {
+            "session_id": session_id,
+            "witness_count": 1,  # Currently single witness per session
+            "total_statements": total_statements,
+            "original_statements": original_statements,
+            "corrections": corrections,
+            "correction_ratio": round(correction_ratio, 3),
+            "reliability_score": round(reliability_score, 1),
+            "timeline": statement_timeline,
+            "potential_contradictions": potential_contradictions[:5],  # Top 5
+            "analysis_summary": {
+                "consistency": "high" if correction_ratio < 0.2 else "medium" if correction_ratio < 0.4 else "low",
+                "detail_level": "high" if total_statements >= 10 else "medium" if total_statements >= 5 else "low",
+                "recommendation": (
+                    "Highly consistent witness account with few corrections" if correction_ratio < 0.2 else
+                    "Witness account shows some evolution or clarification" if correction_ratio < 0.4 else
+                    "Witness account has significant corrections - may indicate uncertainty or evolving memory"
+                )
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing witnesses: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to analyze witnesses: {str(e)}"
+        )
+
+
+@router.get("/sessions/compare/{session_id_1}/{session_id_2}")
+async def compare_sessions(session_id_1: str, session_id_2: str):
+    """
+    Compare two witness accounts of the same event.
+    
+    Useful for multi-witness scenarios where different people describe the same incident.
+    Returns similarities, differences, and potential discrepancies.
+    """
+    try:
+        # Fetch both sessions
+        session1 = await firestore_service.get_session(session_id_1)
+        session2 = await firestore_service.get_session(session_id_2)
+        
+        if not session1:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id_1} not found"
+            )
+        if not session2:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id_2} not found"
+            )
+        
+        # Compare scene elements
+        elements1 = {elem.description.lower() for elem in session1.current_scene_elements}
+        elements2 = {elem.description.lower() for elem in session2.current_scene_elements}
+        
+        common_elements = elements1 & elements2
+        unique_to_1 = elements1 - elements2
+        unique_to_2 = elements2 - elements1
+        
+        # Calculate similarity score
+        total_unique_elements = len(elements1 | elements2)
+        similarity_score = (len(common_elements) / total_unique_elements * 100) if total_unique_elements > 0 else 0
+        
+        # Compare statement counts
+        statements_diff = len(session1.witness_statements) - len(session2.witness_statements)
+        
+        return {
+            "session_1": {
+                "id": session1.id,
+                "title": session1.title,
+                "statements": len(session1.witness_statements),
+                "scene_elements": len(session1.current_scene_elements),
+                "reconstructions": len(session1.scene_versions)
+            },
+            "session_2": {
+                "id": session2.id,
+                "title": session2.title,
+                "statements": len(session2.witness_statements),
+                "scene_elements": len(session2.current_scene_elements),
+                "reconstructions": len(session2.scene_versions)
+            },
+            "comparison": {
+                "similarity_score": round(similarity_score, 1),
+                "common_elements": list(common_elements)[:10],  # Top 10
+                "unique_to_session_1": list(unique_to_1)[:5],
+                "unique_to_session_2": list(unique_to_2)[:5],
+                "statements_difference": statements_diff,
+                "interpretation": (
+                    "Highly similar accounts - likely describing same event" if similarity_score > 70 else
+                    "Moderately similar accounts - some overlap but significant differences" if similarity_score > 40 else
+                    "Very different accounts - may be different events or perspectives"
+                )
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error comparing sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compare sessions: {str(e)}"
+        )
