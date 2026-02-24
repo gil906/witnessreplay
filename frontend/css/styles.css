@@ -3952,7 +3952,7 @@ img {
         height: 90px;
     }
 
-    /* Full-width chat input - sticky at bottom */
+    /* Full-width chat input - sticky at bottom, above any fixed overlays */
     .text-input {
         padding: var(--spacing-sm);
         position: sticky;
@@ -3960,7 +3960,12 @@ img {
         flex-shrink: 0;
         background: var(--bg-secondary);
         border-top: 1px solid var(--border-color);
-        z-index: 10;
+        z-index: 950;
+    }
+
+    /* Hide help button on mobile to prevent overlap with chat input */
+    .help-button {
+        display: none;
     }
     
     /* Chat transcript scrolls, input stays at bottom */
@@ -4219,13 +4224,6 @@ img {
 
     .shortcuts-grid {
         grid-template-columns: 1fr;
-    }
-
-    .help-button {
-        width: 44px;
-        height: 44px;
-        bottom: var(--spacing-md);
-        right: var(--spacing-md);
     }
 
     .scene-stats {
