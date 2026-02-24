@@ -389,16 +389,39 @@ async def export_session(session_id: str):
         pdf.set_font("Arial", "", 12)
         pdf.ln(10)
         pdf.cell(0, 10, f"Session: {session.title}", ln=True)
-        pdf.cell(0, 10, f"Date: {session.created_at.strftime('%Y-%m-%d %H:%M')}", ln=True)
+        
+        # Handle missing created_at gracefully
+        if session.created_at:
+            try:
+                date_str = session.created_at.strftime('%Y-%m-%d %H:%M')
+            except:
+                date_str = str(session.created_at)
+            pdf.cell(0, 10, f"Date: {date_str}", ln=True)
+        else:
+            pdf.cell(0, 10, "Date: Not available", ln=True)
+        
         pdf.ln(10)
         
         # Witness Statements
         pdf.set_font("Arial", "B", 14)
         pdf.cell(0, 10, "Witness Statements:", ln=True)
         pdf.set_font("Arial", "", 11)
-        for i, statement in enumerate(session.witness_statements, 1):
-            pdf.multi_cell(0, 10, f"{i}. {statement.text}")
-            pdf.ln(5)
+        
+        if session.witness_statements:
+            for i, statement in enumerate(session.witness_statements, 1):
+                # Handle potential encoding issues with multi_cell
+                try:
+                    text = str(statement.text)
+                    # Replace non-Latin characters with '?'
+                    text = text.encode('latin-1', errors='replace').decode('latin-1')
+                    pdf.multi_cell(0, 10, f"{i}. {text}")
+                    pdf.ln(5)
+                except Exception as e:
+                    logger.warning(f"Error adding statement {i}: {e}")
+                    pdf.multi_cell(0, 10, f"{i}. [Statement could not be encoded]")
+                    pdf.ln(5)
+        else:
+            pdf.cell(0, 10, "No witness statements recorded yet.", ln=True)
         
         # Scene Versions
         if session.scene_versions:
@@ -407,10 +430,22 @@ async def export_session(session_id: str):
             pdf.cell(0, 10, "Scene Reconstructions:", ln=True)
             pdf.set_font("Arial", "", 11)
             for version in session.scene_versions:
-                pdf.multi_cell(0, 10, f"Version {version.version}: {version.description}")
-                if version.image_url:
-                    pdf.cell(0, 10, f"Image: {version.image_url}", ln=True)
-                pdf.ln(5)
+                try:
+                    desc = str(version.description) if version.description else "No description"
+                    desc = desc.encode('latin-1', errors='replace').decode('latin-1')
+                    pdf.multi_cell(0, 10, f"Version {version.version}: {desc}")
+                    if version.image_url:
+                        pdf.cell(0, 10, f"Image: {version.image_url}", ln=True)
+                    pdf.ln(5)
+                except Exception as e:
+                    logger.warning(f"Error adding scene version: {e}")
+                    pdf.cell(0, 10, "[Scene version could not be encoded]", ln=True)
+        else:
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 14)
+            pdf.cell(0, 10, "Scene Reconstructions:", ln=True)
+            pdf.set_font("Arial", "", 11)
+            pdf.cell(0, 10, "No scene reconstructions generated yet.", ln=True)
         
         # Output PDF (fpdf2 returns bytearray, no need to encode)
         pdf_bytes = pdf.output()
@@ -1033,16 +1068,23 @@ async def update_model_config(config: ModelConfigUpdate):
 @router.get("/models/current")
 async def get_current_model():
     """
-    Get the currently configured model.
+    Get the currently configured model and actively selected models.
     
     Returns:
-        Current model name and configuration
+        Current model name and configuration, including model selector choices.
+        Fixes Bug #42: Use new get_current_model() method.
     """
     try:
+        from app.services.model_selector import model_selector
+        
         return {
             "model": settings.gemini_model,
             "vision_model": settings.gemini_vision_model,
             "environment": settings.environment,
+            "active_models": {
+                "chat": model_selector.get_current_model("chat"),
+                "scene_reconstruction": model_selector.get_current_model("scene")
+            }
         }
     
     except Exception as e:

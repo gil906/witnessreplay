@@ -20,22 +20,29 @@ class ModelSelector:
     """
     
     # Model tiers: best to fallback (for scene reconstruction)
+    # Idea #3: Use best models for scene reconstruction
     SCENE_RECONSTRUCTION_MODELS = [
-        "gemini-2.0-flash-exp",  # Best quality, but may be rate limited
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
+        "gemini-2.5-pro",  # Best quality for images
+        "gemini-2.5-flash",  # Good balance
+        "gemini-2.0-flash-exp",  # Experimental but good
+        "gemini-2.0-flash",  # Reliable fallback
+        "gemini-1.5-flash",  # Legacy fallback
     ]
     
     # Models for chat/conversation (can use lighter models)
     CHAT_MODELS = [
-        "gemini-1.5-flash-8b",  # Fastest for chat
-        "gemini-1.5-flash",
-        "gemini-2.0-flash-exp",
+        "gemini-2.5-flash-lite",  # Fastest for chat
+        "gemini-2.0-flash-lite",  # Fast fallback
+        "gemini-2.5-flash",  # Better quality if needed
+        "gemini-2.0-flash",  # Reliable option
+        "gemini-1.5-flash-8b",  # Legacy fast
     ]
     
     def __init__(self):
         self._rate_limited_models: Dict[str, datetime] = {}
         self._lock = asyncio.Lock()
+        self._current_scene_model: Optional[str] = None
+        self._current_chat_model: Optional[str] = None
         
     async def get_best_model_for_scene(self) -> str:
         """
@@ -52,10 +59,12 @@ class ModelSelector:
             for model in self.SCENE_RECONSTRUCTION_MODELS:
                 if not self._is_rate_limited(model):
                     logger.info(f"Selected model for scene reconstruction: {model}")
+                    self._current_scene_model = model
                     return model
             
             # If all are rate limited, use the first one and hope it's recovered
             logger.warning("All scene models rate limited, using first option anyway")
+            self._current_scene_model = self.SCENE_RECONSTRUCTION_MODELS[0]
             return self.SCENE_RECONSTRUCTION_MODELS[0]
     
     async def get_best_model_for_chat(self) -> str:
@@ -69,9 +78,11 @@ class ModelSelector:
             for model in self.CHAT_MODELS:
                 if not self._is_rate_limited(model):
                     logger.info(f"Selected model for chat: {model}")
+                    self._current_chat_model = model
                     return model
             
             logger.warning("All chat models rate limited, using first option anyway")
+            self._current_chat_model = self.CHAT_MODELS[0]
             return self.CHAT_MODELS[0]
     
     async def mark_rate_limited(self, model_name: str):
@@ -175,6 +186,26 @@ class ModelSelector:
         delta = expires_at - datetime.utcnow()
         
         return max(0, int(delta.total_seconds()))
+    
+    def get_current_model(self, task_type: str = "scene") -> str:
+        """
+        Get the currently selected model for a task type.
+        
+        Args:
+            task_type: "scene" for scene reconstruction, "chat" for chat/conversation
+        
+        Returns:
+            The currently selected model name, or the default if none selected yet.
+        
+        Fixes Bug #42: Missing get_current_model() method.
+        """
+        if task_type == "scene":
+            return self._current_scene_model or self.SCENE_RECONSTRUCTION_MODELS[0]
+        elif task_type == "chat":
+            return self._current_chat_model or self.CHAT_MODELS[0]
+        else:
+            # Default to scene reconstruction model
+            return self._current_scene_model or self.SCENE_RECONSTRUCTION_MODELS[0]
 
 
 # Global model selector instance
