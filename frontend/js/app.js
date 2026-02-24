@@ -3,6 +3,16 @@
  * Enhanced with Detective Ray persona, professional UI, and comprehensive features
  */
 
+window.addEventListener('error', (e) => {
+    console.error('Global error:', e.error);
+    if (e.message?.includes('ResizeObserver') || e.message?.includes('Script error')) return;
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('Unhandled promise rejection:', e.reason);
+    e.preventDefault();
+});
+
 class WitnessReplayApp {
     constructor() {
         this.ws = null;
@@ -15,8 +25,8 @@ class WitnessReplayApp {
         this.sessionStartTime = null;
         this.durationTimer = null;
         this.ui = null;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
+        this._reconnectAttempt = 0;
+        this._maxReconnectDelay = 30000;
         this.reconnectTimer = null;
         this.hasReceivedGreeting = false;
         this.fetchTimeout = 10000; // 10 second timeout for API calls
@@ -69,6 +79,7 @@ class WitnessReplayApp {
         // Feature 9: Child-friendly mode
         this.childMode = false;
         
+        try {
         this.initializeUI();
         this.initializeAudio();
         this.initializeVAD();
@@ -85,6 +96,7 @@ class WitnessReplayApp {
         this._initOfflineQueue(); // Initialize offline message queue
         this._initAutoTheme(); // Auto dark/light theme detection
         this._initCommandPalette(); // Feature 49: Command palette (Ctrl+K)
+        this._initAutoSave(); // Auto-save interview progress
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -96,6 +108,27 @@ class WitnessReplayApp {
         // Auto-create session on page load so WebSocket connects immediately
         this.connectionError = null;
         this._autoCreateSession();
+        
+        // Global keyboard handler for modals
+        this._initModalKeyboardNav();
+        } catch(e) {
+            console.error('App initialization error:', e);
+            document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;font-family:system-ui;color:#e2e8f0;background:#0a0a0f;padding:20px;"><div><h2>⚠️ Something went wrong</h2><p style="color:#94a3b8;">WitnessReplay couldn't start properly.</p><button style="background:#3b82f6;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;margin-top:12px;" onclick="location.reload()">Reload</button></div></div>`;
+        }
+    }
+    
+    _initModalKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                // Close modals in priority order
+                const commandPalette = document.getElementById('command-palette');
+                if (commandPalette) { commandPalette.remove(); return; }
+                const tourOverlay = document.getElementById('tour-overlay');
+                if (tourOverlay) { tourOverlay.remove(); localStorage.setItem('wr_tour_done', 'true'); return; }
+                const feedbackModal = document.querySelector('.feedback-modal-overlay');
+                if (feedbackModal) { feedbackModal.remove(); return; }
+            }
+        });
     }
     
     _initAutoTheme() {
@@ -180,7 +213,7 @@ class WitnessReplayApp {
         const stepsEl = document.getElementById('popup-steps');
         if (stepsEl) {
             stepsEl.innerHTML = this.connectionSteps.map(s => 
-                `<div class="step-line"><span class="step-time">${s.time}</span> ${s.text}</div>`
+                `<div class="step-line"><span class="step-time">${s.time}</span> ${this._sanitizeHTML(s.text)}</div>`
             ).join('');
         }
     }
@@ -215,7 +248,7 @@ class WitnessReplayApp {
             retryBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (indicator) indicator.classList.remove('popup-open');
-                this.reconnectAttempts = 0;
+                this._reconnectAttempt = 0;
                 this.connectionError = null;
                 this._autoCreateSession();
             });
@@ -1070,10 +1103,10 @@ class WitnessReplayApp {
         if (templateGrid && this.templates.length > 0) {
             templateGrid.innerHTML = this.templates.map(template => `
                 <div class="template-card" data-template-id="${template.id}" tabindex="0" role="button">
-                    <div class="template-icon">${template.icon}</div>
-                    <div class="template-name">${template.name}</div>
-                    <div class="template-description">${template.description}</div>
-                    <span class="template-category ${template.category}">${template.category}</span>
+                    <div class="template-icon">${this._sanitizeHTML(template.icon)}</div>
+                    <div class="template-name">${this._sanitizeHTML(template.name)}</div>
+                    <div class="template-description">${this._sanitizeHTML(template.description)}</div>
+                    <span class="template-category ${this._sanitizeHTML(template.category)}">${this._sanitizeHTML(template.category)}</span>
                 </div>
             `).join('');
             
@@ -1128,12 +1161,12 @@ class WitnessReplayApp {
             this.currentVersion = 0;
             this.statementCount = 0;
             this.sessionStartTime = Date.now();
-            this.reconnectAttempts = 0;
+            this._reconnectAttempt = 0;
             this.hasReceivedGreeting = false;
             this.selectedTemplateId = null;
+            this._clearAutoSave();
             
             // Start duration timer
-            this.startDurationTimer();
             
             // Start comfort manager interview tracking
             if (this.comfortManager) {
@@ -1232,7 +1265,7 @@ class WitnessReplayApp {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-            this.reconnectAttempts = 0;
+            this._reconnectAttempt = 0;
             this.connectionError = null;
             this._addConnectionStep('✅ Connected!');
             this.ui.setStatus('Ready — Press Space to speak', 'default');
@@ -1284,29 +1317,10 @@ class WitnessReplayApp {
             this.updateConnectionStatus('reconnecting');
             this._updateMicState('connecting');
             
-            // Reconnect with exponential backoff, max attempts
-            if (this.sessionId && this.reconnectAttempts < this.maxReconnectAttempts) {
-                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-                this.ui.showToast(
-                    `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-                    'warning',
-                    delay
-                );
-                this.reconnectTimer = setTimeout(() => {
-                    this.reconnectAttempts++;
-                    this.connectWebSocket();
-                }, delay);
-            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                // Max attempts reached - show error state
-                this.connectionError = 'Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts';
-                this.updateConnectionStatus('disconnected');
-                this._updateMicState('disconnected');
-                this.ui.setStatus('Connection lost - Please reload', 'default');
-                this.ui.showToast(
-                    '❌ Unable to reconnect after ' + this.maxReconnectAttempts + ' attempts. Please reload the page.',
-                    'error',
-                    0 // Persistent
-                );
+            // Reconnect with exponential backoff
+            if (this.sessionId) {
+                this._scheduleReconnect();
+            } else {
                 
                 // Show error in scene display
                 this.sceneDisplay.innerHTML = `
@@ -1337,6 +1351,25 @@ class WitnessReplayApp {
                 }
             }
         };
+    }
+    
+    _scheduleReconnect() {
+        if (this._reconnectAttempt >= 10) {
+            this.ui?.showToast('❌ Connection lost. Please refresh the page.', 'error', 0);
+            this.updateConnectionStatus('disconnected');
+            this._updateMicState('disconnected');
+            this.ui.setStatus('Connection lost - Please reload', 'default');
+            return;
+        }
+        const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempt), this._maxReconnectDelay);
+        this._reconnectAttempt++;
+        console.log(`WebSocket reconnect attempt ${this._reconnectAttempt} in ${delay}ms`);
+        this.ui.showToast(
+            `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this._reconnectAttempt}/10)`,
+            'warning',
+            delay
+        );
+        this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);
     }
     
     updateConnectionStatus(status) {
@@ -1613,7 +1646,7 @@ class WitnessReplayApp {
     toggleRecording() {
         // If disconnected, attempt reconnect instead of recording
         if (this.micBtn.classList.contains('disconnected')) {
-            this.reconnectAttempts = 0;
+            this._reconnectAttempt = 0;
             this.connectionError = null;
             this._autoCreateSession();
             return;
@@ -2026,6 +2059,13 @@ class WitnessReplayApp {
         return div.innerHTML;
     }
     
+    _sanitizeHTML(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+    
     _showTyping() {
         const el = document.getElementById('typing-indicator');
         if (el) el.classList.remove('hidden');
@@ -2055,7 +2095,7 @@ class WitnessReplayApp {
         
         // Update description
         if (data.description) {
-            this.sceneDescription.innerHTML = `<p>${data.description}</p>`;
+            this.sceneDescription.innerHTML = `<p>${this._sanitizeHTML(data.description)}</p>`;
         }
         
         // Update stats
@@ -2650,7 +2690,7 @@ class WitnessReplayApp {
             let changesHtml = '';
             el.changes.forEach(ch => {
                 changesHtml += `<div class="change-item-detail">
-                    ${ch.field}: <span class="before">${ch.before || 'none'}</span> → <span class="after">${ch.after || 'none'}</span>
+                    ${ch.field}: <span class="before">${this._sanitizeHTML(ch.before || 'none')}</span> → <span class="after">${this._sanitizeHTML(ch.after || 'none')}</span>
                 </div>`;
             });
             html += `<div class="change-item" style="border-left-color: #eab308;">
@@ -2689,7 +2729,7 @@ class WitnessReplayApp {
         versionDiv.className = 'timeline-item active';
         versionDiv.dataset.version = data.version || this.currentVersion;
         
-        const changes = data.changes ? `<div class="timeline-changes">✨ ${data.changes}</div>` : '';
+        const changes = data.changes ? `<div class="timeline-changes">✨ ${this._sanitizeHTML(data.changes)}</div>` : '';
         const thumbnailSrc = data.image_url || (data.base64_image ? `data:image/png;base64,${data.base64_image}` : '');
         
         versionDiv.innerHTML = `
@@ -5859,6 +5899,43 @@ function openSketchModal(sketchId) {
         palette.addEventListener('click', (e) => { if (e.target === palette) palette.remove(); });
         document.body.appendChild(palette);
         palette.querySelector('.cmd-input').focus();
+    }
+
+    // ── Auto-save interview progress ─────────────────────────────
+    _initAutoSave() {
+        this._autoSaveInterval = setInterval(() => this._autoSave(), 30000);
+    }
+
+    _autoSave() {
+        if (!this.sessionId) return;
+        const messages = document.getElementById('chat-messages');
+        if (!messages) return;
+        const saveData = {
+            sessionId: this.sessionId,
+            timestamp: Date.now(),
+            messageCount: messages.children.length,
+            recentMessages: Array.from(messages.querySelectorAll('.message')).slice(-20).map(m => ({
+                role: m.classList.contains('user') ? 'user' : 'assistant',
+                text: m.querySelector('.message-text')?.textContent?.substring(0, 500) || ''
+            }))
+        };
+        try {
+            localStorage.setItem('wr_autosave', JSON.stringify(saveData));
+        } catch(e) { /* localStorage full */ }
+    }
+
+    _checkAutoSave() {
+        try {
+            const saved = JSON.parse(localStorage.getItem('wr_autosave'));
+            if (saved && Date.now() - saved.timestamp < 3600000) {
+                return saved;
+            }
+        } catch(e) {}
+        return null;
+    }
+
+    _clearAutoSave() {
+        localStorage.removeItem('wr_autosave');
     }
 }
 

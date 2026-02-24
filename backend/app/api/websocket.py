@@ -1,3 +1,4 @@
+import time
 import logging
 import json
 import asyncio
@@ -35,6 +36,9 @@ class WebSocketHandler:
         self.is_connected = False
         self.version_counter = 0
         self.witness_language = "en"  # Current witness's preferred language
+        self.last_activity = None
+        self._message_times = []
+        self._max_messages_per_second = 10
     
     async def connect(self):
         """Accept the WebSocket connection."""
@@ -94,6 +98,7 @@ class WebSocketHandler:
         self.is_connected = False
         if hasattr(self, '_heartbeat_task'):
             self._heartbeat_task.cancel()
+        remove_agent(self.session_id)
         logger.info(f"WebSocket disconnected for session {self.session_id}")
     
     async def _heartbeat(self):
@@ -151,9 +156,27 @@ class WebSocketHandler:
     
     async def handle_message(self, message: dict):
         """Handle incoming WebSocket messages."""
+        if not isinstance(message, dict):
+            await self.send_message("error", {"message": "Invalid message format"})
+            return
+        message_type = message.get("type", "")
+        if not message_type or not isinstance(message_type, str) or len(message_type) > 50:
+            await self.send_message("error", {"message": "Invalid message type"})
+            return
+        data = message.get("data", {})
+        if not isinstance(data, dict):
+            data = {}
+        self.last_activity = datetime.now(timezone.utc)
+        
+        # Rate limit messages
+        now = time.time()
+        self._message_times = [t for t in self._message_times if now - t < 1.0]
+        if len(self._message_times) >= self._max_messages_per_second:
+            await self.send_message("error", {"message": "Too many messages. Please slow down.", "type": "rate_limited"})
+            return
+        self._message_times.append(now)
+        
         try:
-            message_type = message.get("type")
-            data = message.get("data", {})
             
             if message_type == "audio":
                 await self.handle_audio(data)
@@ -417,7 +440,15 @@ class WebSocketHandler:
         
         except Exception as e:
             logger.error(f"Error handling text: {e}")
-            await self.send_message("error", {"message": f"Processing error: {str(e)}"})
+            error_msg = str(e).lower()
+            if "429" in error_msg or "quota" in error_msg or "resource has been exhausted" in error_msg or "rate limit" in error_msg:
+                await self.send_message("error", {
+                    "message": "🔄 AI is busy right now. Please wait a moment and try again.",
+                    "type": "quota_exceeded",
+                    "retry_after": 10
+                })
+            else:
+                await self.send_message("error", {"message": f"Something went wrong: {str(e)[:100]}"})
     
     async def handle_correction(self, data: dict):
         """Handle a correction from the user."""
@@ -597,8 +628,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         await handler.connect()
         
         while handler.is_connected:
-            # Receive message
-            message = await websocket.receive_json()
+            # Check idle timeout
+            if handler.last_activity and (datetime.now(timezone.utc) - handler.last_activity).total_seconds() > 600:
+                logger.info(f"Session {session_id} idle timeout")
+                await handler.send_message("error", {"message": "Connection idle timeout. Please reconnect."})
+                break
+            # Receive message with timeout
+            try:
+                message = await asyncio.wait_for(websocket.receive_json(), timeout=300.0)
+            except asyncio.TimeoutError:
+                await handler.send_message("error", {"message": "Connection timed out due to inactivity"})
+                break
             await handler.handle_message(message)
     
     except WebSocketDisconnect:

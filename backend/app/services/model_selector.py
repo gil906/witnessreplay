@@ -466,7 +466,8 @@ async def call_with_retry(
         except Exception as e:
             last_error = e
             err = str(e)
-            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            err_lower = err.lower()
+            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err_lower or "rate" in err_lower:
                 wait = (2 ** attempt) + random.uniform(0, 1)
                 logger.warning(
                     f"Rate limited (attempt {attempt + 1}/{max_retries}), "

@@ -30,6 +30,34 @@ class AdminPortal {
         this.checkAuth();
     }
     
+    _sanitize(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+    
+    _checkPasswordStrength(password) {
+        const el = document.getElementById('password-strength');
+        const fill = document.getElementById('strength-fill');
+        const text = document.getElementById('strength-text');
+        if (!el || !fill || !text) return;
+        el.style.display = password ? '' : 'none';
+        let score = 0;
+        if (password.length >= 8) score++;
+        if (password.length >= 12) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[0-9]/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+        const labels = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'];
+        const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981'];
+        const idx = Math.min(score, 4);
+        fill.style.width = `${(score / 5) * 100}%`;
+        fill.style.background = colors[idx];
+        text.textContent = labels[idx];
+        text.style.color = colors[idx];
+    }
+    
     checkAuth() {
         const token = sessionStorage.getItem('admin_token');
         const userStr = sessionStorage.getItem('admin_user');
@@ -83,6 +111,10 @@ class AdminPortal {
         if (registerForm && !registerForm._wired) {
             registerForm._wired = true;
             registerForm.addEventListener('submit', (e) => { e.preventDefault(); this.handleRegister(); });
+            const regPwInput = document.getElementById('reg-password');
+            if (regPwInput) {
+                regPwInput.addEventListener('input', (e) => this._checkPasswordStrength(e.target.value));
+            }
         }
         if (forgotForm && !forgotForm._wired) {
             forgotForm._wired = true;
@@ -145,6 +177,7 @@ class AdminPortal {
                     this.currentUser = data.user;
                 }
                 this.hideLogin();
+                this._startSessionTimer();
                 this.init();
             } else {
                 const err = await response.json().catch(() => ({}));
@@ -269,11 +302,68 @@ class AdminPortal {
     async init() {
         this.initializeUI();
         this.restoreCasesViewMode();
+        this._initModalKeyboardNav();
+        this._initRegisterValidation();
         await this.loadCases();
         this.startAutoRefresh();
         this.fetchAndDisplayVersion();
         this.loadQuotaDashboard();
         this.startQuotaRefresh();
+    }
+    
+    _initModalKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const notifPanel = document.getElementById('notification-panel');
+                if (notifPanel?.classList.contains('show')) { notifPanel.classList.remove('show'); return; }
+                const searchResults = document.getElementById('global-search-results');
+                if (searchResults?.style.display !== 'none') { searchResults.style.display = 'none'; return; }
+            }
+        });
+    }
+    
+    _validateField(input, rules) {
+        const value = input.value.trim();
+        let error = '';
+        if (rules.required && !value) error = 'This field is required';
+        else if (rules.minLength && value.length < rules.minLength) error = `Minimum ${rules.minLength} characters`;
+        else if (rules.email && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email format';
+        else if (rules.match) {
+            const other = document.getElementById(rules.match);
+            if (other && value !== other.value) error = 'Passwords do not match';
+        }
+        
+        input.classList.toggle('field-error', !!error);
+        input.classList.toggle('field-valid', !error && value);
+        let hint = input.parentElement?.querySelector('.field-hint');
+        if (error) {
+            if (!hint) {
+                hint = document.createElement('span');
+                hint.className = 'field-hint';
+                input.parentElement?.appendChild(hint);
+            }
+            hint.textContent = error;
+            hint.style.color = '#ef4444';
+        } else if (hint) {
+            hint.remove();
+        }
+        return !error;
+    }
+    
+    _initRegisterValidation() {
+        const fields = {
+            'reg-fullname': { required: true, minLength: 2 },
+            'reg-email': { required: true, email: true },
+            'reg-username': { required: true, minLength: 3 },
+            'reg-password': { required: true, minLength: 6 },
+            'reg-confirm': { required: true, match: 'reg-password' }
+        };
+        for (const [id, rules] of Object.entries(fields)) {
+            const input = document.getElementById(id);
+            if (input) {
+                input.addEventListener('input', () => this._validateField(input, rules));
+            }
+        }
     }
     
     restoreCasesViewMode() {
@@ -457,6 +547,8 @@ class AdminPortal {
     }
     
     async loadCases() {
+        const container = document.getElementById('cases-list');
+        const spinner = this._showLoading(container);
         try {
             const [casesResponse, reportsResponse] = await Promise.all([
                 this.fetchWithTimeout('/api/cases'),
@@ -487,6 +579,8 @@ class AdminPortal {
             console.error('Error loading cases:', error);
             this.showToast('Failed to load cases: ' + error.message, 'error');
             this.renderEmptyState();
+        } finally {
+            this._hideLoading(spinner);
         }
     }
     
@@ -628,7 +722,7 @@ class AdminPortal {
         const priorityLabel = caseData.priority_label || 'normal';
         const priorityBadge = this.renderPriorityBadge(priorityLabel, caseData.priority_score != null ? Math.round(caseData.priority_score) : null);
         const sourceIcons = (caseData.metadata?.source_types || []).map(s => this.getSourceIcon(s)).join(' ') || '—';
-        const title = caseData.title || 'Untitled Case';
+        const title = this._sanitize(caseData.title || 'Untitled Case');
         const truncTitle = title.length > 50 ? title.substring(0, 50) + '…' : title;
         const daysOld = caseData.created_at ? Math.floor((Date.now() - new Date(caseData.created_at).getTime()) / 86400000) : '—';
         
@@ -688,7 +782,7 @@ class AdminPortal {
                 <div class="case-info">
                     <div class="case-header">
                         <div>
-                            <h3 class="case-title">${caseData.title || 'Untitled Case'}</h3>
+                            <h3 class="case-title">${this._sanitize(caseData.title || 'Untitled Case')}</h3>
                             <div class="case-id">${caseData.case_number || caseData.id} <span class="compact-date">· ${this.formatDateShort(caseData.created_at)}</span></div>
                         </div>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -829,7 +923,7 @@ class AdminPortal {
                 <div class="case-info">
                     <div class="case-header">
                         <div>
-                            <h3 class="case-title">${report.title || 'Witness Report'}</h3>
+                            <h3 class="case-title">${this._sanitize(report.title || 'Witness Report')}</h3>
                             <div class="case-id">${report.report_number || report.id}</div>
                         </div>
                         <span class="${sourceBadgeClass}">${sourceIcon} ${sourceType}</span>
@@ -1028,7 +1122,7 @@ class AdminPortal {
                 <div class="related-case-card" data-case-id="${rel.related_case_id}" onclick="window.adminPortal.navigateToRelatedCase('${rel.related_case_id}')">
                     <div class="related-case-info">
                         <div class="case-number">${rel.related_case_number}</div>
-                        <div class="case-title">${rel.related_case_title}</div>
+                        <div class="case-title">${this._sanitize(rel.related_case_title)}</div>
                         <div class="related-case-meta">
                             <span class="relationship-badge ${relTypeClass}">${relTypeLabel}</span>
                             <span class="link-reason-badge">${reasonLabel}</span>
@@ -1074,7 +1168,7 @@ class AdminPortal {
                 list.innerHTML = data.similar_cases.map(sim => `
                     <div class="similar-case-item">
                         <div class="similar-case-info">
-                            <strong>${sim.case_number}</strong> - ${sim.title}
+                            <strong>${this._sanitize(sim.case_number)}</strong> - ${this._sanitize(sim.title)}
                             <div class="similarity-score">${Math.round(sim.similarity_score * 100)}% similar</div>
                             <div class="matching-factors">
                                 ${sim.matching_factors.map(f => `<span class="factor-tag">${f}</span>`).join('')}
@@ -1153,7 +1247,7 @@ class AdminPortal {
         
         const otherCases = this.cases.filter(c => c.id !== this.currentCase?.id);
         otherCases.forEach(c => {
-            select.innerHTML += `<option value="${c.id}">${c.case_number} - ${c.title}</option>`;
+            select.innerHTML += `<option value="${c.id}">${this._sanitize(c.case_number)} - ${this._sanitize(c.title)}</option>`;
         });
         
         document.getElementById('link-case-form').style.display = 'flex';
@@ -1300,9 +1394,9 @@ class AdminPortal {
         list.innerHTML = matches.map(match => `
             <div class="pattern-item ${confidenceClass}">
                 <div class="pattern-info">
-                    <div class="pattern-description">${getTitle(match)}</div>
+                    <div class="pattern-description">${this._sanitize(getTitle(match))}</div>
                     <div class="pattern-details">
-                        <span class="pattern-badge ${type}">${getDescription(match)}</span>
+                        <span class="pattern-badge ${type}">${this._sanitize(getDescription(match))}</span>
                     </div>
                 </div>
                 <span class="pattern-case-link" onclick="window.adminPortal.navigateToRelatedCase('${match.case_id}')">
@@ -3022,6 +3116,8 @@ class AdminPortal {
     // ─── Settings / API Key Management ────────────────────────
     
     loadSettingsView() {
+        const container = document.getElementById('settings-view');
+        const spinner = this._showLoading(container);
         const baseUrl = window.location.origin;
         const baseUrlEl = document.getElementById('api-base-url');
         if (baseUrlEl) baseUrlEl.textContent = baseUrl;
@@ -3056,6 +3152,7 @@ class AdminPortal {
         
         this.loadApiKeys();
         this.loadRateLimits();
+        this._hideLoading(spinner);
     }
 
     async loadRateLimits() {
@@ -3274,6 +3371,21 @@ class AdminPortal {
         } catch(e) { alert('Merge error: ' + e.message); }
     }
 
+    // ── Loading Overlay Helpers ─────────────────────────────
+    _showLoading(container) {
+        if (!container) return;
+        const spinner = document.createElement('div');
+        spinner.className = 'loading-overlay';
+        spinner.innerHTML = '<div class="spinner"></div>';
+        container.style.position = 'relative';
+        container.appendChild(spinner);
+        return spinner;
+    }
+
+    _hideLoading(spinner) {
+        if (spinner) spinner.remove();
+    }
+
     // ── Notification Center ──────────────────────────────────
     showNotificationCenter() {
         let panel = document.getElementById('notification-panel');
@@ -3281,7 +3393,7 @@ class AdminPortal {
             panel = document.createElement('div');
             panel.id = 'notification-panel';
             panel.className = 'notification-panel';
-            panel.innerHTML = `<div class="notif-header"><h3>🔔 Notifications</h3><button onclick="adminPortal.clearNotifications()" class="btn-sm">Clear All</button></div><div id="notif-list" class="notif-list"></div>`;
+            panel.innerHTML = `<div class="notif-header"><h3>🔔 Notifications</h3><div><button onclick="window.adminPortal?.clearNotifications()" class="btn-sm">Clear</button><button onclick="document.getElementById('notification-panel').classList.remove('show')" class="btn-sm" style="margin-left:8px;">✕</button></div></div><div id="notif-list" class="notif-list"></div>`;
             document.body.appendChild(panel);
         }
         panel.classList.toggle('show');
@@ -3328,19 +3440,51 @@ class AdminPortal {
         if (query.length < 2) { results.style.display = 'none'; return; }
         clearTimeout(this._searchDebounce);
         this._searchDebounce = setTimeout(async () => {
+            const spinner = this._showLoading(results);
+            results.style.display = 'block';
             try {
                 const resp = await fetch(`/api/admin/search/global?q=${encodeURIComponent(query)}`, {headers: {'Authorization': `Bearer ${this.authToken}`}});
                 if (resp.ok) {
                     const data = await resp.json();
-                    results.style.display = 'block';
                     let html = '';
-                    if (data.cases.length) html += '<div class="search-group"><b>Cases</b>' + data.cases.map(c => `<div class="search-item" onclick="adminPortal.showCaseDetail('${c.id}')">${c.case_number || ''} - ${c.title || 'Untitled'}</div>`).join('') + '</div>';
+                    if (data.cases.length) html += '<div class="search-group"><b>Cases</b>' + data.cases.map(c => `<div class="search-item" onclick="window.adminPortal?.showCaseDetail('${c.id}')">${c.case_number || ''} - ${c.title || 'Untitled'}</div>`).join('') + '</div>';
                     if (data.sessions.length) html += '<div class="search-group"><b>Sessions</b>' + data.sessions.map(s => `<div class="search-item">${s.title || s.id.slice(0,8)}</div>`).join('') + '</div>';
                     if (data.users.length) html += '<div class="search-group"><b>Users</b>' + data.users.map(u => `<div class="search-item">${u.username} (${u.role})</div>`).join('') + '</div>';
                     results.innerHTML = html || '<p style="padding:10px;color:var(--text-secondary)">No results</p>';
                 }
-            } catch(e) { console.error('Search:', e); }
+            } catch(e) { console.error('Search:', e); } finally { this._hideLoading(spinner); }
         }, 300);
+    }
+
+    _startSessionTimer() {
+        if (this._sessionWarningTimer) clearTimeout(this._sessionWarningTimer);
+        const SESSION_DURATION = 24 * 60 * 60 * 1000;
+        const WARNING_BEFORE = 5 * 60 * 1000;
+        this._sessionStart = Date.now();
+
+        this._sessionWarningTimer = setTimeout(() => {
+            this._showSessionWarning();
+        }, SESSION_DURATION - WARNING_BEFORE);
+    }
+
+    _showSessionWarning() {
+        const toast = document.createElement('div');
+        toast.className = 'session-warning-toast';
+        toast.innerHTML = `
+            <span>⚠️ Your session expires in 5 minutes</span>
+            <button onclick="this.parentElement.remove(); window.adminPortal?.extendSession()">Extend</button>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 30000);
+    }
+
+    async extendSession() {
+        try {
+            const resp = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${this.authToken}` } });
+            if (resp.ok) {
+                this._startSessionTimer();
+            }
+        } catch(e) { console.error(e); }
     }
 }
 
