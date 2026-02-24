@@ -73,6 +73,16 @@
                     <div class="step"><span class="step-num">3</span> Review &amp; Export</div>
                 </div>
 
+                <!-- Multi-Witness Selector Bar -->
+                <div id="witness-selector-bar" class="witness-selector-bar" style="display:none;">
+                    <div class="witness-tabs" id="witness-tabs">
+                        <!-- Witness tabs populated dynamically -->
+                    </div>
+                    <button id="add-witness-btn" class="btn btn-secondary btn-sm" title="Add another witness">
+                        <span class="btn-icon">+</span> Add Witness
+                    </button>
+                </div>
+
                 <!-- Interview Progress Phases (Item 25) -->
                 <div id="interview-progress" class="interview-progress">
                     <div class="progress-phases">
@@ -133,6 +143,32 @@
 
                 <!-- Voice Control - collapsible, hidden by default -->
                 <div class="controls" id="voice-controls">
+                    <!-- VAD Controls -->
+                    <div class="vad-controls" id="vad-controls">
+                        <div class="vad-toggle-row">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="vad-enabled" aria-label="Enable voice activity detection">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="vad-label">Auto-detect voice</span>
+                            <div class="vad-indicator" id="vad-indicator" title="Voice activity indicator">
+                                <span class="vad-dot"></span>
+                            </div>
+                        </div>
+                        <div class="vad-settings hidden" id="vad-settings">
+                            <div class="vad-setting">
+                                <label for="vad-sensitivity">Sensitivity</label>
+                                <input type="range" id="vad-sensitivity" min="0.005" max="0.05" step="0.001" value="0.015">
+                                <span class="vad-value" id="vad-sensitivity-value">Medium</span>
+                            </div>
+                            <div class="vad-setting">
+                                <label for="vad-silence">Silence timeout</label>
+                                <input type="range" id="vad-silence" min="1" max="5" step="0.5" value="2">
+                                <span class="vad-value" id="vad-silence-value">2.0s</span>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="mic-container">
                         <div class="waveform-ring" id="waveform-ring"></div>
                         <canvas id="audio-visualizer" width="140" height="140"></canvas>
@@ -143,6 +179,9 @@
                     <div class="status-indicator" id="status-indicator">
                         <span id="status-text">Ready to listen</span>
                     </div>
+                    
+                    <!-- Audio Quality Indicator -->
+                    <div id="audio-quality-container" class="audio-quality-container"></div>
                 </div>
 
                 <!-- Text Input — always visible -->
@@ -151,7 +190,11 @@
                     <button id="upload-evidence-btn" class="evidence-upload-btn" onclick="uploadEvidence()" aria-label="Attach photo evidence" title="Attach photo">
                         📎
                     </button>
+                    <button id="upload-sketch-btn" class="evidence-upload-btn" onclick="uploadSketch()" aria-label="Upload hand-drawn sketch" title="Upload Sketch">
+                        ✏️
+                    </button>
                     <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)" aria-hidden="true">
+                    <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)" aria-hidden="true">
                     <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Text input for testimony">
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                     <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
@@ -160,7 +203,7 @@
                 </div>
 
                 <div class="keyboard-hint">
-                    Press <kbd>Space</kbd> to record · <kbd>Esc</kbd> to cancel
+                    Press <kbd>Space</kbd> to record · <kbd>Esc</kbd> to cancel · Enable <em>Auto-detect voice</em> for hands-free
                 </div>
             </section>
 
@@ -203,11 +246,106 @@
                     </div>
                     <div class="scene-controls hidden">
                         <button class="scene-control-btn" id="zoom-btn" data-tooltip="Zoom" aria-label="Zoom scene">🔍</button>
+                        <button class="scene-control-btn" id="measure-btn" data-tooltip="Measure" aria-label="Measurement tools">📏</button>
                         <button class="scene-control-btn" id="download-btn" data-tooltip="Download" aria-label="Download scene">⬇️</button>
                         <button class="scene-control-btn" id="fullscreen-btn" data-tooltip="Fullscreen" aria-label="Fullscreen">⛶</button>
+                        <button class="scene-control-btn" id="compare-btn" data-tooltip="Compare versions" aria-label="Compare versions">🔀</button>
                     </div>
                 </div>
                 <div id="scene-description" class="scene-description"><p>No scene generated yet</p></div>
+
+                <!-- Witness Sketches Gallery -->
+                <div class="witness-sketches-panel" id="witness-sketches-panel" style="display:none;">
+                    <div class="sketches-header">
+                        <h4>✏️ Witness Sketches</h4>
+                        <span class="sketches-count" id="sketches-count">0</span>
+                    </div>
+                    <div class="sketches-gallery" id="sketches-gallery">
+                        <p class="empty-state">No sketches uploaded yet. Use the ✏️ button to upload hand-drawn sketches.</p>
+                    </div>
+                </div>
+
+                <!-- Environmental Conditions Panel -->
+                <div class="environmental-conditions-panel" id="environmental-conditions-panel">
+                    <div class="conditions-header">
+                        <h4>🌤️ Environmental Conditions</h4>
+                        <button class="conditions-toggle-btn" onclick="toggleConditionsPanel()" title="Toggle conditions">▼</button>
+                    </div>
+                    <div class="conditions-content" id="conditions-content">
+                        <div class="condition-row">
+                            <label for="weather-select">
+                                <span class="condition-icon">☁️</span> Weather
+                            </label>
+                            <select id="weather-select" class="condition-select" onchange="updateEnvironmentalConditions()">
+                                <option value="clear" data-icon="☀️">Clear</option>
+                                <option value="rain" data-icon="🌧️">Rain</option>
+                                <option value="snow" data-icon="❄️">Snow</option>
+                                <option value="fog" data-icon="🌫️">Fog</option>
+                            </select>
+                        </div>
+                        <div class="condition-row">
+                            <label for="lighting-select">
+                                <span class="condition-icon">💡</span> Lighting
+                            </label>
+                            <select id="lighting-select" class="condition-select" onchange="updateEnvironmentalConditions()">
+                                <option value="daylight" data-icon="🌞">Daylight</option>
+                                <option value="dusk" data-icon="🌅">Dusk</option>
+                                <option value="night" data-icon="🌙">Night</option>
+                                <option value="artificial" data-icon="💡">Artificial</option>
+                            </select>
+                        </div>
+                        <div class="condition-row">
+                            <label for="visibility-select">
+                                <span class="condition-icon">👁️</span> Visibility
+                            </label>
+                            <select id="visibility-select" class="condition-select" onchange="updateEnvironmentalConditions()">
+                                <option value="good" data-icon="✅">Good</option>
+                                <option value="moderate" data-icon="⚠️">Moderate</option>
+                                <option value="poor" data-icon="❌">Poor</option>
+                            </select>
+                        </div>
+                        <div class="conditions-preview" id="conditions-preview">
+                            <span class="preview-label">Preview:</span>
+                            <span class="preview-icons" id="preview-icons">☀️ 🌞 ✅</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scene Element Library & Editor -->
+                <div class="scene-editor-container" id="scene-editor-container">
+                    <div class="element-palette-header">
+                        <h4>🎨 Scene Elements</h4>
+                        <div class="palette-header-controls">
+                            <div class="view-toggle-group">
+                                <button class="view-toggle-btn active" id="view-2d-btn" onclick="toggleSceneView('2d')" title="2D View">2D</button>
+                                <button class="view-toggle-btn" id="view-3d-btn" onclick="toggleSceneView('3d')" title="3D View">3D</button>
+                            </div>
+                            <button class="template-selector-btn" onclick="sceneTemplateManager.showTemplateSelector()" title="Choose Template">📐 Templates</button>
+                            <button class="palette-toggle-btn" onclick="sceneElementLibrary.togglePalette()" title="Toggle palette">▼</button>
+                        </div>
+                    </div>
+                    <div id="scene-element-palette" class="scene-element-palette">
+                        <!-- Populated by scene-elements.js -->
+                    </div>
+                    <div id="scene-editor-canvas" class="show-grid" style="height: 350px;">
+                        <div class="placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary);">
+                            <span style="font-size: 2rem;">🎯</span>
+                            <p style="margin-top: 8px; font-size: 0.85rem;">Drag elements here or click to place</p>
+                        </div>
+                    </div>
+                    <div id="scene-3d-canvas" class="scene-3d-canvas" style="height: 350px; display: none;">
+                        <!-- 3D viewer rendered here -->
+                    </div>
+                    <div id="scene-3d-controls" class="scene-3d-controls" style="display: none;">
+                        <button class="scene-3d-btn" onclick="scene3DViewer.resetCamera()" title="Reset Camera">🏠</button>
+                        <button class="scene-3d-btn" onclick="scene3DViewer.toggleGrid()" title="Toggle Grid">🔲</button>
+                        <button class="scene-3d-btn" onclick="scene3DViewer.syncFromLibrary()" title="Sync from 2D">🔄</button>
+                    </div>
+                    <!-- Scene Animation Controls -->
+                    <div id="scene-animation-container" class="scene-animation-container" style="display: none;">
+                        <!-- Populated by scene-animation.js -->
+                    </div>
+                </div>
 
                 <!-- Evidence Board -->
                 <div class="evidence-board" id="evidence-board">
@@ -239,6 +377,23 @@
                     </div>
                 </div>
             </aside>
+        </div>
+    </div>
+
+    <!-- Template Selector Modal -->
+    <div id="template-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="template-modal-title">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h2 id="template-modal-title">📋 What type of incident are you reporting?</h2>
+                <button class="modal-close" id="close-template-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <p class="modal-description">Select the type of incident to help guide the interview with relevant questions.</p>
+            <div id="template-grid" class="template-grid">
+                <p class="empty-state">Loading templates...</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="skip-template-btn">Skip - General Report</button>
+            </div>
         </div>
     </div>
 
@@ -546,9 +701,17 @@
                     <label for="witness-contact">Contact</label>
                     <input type="text" id="witness-contact" placeholder="Phone or email (optional)" aria-label="Contact information">
                 </div>
-                <div class="form-group">
+                <div class="form-group form-group-full">
                     <label for="witness-location">Location at time of incident</label>
-                    <input type="text" id="witness-location" placeholder="Where were you?" aria-label="Location at time of incident">
+                    <div class="location-input-wrapper">
+                        <input type="text" id="witness-location" placeholder="Enter address or use GPS" aria-label="Location at time of incident" autocomplete="off">
+                        <button type="button" id="gps-location-btn" class="gps-btn" title="Get current GPS location" aria-label="Get current location">
+                            📍
+                        </button>
+                        <div id="location-suggestions" class="location-suggestions" role="listbox"></div>
+                    </div>
+                    <div id="location-coordinates" class="location-coordinates"></div>
+                    <div id="location-map" class="location-map-container"></div>
                 </div>
             </div>
             <div class="witness-form-actions">
@@ -589,8 +752,69 @@
 
     <!-- Scripts -->
     <script src="/static/js/audio.js"></script>
+    <script src="/static/js/audio-quality.js"></script>
+    <script src="/static/js/vad.js"></script>
     <script src="/static/js/ui.js"></script>
+    <script src="/static/js/measurements.js"></script>
+    <script src="/static/js/evidence-markers.js"></script>
+    <script src="/static/js/scene-elements.js"></script>
+    <script src="/static/js/scene-templates.js"></script>
+    <script src="/static/js/scene-3d.js"></script>
+    <script src="/static/js/scene-animation.js"></script>
+    <script src="/static/js/location.js"></script>
     <script src="/static/js/app.js"></script>
+    
+    <!-- Initialize Scene Element Library and 3D Viewer -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.sceneElementLibrary) {
+                window.sceneElementLibrary.init();
+            }
+            if (window.scene3DViewer) {
+                window.scene3DViewer.init();
+            }
+        });
+        
+        // Toggle between 2D and 3D scene views
+        let currentSceneView = '2d';
+        function toggleSceneView(view) {
+            if (view === currentSceneView) return;
+            currentSceneView = view;
+            
+            const canvas2d = document.getElementById('scene-editor-canvas');
+            const canvas3d = document.getElementById('scene-3d-canvas');
+            const controls3d = document.getElementById('scene-3d-controls');
+            const btn2d = document.getElementById('view-2d-btn');
+            const btn3d = document.getElementById('view-3d-btn');
+            const palette = document.getElementById('scene-element-palette');
+            
+            if (view === '3d') {
+                // Switch to 3D
+                canvas2d.style.display = 'none';
+                canvas3d.style.display = 'block';
+                controls3d.style.display = 'flex';
+                palette.style.display = 'none';
+                btn2d.classList.remove('active');
+                btn3d.classList.add('active');
+                
+                if (window.scene3DViewer) {
+                    window.scene3DViewer.activate(canvas3d);
+                }
+            } else {
+                // Switch to 2D
+                canvas2d.style.display = 'block';
+                canvas3d.style.display = 'none';
+                controls3d.style.display = 'none';
+                palette.style.display = '';
+                btn2d.classList.add('active');
+                btn3d.classList.remove('active');
+                
+                if (window.scene3DViewer) {
+                    window.scene3DViewer.deactivate();
+                }
+            }
+        }
+    </script>
     
     <!-- Inline helper functions for onboarding -->
     <script>
@@ -633,30 +857,74 @@
                 <h2 id="comparison-modal-title">🔀 Version Comparison</h2>
                 <button class="modal-close" id="close-comparison-modal-btn" aria-label="Close modal">&times;</button>
             </div>
+            <!-- Version selectors -->
+            <div class="comparison-selectors">
+                <div class="comparison-selector-group">
+                    <label for="comparison-version-a">Compare:</label>
+                    <select id="comparison-version-a" class="comparison-select">
+                        <option value="">Select version...</option>
+                    </select>
+                </div>
+                <span class="comparison-vs">vs</span>
+                <div class="comparison-selector-group">
+                    <label for="comparison-version-b">With:</label>
+                    <select id="comparison-version-b" class="comparison-select">
+                        <option value="">Select version...</option>
+                    </select>
+                </div>
+                <button id="compare-versions-btn" class="btn btn-primary btn-sm">Compare</button>
+            </div>
+            <!-- Diff Summary -->
+            <div id="comparison-diff-summary" class="comparison-diff-summary hidden">
+                <div class="diff-badge diff-added"><span class="diff-count" id="diff-added-count">0</span> Added</div>
+                <div class="diff-badge diff-removed"><span class="diff-count" id="diff-removed-count">0</span> Removed</div>
+                <div class="diff-badge diff-changed"><span class="diff-count" id="diff-changed-count">0</span> Changed</div>
+                <div class="diff-badge diff-unchanged"><span class="diff-count" id="diff-unchanged-count">0</span> Unchanged</div>
+            </div>
             <div class="comparison-modal-body">
                 <div class="comparison-panel">
-                    <div class="comparison-header">Before</div>
+                    <div class="comparison-header">
+                        <span id="comparison-header-a">Version A</span>
+                        <span class="comparison-timestamp" id="comparison-timestamp-a"></span>
+                    </div>
                     <div id="comparison-before" class="comparison-image-container">
                         <!-- Before image inserted here -->
                     </div>
                     <div id="comparison-before-description" class="comparison-description">
                         <!-- Description -->
                     </div>
+                    <div id="comparison-elements-a" class="comparison-elements">
+                        <!-- Elements list -->
+                    </div>
                 </div>
                 <div class="comparison-divider-vertical">
                     <div class="divider-handle">⇄</div>
                 </div>
                 <div class="comparison-panel">
-                    <div class="comparison-header">After</div>
+                    <div class="comparison-header">
+                        <span id="comparison-header-b">Version B</span>
+                        <span class="comparison-timestamp" id="comparison-timestamp-b"></span>
+                    </div>
                     <div id="comparison-after" class="comparison-image-container">
                         <!-- After image inserted here -->
                     </div>
                     <div id="comparison-after-description" class="comparison-description">
                         <!-- Description -->
                     </div>
+                    <div id="comparison-elements-b" class="comparison-elements">
+                        <!-- Elements list -->
+                    </div>
+                </div>
+            </div>
+            <!-- Detailed changes panel -->
+            <div id="comparison-changes-panel" class="comparison-changes-panel hidden">
+                <h4>🔍 Detailed Changes</h4>
+                <div id="comparison-changes-list" class="comparison-changes-list">
+                    <!-- Changes rendered here -->
                 </div>
             </div>
             <div class="modal-actions">
+                <button class="btn btn-secondary" id="toggle-comparison-mode-btn" data-tooltip="Toggle comparison mode in scene viewer">📐 Toggle Compare Mode</button>
                 <button class="btn btn-secondary" id="modal-close-comparison-btn">Close</button>
             </div>
         </div>

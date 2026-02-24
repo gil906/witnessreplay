@@ -75,19 +75,38 @@ async def lifespan(app: FastAPI):
     
     # Start cache cleanup background task
     from app.services.cache import cache
+    from app.services.response_cache import response_cache
+    
+    # Load cached responses from database
+    await response_cache.load_from_db()
+    logger.info(f"Response cache loaded ({response_cache.get_stats()['entries']} entries)")
+    
     async def cleanup_cache_periodically():
         while True:
             await asyncio.sleep(300)  # Run every 5 minutes
             await cache.cleanup_expired()
+            await response_cache.cleanup_expired()
     
     cleanup_task = asyncio.create_task(cleanup_cache_periodically())
     logger.info("Started cache cleanup background task")
+    
+    # Start request queue processor
+    from app.services.request_queue import request_queue
+    await request_queue.start()
+    logger.info("Started request queue processor")
+    
+    # Start quota alert service
+    from app.services.quota_alert_service import quota_alert_service
+    await quota_alert_service.start()
+    logger.info("Started quota alert service")
     
     # Startup
     yield
     
     # Shutdown
     cleanup_task.cancel()
+    await request_queue.stop()
+    await quota_alert_service.stop()
     logger.info("Shutting down WitnessReplay application")
 
 
@@ -249,12 +268,20 @@ async def rate_limit_middleware(request: Request, call_next):
     Rate limiting middleware using usage tracker.
     Only enforces limits if ENFORCE_RATE_LIMITS=true in env.
     Adds rate limit headers to all API responses.
+    When QUEUE_RATE_LIMITED=true, queues requests instead of rejecting them.
+    Also checks quotas after each request to trigger alerts.
+    Integrates with RPD budget allocator for time-window based budget control.
     """
     from app.services.usage_tracker import usage_tracker
+    from app.services.request_queue import request_queue
+    from app.services.quota_alert_service import quota_alert_service
+    from app.services.rpd_budget import rpd_budget, BudgetAction
     
     # Skip rate limiting for health checks and static files
     if request.url.path in ["/api/health", "/", "/docs", "/openapi.json"] or \
-       request.url.path.startswith("/static"):
+       request.url.path.startswith("/static") or \
+       request.url.path.startswith("/api/queue") or \
+       request.url.path.startswith("/api/alerts"):
         return await call_next(request)
     
     # Get current model from settings
@@ -265,6 +292,8 @@ async def rate_limit_middleware(request: Request, call_next):
     
     # Check if enforcement is enabled
     enforce_limits = os.getenv("ENFORCE_RATE_LIMITS", "false").lower() == "true"
+    queue_rate_limited = os.getenv("QUEUE_RATE_LIMITED", "false").lower() == "true"
+    enforce_budget = os.getenv("ENFORCE_RPD_BUDGET", "false").lower() == "true"
     
     if enforce_limits:
         # Check rate limit before processing request
@@ -272,6 +301,37 @@ async def rate_limit_middleware(request: Request, call_next):
         
         if not allowed:
             logger.warning(f"Rate limit exceeded for {current_model}: {reason}")
+            
+            # Try to queue the request if queuing is enabled
+            if queue_rate_limited:
+                client_ip = request.client.host if request.client else "unknown"
+                success, queued = request_queue.queue_request(
+                    endpoint=str(request.url.path),
+                    method=request.method,
+                    client_ip=client_ip,
+                )
+                
+                if success and queued:
+                    # Return 202 Accepted with queue info
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "detail": "Request queued due to rate limit",
+                            "queue_id": queued.id,
+                            "queue_status_url": f"/api/queue/status/{queued.id}",
+                            "expires_at": queued.expires_at.isoformat(),
+                            "reason": reason,
+                        },
+                        headers={
+                            "X-Queue-ID": queued.id,
+                            "Retry-After": "60",
+                            "X-RateLimit-Limit": str(usage["limits"]["requests_per_minute"]),
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": str(int(usage.get("next_reset_timestamp", 0)))
+                        }
+                    )
+            
+            # Queue full or not enabled - return 429
             return JSONResponse(
                 status_code=429,
                 content={
@@ -287,13 +347,84 @@ async def rate_limit_middleware(request: Request, call_next):
                 }
             )
     
+    # Check RPD budget allocation if enabled
+    if enforce_budget:
+        budget_allowed, budget_reason, budget_action = rpd_budget.check_budget(current_model)
+        
+        if not budget_allowed:
+            logger.warning(f"Budget exceeded for {current_model}: {budget_reason}")
+            
+            if budget_action == BudgetAction.QUEUE:
+                # Queue the request
+                client_ip = request.client.host if request.client else "unknown"
+                success, queued = request_queue.queue_request(
+                    endpoint=str(request.url.path),
+                    method=request.method,
+                    client_ip=client_ip,
+                )
+                
+                if success and queued:
+                    rpd_budget.record_queued(current_model)
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "detail": "Request queued due to budget limit",
+                            "queue_id": queued.id,
+                            "queue_status_url": f"/api/queue/status/{queued.id}",
+                            "expires_at": queued.expires_at.isoformat(),
+                            "reason": budget_reason,
+                        },
+                        headers={
+                            "X-Queue-ID": queued.id,
+                            "Retry-After": "300",  # Try again after window changes
+                            "X-Budget-Exceeded": "true",
+                        }
+                    )
+            
+            if budget_action == BudgetAction.REJECT:
+                rpd_budget.record_rejected(current_model)
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": budget_reason,
+                        "model": current_model,
+                        "budget_exceeded": True,
+                        "retry_after": "300"
+                    },
+                    headers={
+                        "Retry-After": "300",
+                        "X-Budget-Exceeded": "true",
+                    }
+                )
+            # BudgetAction.ALLOW - continue but track overage
+    
     # Process request
     response = await call_next(request)
+    
+    # Record successful request to budget allocator
+    rpd_budget.record_request(current_model)
     
     # Add rate limit headers to response
     response.headers["X-RateLimit-Limit"] = str(usage["limits"]["requests_per_minute"])
     response.headers["X-RateLimit-Remaining"] = str(usage["remaining"]["requests_per_minute"])
     response.headers["X-RateLimit-Reset"] = str(int(usage.get("next_reset_timestamp", 0)))
+    
+    # Add budget headers
+    try:
+        window_status = rpd_budget.get_current_window_status(current_model)
+        if window_status.get("current_window"):
+            window_usage = window_status.get("usage", {})
+            response.headers["X-Budget-Window"] = window_status["current_window"]["name"]
+            response.headers["X-Budget-Remaining"] = str(window_usage.get("remaining", 0))
+    except Exception:
+        pass
+    
+    # Check quotas after request to trigger alerts if approaching limits
+    try:
+        updated_usage = usage_tracker.get_usage(current_model)
+        await quota_alert_service.check_quota(current_model, updated_usage)
+    except Exception as e:
+        logger.debug(f"Quota alert check failed: {e}")
     
     return response
 

@@ -24,13 +24,34 @@ class WitnessReplayApp {
         this.sounds = {}; // Sound effect cache
         this.comparisonMode = false; // Scene comparison mode
         this.previousSceneUrl = null; // For before/after comparison
+        this.streamingMessages = {}; // Track streaming messages by ID
+        this.templates = []; // Interview templates cache
+        this.selectedTemplateId = null; // Selected template for new session
+        
+        // Multi-witness support
+        this.witnesses = []; // List of witnesses in current session
+        this.activeWitnessId = null; // Currently active witness for statements
+        
+        // Voice Activity Detection (VAD)
+        this.vad = null;
+        this.vadEnabled = localStorage.getItem('vadEnabled') === 'true';
+        this.vadListening = false;
+        this.vadAutoRecording = false;
+        
+        // Text-to-Speech (TTS) for accessibility
+        this.ttsPlayer = null;
+        this.initializeTTS();
         
         this.initializeUI();
         this.initializeAudio();
+        this.initializeVAD();
         this.initializeModals();
         this.initializeSounds();
         this.initializeParticles();
         this.initializeSceneZoom();
+        this.initializeMeasurementTool();
+        this.initializeEvidenceMarkerTool();
+        this.initializeWitnessTabs(); // Initialize multi-witness UI
         this.fetchAndDisplayVersion(); // Fetch version from API
         
         // Show onboarding for first-time users
@@ -111,6 +132,7 @@ class WitnessReplayApp {
         document.getElementById('download-btn')?.addEventListener('click', () => this.downloadScene());
         document.getElementById('zoom-btn')?.addEventListener('click', () => this.toggleZoom());
         document.getElementById('fullscreen-btn')?.addEventListener('click', () => this.toggleFullscreen());
+        document.getElementById('compare-btn')?.addEventListener('click', () => this.openComparisonModal());
         
         // Export buttons
         document.getElementById('export-pdf-btn')?.addEventListener('click', () => this.exportPDF());
@@ -143,7 +165,7 @@ class WitnessReplayApp {
             });
         }
         
-        // Start with a new session
+        // Start with a new session (show template selector)
         this.createNewSession();
         
         // Initialize suggested action buttons
@@ -154,6 +176,9 @@ class WitnessReplayApp {
         
         // Sound toggle button (add dynamically if not in HTML)
         this._addSoundToggle();
+        
+        // TTS toggle button for accessibility
+        this._addTTSToggle();
     }
     
     _addSoundToggle() {
@@ -168,6 +193,61 @@ class WitnessReplayApp {
         soundBtn.addEventListener('click', () => this.toggleSound());
         
         sessionInfo.appendChild(soundBtn);
+    }
+    
+    _addTTSToggle() {
+        const sessionInfo = document.querySelector('.session-info');
+        if (!sessionInfo || document.getElementById('tts-toggle-btn')) return;
+        
+        const ttsBtn = document.createElement('button');
+        ttsBtn.id = 'tts-toggle-btn';
+        ttsBtn.className = 'btn btn-secondary';
+        ttsBtn.setAttribute('data-tooltip', 'Text-to-Speech (Accessibility)');
+        ttsBtn.setAttribute('aria-label', 'Toggle text-to-speech for AI responses');
+        ttsBtn.innerHTML = this.ttsPlayer && this.ttsPlayer.isEnabled() ? '🔈' : '🔇';
+        ttsBtn.addEventListener('click', () => this.toggleTTS());
+        
+        sessionInfo.appendChild(ttsBtn);
+    }
+    
+    initializeTTS() {
+        // Initialize TTS player for accessibility
+        if (window.TTSPlayer) {
+            this.ttsPlayer = new TTSPlayer();
+        }
+    }
+    
+    toggleTTS() {
+        if (!this.ttsPlayer) {
+            this.ui.showToast('Text-to-Speech not available', 'warning', 2000);
+            return;
+        }
+        
+        const newState = !this.ttsPlayer.isEnabled();
+        this.ttsPlayer.setEnabled(newState);
+        
+        const ttsBtn = document.getElementById('tts-toggle-btn');
+        if (ttsBtn) {
+            ttsBtn.innerHTML = newState ? '🔈' : '🔇';
+        }
+        
+        this.ui.showToast(
+            newState ? '🔈 Text-to-Speech enabled - AI responses will be spoken' : '🔇 Text-to-Speech disabled',
+            'success',
+            3000
+        );
+        
+        // If enabled, speak a confirmation
+        if (newState) {
+            this.ttsPlayer.speak('Text to speech is now enabled. I will read AI responses aloud.', true);
+        }
+    }
+    
+    // Speak AI response using TTS (called when agent responds)
+    speakAIResponse(text) {
+        if (this.ttsPlayer && this.ttsPlayer.isEnabled()) {
+            this.ttsPlayer.speak(text);
+        }
     }
     
     toggleSound() {
@@ -341,6 +421,17 @@ class WitnessReplayApp {
             this.audioVisualizer = new EnhancedAudioVisualizer('audio-visualizer');
         }
         
+        // Initialize Audio Quality Analyzer
+        if (window.AudioQualityAnalyzer) {
+            this.audioQualityAnalyzer = new AudioQualityAnalyzer();
+        }
+        if (window.AudioQualityIndicator) {
+            this.audioQualityIndicator = new AudioQualityIndicator('audio-quality-container');
+            if (this.audioQualityAnalyzer && this.audioQualityIndicator) {
+                this.audioQualityIndicator.attachAnalyzer(this.audioQualityAnalyzer);
+            }
+        }
+        
         // Check if microphone is available (requires HTTPS or localhost)
         const isSecureContext = window.isSecureContext || 
             window.location.hostname === 'localhost' || 
@@ -357,6 +448,205 @@ class WitnessReplayApp {
         // Pre-request microphone permission on user interaction
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             console.warn('MediaDevices API not available');
+        }
+    }
+    
+    initializeVAD() {
+        // VAD UI elements
+        this.vadToggle = document.getElementById('vad-enabled');
+        this.vadIndicator = document.getElementById('vad-indicator');
+        this.vadSettings = document.getElementById('vad-settings');
+        this.vadSensitivity = document.getElementById('vad-sensitivity');
+        this.vadSilence = document.getElementById('vad-silence');
+        this.vadSensitivityValue = document.getElementById('vad-sensitivity-value');
+        this.vadSilenceValue = document.getElementById('vad-silence-value');
+        
+        if (!window.VoiceActivityDetector) {
+            console.warn('VoiceActivityDetector not available');
+            return;
+        }
+        
+        // Restore saved settings
+        const savedSensitivity = localStorage.getItem('vadSensitivity');
+        const savedSilence = localStorage.getItem('vadSilenceThreshold');
+        
+        if (savedSensitivity && this.vadSensitivity) {
+            this.vadSensitivity.value = savedSensitivity;
+        }
+        if (savedSilence && this.vadSilence) {
+            this.vadSilence.value = savedSilence;
+        }
+        
+        // Update displayed values
+        this.updateVADSettingsDisplay();
+        
+        // Set initial toggle state
+        if (this.vadToggle) {
+            this.vadToggle.checked = this.vadEnabled;
+            
+            // Toggle event listener
+            this.vadToggle.addEventListener('change', (e) => {
+                this.vadEnabled = e.target.checked;
+                localStorage.setItem('vadEnabled', this.vadEnabled);
+                
+                if (this.vadEnabled) {
+                    this.startVADListening();
+                } else {
+                    this.stopVADListening();
+                }
+            });
+        }
+        
+        // Settings sliders
+        if (this.vadSensitivity) {
+            this.vadSensitivity.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                if (this.vad) {
+                    this.vad.setSensitivity(value);
+                }
+                localStorage.setItem('vadSensitivity', value);
+                this.updateVADSettingsDisplay();
+            });
+        }
+        
+        if (this.vadSilence) {
+            this.vadSilence.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                if (this.vad) {
+                    this.vad.setSilenceThreshold(value);
+                }
+                localStorage.setItem('vadSilenceThreshold', value);
+                this.updateVADSettingsDisplay();
+            });
+        }
+        
+        // Show settings when VAD is enabled (click on label area)
+        const vadLabel = document.querySelector('.vad-label');
+        if (vadLabel && this.vadSettings) {
+            vadLabel.style.cursor = 'pointer';
+            vadLabel.addEventListener('click', () => {
+                this.vadSettings.classList.toggle('hidden');
+            });
+        }
+    }
+    
+    updateVADSettingsDisplay() {
+        if (this.vadSensitivity && this.vadSensitivityValue) {
+            const value = parseFloat(this.vadSensitivity.value);
+            let label = 'Medium';
+            if (value <= 0.01) label = 'High';
+            else if (value >= 0.03) label = 'Low';
+            this.vadSensitivityValue.textContent = label;
+        }
+        
+        if (this.vadSilence && this.vadSilenceValue) {
+            const value = parseFloat(this.vadSilence.value);
+            this.vadSilenceValue.textContent = `${value.toFixed(1)}s`;
+        }
+    }
+    
+    async startVADListening() {
+        if (this.vadListening || this.isRecording) return;
+        
+        try {
+            const sensitivity = this.vadSensitivity ? parseFloat(this.vadSensitivity.value) : 0.015;
+            const silenceThreshold = this.vadSilence ? parseFloat(this.vadSilence.value) : 2.0;
+            
+            this.vad = new VoiceActivityDetector({
+                sensitivity: sensitivity,
+                silenceThreshold: silenceThreshold,
+                onSpeechStart: () => this.onVADSpeechStart(),
+                onSpeechEnd: (silenceDuration) => this.onVADSpeechEnd(silenceDuration),
+                onVolumeChange: (smoothed, raw) => this.onVADVolumeChange(smoothed, raw)
+            });
+            
+            await this.vad.start();
+            this.vadListening = true;
+            
+            // Update indicator
+            if (this.vadIndicator) {
+                this.vadIndicator.classList.add('listening');
+                this.vadIndicator.classList.remove('speech-detected', 'recording');
+            }
+            
+            this.setStatus('Listening for voice...');
+            console.log('[VAD] Started listening');
+            
+        } catch (error) {
+            console.error('[VAD] Failed to start:', error);
+            this.ui?.showToast('Could not start voice detection: ' + error.message, 'error');
+            
+            // Reset toggle
+            if (this.vadToggle) {
+                this.vadToggle.checked = false;
+            }
+            this.vadEnabled = false;
+        }
+    }
+    
+    stopVADListening() {
+        if (!this.vadListening) return;
+        
+        if (this.vad) {
+            this.vad.stop();
+            this.vad = null;
+        }
+        
+        this.vadListening = false;
+        this.vadAutoRecording = false;
+        
+        // Update indicator
+        if (this.vadIndicator) {
+            this.vadIndicator.classList.remove('listening', 'speech-detected', 'recording');
+        }
+        
+        this.setStatus('Ready to listen');
+        console.log('[VAD] Stopped listening');
+    }
+    
+    onVADSpeechStart() {
+        if (this.isRecording || this.vadAutoRecording) return;
+        
+        console.log('[VAD] Speech detected - starting recording');
+        this.vadAutoRecording = true;
+        
+        // Update indicator
+        if (this.vadIndicator) {
+            this.vadIndicator.classList.remove('listening');
+            this.vadIndicator.classList.add('recording');
+        }
+        
+        // Start actual recording
+        this.startRecording();
+    }
+    
+    onVADSpeechEnd(silenceDuration) {
+        if (!this.vadAutoRecording || !this.isRecording) return;
+        
+        console.log(`[VAD] Silence detected (${silenceDuration.toFixed(1)}s) - stopping recording`);
+        this.vadAutoRecording = false;
+        
+        // Update indicator back to listening
+        if (this.vadIndicator) {
+            this.vadIndicator.classList.remove('recording');
+            this.vadIndicator.classList.add('listening');
+        }
+        
+        // Stop recording
+        this.stopRecording();
+    }
+    
+    onVADVolumeChange(smoothed, raw) {
+        // Update visual indicator based on volume
+        if (this.vadIndicator && this.vadListening && !this.isRecording) {
+            const hasVoice = smoothed > (this.vad?.config.sensitivity || 0.015);
+            if (hasVoice) {
+                this.vadIndicator.classList.add('speech-detected');
+                this.vadIndicator.classList.remove('listening');
+            } else {
+                this.vadIndicator.classList.remove('speech-detected');
+                this.vadIndicator.classList.add('listening');
+            }
         }
     }
     
@@ -450,19 +740,102 @@ class WitnessReplayApp {
                 this.ui.hideModal('comparison-modal');
             }
         });
+        
+        // Comparison version selectors and compare button
+        document.getElementById('compare-versions-btn')?.addEventListener('click', () => {
+            this.executeVersionComparison();
+        });
+        document.getElementById('toggle-comparison-mode-btn')?.addEventListener('click', () => {
+            this.toggleComparisonMode();
+            this.ui.hideModal('comparison-modal');
+        });
+        
+        // Template modal close buttons and handlers
+        document.getElementById('close-template-modal-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('template-modal');
+        });
+        document.getElementById('template-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'template-modal') {
+                this.ui.hideModal('template-modal');
+            }
+        });
+        document.getElementById('skip-template-btn')?.addEventListener('click', () => {
+            this.selectedTemplateId = null;
+            this.ui.hideModal('template-modal');
+            this._createSessionWithTemplate(null);
+        });
     }
     
     async createNewSession() {
+        // Show template selector modal first
+        await this.showTemplateSelector();
+    }
+    
+    async showTemplateSelector() {
+        // Fetch templates if not cached
+        if (this.templates.length === 0) {
+            try {
+                const response = await this.fetchWithTimeout('/api/templates');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.templates = data.templates || [];
+                }
+            } catch (error) {
+                console.error('Error fetching templates:', error);
+                // Fall back to creating session without template
+                this._createSessionWithTemplate(null);
+                return;
+            }
+        }
+        
+        // Render templates in the modal
+        const templateGrid = document.getElementById('template-grid');
+        if (templateGrid && this.templates.length > 0) {
+            templateGrid.innerHTML = this.templates.map(template => `
+                <div class="template-card" data-template-id="${template.id}" tabindex="0" role="button">
+                    <div class="template-icon">${template.icon}</div>
+                    <div class="template-name">${template.name}</div>
+                    <div class="template-description">${template.description}</div>
+                    <span class="template-category ${template.category}">${template.category}</span>
+                </div>
+            `).join('');
+            
+            // Add click handlers to template cards
+            templateGrid.querySelectorAll('.template-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    this.selectedTemplateId = card.dataset.templateId;
+                    this.ui.hideModal('template-modal');
+                    this._createSessionWithTemplate(this.selectedTemplateId);
+                });
+                card.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        card.click();
+                    }
+                });
+            });
+        }
+        
+        this.ui.showModal('template-modal');
+    }
+    
+    async _createSessionWithTemplate(templateId) {
         try {
             this.ui.setStatus('Creating session...', 'processing');
+            
+            // Build request body
+            const requestBody = {
+                title: `Session ${new Date().toLocaleString()}`
+            };
+            if (templateId) {
+                requestBody.template_id = templateId;
+            }
             
             // Call API to create session
             const response = await this.fetchWithTimeout('/api/sessions', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    title: `Session ${new Date().toLocaleString()}`
-                })
+                body: JSON.stringify(requestBody)
             });
             
             if (!response.ok) throw new Error('Failed to create session');
@@ -477,6 +850,7 @@ class WitnessReplayApp {
             this.sessionStartTime = Date.now();
             this.reconnectAttempts = 0;
             this.hasReceivedGreeting = false;
+            this.selectedTemplateId = null;
             
             // Start duration timer
             this.startDurationTimer();
@@ -503,6 +877,14 @@ class WitnessReplayApp {
             
             // Reset interview progress
             this.updateInterviewProgress();
+            
+            // Show toast indicating template if selected
+            if (templateId) {
+                const template = this.templates.find(t => t.id === templateId);
+                if (template) {
+                    this.ui.showToast(`${template.icon} Started ${template.name} interview`, 'success');
+                }
+            }
             
         } catch (error) {
             console.error('Error creating session:', error);
@@ -663,12 +1045,16 @@ class WitnessReplayApp {
                     this.hasReceivedGreeting = true;
                     this.displayMessage(message.data.text, speaker);
                     this.ui.playSound('notification');
+                    // TTS: Speak agent response for accessibility
+                    this.speakAIResponse(message.data.text);
                 } else if (speaker === 'agent' && this.hasReceivedGreeting) {
                     // Check if this is the same greeting text (duplicate from reconnect)
                     const isGreeting = message.data.text && message.data.text.includes("I'm Detective Ray");
                     if (!isGreeting) {
                         this.displayMessage(message.data.text, speaker);
                         this.ui.playSound('notification');
+                        // TTS: Speak agent response for accessibility
+                        this.speakAIResponse(message.data.text);
                     }
                 } else {
                     this.displayMessage(message.data.text, speaker);
@@ -728,8 +1114,79 @@ class WitnessReplayApp {
                 // Heartbeat response
                 break;
             
+            case 'text_stream':
+                this.handleStreamingText(message.data);
+                break;
+            
             default:
                 console.warn('Unknown message type:', message.type);
+        }
+    }
+    
+    handleStreamingText(data) {
+        const { chunk, is_final, speaker, message_id } = data;
+        
+        // Hide typing indicator when streaming starts
+        this._hideTyping();
+        
+        if (!this.streamingMessages[message_id]) {
+            // Create new message element for this stream
+            if (this.chatTranscript.querySelector('.empty-state')) {
+                this.chatTranscript.innerHTML = '';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${speaker} streaming`;
+            messageDiv.setAttribute('role', 'listitem');
+            messageDiv.setAttribute('data-message-id', message_id);
+            
+            const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
+            const labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong><span class="msg-time">${timeStr}</span><br><span class="stream-content"></span><span class="stream-cursor">▋</span>`;
+            
+            this.chatTranscript.appendChild(messageDiv);
+            this.streamingMessages[message_id] = {
+                element: messageDiv,
+                content: ''
+            };
+        }
+        
+        const streamData = this.streamingMessages[message_id];
+        
+        if (chunk) {
+            // Append chunk to content
+            streamData.content += chunk;
+            const contentSpan = streamData.element.querySelector('.stream-content');
+            if (contentSpan) {
+                contentSpan.textContent = streamData.content;
+            }
+            // Scroll to show new content
+            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        }
+        
+        if (is_final) {
+            // Remove streaming class and cursor
+            streamData.element.classList.remove('streaming');
+            const cursor = streamData.element.querySelector('.stream-cursor');
+            if (cursor) cursor.remove();
+            
+            // Play notification sound
+            this.ui.playSound('notification');
+            
+            // Clean up tracking
+            const finalContent = streamData.content;
+            delete this.streamingMessages[message_id];
+            
+            // TTS: Speak completed streamed agent response
+            if (speaker === 'agent' && finalContent) {
+                this.speakAIResponse(finalContent);
+            }
+            
+            // Update interview progress
+            this.updateInterviewProgress();
         }
     }
     
@@ -769,6 +1226,11 @@ class WitnessReplayApp {
                 return;
             }
             
+            // Stop VAD listening to avoid conflicts (we'll restart after recording)
+            if (this.vadListening) {
+                this.stopVADListening();
+            }
+            
             // Request permission explicitly — this triggers the browser popup
             try {
                 const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -781,8 +1243,19 @@ class WitnessReplayApp {
             }
             
             if (this.audioRecorder) {
-                await this.audioRecorder.start();
+                const stream = await this.audioRecorder.start();
                 this.isRecording = true;
+                
+                // Start audio quality analysis
+                if (this.audioQualityAnalyzer && stream) {
+                    this.audioQualityAnalyzer.onWarning = (type, message) => {
+                        if (this.ui) this.ui.showToast(message, 'warning', 3000);
+                    };
+                    await this.audioQualityAnalyzer.start(stream);
+                }
+                if (this.audioQualityIndicator) {
+                    this.audioQualityIndicator.show();
+                }
                 
                 // Show voice controls panel
                 const voiceControls = document.getElementById('voice-controls');
@@ -806,6 +1279,12 @@ class WitnessReplayApp {
                 if (detectiveAvatar) {
                     detectiveAvatar.classList.add('listening');
                 }
+                
+                // Update VAD indicator to show recording state
+                if (this.vadIndicator) {
+                    this.vadIndicator.classList.remove('listening', 'speech-detected');
+                    this.vadIndicator.classList.add('recording');
+                }
             } else {
                 this.ui.showToast('Audio recorder not available. Use text input.', 'warning');
             }
@@ -819,6 +1298,17 @@ class WitnessReplayApp {
     
     async stopRecording() {
         if (!this.isRecording) return;
+        
+        // Get quality metrics before stopping analyzer
+        let qualityMetrics = null;
+        if (this.audioQualityAnalyzer) {
+            this.audioQualityAnalyzer.stop();
+            qualityMetrics = this.audioQualityAnalyzer.getMetrics();
+        }
+        if (this.audioQualityIndicator) {
+            this.audioQualityIndicator.hide();
+            this.audioQualityIndicator.reset();
+        }
         
         try {
             if (this.audioRecorder) {
@@ -846,8 +1336,13 @@ class WitnessReplayApp {
                     detectiveAvatar.classList.remove('listening');
                 }
                 
-                // Convert to base64 and send
-                this.sendAudioMessage(audioBlob);
+                // Convert to base64 and send with quality metrics
+                this.sendAudioMessage(audioBlob, qualityMetrics);
+                
+                // Restart VAD listening if enabled
+                if (this.vadEnabled && !this.vadListening) {
+                    setTimeout(() => this.startVADListening(), 500);
+                }
             }
         } catch (error) {
             console.error('Error stopping recording:', error);
@@ -856,20 +1351,35 @@ class WitnessReplayApp {
         }
     }
     
-    async sendAudioMessage(audioBlob) {
+    async sendAudioMessage(audioBlob, qualityMetrics = null) {
         try {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64Audio = reader.result.split(',')[1];
                 
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
+                    const messageData = {
                         type: 'audio',
                         data: {
                             audio: base64Audio,
                             format: 'webm'
                         }
-                    }));
+                    };
+                    
+                    // Include quality metrics if available
+                    if (qualityMetrics) {
+                        messageData.data.quality = {
+                            score: qualityMetrics.qualityScore,
+                            avgVolume: Math.round(qualityMetrics.avgVolume * 100) / 100,
+                            peakVolume: Math.round(qualityMetrics.peakVolume * 100) / 100,
+                            clippingEvents: qualityMetrics.clippingEvents,
+                            tooQuietSamples: qualityMetrics.tooQuietSamples,
+                            tooLoudSamples: qualityMetrics.tooLoudSamples,
+                            duration: qualityMetrics.duration
+                        };
+                    }
+                    
+                    this.ws.send(JSON.stringify(messageData));
                     this.setStatus('Processing audio...');
                 }
             };
@@ -973,17 +1483,36 @@ class WitnessReplayApp {
             if (this.statementCountEl) this.statementCountEl.textContent = data.statement_count;
         }
         
+        // Load environmental conditions for this version
+        if (this.sessionId && this.currentVersion > 0) {
+            loadEnvironmentalConditions(this.sessionId, this.currentVersion);
+        }
+        
         // Update complexity if available
         if (data.complexity !== undefined) {
             if (this.complexityCard) this.complexityCard.style.display = 'block';
             if (this.complexityScoreEl) this.complexityScoreEl.textContent = (data.complexity * 100).toFixed(0) + '%';
         }
         
-        // Update contradictions if available
+        // Update contradictions if available (with severity info)
         if (data.contradictions && data.contradictions.length > 0) {
             if (this.contradictionCard) this.contradictionCard.style.display = 'block';
             if (this.contradictionCountEl) this.contradictionCountEl.textContent = data.contradictions.length;
-            this.ui.showToast(`⚠️ ${data.contradictions.length} contradiction(s) detected`, 'warning', 4000);
+            
+            // Count severity levels
+            const severityCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+            data.contradictions.forEach(c => {
+                const level = c.severity?.level || 'medium';
+                severityCounts[level] = (severityCounts[level] || 0) + 1;
+            });
+            
+            // Show toast with severity breakdown
+            const criticalCount = severityCounts.critical + severityCounts.high;
+            if (criticalCount > 0) {
+                this.ui.showToast(`🚨 ${criticalCount} critical/high severity contradiction(s) detected!`, 'error', 5000);
+            } else {
+                this.ui.showToast(`⚠️ ${data.contradictions.length} contradiction(s) detected`, 'warning', 4000);
+            }
         }
         
         // Show export controls once we have a scene
@@ -1309,6 +1838,249 @@ class WitnessReplayApp {
         };
     }
     
+    /**
+     * Open the comparison modal with version selectors populated
+     */
+    async openComparisonModal() {
+        if (!this.sessionId) {
+            this.ui.showToast('No active session', 'warning');
+            return;
+        }
+        
+        try {
+            // Fetch scene versions from API
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/scene-versions`);
+            if (!response.ok) throw new Error('Failed to fetch versions');
+            
+            const data = await response.json();
+            const versions = data.versions || [];
+            
+            if (versions.length < 2) {
+                this.ui.showToast('Need at least 2 versions to compare', 'warning');
+                return;
+            }
+            
+            // Cache versions for later use
+            this._sceneVersions = versions;
+            
+            // Populate version selectors
+            const selectA = document.getElementById('comparison-version-a');
+            const selectB = document.getElementById('comparison-version-b');
+            
+            // Clear and populate options
+            selectA.innerHTML = '<option value="">Select version...</option>';
+            selectB.innerHTML = '<option value="">Select version...</option>';
+            
+            versions.forEach(v => {
+                const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '';
+                const label = `Version ${v.version} - ${v.element_count} elements${ts ? ' (' + ts + ')' : ''}`;
+                selectA.innerHTML += `<option value="${v.version}">${label}</option>`;
+                selectB.innerHTML += `<option value="${v.version}">${label}</option>`;
+            });
+            
+            // Default to comparing last two versions
+            if (versions.length >= 2) {
+                selectA.value = versions[versions.length - 2].version;
+                selectB.value = versions[versions.length - 1].version;
+            }
+            
+            // Hide diff summary until comparison is done
+            document.getElementById('comparison-diff-summary')?.classList.add('hidden');
+            document.getElementById('comparison-changes-panel')?.classList.add('hidden');
+            
+            // Clear existing content
+            document.getElementById('comparison-before').innerHTML = '<p class="empty-state">Select versions to compare</p>';
+            document.getElementById('comparison-after').innerHTML = '<p class="empty-state">Select versions to compare</p>';
+            document.getElementById('comparison-before-description').textContent = '';
+            document.getElementById('comparison-after-description').textContent = '';
+            document.getElementById('comparison-elements-a').innerHTML = '';
+            document.getElementById('comparison-elements-b').innerHTML = '';
+            
+            // Show modal
+            this.ui.showModal('comparison-modal');
+            this.playSound('click');
+            
+        } catch (err) {
+            console.error('Error opening comparison modal:', err);
+            this.ui.showToast('Failed to load versions', 'error');
+        }
+    }
+    
+    /**
+     * Execute the version comparison based on selected versions
+     */
+    async executeVersionComparison() {
+        const selectA = document.getElementById('comparison-version-a');
+        const selectB = document.getElementById('comparison-version-b');
+        
+        const versionA = parseInt(selectA.value);
+        const versionB = parseInt(selectB.value);
+        
+        if (!versionA || !versionB) {
+            this.ui.showToast('Select both versions to compare', 'warning');
+            return;
+        }
+        
+        if (versionA === versionB) {
+            this.ui.showToast('Select different versions to compare', 'warning');
+            return;
+        }
+        
+        try {
+            // Fetch comparison data from API
+            const response = await this.fetchWithTimeout(
+                `/api/sessions/${this.sessionId}/scene-versions/compare?version_a=${versionA}&version_b=${versionB}`
+            );
+            
+            if (!response.ok) throw new Error('Failed to compare versions');
+            
+            const data = await response.json();
+            this._renderComparison(data);
+            
+        } catch (err) {
+            console.error('Error comparing versions:', err);
+            this.ui.showToast('Failed to compare versions', 'error');
+        }
+    }
+    
+    /**
+     * Render the comparison data in the modal
+     */
+    _renderComparison(data) {
+        const { version_a, version_b, diff } = data;
+        
+        // Update headers with timestamps
+        document.getElementById('comparison-header-a').textContent = `Version ${version_a.version}`;
+        document.getElementById('comparison-header-b').textContent = `Version ${version_b.version}`;
+        document.getElementById('comparison-timestamp-a').textContent = 
+            version_a.timestamp ? new Date(version_a.timestamp).toLocaleString() : '';
+        document.getElementById('comparison-timestamp-b').textContent = 
+            version_b.timestamp ? new Date(version_b.timestamp).toLocaleString() : '';
+        
+        // Update images
+        const beforeContainer = document.getElementById('comparison-before');
+        const afterContainer = document.getElementById('comparison-after');
+        
+        if (version_a.image_url) {
+            beforeContainer.innerHTML = `<img src="${version_a.image_url}" alt="Version ${version_a.version}" class="comparison-image">`;
+        } else {
+            beforeContainer.innerHTML = '<p class="empty-state">No image available</p>';
+        }
+        
+        if (version_b.image_url) {
+            afterContainer.innerHTML = `<img src="${version_b.image_url}" alt="Version ${version_b.version}" class="comparison-image">`;
+        } else {
+            afterContainer.innerHTML = '<p class="empty-state">No image available</p>';
+        }
+        
+        // Update descriptions
+        document.getElementById('comparison-before-description').textContent = 
+            version_a.description || version_a.changes_from_previous || 'No description';
+        document.getElementById('comparison-after-description').textContent = 
+            version_b.description || version_b.changes_from_previous || 'No description';
+        
+        // Update diff summary
+        const diffSummary = document.getElementById('comparison-diff-summary');
+        document.getElementById('diff-added-count').textContent = diff.summary.added_count;
+        document.getElementById('diff-removed-count').textContent = diff.summary.removed_count;
+        document.getElementById('diff-changed-count').textContent = diff.summary.changed_count;
+        document.getElementById('diff-unchanged-count').textContent = diff.summary.unchanged_count;
+        diffSummary.classList.remove('hidden');
+        
+        // Render element lists
+        this._renderElementsList('comparison-elements-a', diff.removed, diff.unchanged, 'a');
+        this._renderElementsList('comparison-elements-b', diff.added, diff.unchanged, 'b');
+        
+        // Render detailed changes
+        this._renderChangesPanel(diff);
+    }
+    
+    /**
+     * Render elements list with diff highlighting
+     */
+    _renderElementsList(containerId, diffElements, unchanged, side) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        let html = '';
+        
+        // Show diff elements first (removed for A, added for B)
+        diffElements.forEach(el => {
+            const status = side === 'a' ? 'removed' : 'added';
+            const icon = side === 'a' ? '➖' : '➕';
+            html += `<div class="comparison-element-item ${status}">
+                <span>${icon}</span>
+                <span class="el-type">${el.type || 'unknown'}</span>
+                <span class="el-desc">${this._escapeHtml(el.description || '')}</span>
+            </div>`;
+        });
+        
+        // Show unchanged elements
+        unchanged.forEach(el => {
+            html += `<div class="comparison-element-item">
+                <span>•</span>
+                <span class="el-type">${el.type || 'unknown'}</span>
+                <span class="el-desc">${this._escapeHtml(el.description || '')}</span>
+            </div>`;
+        });
+        
+        container.innerHTML = html || '<p class="empty-state">No elements</p>';
+    }
+    
+    /**
+     * Render the detailed changes panel
+     */
+    _renderChangesPanel(diff) {
+        const panel = document.getElementById('comparison-changes-panel');
+        const list = document.getElementById('comparison-changes-list');
+        
+        if (!panel || !list) return;
+        
+        const hasChanges = diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0;
+        
+        if (!hasChanges) {
+            panel.classList.add('hidden');
+            return;
+        }
+        
+        let html = '';
+        
+        // Added elements
+        diff.added.forEach(el => {
+            html += `<div class="change-item" style="border-left-color: #22c55e;">
+                <div class="change-item-header">➕ Added: ${el.type}</div>
+                <div class="change-item-detail">${this._escapeHtml(el.description || '')}</div>
+                ${el.position ? `<div class="change-item-detail">Position: ${el.position}</div>` : ''}
+            </div>`;
+        });
+        
+        // Removed elements
+        diff.removed.forEach(el => {
+            html += `<div class="change-item" style="border-left-color: #ef4444;">
+                <div class="change-item-header">➖ Removed: ${el.type}</div>
+                <div class="change-item-detail">${this._escapeHtml(el.description || '')}</div>
+            </div>`;
+        });
+        
+        // Changed elements
+        diff.changed.forEach(el => {
+            let changesHtml = '';
+            el.changes.forEach(ch => {
+                changesHtml += `<div class="change-item-detail">
+                    ${ch.field}: <span class="before">${ch.before || 'none'}</span> → <span class="after">${ch.after || 'none'}</span>
+                </div>`;
+            });
+            html += `<div class="change-item" style="border-left-color: #eab308;">
+                <div class="change-item-header">✏️ Changed: ${el.type}</div>
+                <div class="change-item-detail">${this._escapeHtml(el.description || '')}</div>
+                ${changesHtml}
+            </div>`;
+        });
+        
+        list.innerHTML = html;
+        panel.classList.remove('hidden');
+    }
+    
     showSceneError(message, data) {
         // Enhanced error state for scene loading failures
         this.sceneDisplay.innerHTML = `
@@ -1467,10 +2239,19 @@ class WitnessReplayApp {
                 return;
             }
             
-            sessionList.innerHTML = sessions.map(session => `
-                <div class="session-card" data-session-id="${session.id}">
+            sessionList.innerHTML = sessions.map(session => {
+                const priority = session.metadata?.priority || 'normal';
+                const priorityBadge = {
+                    'critical': '<span class="priority-badge critical" title="Critical Priority">🚨</span>',
+                    'high': '<span class="priority-badge high" title="High Priority">⚠️</span>',
+                    'normal': '',
+                    'low': '<span class="priority-badge low" title="Low Priority">📁</span>'
+                }[priority] || '';
+                
+                return `
+                <div class="session-card ${priority !== 'normal' ? 'priority-' + priority : ''}" data-session-id="${session.id}">
                     <div class="session-details">
-                        <div class="session-title">${session.title}</div>
+                        <div class="session-title">${priorityBadge}${session.title}</div>
                         <div class="session-meta">
                             <span>📅 ${new Date(session.created_at).toLocaleDateString()}</span>
                             <span>💬 ${session.statement_count} statements</span>
@@ -1478,6 +2259,9 @@ class WitnessReplayApp {
                         </div>
                     </div>
                     <div class="session-actions">
+                        <button class="btn btn-sm btn-warning" onclick="window.app.setSessionPriority('${session.id}')" title="Set priority">
+                            🚨
+                        </button>
                         <button class="btn btn-sm btn-primary" onclick="window.app.loadSession('${session.id}')">
                             Load
                         </button>
@@ -1486,7 +2270,8 @@ class WitnessReplayApp {
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
             
         } catch (error) {
             console.error('Error loading sessions:', error);
@@ -1507,6 +2292,10 @@ class WitnessReplayApp {
             this.sessionIdEl.textContent = `Session: ${session.id.substring(0, 8)}...`;
             
             this.connectWebSocket();
+            
+            // Load measurements for this session
+            this.loadMeasurements();
+            
             this.ui.showToast('Session loaded', 'success');
             
         } catch (error) {
@@ -1534,6 +2323,86 @@ class WitnessReplayApp {
             console.error('Error deleting session:', error);
             this.ui.showToast('Failed to delete session', 'error');
         }
+    }
+    
+    async setSessionPriority(sessionId) {
+        // Show priority selection dialog
+        const priorities = ['critical', 'high', 'normal', 'low'];
+        const priorityLabels = {
+            'critical': '🚨 Critical (Police Emergency)',
+            'high': '⚠️ High Priority',
+            'normal': '📋 Normal Priority',
+            'low': '📁 Low Priority'
+        };
+        
+        // Create a simple selection modal
+        const selection = await this._showPrioritySelector(priorityLabels);
+        if (!selection) return;
+        
+        try {
+            // Store priority in session metadata
+            const response = await this.fetchWithTimeout(`/api/sessions/${sessionId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    metadata: { priority: selection }
+                })
+            });
+            
+            if (!response.ok) throw new Error('Failed to set priority');
+            
+            this.ui.showToast(`Session priority set to ${selection}`, 'success');
+            this.showSessionsList(); // Refresh list
+            
+        } catch (error) {
+            console.error('Error setting session priority:', error);
+            this.ui.showToast('Failed to set session priority', 'error');
+        }
+    }
+    
+    _showPrioritySelector(priorityLabels) {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.id = 'priority-modal';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h2>Set Session Priority</h2>
+                        <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Select priority level for this session:</p>
+                        <div class="priority-options" style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                            ${Object.entries(priorityLabels).map(([key, label]) => `
+                                <button class="btn btn-secondary priority-btn" data-priority="${key}" style="text-align: left; padding: 12px 15px;">
+                                    ${label}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Handle clicks
+            modal.querySelectorAll('.priority-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const priority = btn.dataset.priority;
+                    modal.remove();
+                    resolve(priority);
+                });
+            });
+            
+            // Handle backdrop click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                    resolve(null);
+                }
+            });
+        });
     }
     
     // Scene controls
@@ -1586,19 +2455,42 @@ class WitnessReplayApp {
         this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
     }
     
+    /**
+     * Get severity icon for a given severity level
+     */
+    _getSeverityIcon(level) {
+        const icons = {
+            'low': '🔵',
+            'medium': '🟡',
+            'high': '🔴',
+            'critical': '🟣'
+        };
+        return icons[level] || '⚪';
+    }
+    
     displayContradictions(contradictions) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message-contradiction';
         
         let html = '<strong>⚠️ Contradiction Detected</strong>';
         contradictions.forEach(c => {
-            html += `<div class="contradiction-item">
-                <div class="contradiction-field">${c.field || 'Unknown field'}</div>
+            const severity = c.severity || { level: 'medium', score: 0.5 };
+            const severityIcon = this._getSeverityIcon(severity.level);
+            const scorePercent = Math.round((severity.score || 0.5) * 100);
+            
+            html += `<div class="contradiction-item severity-${severity.level}">
+                <div class="contradiction-header">
+                    <div class="contradiction-field">${c.field || c.element_type || 'Unknown field'}</div>
+                    <span class="severity-badge severity-${severity.level}">
+                        ${severityIcon} ${severity.level}
+                    </span>
+                </div>
                 <div class="contradiction-change">
-                    <span class="old-value">"${c.old_value}"</span>
+                    <span class="old-value">"${c.old_value || c.original_value}"</span>
                     <span class="arrow">→</span>
                     <span class="new-value">"${c.new_value}"</span>
                 </div>
+                <div class="contradiction-score">Score: ${scorePercent}%</div>
             </div>`;
         });
         
@@ -1685,10 +2577,11 @@ class WitnessReplayApp {
             'vehicle': '🚗', 'person': '🧑', 'object': '📦', 'location_feature': '📍'
         };
         
-        // Build contradiction lookup (element description -> old/new)
-        const contradictionSet = new Set();
+        // Build contradiction lookup with severity info
+        const contradictionMap = new Map();
         (contradictions || []).forEach(c => {
-            contradictionSet.add(c.element || '');
+            const key = c.element || c.element_type + '_' + (c.element_id || '');
+            contradictionMap.set(key, c.severity || { level: 'medium', score: 0.5 });
         });
         
         let html = '';
@@ -1696,16 +2589,24 @@ class WitnessReplayApp {
             const conf = e.confidence || 0.5;
             const confClass = conf > 0.7 ? 'high' : conf > 0.4 ? 'med' : 'low';
             const icon = typeIcons[e.type] || '❓';
-            const isContradiction = contradictionSet.has(e.type + '_' + (e.description || '').substring(0, 30));
-            const cardClass = isContradiction ? 'evidence-card contradiction' : 'evidence-card';
+            const elemKey = e.type + '_' + (e.description || '').substring(0, 30);
+            const contradictionSeverity = contradictionMap.get(elemKey);
+            const isContradiction = !!contradictionSeverity;
+            const severityClass = contradictionSeverity ? `severity-${contradictionSeverity.level}` : '';
+            const cardClass = isContradiction ? `evidence-card contradiction ${severityClass}` : 'evidence-card';
             
             let meta = '';
             if (e.color) meta += `🎨 ${e.color} `;
             if (e.position) meta += `📍 ${e.position} `;
             if (e.size) meta += `📐 ${e.size}`;
             
+            // Add severity badge if contradiction
+            const severityBadge = isContradiction 
+                ? `<span class="severity-badge severity-${contradictionSeverity.level}">${this._getSeverityIcon(contradictionSeverity.level)} ${contradictionSeverity.level}</span>`
+                : '';
+            
             html += `<div class="${cardClass}">
-                <div><span class="ev-icon">${icon}</span><span class="ev-type">${e.type}</span></div>
+                <div><span class="ev-icon">${icon}</span><span class="ev-type">${e.type}</span>${severityBadge}</div>
                 <div class="ev-desc">${this._escapeHtml(e.description || '')}</div>
                 <div class="ev-meta">
                     <span class="confidence-dot ${confClass}"></span>${Math.round(conf * 100)}%
@@ -1838,6 +2739,12 @@ class WitnessReplayApp {
             if (!response.ok) throw new Error('Export failed');
             
             const data = await response.json();
+            
+            // Include measurements if available
+            if (this.measurementTool && this.measurementTool.measurements.length > 0) {
+                data.measurements = this.measurementTool.getMeasurementsSummary();
+            }
+            
             const jsonStr = JSON.stringify(data, null, 2);
             const blob = new Blob([jsonStr], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
@@ -2358,6 +3265,140 @@ class WitnessReplayApp {
         analyticsModal.appendChild(timelineSection);
     }
     
+    /**
+     * Fetch contradictions for the current session with optional sorting
+     * @param {string} sortBy - Sort order: "timestamp", "severity", "severity_desc"
+     * @returns {Promise<Object>} Contradiction data with severity distribution
+     */
+    async fetchContradictions(sortBy = 'severity_desc') {
+        if (!this.sessionId) {
+            return { contradictions: [], total: 0, severity_distribution: {} };
+        }
+        
+        try {
+            const response = await this.fetchWithTimeout(
+                `/api/sessions/${this.sessionId}/contradictions?sort_by=${sortBy}`
+            );
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch contradictions');
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching contradictions:', error);
+            return { contradictions: [], total: 0, severity_distribution: {} };
+        }
+    }
+    
+    /**
+     * Display contradictions panel with severity badges and sorting
+     * @param {Array} contradictions - List of contradiction objects
+     * @param {Object} severityDistribution - Count by severity level
+     */
+    displayContradictionsPanel(contradictions, severityDistribution = {}) {
+        const container = document.getElementById('contradictions-panel');
+        if (!container) return;
+        
+        if (!contradictions || contradictions.length === 0) {
+            container.innerHTML = '<p class="empty-state">No contradictions detected</p>';
+            return;
+        }
+        
+        // Sort controls
+        let html = `
+            <div class="contradiction-sort-controls">
+                <label>Sort by:</label>
+                <select id="contradiction-sort-select" onchange="app.handleContradictionSort(this.value)">
+                    <option value="severity_desc">Severity (High→Low)</option>
+                    <option value="severity">Severity (Low→High)</option>
+                    <option value="timestamp">Time (Oldest first)</option>
+                </select>
+            </div>
+            <div class="severity-summary">
+                <span class="severity-badge severity-critical">${severityDistribution.critical || 0} Critical</span>
+                <span class="severity-badge severity-high">${severityDistribution.high || 0} High</span>
+                <span class="severity-badge severity-medium">${severityDistribution.medium || 0} Medium</span>
+                <span class="severity-badge severity-low">${severityDistribution.low || 0} Low</span>
+            </div>
+        `;
+        
+        // Contradiction items
+        contradictions.forEach(c => {
+            const severity = c.severity || { level: 'medium', score: 0.5 };
+            const severityIcon = this._getSeverityIcon(severity.level);
+            const scorePercent = Math.round((severity.score || 0.5) * 100);
+            
+            html += `
+                <div class="contradiction-item severity-${severity.level}">
+                    <div class="contradiction-header">
+                        <div class="contradiction-field">${c.element_type || 'Unknown'}: ${c.element_id || ''}</div>
+                        <span class="severity-badge severity-${severity.level}">
+                            ${severityIcon} ${severity.level}
+                        </span>
+                    </div>
+                    <div class="contradiction-change">
+                        <span class="old-value">"${c.original_value}"</span>
+                        <span class="arrow">→</span>
+                        <span class="new-value">"${c.new_value}"</span>
+                    </div>
+                    <div class="contradiction-score">
+                        Score: ${scorePercent}%
+                        ${severity.factors ? ` (Time: ${Math.round((severity.factors.time_discrepancy || 0) * 100)}%, Location: ${Math.round((severity.factors.location_mismatch || 0) * 100)}%)` : ''}
+                    </div>
+                    ${!c.resolved ? `
+                        <button class="btn btn-sm btn-secondary" onclick="app.showResolveContradictionDialog('${c.id}')">
+                            Resolve
+                        </button>
+                    ` : `<span class="resolved-badge">✓ Resolved: ${c.resolution_note || ''}</span>`}
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    /**
+     * Handle sort selection change for contradictions
+     * @param {string} sortBy - New sort order
+     */
+    async handleContradictionSort(sortBy) {
+        const data = await this.fetchContradictions(sortBy);
+        this.displayContradictionsPanel(data.contradictions, data.severity_distribution);
+    }
+    
+    /**
+     * Show dialog to resolve a contradiction
+     * @param {string} contradictionId - ID of contradiction to resolve
+     */
+    async showResolveContradictionDialog(contradictionId) {
+        const note = prompt('Enter resolution note for this contradiction:');
+        if (!note) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(
+                `/api/sessions/${this.sessionId}/contradictions/${contradictionId}/resolve`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resolution_note: note })
+                }
+            );
+            
+            if (response.ok) {
+                this.ui.showToast('Contradiction resolved', 'success');
+                // Refresh the panel
+                const data = await this.fetchContradictions('severity_desc');
+                this.displayContradictionsPanel(data.contradictions, data.severity_distribution);
+            } else {
+                throw new Error('Failed to resolve contradiction');
+            }
+        } catch (error) {
+            console.error('Error resolving contradiction:', error);
+            this.ui.showToast('Failed to resolve contradiction', 'error');
+        }
+    }
+    
     async showInfoModal() {
         this.ui.showModal('info-modal');
         
@@ -2694,6 +3735,35 @@ class WitnessReplayApp {
     }
     
     /**
+     * Initialize scene measurement tool
+     */
+    initializeMeasurementTool() {
+        // Initialize measurement tool when SceneMeasurementTool is available
+        if (typeof SceneMeasurementTool !== 'undefined') {
+            this.measurementTool = new SceneMeasurementTool(this);
+            
+            // Bind measurement button
+            const measureBtn = document.getElementById('measure-btn');
+            if (measureBtn) {
+                measureBtn.addEventListener('click', () => {
+                    if (this.measurementTool) {
+                        this.measurementTool.showMeasurementMenu();
+                    }
+                });
+            }
+        }
+    }
+    
+    /**
+     * Load measurements for current session
+     */
+    async loadMeasurements() {
+        if (this.measurementTool && this.sessionId) {
+            await this.measurementTool.loadMeasurements();
+        }
+    }
+    
+    /**
      * Update scene transform for zoom/pan
      */
     updateSceneTransform(scale, panX, panY) {
@@ -2800,6 +3870,183 @@ class WitnessReplayApp {
         // Reset input so the same file can be re-selected
         event.target.value = '';
     }
+
+    // ==================== ITEM 30: Witness Sketch Upload ====================
+    async handleSketchUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            this.ui.showToast('Please select an image file', 'warning');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            this.ui.showToast('Image must be under 10MB', 'warning');
+            return;
+        }
+
+        if (!this.sessionId) {
+            this.ui.showToast('No active session', 'warning');
+            return;
+        }
+
+        // Show uploading state
+        this.ui.showToast('✏️ Uploading sketch...', 'info');
+
+        try {
+            // Create form data
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            // Optional: Get description from user
+            const description = prompt('Briefly describe what your sketch shows (optional):');
+            if (description) {
+                formData.append('description', description);
+            }
+
+            // Upload to API
+            const response = await this.fetchWithTimeout(
+                `/api/sessions/${this.sessionId}/sketches`,
+                {
+                    method: 'POST',
+                    body: formData
+                },
+                30000 // 30 second timeout for upload + AI processing
+            );
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Upload failed');
+            }
+
+            const sketch = await response.json();
+
+            // Display in chat
+            if (this.chatTranscript.querySelector('.empty-state')) {
+                this.chatTranscript.innerHTML = '';
+            }
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message message-user';
+            msgDiv.setAttribute('role', 'listitem');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            let interpretationHtml = '';
+            if (sketch.ai_interpretation) {
+                interpretationHtml = `<div class="sketch-interpretation"><strong>AI Analysis:</strong> ${sketch.ai_interpretation}</div>`;
+            }
+            
+            msgDiv.innerHTML = `
+                <span class="msg-avatar">👤</span>
+                <strong>You</strong>
+                <span class="msg-time">${timeStr}</span>
+                <br>✏️ Hand-drawn sketch uploaded
+                ${description ? `<br><em>"${description}"</em>` : ''}
+                <br><img src="${sketch.image_url}" alt="Hand-drawn sketch uploaded by witness" class="sketch-thumbnail" style="max-width: 200px; border: 2px solid var(--accent-primary); border-radius: 8px; margin-top: 8px;">
+                ${interpretationHtml}
+            `;
+            this.chatTranscript.appendChild(msgDiv);
+            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+
+            // Add to sketches gallery
+            this.addSketchToGallery(sketch);
+
+            // Update stats
+            this.statementCount++;
+            if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this.updateInterviewProgress();
+
+            this.ui.showToast('✏️ Sketch uploaded and analyzed!', 'success');
+            this.playSound('success');
+
+            // If AI found elements, send them as context to the conversation
+            if (sketch.extracted_elements && sketch.extracted_elements.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                const elementsText = sketch.extracted_elements
+                    .map(e => `${e.type}: ${e.description}`)
+                    .join(', ');
+                this.ws.send(JSON.stringify({
+                    type: 'text',
+                    data: `[SKETCH ANALYSIS] The witness uploaded a sketch showing: ${elementsText}`
+                }));
+            }
+
+        } catch (error) {
+            console.error('[App] Sketch upload failed:', error);
+            this.ui.showToast(`❌ ${error.message}`, 'error');
+        }
+
+        // Reset input so the same file can be re-selected
+        event.target.value = '';
+    }
+
+    addSketchToGallery(sketch) {
+        const panel = document.getElementById('witness-sketches-panel');
+        const gallery = document.getElementById('sketches-gallery');
+        const countEl = document.getElementById('sketches-count');
+        
+        if (!panel || !gallery) return;
+
+        // Show the panel
+        panel.style.display = 'block';
+
+        // Clear empty state if present
+        const emptyState = gallery.querySelector('.empty-state');
+        if (emptyState) {
+            gallery.innerHTML = '';
+        }
+
+        // Create sketch card
+        const card = document.createElement('div');
+        card.className = 'sketch-card';
+        card.dataset.sketchId = sketch.id;
+        card.innerHTML = `
+            <div class="sketch-image-container">
+                <img src="${sketch.image_url}" alt="Witness sketch" class="sketch-image" onclick="openSketchModal('${sketch.id}')">
+            </div>
+            <div class="sketch-info">
+                ${sketch.description ? `<p class="sketch-description">${sketch.description}</p>` : ''}
+                ${sketch.ai_interpretation ? `<p class="sketch-ai-interpretation"><strong>AI:</strong> ${sketch.ai_interpretation.substring(0, 100)}${sketch.ai_interpretation.length > 100 ? '...' : ''}</p>` : ''}
+                <span class="sketch-timestamp">${new Date(sketch.timestamp).toLocaleTimeString()}</span>
+            </div>
+        `;
+        gallery.appendChild(card);
+
+        // Update count
+        if (countEl) {
+            const currentCount = parseInt(countEl.textContent) || 0;
+            countEl.textContent = currentCount + 1;
+        }
+    }
+
+    async loadSessionSketches(sessionId) {
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${sessionId}/sketches`);
+            if (response.ok) {
+                const data = await response.json();
+                const sketches = data.sketches || [];
+                
+                // Clear and repopulate gallery
+                const gallery = document.getElementById('sketches-gallery');
+                const panel = document.getElementById('witness-sketches-panel');
+                const countEl = document.getElementById('sketches-count');
+                
+                if (gallery) {
+                    gallery.innerHTML = '';
+                    if (sketches.length === 0) {
+                        gallery.innerHTML = '<p class="empty-state">No sketches uploaded yet. Use the ✏️ button to upload hand-drawn sketches.</p>';
+                        if (panel) panel.style.display = 'none';
+                    } else {
+                        if (panel) panel.style.display = 'block';
+                        sketches.forEach(sketch => this.addSketchToGallery(sketch));
+                    }
+                }
+                if (countEl) countEl.textContent = sketches.length;
+            }
+        } catch (error) {
+            console.warn('[App] Failed to load sketches:', error);
+        }
+    }
 }
 
 // ==================== GLOBAL FUNCTIONS (Items 24-30) ====================
@@ -2808,6 +4055,105 @@ class WitnessReplayApp {
 function toggleScenePreview() {
     const panel = document.getElementById('scene-preview-panel');
     if (panel) panel.classList.toggle('collapsed');
+}
+
+// Environmental Conditions Panel toggle
+function toggleConditionsPanel() {
+    const content = document.getElementById('conditions-content');
+    const btn = document.querySelector('.conditions-toggle-btn');
+    if (content) {
+        content.classList.toggle('collapsed');
+        if (btn) {
+            btn.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+        }
+    }
+}
+
+// Update environmental conditions from selectors
+async function updateEnvironmentalConditions() {
+    const weatherSelect = document.getElementById('weather-select');
+    const lightingSelect = document.getElementById('lighting-select');
+    const visibilitySelect = document.getElementById('visibility-select');
+    const previewIcons = document.getElementById('preview-icons');
+    const sceneDisplay = document.getElementById('scene-display');
+
+    if (!weatherSelect || !lightingSelect || !visibilitySelect) return;
+
+    const weather = weatherSelect.value;
+    const lighting = lightingSelect.value;
+    const visibility = visibilitySelect.value;
+
+    // Update preview icons
+    const weatherIcons = { clear: '☀️', rain: '🌧️', snow: '❄️', fog: '🌫️' };
+    const lightingIcons = { daylight: '🌞', dusk: '🌅', night: '🌙', artificial: '💡' };
+    const visibilityIcons = { good: '✅', moderate: '⚠️', poor: '❌' };
+
+    if (previewIcons) {
+        previewIcons.textContent = `${weatherIcons[weather] || '☀️'} ${lightingIcons[lighting] || '🌞'} ${visibilityIcons[visibility] || '✅'}`;
+    }
+
+    // Apply visual effects to scene display
+    if (sceneDisplay) {
+        // Remove all weather/lighting/visibility classes
+        sceneDisplay.classList.remove(
+            'weather-clear', 'weather-rain', 'weather-snow', 'weather-fog',
+            'lighting-daylight', 'lighting-dusk', 'lighting-night', 'lighting-artificial',
+            'visibility-good', 'visibility-moderate', 'visibility-poor'
+        );
+
+        // Add current classes
+        sceneDisplay.classList.add(`weather-${weather}`);
+        sceneDisplay.classList.add(`lighting-${lighting}`);
+        sceneDisplay.classList.add(`visibility-${visibility}`);
+    }
+
+    // Save to backend if we have an active session
+    if (window.app && window.app.sessionId && window.app.currentVersion > 0) {
+        try {
+            const response = await fetch(
+                `/api/sessions/${window.app.sessionId}/scene-versions/${window.app.currentVersion}/environmental-conditions`,
+                {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weather, lighting, visibility })
+                }
+            );
+            if (response.ok) {
+                console.log('[Environmental] Conditions saved:', { weather, lighting, visibility });
+            }
+        } catch (error) {
+            console.warn('[Environmental] Failed to save conditions:', error);
+        }
+    }
+}
+
+// Load environmental conditions for current scene version
+async function loadEnvironmentalConditions(sessionId, versionNum) {
+    if (!sessionId || !versionNum) return;
+
+    try {
+        const response = await fetch(
+            `/api/sessions/${sessionId}/scene-versions/${versionNum}/environmental-conditions`
+        );
+        if (response.ok) {
+            const data = await response.json();
+            const conditions = data.environmental_conditions || {};
+
+            // Update selectors
+            const weatherSelect = document.getElementById('weather-select');
+            const lightingSelect = document.getElementById('lighting-select');
+            const visibilitySelect = document.getElementById('visibility-select');
+
+            if (weatherSelect) weatherSelect.value = conditions.weather || 'clear';
+            if (lightingSelect) lightingSelect.value = conditions.lighting || 'daylight';
+            if (visibilitySelect) visibilitySelect.value = conditions.visibility || 'good';
+
+            // Apply visual effects
+            updateEnvironmentalConditions();
+        }
+    } catch (error) {
+        console.warn('[Environmental] Failed to load conditions:', error);
+    }
 }
 
 // Item 26: Show testimony summary modal
@@ -2889,9 +4235,21 @@ function submitTestimony() {
 }
 
 // Item 27: Witness info form
-function startInterview() {
+async function startInterview() {
     document.getElementById('witness-info-overlay').style.display = 'none';
     localStorage.setItem('witnessreplay-witness-info-shown', 'true');
+    
+    // Save location data to session if available
+    if (window.locationManager && window.app?.sessionId) {
+        const locationData = locationManager.getLocationData();
+        if (locationData.address || locationData.coordinates) {
+            try {
+                await locationManager.saveToSession(window.app.sessionId);
+            } catch (e) {
+                console.warn('Failed to save location:', e);
+            }
+        }
+    }
 }
 
 function skipInfo() {
@@ -2928,6 +4286,59 @@ function uploadEvidence() {
 
 function handleEvidenceUpload(event) {
     if (window.app) window.app.handleEvidenceUpload(event);
+}
+
+// Item 30: Sketch upload trigger
+function uploadSketch() {
+    document.getElementById('sketch-file-input')?.click();
+}
+
+function handleSketchUpload(event) {
+    if (window.app) window.app.handleSketchUpload(event);
+}
+
+function openSketchModal(sketchId) {
+    // Open modal to view full sketch with AI interpretation
+    if (window.app && window.app.sessionId) {
+        window.app.fetchWithTimeout(`/api/sessions/${window.app.sessionId}/sketches/${sketchId}`)
+            .then(response => response.json())
+            .then(sketch => {
+                // Create modal
+                const modal = document.createElement('div');
+                modal.className = 'modal active';
+                modal.id = 'sketch-modal';
+                modal.style.cssText = 'display:flex; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center;';
+                
+                let elementsHtml = '';
+                if (sketch.extracted_elements && sketch.extracted_elements.length > 0) {
+                    elementsHtml = '<div class="sketch-elements"><h4>Extracted Elements:</h4><ul>' +
+                        sketch.extracted_elements.map(e => `<li><strong>${e.type}:</strong> ${e.description} (${e.position})</li>`).join('') +
+                        '</ul></div>';
+                }
+                
+                modal.innerHTML = `
+                    <div class="modal-content" style="background:var(--bg-secondary); border-radius:16px; max-width:800px; max-height:90vh; overflow:auto; padding:24px;">
+                        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                            <h3 style="margin:0;">✏️ Witness Sketch</h3>
+                            <button onclick="this.closest('.modal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-primary);">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <img src="${sketch.image_url}" alt="Witness sketch" style="max-width:100%; border-radius:8px; border:2px solid var(--accent-primary);">
+                            ${sketch.description ? `<p style="margin-top:16px;"><strong>Description:</strong> ${sketch.description}</p>` : ''}
+                            ${sketch.ai_interpretation ? `<div style="margin-top:16px; padding:12px; background:var(--bg-tertiary); border-radius:8px;"><strong>🤖 AI Interpretation:</strong><br>${sketch.ai_interpretation}</div>` : ''}
+                            ${elementsHtml}
+                        </div>
+                    </div>
+                `;
+                
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) modal.remove();
+                });
+                
+                document.body.appendChild(modal);
+            })
+            .catch(err => console.error('Failed to load sketch:', err));
+    }
 }
 
 // App is initialized from index.html inline script.

@@ -10,6 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ContradictionSeverity:
+    """Severity scoring for a contradiction."""
+    level: str  # low, medium, high, critical
+    score: float  # 0.0-1.0 numeric score
+    factors: Dict[str, float]  # Individual factor scores
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "level": self.level,
+            "score": self.score,
+            "factors": self.factors
+        }
+
+
+@dataclass
 class Contradiction:
     """Represents a detected contradiction in witness statements."""
     id: str
@@ -23,6 +38,7 @@ class Contradiction:
     confidence: float  # 0.0-1.0 how confident we are this is a contradiction
     resolved: bool
     resolution_note: Optional[str] = None
+    severity: Optional[ContradictionSeverity] = None
 
 
 class ContradictionDetector:
@@ -154,6 +170,123 @@ class ContradictionDetector:
             pass
             
         return False
+    
+    def _calculate_severity(
+        self,
+        session_id: str,
+        element_type: str,
+        attribute: str,
+        original_entry: Dict[str, Any],
+        new_value: Any,
+        new_timestamp: datetime
+    ) -> ContradictionSeverity:
+        """
+        Calculate severity score for a contradiction.
+        
+        Factors:
+        - time_discrepancy: How much time passed between statements (shorter = more severe)
+        - location_mismatch: Whether it's a spatial/positional attribute
+        - witness_count: Number of different mentions of this element
+        - detail_specificity: How specific/concrete the values are
+        """
+        factors = {}
+        
+        # 1. Time discrepancy factor (0.0-1.0)
+        # Shorter time between contradicting statements = more severe
+        try:
+            original_ts = datetime.fromisoformat(original_entry['timestamp'])
+            time_diff = (new_timestamp - original_ts).total_seconds()
+            # Very short time (< 60s) = high severity, long time (> 3600s) = low
+            if time_diff < 60:
+                factors['time_discrepancy'] = 1.0
+            elif time_diff < 300:  # 5 minutes
+                factors['time_discrepancy'] = 0.8
+            elif time_diff < 900:  # 15 minutes
+                factors['time_discrepancy'] = 0.5
+            elif time_diff < 3600:  # 1 hour
+                factors['time_discrepancy'] = 0.3
+            else:
+                factors['time_discrepancy'] = 0.1
+        except (ValueError, KeyError):
+            factors['time_discrepancy'] = 0.5
+        
+        # 2. Location/spatial mismatch factor
+        location_attrs = ['position', 'location', 'direction', 'side', 'lane', 'street', 'address']
+        if any(loc in attribute.lower() for loc in location_attrs):
+            factors['location_mismatch'] = 0.9
+        elif attribute.lower() in ['left', 'right', 'north', 'south', 'east', 'west']:
+            factors['location_mismatch'] = 0.85
+        else:
+            factors['location_mismatch'] = 0.3
+        
+        # 3. Witness/element count factor
+        # More mentions of an element = more reliable baseline = more severe contradiction
+        element_key = f"{element_type}:{attribute}"
+        mentions = 1
+        if session_id in self._element_history:
+            for key, attrs in self._element_history[session_id].items():
+                if attribute in attrs:
+                    mentions += len(attrs[attribute])
+        if mentions >= 5:
+            factors['witness_count'] = 0.9
+        elif mentions >= 3:
+            factors['witness_count'] = 0.7
+        elif mentions >= 2:
+            factors['witness_count'] = 0.5
+        else:
+            factors['witness_count'] = 0.3
+        
+        # 4. Detail specificity factor
+        # More specific values (numbers, specific colors, etc.) = more severe when contradicted
+        old_val = str(original_entry['value']).lower()
+        new_val = str(new_value).lower()
+        
+        specificity_score = 0.3
+        # Check for numbers (very specific)
+        try:
+            float(old_val)
+            float(new_val)
+            specificity_score = 0.95
+        except ValueError:
+            pass
+        
+        # Check for specific colors
+        specific_colors = ['red', 'blue', 'green', 'black', 'white', 'yellow', 'orange', 'purple', 'brown', 'gray', 'silver']
+        if any(c in old_val for c in specific_colors) and any(c in new_val for c in specific_colors):
+            specificity_score = max(specificity_score, 0.8)
+        
+        # Check for directional specifics
+        directions = ['left', 'right', 'north', 'south', 'east', 'west', 'front', 'back', 'behind', 'ahead']
+        if any(d in old_val for d in directions) and any(d in new_val for d in directions):
+            specificity_score = max(specificity_score, 0.85)
+        
+        factors['detail_specificity'] = specificity_score
+        
+        # Calculate overall score (weighted average)
+        weights = {
+            'time_discrepancy': 0.2,
+            'location_mismatch': 0.3,
+            'witness_count': 0.2,
+            'detail_specificity': 0.3
+        }
+        
+        total_score = sum(factors.get(k, 0) * w for k, w in weights.items())
+        
+        # Determine severity level
+        if total_score >= 0.8:
+            level = 'critical'
+        elif total_score >= 0.6:
+            level = 'high'
+        elif total_score >= 0.4:
+            level = 'medium'
+        else:
+            level = 'low'
+        
+        return ContradictionSeverity(
+            level=level,
+            score=round(total_score, 3),
+            factors={k: round(v, 3) for k, v in factors.items()}
+        )
         
     def _create_contradiction(
         self,
@@ -166,11 +299,16 @@ class ContradictionDetector:
         new_statement: str,
         timestamp: datetime
     ) -> Contradiction:
-        """Create a contradiction object."""
+        """Create a contradiction object with severity scoring."""
         contradiction_id = f"{session_id}_{element_type}_{element_id}_{attribute}_{timestamp.isoformat()}"
         
         # Calculate confidence based on how different the values are
         confidence = 0.8  # Default high confidence
+        
+        # Calculate severity
+        severity = self._calculate_severity(
+            session_id, element_type, attribute, original_entry, new_value, timestamp
+        )
         
         return Contradiction(
             id=contradiction_id,
@@ -182,21 +320,44 @@ class ContradictionDetector:
             original_value=str(original_entry['value']),
             new_value=str(new_value),
             confidence=confidence,
-            resolved=False
+            resolved=False,
+            severity=severity
         )
         
     def get_contradictions(
         self,
         session_id: str,
-        unresolved_only: bool = False
+        unresolved_only: bool = False,
+        sort_by: str = "timestamp"
     ) -> List[Dict[str, Any]]:
-        """Get contradictions for a session."""
+        """
+        Get contradictions for a session.
+        
+        Args:
+            session_id: Session identifier
+            unresolved_only: If True, only return unresolved contradictions
+            sort_by: Sort order - "timestamp", "severity", or "severity_desc"
+        """
         if session_id not in self.contradictions:
             return []
             
         contradictions = self.contradictions[session_id]
         if unresolved_only:
             contradictions = [c for c in contradictions if not c.resolved]
+        
+        # Sort contradictions
+        if sort_by == "severity" or sort_by == "severity_asc":
+            contradictions = sorted(
+                contradictions,
+                key=lambda c: c.severity.score if c.severity else 0
+            )
+        elif sort_by == "severity_desc":
+            contradictions = sorted(
+                contradictions,
+                key=lambda c: c.severity.score if c.severity else 0,
+                reverse=True
+            )
+        # Default: timestamp order (already in order)
             
         return [
             {
@@ -210,7 +371,12 @@ class ContradictionDetector:
                 'new_value': c.new_value,
                 'confidence': c.confidence,
                 'resolved': c.resolved,
-                'resolution_note': c.resolution_note
+                'resolution_note': c.resolution_note,
+                'severity': c.severity.to_dict() if c.severity else {
+                    'level': 'medium',
+                    'score': 0.5,
+                    'factors': {}
+                }
             }
             for c in contradictions
         ]

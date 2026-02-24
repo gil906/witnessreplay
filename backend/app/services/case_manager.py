@@ -4,11 +4,19 @@ import asyncio
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from google import genai
+from google.genai import types
 
 from app.config import settings
-from app.models.schemas import Case, ReconstructionSession
+from app.models.schemas import (
+    Case,
+    ReconstructionSession,
+    IncidentClassificationResponse,
+    CaseSummaryResponse,
+    CaseMatchResponse,
+)
 from app.services.firestore import firestore_service
 from app.services.model_selector import model_selector
+from app.services.response_cache import response_cache
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +61,36 @@ class CaseManager:
         return await self._create_case_for_report(report)
 
     async def _find_matching_case(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
-        """Use Gemini to find if this report matches any existing case."""
+        """Use embeddings for fast case matching, fall back to LLM if needed."""
+        from app.services.embedding_service import embedding_service
+
+        report_text = self._get_report_text(report)
+        if not report_text:
+            return None
+
+        # Build candidate list from existing cases
+        candidates = []
+        for case in cases:
+            case_text = f"{case.title}. {case.summary or ''}. Location: {case.location or ''}. Reports: {len(case.report_ids)}"
+            candidates.append((case.id, case_text))
+
+        if not candidates:
+            return None
+
+        # Try embedding-based matching first (100 RPM vs 5 RPM!)
+        match_id = await embedding_service.find_most_similar(report_text, candidates, threshold=0.72)
+        if match_id:
+            logger.info(f"Report {report.id} matched via embedding similarity")
+            return match_id
+
+        # Fall back to LLM-based matching only if embeddings fail
+        return await self._find_matching_case_llm(report, cases)
+
+    async def _find_matching_case_llm(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
+        """LLM-based case matching fallback when embeddings are unavailable.
+        
+        Uses structured JSON output for reliable parsing of match decisions.
+        """
         try:
             report_text = self._get_report_text(report)
             if not report_text:
@@ -87,30 +124,35 @@ Statements: {report_text}
 EXISTING CASES:
 {json.dumps(cases_info, indent=2, default=str)}
 
-If this report matches an existing case, respond with ONLY the case_id.
-If it does NOT match any case, respond with ONLY the word "NEW".
-Do not explain your reasoning."""
+Determine if this report matches any existing case. If it matches, provide the case_id."""
 
             chat_model = await model_selector.get_best_model_for_chat()
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
                 model=chat_model,
                 contents=prompt,
-                config={"temperature": 0.1}
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                    response_json_schema=CaseMatchResponse,
+                ),
             )
 
-            result = response.text.strip()
+            # Parse structured response
+            result = CaseMatchResponse.model_validate_json(response.text)
 
-            for case in cases:
-                if case.id in result:
-                    logger.info(f"Report {report.id} matched to case {case.case_number}")
-                    return case.id
+            if result.matches_existing_case and result.matched_case_id:
+                # Verify the case_id exists
+                for case in cases:
+                    if case.id == result.matched_case_id:
+                        logger.info(f"Report {report.id} matched to case {case.case_number} (LLM structured output, confidence: {result.confidence})")
+                        return case.id
 
             logger.info(f"Report {report.id} did not match any existing case")
             return None
 
         except Exception as e:
-            logger.error(f"Error matching report to case: {e}")
+            logger.error(f"Error matching report to case (LLM): {e}")
             return None
 
     async def _create_case_for_report(self, report: ReconstructionSession) -> str:
@@ -150,7 +192,11 @@ Do not explain your reasoning."""
         return case.id
 
     async def generate_case_summary(self, case_id: str) -> Optional[Dict[str, Any]]:
-        """Generate a comprehensive case summary using Gemini."""
+        """Generate a comprehensive case summary using Gemini with structured output.
+        
+        Uses response_json_schema for guaranteed valid JSON matching CaseSummaryResponse,
+        eliminating parsing errors and reducing token waste from formatting instructions.
+        """
         try:
             case = await firestore_service.get_case(case_id)
             if not case:
@@ -176,48 +222,45 @@ LOCATION: {case.location}
 WITNESS REPORTS:
 {chr(10).join(all_reports_text)}
 
-Respond with a JSON object:
-{{
-    "summary": "A comprehensive 2-3 paragraph summary of the incident based on all witness accounts",
-    "title": "A clear, descriptive title for this case",
-    "location": "The specific location if mentioned",
-    "timeframe": {{
-        "start": "Estimated start time/date of the incident",
-        "end": "Estimated end time/date if applicable",
-        "description": "A human-readable timeframe description"
-    }},
-    "key_elements": ["list", "of", "key", "elements"],
-    "scene_description": "A detailed description for generating a scene image combining all witness perspectives"
-}}"""
+Create a comprehensive summary combining all witness perspectives, identify key elements, and provide a detailed scene description suitable for image generation."""
 
                 try:
-                    chat_model = await model_selector.get_best_model_for_chat()
-                    response = await asyncio.to_thread(
-                        self.client.models.generate_content,
-                        model=chat_model,
-                        contents=prompt,
-                        config={"temperature": 0.3}
-                    )
+                    # Check response cache first for similar case summaries
+                    cached = await response_cache.get(prompt, context_key="case_summary", threshold=0.93)
+                    if cached:
+                        response_text, _ = cached
+                        logger.info(f"Using cached summary for case {case.case_number}")
+                    else:
+                        chat_model = await model_selector.get_best_model_for_chat()
+                        response = await asyncio.to_thread(
+                            self.client.models.generate_content,
+                            model=chat_model,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                temperature=0.3,
+                                response_mime_type="application/json",
+                                response_json_schema=CaseSummaryResponse,
+                            ),
+                        )
+                        response_text = response.text
+                        # Cache the summary for similar requests
+                        await response_cache.set(prompt, response_text, context_key="case_summary", ttl_seconds=3600)
 
-                    text = response.text
-                    if "```json" in text:
-                        text = text.split("```json")[1].split("```")[0]
-                    elif "```" in text:
-                        text = text.split("```")[1].split("```")[0]
+                    # Parse structured response - guaranteed valid JSON
+                    result = CaseSummaryResponse.model_validate_json(response_text)
+                    result_dict = result.model_dump()
 
-                    result = json.loads(text.strip())
-
-                    case.summary = result.get("summary", case.summary)
-                    case.title = result.get("title", case.title)
-                    case.location = result.get("location", case.location)
-                    case.timeframe = result.get("timeframe", case.timeframe)
-                    case.metadata["key_elements"] = result.get("key_elements", [])
-                    case.metadata["scene_description"] = result.get("scene_description", "")
+                    case.summary = result.summary
+                    case.title = result.title
+                    case.location = result.location
+                    case.timeframe = result.timeframe.model_dump()
+                    case.metadata["key_elements"] = result.key_elements
+                    case.metadata["scene_description"] = result.scene_description
                     case.updated_at = datetime.utcnow()
                     await firestore_service.update_case(case)
 
-                    logger.info(f"Generated summary for case {case.case_number}")
-                    return result
+                    logger.info(f"Generated summary for case {case.case_number} using structured output")
+                    return result_dict
 
                 except Exception as e:
                     logger.error(f"Error generating case summary: {e}")
@@ -234,8 +277,36 @@ Respond with a JSON object:
             return report.title or ""
         return "\n".join(stmt.text for stmt in report.witness_statements)
 
+    async def embed_report(self, report: ReconstructionSession):
+        """Pre-compute embedding for a report for future matching."""
+        from app.services.embedding_service import embedding_service
+        text = self._get_report_text(report)
+        if text:
+            await embedding_service.embed_text(text)  # Returns tuple, we ignore it here
+
+    async def search_cases(self, query: str, limit: int = 10) -> list:
+        """Search cases by semantic similarity."""
+        from app.services.embedding_service import embedding_service
+        cases = await firestore_service.list_cases(limit=100)
+        documents = [(c.id, f"{c.title} {c.summary or ''}") for c in cases]
+        results = await embedding_service.semantic_search(query, documents, top_k=limit)
+        return results
+
+    async def search_reports(self, query: str, limit: int = 10) -> list:
+        """Search reports by semantic similarity."""
+        from app.services.embedding_service import embedding_service
+        sessions = await firestore_service.list_sessions(limit=100)
+        documents = [(s.id, self._get_report_text(s) or s.title) for s in sessions]
+        results = await embedding_service.semantic_search(query, documents, top_k=limit)
+        return results
+
     async def _classify_incident(self, report: ReconstructionSession) -> Optional[Dict]:
-        """Use Gemini to classify the incident type."""
+        """Use Gemini with structured JSON output to classify the incident type.
+        
+        Uses response_json_schema for guaranteed valid JSON matching the schema,
+        eliminating parsing errors and reducing token waste.
+        Uses response cache for similar reports to reduce redundant API calls.
+        """
         if not self.client:
             return None
         try:
@@ -243,23 +314,36 @@ Respond with a JSON object:
             if not report_text:
                 return None
             
-            chat_model = await model_selector.get_best_model_for_chat()
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=chat_model,
-                contents=f"""Classify this witness report into an incident category. 
-            
+            prompt = f"""Classify this witness report into an incident category.
+
 Report: {report_text}
 
-Respond with ONLY a JSON object:
-{{"type": "accident|crime|incident|other", "subtype": "specific_type", "severity": "critical|high|medium|low"}}""",
-                config={"temperature": 0.1}
-            )
+Determine the type (accident, crime, incident, or other), specific subtype, and severity level."""
             
-            text = response.text.strip()
-            if "```" in text:
-                text = text.split("```json")[-1].split("```")[0] if "```json" in text else text.split("```")[1].split("```")[0]
-            return json.loads(text)
+            # Check response cache first for similar classification requests
+            cached = await response_cache.get(prompt, context_key="classify_incident", threshold=0.94)
+            if cached:
+                response_text, _ = cached
+                logger.info("Using cached incident classification")
+            else:
+                chat_model = await model_selector.get_best_model_for_chat()
+                response = await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=chat_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                        response_json_schema=IncidentClassificationResponse,
+                    ),
+                )
+                response_text = response.text
+                # Cache for similar future classifications
+                await response_cache.set(prompt, response_text, context_key="classify_incident", ttl_seconds=7200)
+            
+            # Parse structured response - guaranteed valid JSON
+            result = IncidentClassificationResponse.model_validate_json(response_text)
+            return result.model_dump()
         except Exception as e:
             logger.warning(f"Failed to classify incident: {e}")
             return None

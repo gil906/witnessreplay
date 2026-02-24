@@ -123,6 +123,8 @@ class AdminPortal {
         await this.loadCases();
         this.startAutoRefresh();
         this.fetchAndDisplayVersion();
+        this.loadQuotaDashboard();
+        this.startQuotaRefresh();
     }
     
     initializeUI() {
@@ -188,6 +190,13 @@ class AdminPortal {
         });
         document.getElementById('update-status-btn')?.addEventListener('click', () => this.updateCaseStatus());
         document.getElementById('print-report-btn')?.addEventListener('click', () => this.printCaseReport());
+        
+        // Timeline view toggle
+        document.getElementById('simple-timeline-btn')?.addEventListener('click', () => this.switchTimelineView('simple'));
+        document.getElementById('interactive-timeline-btn')?.addEventListener('click', () => this.switchTimelineView('interactive'));
+        
+        // Initialize timeline visualization
+        this.timelineViz = null;
     }
     
     switchView(view) {
@@ -626,11 +635,225 @@ class AdminPortal {
                 elementsSection.style.display = 'none';
             }
             
+            // Related cases
+            this.renderRelatedCases(caseData.related_cases || []);
+            this.setupRelatedCasesHandlers();
+            
             this.showModal('case-detail-modal');
         } catch (error) {
             console.error('Error loading case details:', error);
             this.showToast('Failed to load case details', 'error');
         }
+    }
+    
+    renderRelatedCases(relatedCases) {
+        const container = document.getElementById('related-cases-list');
+        
+        if (relatedCases.length === 0) {
+            container.innerHTML = '<p class="empty-state">No related cases linked</p>';
+            return;
+        }
+        
+        container.innerHTML = relatedCases.map(rel => {
+            const relTypeClass = rel.relationship_type || 'related';
+            const relTypeLabel = {
+                'related': 'Related',
+                'same_incident': 'Same Incident',
+                'serial': 'Serial Pattern'
+            }[relTypeClass] || 'Related';
+            
+            const reasonLabel = {
+                'suspect': '👤 Suspect',
+                'location': '📍 Location',
+                'mo': '🔧 MO',
+                'time_proximity': '⏱️ Time',
+                'semantic': '🧠 Semantic',
+                'manual': '✋ Manual'
+            }[rel.link_reason] || rel.link_reason;
+            
+            const confidencePercent = Math.round((rel.confidence || 0.5) * 100);
+            
+            return `
+                <div class="related-case-card" data-case-id="${rel.related_case_id}" onclick="window.adminPortal.navigateToRelatedCase('${rel.related_case_id}')">
+                    <div class="related-case-info">
+                        <div class="case-number">${rel.related_case_number}</div>
+                        <div class="case-title">${rel.related_case_title}</div>
+                        <div class="related-case-meta">
+                            <span class="relationship-badge ${relTypeClass}">${relTypeLabel}</span>
+                            <span class="link-reason-badge">${reasonLabel}</span>
+                            <span class="confidence-score">${confidencePercent}% confidence</span>
+                        </div>
+                    </div>
+                    <button class="unlink-btn" onclick="event.stopPropagation(); window.adminPortal.unlinkCase('${rel.id}')" title="Remove link">
+                        ✕ Unlink
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    setupRelatedCasesHandlers() {
+        // Find similar cases button
+        document.getElementById('find-similar-btn')?.addEventListener('click', () => this.findSimilarCases());
+        
+        // Add link button
+        document.getElementById('add-link-btn')?.addEventListener('click', () => this.showLinkForm());
+        
+        // Cancel link button
+        document.getElementById('cancel-link-btn')?.addEventListener('click', () => this.hideLinkForm());
+        
+        // Confirm link button
+        document.getElementById('confirm-link-btn')?.addEventListener('click', () => this.confirmLinkCase());
+    }
+    
+    async findSimilarCases() {
+        if (!this.currentCase) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/similar?limit=5`);
+            if (!response.ok) throw new Error('Failed to find similar cases');
+            
+            const data = await response.json();
+            const panel = document.getElementById('similar-cases-panel');
+            const list = document.getElementById('similar-cases-list');
+            
+            if (data.similar_cases.length === 0) {
+                list.innerHTML = '<p class="empty-state">No similar cases found</p>';
+            } else {
+                list.innerHTML = data.similar_cases.map(sim => `
+                    <div class="similar-case-item">
+                        <div class="similar-case-info">
+                            <strong>${sim.case_number}</strong> - ${sim.title}
+                            <div class="similarity-score">${Math.round(sim.similarity_score * 100)}% similar</div>
+                            <div class="matching-factors">
+                                ${sim.matching_factors.map(f => `<span class="factor-tag">${f}</span>`).join('')}
+                            </div>
+                        </div>
+                        <button class="quick-link-btn" onclick="window.adminPortal.quickLinkCase('${sim.case_id}', '${sim.matching_factors[0] || 'semantic'}')">
+                            ➕ Link
+                        </button>
+                    </div>
+                `).join('');
+            }
+            
+            panel.style.display = 'block';
+        } catch (error) {
+            console.error('Error finding similar cases:', error);
+            this.showToast('Failed to find similar cases', 'error');
+        }
+    }
+    
+    async quickLinkCase(targetCaseId, linkReason) {
+        if (!this.currentCase) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/link`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.authToken}`
+                },
+                body: JSON.stringify({
+                    case_b_id: targetCaseId,
+                    relationship_type: 'related',
+                    link_reason: linkReason
+                })
+            });
+            
+            if (!response.ok) throw new Error('Failed to link cases');
+            
+            this.showToast('Cases linked successfully', 'success');
+            // Refresh case detail
+            await this.showCaseDetail(this.currentCase.id);
+        } catch (error) {
+            console.error('Error linking cases:', error);
+            this.showToast('Failed to link cases', 'error');
+        }
+    }
+    
+    async unlinkCase(relationshipId) {
+        if (!this.currentCase) return;
+        
+        if (!confirm('Are you sure you want to remove this link?')) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/link/${relationshipId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`
+                }
+            });
+            
+            if (!response.ok) throw new Error('Failed to unlink cases');
+            
+            this.showToast('Link removed successfully', 'success');
+            // Refresh case detail
+            await this.showCaseDetail(this.currentCase.id);
+        } catch (error) {
+            console.error('Error unlinking cases:', error);
+            this.showToast('Failed to unlink cases', 'error');
+        }
+    }
+    
+    async showLinkForm() {
+        // Populate case selector with all cases except current
+        const select = document.getElementById('link-case-select');
+        select.innerHTML = '<option value="">Select a case...</option>';
+        
+        const otherCases = this.cases.filter(c => c.id !== this.currentCase?.id);
+        otherCases.forEach(c => {
+            select.innerHTML += `<option value="${c.id}">${c.case_number} - ${c.title}</option>`;
+        });
+        
+        document.getElementById('link-case-form').style.display = 'flex';
+        document.getElementById('add-link-btn').style.display = 'none';
+    }
+    
+    hideLinkForm() {
+        document.getElementById('link-case-form').style.display = 'none';
+        document.getElementById('add-link-btn').style.display = 'inline-block';
+    }
+    
+    async confirmLinkCase() {
+        const targetCaseId = document.getElementById('link-case-select').value;
+        const relType = document.getElementById('link-type-select').value;
+        const notes = document.getElementById('link-notes-input').value;
+        
+        if (!targetCaseId) {
+            this.showToast('Please select a case to link', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/link`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.authToken}`
+                },
+                body: JSON.stringify({
+                    case_b_id: targetCaseId,
+                    relationship_type: relType,
+                    link_reason: 'manual',
+                    notes: notes || null
+                })
+            });
+            
+            if (!response.ok) throw new Error('Failed to link cases');
+            
+            this.showToast('Cases linked successfully', 'success');
+            this.hideLinkForm();
+            // Refresh case detail
+            await this.showCaseDetail(this.currentCase.id);
+        } catch (error) {
+            console.error('Error linking cases:', error);
+            this.showToast('Failed to link cases', 'error');
+        }
+    }
+    
+    navigateToRelatedCase(caseId) {
+        this.hideModal('case-detail-modal');
+        setTimeout(() => this.showCaseDetail(caseId), 300);
     }
     
     renderCaseReports(reports) {
@@ -891,6 +1114,39 @@ class AdminPortal {
                 </div>
             </div>
         `).join('');
+    }
+    
+    switchTimelineView(view) {
+        const simpleBtn = document.getElementById('simple-timeline-btn');
+        const interactiveBtn = document.getElementById('interactive-timeline-btn');
+        const simpleContainer = document.getElementById('case-timeline');
+        const interactiveContainer = document.getElementById('interactive-timeline-container');
+        
+        if (!simpleContainer || !interactiveContainer) return;
+        
+        if (view === 'interactive') {
+            simpleBtn?.classList.remove('active');
+            interactiveBtn?.classList.add('active');
+            simpleContainer.style.display = 'none';
+            interactiveContainer.style.display = 'block';
+            
+            // Initialize and load interactive timeline
+            if (!this.timelineViz) {
+                this.timelineViz = new TimelineVisualization('interactive-timeline-container', {
+                    editable: true,
+                    showContradictions: true
+                });
+            }
+            this.timelineViz.setAuthToken(this.authToken);
+            if (this.currentCase?.id) {
+                this.timelineViz.loadCaseTimeline(this.currentCase.id);
+            }
+        } else {
+            simpleBtn?.classList.add('active');
+            interactiveBtn?.classList.remove('active');
+            simpleContainer.style.display = 'block';
+            interactiveContainer.style.display = 'none';
+        }
     }
     
     showReportComparison() {
@@ -1455,6 +1711,128 @@ class AdminPortal {
         if (!time) return '';
         const d = new Date(time);
         return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // ======================================
+    // Quota Dashboard Widget
+    // ======================================
+    
+    async loadQuotaDashboard() {
+        try {
+            const response = await this.fetchWithTimeout('/api/quota/status');
+            if (!response.ok) {
+                console.error('Failed to fetch quota status');
+                this.renderQuotaError();
+                return;
+            }
+            const data = await response.json();
+            this.renderQuotaDashboard(data);
+        } catch (error) {
+            console.error('Error loading quota dashboard:', error);
+            this.renderQuotaError();
+        }
+    }
+    
+    renderQuotaDashboard(data) {
+        const modelsContainer = document.getElementById('quota-models');
+        const timerEl = document.getElementById('quota-reset-timer');
+        const updatedEl = document.getElementById('quota-updated');
+        
+        if (!modelsContainer) return;
+        
+        // Update reset timer
+        if (timerEl && data.reset) {
+            timerEl.textContent = data.reset.formatted;
+        }
+        
+        // Update last updated time
+        if (updatedEl) {
+            const now = new Date();
+            updatedEl.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        }
+        
+        // Filter to only show models with usage or known limits
+        const activeModels = Object.entries(data.models || {}).filter(([name, model]) => {
+            // Show models that have been used or have non-zero limits
+            return model.rpd?.used > 0 || model.rpm?.used > 0 || model.tpm?.used > 0 ||
+                   model.rpd?.limit > 0 || model.rpm?.limit > 0 || model.tpm?.limit > 0;
+        });
+        
+        if (activeModels.length === 0) {
+            modelsContainer.innerHTML = '<div class="quota-loading">No quota data available</div>';
+            return;
+        }
+        
+        // Sort by usage (most used first)
+        activeModels.sort((a, b) => {
+            const aUsage = (a[1].rpd?.percent || 0) + (a[1].tpm?.percent || 0);
+            const bUsage = (b[1].rpd?.percent || 0) + (b[1].tpm?.percent || 0);
+            return bUsage - aUsage;
+        });
+        
+        // Render model cards
+        modelsContainer.innerHTML = activeModels.map(([name, model]) => {
+            return `
+                <div class="quota-model-card">
+                    <div class="quota-model-name">
+                        ${this.getModelIcon(name)} ${name}
+                        <span class="quota-model-tier">${model.tier || 'free'}</span>
+                    </div>
+                    ${this.renderQuotaMetric('RPM', model.rpm)}
+                    ${this.renderQuotaMetric('TPM', model.tpm)}
+                    ${this.renderQuotaMetric('RPD', model.rpd)}
+                </div>
+            `;
+        }).join('');
+    }
+    
+    renderQuotaMetric(label, metric) {
+        if (!metric || metric.limit === 0) return '';
+        
+        const percent = metric.percent || 0;
+        const colorClass = percent < 50 ? 'green' : percent < 80 ? 'yellow' : 'red';
+        const usedFormatted = this.formatNumber(metric.used);
+        const limitFormatted = this.formatNumber(metric.limit);
+        
+        return `
+            <div class="quota-metric">
+                <div class="quota-metric-header">
+                    <span class="quota-metric-label">${label}</span>
+                    <span class="quota-metric-value">${usedFormatted} / ${limitFormatted}</span>
+                </div>
+                <div class="quota-progress">
+                    <div class="quota-progress-bar ${colorClass}" style="width: ${Math.min(percent, 100)}%"></div>
+                </div>
+            </div>
+        `;
+    }
+    
+    getModelIcon(modelName) {
+        if (modelName.includes('imagen')) return '🎨';
+        if (modelName.includes('embedding')) return '🔗';
+        if (modelName.includes('gemma')) return '💎';
+        if (modelName.includes('tts') || modelName.includes('audio')) return '🔊';
+        return '🤖';
+    }
+    
+    formatNumber(num) {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num.toString();
+    }
+    
+    renderQuotaError() {
+        const modelsContainer = document.getElementById('quota-models');
+        if (modelsContainer) {
+            modelsContainer.innerHTML = '<div class="quota-loading">Failed to load quota data</div>';
+        }
+    }
+    
+    startQuotaRefresh() {
+        // Refresh quota data every 30 seconds
+        this.quotaRefreshInterval = setInterval(() => {
+            this.loadQuotaDashboard();
+        }, 30000);
     }
     
     // ======================================

@@ -82,6 +82,32 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Error sending WebSocket message: {e}")
     
+    async def send_streaming_chunk(
+        self, 
+        chunk: str, 
+        is_final: bool = False, 
+        message_id: str = None,
+        token_info: dict = None
+    ):
+        """Send a streaming text chunk to the client."""
+        if not self.is_connected:
+            return
+        
+        try:
+            data = {
+                "chunk": chunk,
+                "is_final": is_final,
+                "speaker": "agent",
+                "message_id": message_id or str(uuid.uuid4())
+            }
+            # Include token estimation info on final chunk
+            if is_final and token_info:
+                data["token_info"] = token_info
+            message = WebSocketMessage(type="text_stream", data=data)
+            await self.websocket.send_json(message.model_dump(mode='json'))
+        except Exception as e:
+            logger.error(f"Error sending streaming chunk: {e}")
+    
     async def handle_message(self, message: dict):
         """Handle incoming WebSocket messages."""
         try:
@@ -176,7 +202,7 @@ class WebSocketHandler:
             await self.send_message("error", {"message": f"Audio processing error: {str(e)}"})
     
     async def handle_text(self, data: dict):
-        """Handle text input from the client."""
+        """Handle text input from the client with streaming response."""
         try:
             text = data.get("text", "").strip()
             if not text:
@@ -185,29 +211,61 @@ class WebSocketHandler:
             # Send status update
             await self.send_message("status", {"status": "thinking", "message": "Analyzing..."})
             
-            # Process with agent
+            # Process with agent using streaming
             is_correction = data.get("is_correction", False)
-            response, should_generate_image = await self.agent.process_statement(
-                text, is_correction
-            )
+            message_id = str(uuid.uuid4())
+            should_generate_image = False
+            token_info = None
             
-            # Save witness statement to session
+            # Stream the response (now returns 4-tuple with token_info)
+            async for chunk, is_final, should_gen, tok_info in self.agent.process_statement_streaming(
+                text, is_correction
+            ):
+                if chunk:
+                    await self.send_streaming_chunk(chunk, is_final=False, message_id=message_id)
+                if is_final:
+                    should_generate_image = should_gen
+                    token_info = tok_info
+                    # Send final marker with token info
+                    await self.send_streaming_chunk("", is_final=True, message_id=message_id, token_info=token_info)
+            
+            # Get session to retrieve active witness info
+            session = await firestore_service.get_session(self.session_id)
+            
+            # Determine witness info for this statement
+            witness_id = None
+            witness_name = None
+            if session:
+                # Check if client specified a witness_id
+                if data.get("witness_id"):
+                    witness_id = data.get("witness_id")
+                    witnesses = getattr(session, 'witnesses', []) or []
+                    witness = next((w for w in witnesses if w.id == witness_id), None)
+                    if witness:
+                        witness_name = witness.name
+                # Otherwise use active witness
+                elif getattr(session, 'active_witness_id', None):
+                    witness_id = session.active_witness_id
+                    witnesses = getattr(session, 'witnesses', []) or []
+                    witness = next((w for w in witnesses if w.id == witness_id), None)
+                    if witness:
+                        witness_name = witness.name
+                # Fallback to session-level witness name
+                if not witness_name:
+                    witness_name = session.witness_name
+            
+            # Save witness statement to session with witness info
             statement = WitnessStatement(
                 id=str(uuid.uuid4()),
                 text=text,
-                is_correction=is_correction
+                is_correction=is_correction,
+                witness_id=witness_id,
+                witness_name=witness_name
             )
             
-            session = await firestore_service.get_session(self.session_id)
             if session:
                 session.witness_statements.append(statement)
                 await firestore_service.update_session(session)
-            
-            # Send agent response
-            await self.send_message("text", {
-                "text": response,
-                "speaker": "agent"
-            })
             
             # Generate image if needed
             if should_generate_image:

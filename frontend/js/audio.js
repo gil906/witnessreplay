@@ -41,10 +41,17 @@ class AudioRecorder {
             this.mediaRecorder.start(100); // Collect data every 100ms
             this.isRecording = true;
             
+            // Return the stream for quality analysis
+            return this.stream;
+            
         } catch (error) {
             console.error('Error accessing microphone:', error);
             throw error;
         }
+    }
+    
+    getStream() {
+        return this.stream;
     }
     
     async stop() {
@@ -201,6 +208,229 @@ class EnhancedAudioVisualizer {
     }
 }
 
+/**
+ * TTS Player Module
+ * Handles text-to-speech playback for AI responses (accessibility feature)
+ */
+class TTSPlayer {
+    constructor() {
+        this.audioContext = null;
+        this.currentSource = null;
+        this.isPlaying = false;
+        this.enabled = localStorage.getItem('ttsEnabled') === 'true';
+        this.voice = localStorage.getItem('ttsVoice') || 'Puck';
+        this.availableVoices = [];
+        this.queue = [];
+        this.isProcessing = false;
+        
+        // Fetch available voices on init
+        this.fetchVoices();
+    }
+    
+    async fetchVoices() {
+        try {
+            const response = await fetch('/api/tts/voices');
+            if (response.ok) {
+                const data = await response.json();
+                this.availableVoices = data.voices || [];
+            }
+        } catch (error) {
+            console.warn('Could not fetch TTS voices:', error);
+        }
+    }
+    
+    setEnabled(enabled) {
+        this.enabled = enabled;
+        localStorage.setItem('ttsEnabled', enabled.toString());
+    }
+    
+    isEnabled() {
+        return this.enabled;
+    }
+    
+    setVoice(voice) {
+        this.voice = voice;
+        localStorage.setItem('ttsVoice', voice);
+    }
+    
+    getVoice() {
+        return this.voice;
+    }
+    
+    getAvailableVoices() {
+        return this.availableVoices;
+    }
+    
+    /**
+     * Speak text using TTS API
+     * @param {string} text - Text to speak
+     * @param {boolean} immediate - If true, interrupt current playback
+     */
+    async speak(text, immediate = false) {
+        if (!this.enabled || !text || !text.trim()) {
+            return;
+        }
+        
+        // Clean text for TTS (remove emojis, special formatting)
+        const cleanText = this._cleanTextForTTS(text);
+        if (!cleanText) return;
+        
+        if (immediate) {
+            this.stop();
+            this.queue = [];
+        }
+        
+        this.queue.push(cleanText);
+        this._processQueue();
+    }
+    
+    async _processQueue() {
+        if (this.isProcessing || this.queue.length === 0) {
+            return;
+        }
+        
+        this.isProcessing = true;
+        
+        while (this.queue.length > 0) {
+            const text = this.queue.shift();
+            try {
+                await this._playText(text);
+            } catch (error) {
+                console.error('TTS playback error:', error);
+            }
+        }
+        
+        this.isProcessing = false;
+    }
+    
+    async _playText(text) {
+        try {
+            const response = await fetch('/api/tts/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: text,
+                    voice: this.voice,
+                }),
+            });
+            
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || `TTS API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.audio_base64) {
+                await this._playAudioBase64(data.audio_base64, data.mime_type);
+            }
+        } catch (error) {
+            console.error('TTS generation failed:', error);
+            // Show user-friendly message for quota errors
+            if (error.message.includes('429') || error.message.includes('quota')) {
+                console.warn('TTS quota reached, speech disabled temporarily');
+            }
+        }
+    }
+    
+    async _playAudioBase64(base64Data, mimeType = 'audio/wav') {
+        return new Promise((resolve, reject) => {
+            try {
+                // Create audio context if needed
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                // Resume audio context if suspended (browser autoplay policy)
+                if (this.audioContext.state === 'suspended') {
+                    this.audioContext.resume();
+                }
+                
+                // Decode base64 to array buffer
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                // Decode audio data
+                this.audioContext.decodeAudioData(
+                    bytes.buffer,
+                    (audioBuffer) => {
+                        // Stop any current playback
+                        if (this.currentSource) {
+                            try {
+                                this.currentSource.stop();
+                            } catch (e) {}
+                        }
+                        
+                        // Create and play buffer source
+                        this.currentSource = this.audioContext.createBufferSource();
+                        this.currentSource.buffer = audioBuffer;
+                        this.currentSource.connect(this.audioContext.destination);
+                        
+                        this.isPlaying = true;
+                        
+                        this.currentSource.onended = () => {
+                            this.isPlaying = false;
+                            this.currentSource = null;
+                            resolve();
+                        };
+                        
+                        this.currentSource.start(0);
+                    },
+                    (error) => {
+                        console.error('Audio decode error:', error);
+                        reject(error);
+                    }
+                );
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+    
+    _cleanTextForTTS(text) {
+        if (!text) return '';
+        
+        // Remove emojis
+        let clean = text.replace(/[\u{1F600}-\u{1F64F}]/gu, '');
+        clean = clean.replace(/[\u{1F300}-\u{1F5FF}]/gu, '');
+        clean = clean.replace(/[\u{1F680}-\u{1F6FF}]/gu, '');
+        clean = clean.replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '');
+        clean = clean.replace(/[\u{2600}-\u{26FF}]/gu, '');
+        clean = clean.replace(/[\u{2700}-\u{27BF}]/gu, '');
+        
+        // Remove markdown-style formatting
+        clean = clean.replace(/\*\*(.*?)\*\*/g, '$1');
+        clean = clean.replace(/__(.*?)__/g, '$1');
+        clean = clean.replace(/\*(.*?)\*/g, '$1');
+        clean = clean.replace(/_(.*?)_/g, '$1');
+        
+        // Remove multiple spaces/newlines
+        clean = clean.replace(/\s+/g, ' ');
+        
+        return clean.trim();
+    }
+    
+    stop() {
+        if (this.currentSource) {
+            try {
+                this.currentSource.stop();
+            } catch (e) {}
+            this.currentSource = null;
+        }
+        this.isPlaying = false;
+    }
+    
+    isCurrentlyPlaying() {
+        return this.isPlaying;
+    }
+}
+
 // Export to global scope
 window.AudioRecorder = AudioRecorder;
 window.EnhancedAudioVisualizer = EnhancedAudioVisualizer;
+window.TTSPlayer = TTSPlayer;

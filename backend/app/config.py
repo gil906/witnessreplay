@@ -34,12 +34,28 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     
     # Model Configuration
-    gemini_model: str = "gemini-2.0-flash-exp"
-    gemini_vision_model: str = "gemini-2.0-flash-exp"
+    gemini_model: str = "gemini-3-flash"
+    gemini_vision_model: str = "gemini-3-flash"
+    gemini_lite_model: str = "gemini-2.5-flash-lite"
+    gemma_model: str = "gemma-3-27b-it"
+    imagen_model: str = "imagen-4-fast-generate"
+    embedding_model: str = "gemini-embedding-001"
+    tts_model: str = "gemini-2.5-flash-preview-tts"
+    live_model: str = "gemini-2.5-flash-exp-native-audio-thinking"
     
     # Rate Limiting
     max_requests_per_minute: int = 60
     enforce_rate_limits: bool = False  # Set to True in production
+    
+    # RPD Budget Allocator
+    rpd_budget_exceed_action: str = "reject"  # reject, queue, or allow
+    rpd_budget_windows: str = ""  # JSON array of window configs (optional)
+    
+    # Quota Alerts
+    quota_alert_threshold: float = 0.80  # Default 80% warning threshold
+    quota_alert_critical_threshold: float = 0.95  # Default 95% critical threshold
+    quota_alert_webhook_url: str = ""  # Webhook URL for alerts
+    quota_alert_check_interval: int = 60  # Seconds between periodic checks
     
     # Admin Configuration
     admin_password: str = "change_this_password_immediately"

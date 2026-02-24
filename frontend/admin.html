@@ -129,6 +129,24 @@
                 </div>
             </section>
 
+            <!-- Quota Dashboard Widget -->
+            <section class="quota-dashboard" id="quota-dashboard">
+                <div class="quota-header">
+                    <h3>📊 API Quota Usage</h3>
+                    <div class="quota-reset-timer">
+                        <span class="quota-timer-label">Reset in:</span>
+                        <span class="quota-timer-value" id="quota-reset-timer">--:--</span>
+                    </div>
+                </div>
+                <div class="quota-models" id="quota-models">
+                    <div class="quota-loading">Loading quota data...</div>
+                </div>
+                <div class="quota-footer">
+                    <span class="quota-updated" id="quota-updated">Last updated: --</span>
+                    <span class="quota-note">Usage is approximate (local tracking)</span>
+                </div>
+            </section>
+
             <!-- Search & Filter -->
             <section class="admin-controls">
                 <div class="search-bar">
@@ -360,13 +378,52 @@
                     <!-- Case Timeline -->
                     <section class="case-timeline">
                         <h3>📅 Case Timeline</h3>
+                        <div class="timeline-view-toggle">
+                            <button id="simple-timeline-btn" class="btn btn-secondary active" data-view="simple">Simple</button>
+                            <button id="interactive-timeline-btn" class="btn btn-secondary" data-view="interactive">Interactive</button>
+                        </div>
                         <div id="case-timeline" class="timeline-container"></div>
+                        <div id="interactive-timeline-container" class="interactive-timeline" style="display:none; min-height: 350px; position: relative;"></div>
                     </section>
 
                     <!-- Audit Trail -->
                     <section class="audit-trail">
                         <h3>📋 Audit Trail</h3>
                         <div id="audit-trail-list" class="audit-list"></div>
+                    </section>
+
+                    <!-- Related Cases -->
+                    <section class="related-cases-section" id="related-cases-section">
+                        <div class="section-header">
+                            <h3>🔗 Related Cases</h3>
+                            <button id="find-similar-btn" class="btn btn-secondary btn-sm">🔍 Find Similar Cases</button>
+                        </div>
+                        <div id="related-cases-list" class="related-cases-list">
+                            <p class="empty-state">No related cases linked</p>
+                        </div>
+                        
+                        <!-- Similar Cases Suggestions (hidden by default) -->
+                        <div id="similar-cases-panel" class="similar-cases-panel" style="display: none;">
+                            <h4>📊 Suggested Similar Cases</h4>
+                            <div id="similar-cases-list" class="similar-cases-list"></div>
+                        </div>
+                        
+                        <!-- Manual Link Form -->
+                        <div class="link-case-form" id="link-case-form" style="display: none;">
+                            <h4>Link Another Case</h4>
+                            <select id="link-case-select" class="filter-select">
+                                <option value="">Select a case...</option>
+                            </select>
+                            <select id="link-type-select" class="filter-select">
+                                <option value="related">Related</option>
+                                <option value="same_incident">Same Incident</option>
+                                <option value="serial">Serial Pattern</option>
+                            </select>
+                            <input type="text" id="link-notes-input" class="assign-input" placeholder="Notes (optional)">
+                            <button id="confirm-link-btn" class="btn btn-primary btn-sm">Link Cases</button>
+                            <button id="cancel-link-btn" class="btn btn-secondary btn-sm">Cancel</button>
+                        </div>
+                        <button id="add-link-btn" class="btn btn-secondary btn-sm">➕ Link Case Manually</button>
                     </section>
 
                     <!-- Status Workflow -->
@@ -415,6 +472,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/js/timeline.js"></script>
+    <script src="/static/js/scene-animation.js"></script>
     <script src="/static/js/admin.js"></script>
 </body>
 </html>

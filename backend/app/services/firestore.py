@@ -390,6 +390,53 @@ class FirestoreService:
             logger.warning(f"get_background_task failed: {e}")
             return None
 
+    # ── Case Relationship Methods ────────────────────────────
+
+    async def save_case_relationship(self, rel_dict: dict) -> bool:
+        """Save a case relationship to SQLite."""
+        try:
+            db = await self._get_sqlite()
+            return await db.save_case_relationship(rel_dict)
+        except Exception as e:
+            logger.warning(f"save_case_relationship failed: {e}")
+            return False
+
+    async def get_case_relationships(self, case_id: str) -> list:
+        """Get all relationships for a case."""
+        try:
+            db = await self._get_sqlite()
+            return await db.get_case_relationships(case_id)
+        except Exception as e:
+            logger.warning(f"get_case_relationships failed: {e}")
+            return []
+
+    async def get_case_relationship(self, rel_id: str) -> Optional[dict]:
+        """Get a specific case relationship by ID."""
+        try:
+            db = await self._get_sqlite()
+            return await db.get_case_relationship(rel_id)
+        except Exception as e:
+            logger.warning(f"get_case_relationship failed: {e}")
+            return None
+
+    async def delete_case_relationship(self, rel_id: str) -> bool:
+        """Delete a case relationship."""
+        try:
+            db = await self._get_sqlite()
+            return await db.delete_case_relationship(rel_id)
+        except Exception as e:
+            logger.warning(f"delete_case_relationship failed: {e}")
+            return False
+
+    async def check_relationship_exists(self, case_a_id: str, case_b_id: str) -> Optional[dict]:
+        """Check if a relationship exists between two cases."""
+        try:
+            db = await self._get_sqlite()
+            return await db.check_relationship_exists(case_a_id, case_b_id)
+        except Exception as e:
+            logger.warning(f"check_relationship_exists failed: {e}")
+            return None
+
 
 # Global instance
 firestore_service = FirestoreService()

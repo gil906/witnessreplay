@@ -67,6 +67,7 @@ class DatabaseService:
                 elements TEXT DEFAULT '[]',
                 timestamp TEXT,
                 changes_from_previous TEXT,
+                environmental_conditions TEXT DEFAULT '{"weather":"clear","lighting":"daylight","visibility":"good"}',
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
 
@@ -125,6 +126,22 @@ class DatabaseService:
                 created_at TEXT,
                 completed_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS case_relationships (
+                id TEXT PRIMARY KEY,
+                case_a_id TEXT NOT NULL,
+                case_b_id TEXT NOT NULL,
+                relationship_type TEXT DEFAULT 'related',
+                link_reason TEXT DEFAULT 'manual',
+                confidence REAL DEFAULT 0.5,
+                notes TEXT,
+                created_by TEXT DEFAULT 'system',
+                created_at TEXT,
+                UNIQUE(case_a_id, case_b_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_case_rel_a ON case_relationships(case_a_id);
+            CREATE INDEX IF NOT EXISTS idx_case_rel_b ON case_relationships(case_b_id);
         """)
         await self._db.commit()
 
@@ -179,10 +196,13 @@ class DatabaseService:
                 elements = sv.get("elements", [])
                 if not isinstance(elements, str):
                     elements = json.dumps(elements)
+                env_conditions = sv.get("environmental_conditions", {"weather": "clear", "lighting": "daylight", "visibility": "good"})
+                if not isinstance(env_conditions, str):
+                    env_conditions = json.dumps(env_conditions)
                 await self._db.execute(
                     """INSERT OR REPLACE INTO scene_versions
-                       (session_id, version, description, image_url, elements, timestamp, changes_from_previous)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (session_id, version, description, image_url, elements, timestamp, changes_from_previous, environmental_conditions)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         sid,
                         sv.get("version"),
@@ -191,6 +211,7 @@ class DatabaseService:
                         elements,
                         sv.get("timestamp", now),
                         sv.get("changes_from_previous"),
+                        env_conditions,
                     ),
                 )
             await self._db.commit()
@@ -334,7 +355,7 @@ class DatabaseService:
     def _row_to_dict(row) -> dict:
         d = dict(row)
         # Deserialize JSON string fields
-        for key in ('metadata', 'timeframe', 'report_ids', 'elements'):
+        for key in ('metadata', 'timeframe', 'report_ids', 'elements', 'environmental_conditions'):
             if key in d and isinstance(d[key], str):
                 try:
                     d[key] = json.loads(d[key])
@@ -418,6 +439,83 @@ class DatabaseService:
             async for row in cursor:
                 rows.append(self._row_to_dict(row))
         return rows
+
+    # ── Case Relationships ───────────────────────────────────
+
+    async def save_case_relationship(self, rel_dict: dict) -> bool:
+        """Insert or replace a case relationship."""
+        try:
+            now = datetime.utcnow().isoformat()
+            await self._db.execute(
+                """INSERT OR REPLACE INTO case_relationships
+                   (id, case_a_id, case_b_id, relationship_type, link_reason, confidence, notes, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    rel_dict.get("id"),
+                    rel_dict.get("case_a_id"),
+                    rel_dict.get("case_b_id"),
+                    rel_dict.get("relationship_type", "related"),
+                    rel_dict.get("link_reason", "manual"),
+                    rel_dict.get("confidence", 0.5),
+                    rel_dict.get("notes"),
+                    rel_dict.get("created_by", "system"),
+                    rel_dict.get("created_at", now),
+                ),
+            )
+            await self._db.commit()
+            await self._audit("case_relationship", rel_dict.get("id"), "save")
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_case_relationship error: {e}")
+            return False
+
+    async def get_case_relationships(self, case_id: str) -> List[dict]:
+        """Get all relationships for a case (either as case_a or case_b)."""
+        rows = []
+        async with self._db.execute(
+            """SELECT * FROM case_relationships 
+               WHERE case_a_id = ? OR case_b_id = ? 
+               ORDER BY created_at DESC""",
+            (case_id, case_id),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(self._row_to_dict(row))
+        return rows
+
+    async def get_case_relationship(self, rel_id: str) -> Optional[dict]:
+        """Get a specific case relationship by ID."""
+        async with self._db.execute(
+            "SELECT * FROM case_relationships WHERE id = ?", (rel_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+        return None
+
+    async def delete_case_relationship(self, rel_id: str) -> bool:
+        """Delete a case relationship."""
+        try:
+            await self._db.execute(
+                "DELETE FROM case_relationships WHERE id = ?", (rel_id,)
+            )
+            await self._db.commit()
+            await self._audit("case_relationship", rel_id, "delete")
+            return True
+        except Exception as e:
+            logger.error(f"SQLite delete_case_relationship error: {e}")
+            return False
+
+    async def check_relationship_exists(self, case_a_id: str, case_b_id: str) -> Optional[dict]:
+        """Check if a relationship exists between two cases (in either direction)."""
+        async with self._db.execute(
+            """SELECT * FROM case_relationships 
+               WHERE (case_a_id = ? AND case_b_id = ?) OR (case_a_id = ? AND case_b_id = ?)""",
+            (case_a_id, case_b_id, case_b_id, case_a_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+        return None
 
 
 def get_database() -> DatabaseService:
