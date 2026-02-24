@@ -200,37 +200,63 @@ class WitnessReplayApp {
         switch (type) {
             case 'click':
                 oscillator.frequency.value = 800;
-                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
                 oscillator.start(ctx.currentTime);
-                oscillator.stop(ctx.currentTime + 0.1);
+                oscillator.stop(ctx.currentTime + 0.08);
                 break;
             case 'success':
                 oscillator.frequency.value = 1200;
-                gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+                gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
                 oscillator.start(ctx.currentTime);
                 oscillator.stop(ctx.currentTime + 0.2);
                 break;
-            case 'scene-ready':
-                // Two-tone notification
-                oscillator.frequency.value = 600;
+            case 'error':
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.value = 300;
+                gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.3);
+                break;
+            case 'recording-start':
+                oscillator.frequency.value = 880;
                 gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
                 oscillator.start(ctx.currentTime);
                 oscillator.stop(ctx.currentTime + 0.15);
-                
-                setTimeout(() => {
-                    const osc2 = ctx.createOscillator();
-                    const gain2 = ctx.createGain();
-                    osc2.connect(gain2);
-                    gain2.connect(ctx.destination);
-                    osc2.frequency.value = 800;
-                    gain2.gain.setValueAtTime(0.1, ctx.currentTime);
-                    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-                    osc2.start(ctx.currentTime);
-                    osc2.stop(ctx.currentTime + 0.15);
-                }, 100);
+                break;
+            case 'recording-stop':
+                oscillator.frequency.value = 660;
+                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.15);
+                break;
+            case 'scene-ready':
+                // Pleasant three-tone chime
+                [600, 800, 1000].forEach((freq, i) => {
+                    setTimeout(() => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.frequency.value = freq;
+                        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                        osc.start(ctx.currentTime);
+                        osc.stop(ctx.currentTime + 0.2);
+                    }, i * 80);
+                });
+                break;
+            case 'notification':
+                oscillator.type = 'triangle';
+                oscillator.frequency.value = 900;
+                gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+                oscillator.start(ctx.currentTime);
+                oscillator.stop(ctx.currentTime + 0.12);
                 break;
         }
     }
@@ -720,6 +746,9 @@ class WitnessReplayApp {
                 if (this.stopBtn) this.stopBtn.style.display = 'inline-block';
                 this.setStatus('Listening...');
                 
+                // Play recording start sound
+                this.playSound('recording-start');
+                
                 // Add pulsing animation to Detective Ray avatar
                 const detectiveAvatar = document.querySelector('.detective-avatar');
                 if (detectiveAvatar) {
@@ -731,6 +760,7 @@ class WitnessReplayApp {
         } catch (error) {
             console.error('Error starting recording:', error);
             this.ui.showToast('Microphone error: ' + error.message, 'error');
+            this.playSound('error');
             this.displaySystemMessage('🎤 Could not access microphone. Please type your statement instead.');
         }
     }
@@ -751,6 +781,9 @@ class WitnessReplayApp {
                 }
                 if (this.stopBtn) this.stopBtn.style.display = 'none';
                 
+                // Play recording stop sound
+                this.playSound('recording-stop');
+                
                 // Remove pulsing animation from Detective Ray avatar
                 const detectiveAvatar = document.querySelector('.detective-avatar');
                 if (detectiveAvatar) {
@@ -763,6 +796,7 @@ class WitnessReplayApp {
         } catch (error) {
             console.error('Error stopping recording:', error);
             this.setStatus('Error processing audio');
+            this.playSound('error');
         }
     }
     

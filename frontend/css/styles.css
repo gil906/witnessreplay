@@ -1495,6 +1495,27 @@ html {
     align-items: center;
     gap: var(--spacing-sm);
     box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Ripple effect for buttons */
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    transform: translate(-50%, -50%);
+    transition: width 0.4s ease-out, height 0.4s ease-out;
+}
+
+.btn:active:not(:disabled)::before {
+    width: 200%;
+    height: 200%;
 }
 
 .btn:hover:not(:disabled) {
@@ -1539,9 +1560,17 @@ html {
     color: var(--text-primary);
 }
 
+.btn-danger:hover:not(:disabled) {
+    box-shadow: var(--shadow-md), 0 0 20px rgba(255, 71, 87, 0.3);
+}
+
 .btn-success {
     background: linear-gradient(135deg, var(--accent-green), #1fa857);
     color: var(--text-primary);
+}
+
+.btn-success:hover:not(:disabled) {
+    box-shadow: var(--shadow-md), 0 0 20px rgba(46, 213, 115, 0.3);
 }
 
 .btn-icon {
@@ -3491,6 +3520,75 @@ body.forensic-mode {
 @keyframes statusBlink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
+}
+
+/* Global connection banner for critical connectivity issues */
+.connection-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, var(--accent-amber), var(--accent-red));
+    color: var(--text-primary);
+    padding: var(--spacing-md);
+    text-align: center;
+    font-weight: 600;
+    z-index: 2000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: bannerSlideDown 0.3s ease-out;
+    display: none;
+}
+
+.connection-banner.active {
+    display: block;
+}
+
+@keyframes bannerSlideDown {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+.connection-banner .banner-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+}
+
+.connection-banner .banner-icon {
+    font-size: 1.5rem;
+    animation: bannerIconSpin 2s linear infinite;
+}
+
+@keyframes bannerIconSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.connection-banner .banner-dismiss {
+    position: absolute;
+    right: var(--spacing-md);
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: inherit;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.connection-banner .banner-dismiss:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 /* Enhanced timeline item with thumbnail preview */
