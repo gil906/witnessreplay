@@ -152,7 +152,7 @@ class WitnessReplayApp {
                 break;
             case 'connected':
                 micBtn.disabled = false;
-                if (btnText) btnText.textContent = 'Speak Now';
+                if (btnText) btnText.textContent = 'Tap to Report';
                 if (hint) hint.style.display = 'none';
                 break;
             case 'disconnected':
@@ -984,7 +984,16 @@ class WitnessReplayApp {
             // Item 27: Show witness info form for first session if not previously shown
             if (!localStorage.getItem('witnessreplay-witness-info-shown')) {
                 const overlay = document.getElementById('witness-info-overlay');
-                if (overlay) overlay.style.display = 'flex';
+                if (overlay) {
+                    // Pre-fill from localStorage if returning user
+                    const savedName = localStorage.getItem('witnessreplay-witness-name');
+                    const savedContact = localStorage.getItem('witnessreplay-witness-contact');
+                    const savedLocation = localStorage.getItem('witnessreplay-witness-location');
+                    if (savedName) document.getElementById('witness-name').value = savedName;
+                    if (savedContact) document.getElementById('witness-contact').value = savedContact;
+                    if (savedLocation) document.getElementById('witness-location').value = savedLocation;
+                    overlay.style.display = 'flex';
+                }
             }
             
             // Reset interview progress
@@ -1216,6 +1225,25 @@ class WitnessReplayApp {
                 const originalText = message.data.original_text;
                 const language = message.data.language;
                 
+                // Update mic button state for voice-first UX when agent responds
+                if (speaker === 'agent' && this.micBtn && !this.isRecording) {
+                    this.micBtn.classList.remove('processing');
+                    this.micBtn.classList.add('ai-speaking');
+                    const micBtnText = this.micBtn.querySelector('.btn-text');
+                    if (micBtnText) micBtnText.textContent = 'Detective Ray speaking...';
+                    // Reset to idle after a delay
+                    clearTimeout(this._aiSpeakingTimeout);
+                    this._aiSpeakingTimeout = setTimeout(() => {
+                        if (this.micBtn && !this.isRecording) {
+                            this.micBtn.classList.remove('ai-speaking');
+                            const t = this.micBtn.querySelector('.btn-text');
+                            if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
+                                t.textContent = 'Tap to Report';
+                            }
+                        }
+                    }, 3000);
+                }
+                
                 // Prevent duplicate greetings on reconnect
                 if (speaker === 'agent' && !this.hasReceivedGreeting) {
                     this.hasReceivedGreeting = true;
@@ -1264,6 +1292,16 @@ class WitnessReplayApp {
                 const statusMsg = message.data.message || message.data.status;
                 const state = this.getStatusState(statusMsg);
                 this.ui.setStatus(statusMsg, state);
+                
+                // Update mic button state for voice-first UX
+                if (this.micBtn && !this.isRecording) {
+                    this.micBtn.classList.remove('processing', 'ai-speaking');
+                    const micBtnText = this.micBtn.querySelector('.btn-text');
+                    if (state === 'processing') {
+                        this.micBtn.classList.add('processing');
+                        if (micBtnText) micBtnText.textContent = 'Processing...';
+                    }
+                }
                 
                 // Show typing indicator when agent is thinking
                 if (state === 'processing') {
@@ -1450,7 +1488,7 @@ class WitnessReplayApp {
                 
                 this.micBtn.classList.add('recording');
                 const btnText = this.micBtn.querySelector('.btn-text');
-                if (btnText) btnText.textContent = 'Recording...';
+                if (btnText) btnText.textContent = 'Listening...';
                 if (this.chatMicBtn) {
                     this.chatMicBtn.classList.add('recording');
                     this.chatMicBtn.textContent = '⏹';
@@ -1503,7 +1541,7 @@ class WitnessReplayApp {
                 this.isRecording = false;
                 this.micBtn.classList.remove('recording');
                 const btnText2 = this.micBtn.querySelector('.btn-text');
-                if (btnText2) btnText2.textContent = 'Start Speaking';
+                if (btnText2) btnText2.textContent = 'Tap to Report';
                 
                 // Hide voice controls panel
                 const voiceControls = document.getElementById('voice-controls');
@@ -1567,7 +1605,7 @@ class WitnessReplayApp {
                     }
                     
                     this.ws.send(JSON.stringify(messageData));
-                    this.setStatus('Processing audio...');
+                    this.setStatus('Detective Ray is thinking...');
                 }
             };
             reader.readAsDataURL(audioBlob);
@@ -1599,7 +1637,7 @@ class WitnessReplayApp {
             
             this.displayMessage(text, 'user');
             this.textInput.value = '';
-            this.setStatus('Processing...');
+            this.setStatus('Detective Ray is thinking...');
             
             // Refresh witness statement counts after a brief delay
             setTimeout(() => this.loadWitnesses(), 1500);
@@ -5037,6 +5075,40 @@ function submitTestimony() {
 async function startInterview() {
     document.getElementById('witness-info-overlay').style.display = 'none';
     localStorage.setItem('witnessreplay-witness-info-shown', 'true');
+    
+    // Gather witness info from form
+    const witnessName = document.getElementById('witness-name')?.value?.trim() || '';
+    const witnessContact = document.getElementById('witness-contact')?.value?.trim() || '';
+    const witnessLocation = document.getElementById('witness-location')?.value?.trim() || '';
+    
+    // Save to localStorage for pre-fill on next visit
+    localStorage.setItem('witnessreplay-witness-name', witnessName);
+    localStorage.setItem('witnessreplay-witness-contact', witnessContact);
+    localStorage.setItem('witnessreplay-witness-location', witnessLocation);
+    
+    // Save witness info to backend database
+    if (window.app?.sessionId && (witnessName || witnessContact || witnessLocation)) {
+        try {
+            const response = await (window.app.fetchWithTimeout || fetch).call(
+                window.app,
+                `/api/sessions/${window.app.sessionId}/witnesses`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: witnessName || 'Anonymous Witness',
+                        contact: witnessContact || null,
+                        location: witnessLocation || null
+                    })
+                }
+            );
+            if (!response.ok) {
+                console.warn('Failed to save witness info:', response.status);
+            }
+        } catch (e) {
+            console.warn('Failed to save witness info to backend:', e);
+        }
+    }
     
     // Save location data to session if available
     if (window.locationManager && window.app?.sessionId) {
