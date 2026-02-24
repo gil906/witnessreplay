@@ -1133,6 +1133,23 @@ async def get_models_status():
 
 
 
+@router.get("/version")
+async def get_version():
+    """Get application version from VERSION file."""
+    import os
+    version_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "VERSION")
+    try:
+        if os.path.exists(version_file):
+            with open(version_file, 'r') as f:
+                version = f.read().strip()
+        else:
+            version = "1.0.0"  # Default fallback
+    except Exception:
+        version = "1.0.0"
+    
+    return {"version": version}
+
+
 @router.get("/info")
 async def get_server_info():
     """
@@ -1144,9 +1161,20 @@ async def get_server_info():
     import os
     import sys
     
+    # Read version from file
+    version_file = os.path.join(os.path.dirname(__file__), "..", "..", "..", "VERSION")
+    try:
+        if os.path.exists(version_file):
+            with open(version_file, 'r') as f:
+                version = f.read().strip()
+        else:
+            version = "1.0.0"
+    except Exception:
+        version = "1.0.0"
+    
     return {
         "name": "WitnessReplay API",
-        "version": "1.0.0",
+        "version": version,
         "description": "Voice-driven crime scene reconstruction agent for Gemini Live Agent Challenge",
         "environment": settings.environment,
         "debug_mode": settings.debug,

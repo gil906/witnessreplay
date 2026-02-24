@@ -17,6 +17,7 @@ class AdminPortal {
         this.initializeUI();
         await this.loadCases();
         this.startAutoRefresh();
+        this.fetchAndDisplayVersion(); // Fetch version from API
     }
     
     initializeUI() {
@@ -586,6 +587,28 @@ class AdminPortal {
         const hours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
         return `${hours}h ${remainingMinutes}m`;
+    }
+    
+    // ======================================
+    // Version Display
+    // ======================================
+    
+    async fetchAndDisplayVersion() {
+        try {
+            const response = await this.fetchWithTimeout('/api/version', {}, 5000);
+            if (!response.ok) {
+                console.error('Failed to fetch version');
+                return;
+            }
+            const data = await response.json();
+            const versionEl = document.querySelector('.version-number');
+            if (versionEl && data.version) {
+                versionEl.textContent = data.version;
+            }
+        } catch (error) {
+            console.error('Error fetching version:', error);
+            // Keep default version shown in HTML
+        }
     }
 }
 
