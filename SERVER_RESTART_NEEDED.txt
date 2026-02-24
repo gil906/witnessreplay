@@ -1,0 +1,41 @@
+SERVER RESTART NEEDED
+
+The following changes require a server restart to take effect:
+
+1. Bug #53 Fix: Changed /models/config from POST to PATCH
+   - The endpoint decorator was changed but the running server still has the old code
+   - After restart, use PATCH instead of POST
+
+2. Bug #21 Fix: API key rotation system
+   - New APIKeyManager service added
+   - Initialize with GOOGLE_API_KEYS env var (comma-separated list)
+   - Example: GOOGLE_API_KEYS="key1,key2,key3"
+   - Admin endpoint: /api/admin/api-keys/status
+
+3. Bug #20 Fix: WebSocket automated tests
+   - New test file: tests/test_websocket.py
+   - Run with: python3 tests/test_websocket.py
+
+To restart the server:
+```bash
+cd /mnt/media/witnessreplay/project
+docker-compose restart
+```
+
+Or rebuild if needed:
+```bash
+cd /mnt/media/witnessreplay/project
+docker-compose down
+docker-compose up -d --build
+```
+
+Verify after restart:
+```bash
+# Test PATCH endpoint (should work)
+curl -X PATCH -H "Content-Type: application/json" \
+  -d '{"model_name": "gemini-2.0-flash-exp"}' \
+  http://localhost:8088/api/models/config
+
+# Test API key status endpoint
+curl http://localhost:8088/api/admin/api-keys/status
+```
