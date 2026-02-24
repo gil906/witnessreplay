@@ -107,7 +107,6 @@ class UIManager {
             oscillator.stop(this.audioContext.currentTime + 0.1);
         } catch (error) {
             // Silently fail if audio not supported
-            console.log('Audio playback not available');
         }
     }
     

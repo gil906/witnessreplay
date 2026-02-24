@@ -198,10 +198,7 @@ class WitnessReplayApp {
         }
         
         // Pre-request microphone permission on user interaction
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            // We'll request on first mic click instead of page load
-            console.log('MediaDevices API available');
-        } else {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             console.warn('MediaDevices API not available');
         }
     }
@@ -370,7 +367,6 @@ class WitnessReplayApp {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-            console.log('WebSocket connected');
             this.reconnectAttempts = 0;
             this.ui.setStatus('Ready — Press Space to speak', 'default');
             this.micBtn.disabled = false;
@@ -399,7 +395,6 @@ class WitnessReplayApp {
         };
         
         this.ws.onclose = () => {
-            console.log('WebSocket closed');
             this.ui.setStatus('Disconnected', 'default');
             this.micBtn.disabled = true;
             if (this.chatMicBtn) this.chatMicBtn.disabled = true;
@@ -467,8 +462,6 @@ class WitnessReplayApp {
     }
     
     handleWebSocketMessage(message) {
-        console.log('Received message:', message);
-        
         switch (message.type) {
             case 'text':
                 const speaker = message.data.speaker || 'agent';
@@ -1534,6 +1527,7 @@ class WitnessReplayApp {
             );
             
             applyBtn.textContent = 'Applied ✓';
+            applyBtn.classList.add('apply-success');
             
             // Refresh quota after model change
             await this.refreshQuota();
@@ -1541,6 +1535,7 @@ class WitnessReplayApp {
             setTimeout(() => {
                 applyBtn.textContent = 'Apply';
                 applyBtn.disabled = true;
+                applyBtn.classList.remove('apply-success');
             }, 2000);
             
         } catch (error) {
@@ -1671,6 +1666,33 @@ class WitnessReplayApp {
             tpdBadge.className = 'quota-badge';
             if (tpdPercent > 80) tpdBadge.classList.add('danger');
             else if (tpdPercent > 60) tpdBadge.classList.add('warning');
+        }
+        
+        // Show warning banner if any quota is near limit
+        this.updateQuotaWarningBanner(rpmPercent, rpdPercent, tpdPercent);
+    }
+    
+    updateQuotaWarningBanner(rpmPercent, rpdPercent, tpdPercent) {
+        const maxPercent = Math.max(rpmPercent, rpdPercent, tpdPercent);
+        const quotaDashboard = document.querySelector('.quota-dashboard');
+        
+        if (!quotaDashboard) return;
+        
+        // Remove existing warning banner
+        const existingBanner = quotaDashboard.querySelector('.quota-warning-banner');
+        if (existingBanner) {
+            existingBanner.remove();
+        }
+        
+        // Add warning if quota is above 80%
+        if (maxPercent > 80) {
+            const banner = document.createElement('div');
+            banner.className = 'quota-warning-banner';
+            banner.innerHTML = `
+                <h4>⚠️ Quota Alert</h4>
+                <p>You're approaching your quota limit. Consider upgrading to a paid tier for higher limits.</p>
+            `;
+            quotaDashboard.insertBefore(banner, quotaDashboard.firstChild);
         }
     }
     

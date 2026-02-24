@@ -41,8 +41,6 @@ class AudioRecorder {
             this.mediaRecorder.start(100); // Collect data every 100ms
             this.isRecording = true;
             
-            console.log('Recording started with', mimeType);
-            
         } catch (error) {
             console.error('Error accessing microphone:', error);
             throw error;
@@ -67,7 +65,6 @@ class AudioRecorder {
                 }
                 
                 this.isRecording = false;
-                console.log('Recording stopped, blob size:', audioBlob.size);
                 
                 resolve(audioBlob);
             };
