@@ -239,30 +239,55 @@ class WitnessReplayApp {
                 this.toggleRecording();
             }
             
-            // Escape: Close any open modal
+            // Escape: Close any open modal or shortcuts overlay
             if (e.code === 'Escape') {
+                e.preventDefault();
+                const shortcutsOverlay = document.getElementById('shortcuts-overlay');
+                if (shortcutsOverlay && !shortcutsOverlay.classList.contains('hidden')) {
+                    shortcutsOverlay.classList.add('hidden');
+                    return;
+                }
+                
                 const openModal = document.querySelector('.modal:not(.hidden)');
                 if (openModal) {
                     this.ui.hideModal(openModal.id);
                 }
             }
             
-            // ? : Show help/onboarding
-            if (e.key === '?' && !e.shiftKey) {
+            // ? : Show keyboard shortcuts overlay
+            if (e.key === '?') {
                 e.preventDefault();
-                this.ui.showOnboarding();
+                this.showShortcuts();
             }
             
-            // Ctrl/Cmd + N: New session
-            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            // N: New session
+            if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) {
                 e.preventDefault();
                 this.createNewSession();
             }
             
-            // Ctrl/Cmd + S: Show sessions list
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            // S: Show sessions list
+            if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
                 e.preventDefault();
                 this.showSessionsList();
+            }
+            
+            // M: Model selector
+            if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                this.showQuotaModal();
+            }
+            
+            // A: Analytics
+            if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                this.showAnalytics();
+            }
+            
+            // I: Server info
+            if (e.key.toLowerCase() === 'i' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                this.showServerInfo();
             }
         });
     }
@@ -370,6 +395,19 @@ class WitnessReplayApp {
         document.getElementById('info-modal')?.addEventListener('click', (e) => {
             if (e.target.id === 'info-modal') {
                 this.ui.hideModal('info-modal');
+            }
+        });
+        
+        // Comparison modal close buttons
+        document.getElementById('close-comparison-modal-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('comparison-modal');
+        });
+        document.getElementById('modal-close-comparison-btn')?.addEventListener('click', () => {
+            this.ui.hideModal('comparison-modal');
+        });
+        document.getElementById('comparison-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'comparison-modal') {
+                this.ui.hideModal('comparison-modal');
             }
         });
     }
@@ -672,6 +710,12 @@ class WitnessReplayApp {
                 }
                 if (this.stopBtn) this.stopBtn.style.display = 'inline-block';
                 this.setStatus('Listening...');
+                
+                // Add pulsing animation to Detective Ray avatar
+                const detectiveAvatar = document.querySelector('.detective-avatar');
+                if (detectiveAvatar) {
+                    detectiveAvatar.classList.add('listening');
+                }
             } else {
                 this.ui.showToast('Audio recorder not available. Use text input.', 'warning');
             }
@@ -697,6 +741,12 @@ class WitnessReplayApp {
                     this.chatMicBtn.textContent = '🎤';
                 }
                 if (this.stopBtn) this.stopBtn.style.display = 'none';
+                
+                // Remove pulsing animation from Detective Ray avatar
+                const detectiveAvatar = document.querySelector('.detective-avatar');
+                if (detectiveAvatar) {
+                    detectiveAvatar.classList.remove('listening');
+                }
                 
                 // Convert to base64 and send
                 this.sendAudioMessage(audioBlob);
@@ -1129,10 +1179,49 @@ class WitnessReplayApp {
     }
     
     compareVersions(versionElement) {
-        // Show comparison modal or side-by-side view
-        const versionNum = versionElement.dataset.version;
-        this.ui.showToast(`📊 Comparison mode for version ${versionNum} - feature coming soon!`, 'info', 3000);
-        // TODO: Implement side-by-side comparison UI
+        // Show comparison modal with before/after view
+        const versionNum = parseInt(versionElement.dataset.version);
+        const versionImg = versionElement.querySelector('.timeline-thumbnail');
+        const versionDesc = versionElement.querySelector('.timeline-description');
+        
+        if (!versionImg || !this.sceneDisplay.querySelector('.scene-image')) {
+            this.ui.showToast('Unable to compare - missing images', 'warning');
+            return;
+        }
+        
+        // Get current scene
+        const currentImg = this.sceneDisplay.querySelector('.scene-image');
+        const currentDesc = this.sceneDescription.textContent;
+        
+        // Populate comparison modal
+        const beforeContainer = document.getElementById('comparison-before');
+        const afterContainer = document.getElementById('comparison-after');
+        const beforeDesc = document.getElementById('comparison-before-description');
+        const afterDesc = document.getElementById('comparison-after-description');
+        
+        beforeContainer.innerHTML = `
+            <div class="version-badge">Version ${versionNum}</div>
+            <img src="${versionImg.src}" alt="Version ${versionNum}" class="comparison-image loading">
+        `;
+        
+        afterContainer.innerHTML = `
+            <div class="version-badge">Version ${this.currentVersion}</div>
+            <img src="${currentImg.src}" alt="Current version" class="comparison-image loading">
+        `;
+        
+        beforeDesc.textContent = versionDesc ? versionDesc.textContent : 'No description';
+        afterDesc.textContent = currentDesc || 'Current scene';
+        
+        // Show modal
+        this.ui.showModal('comparison-modal');
+        this.playSound('click');
+        
+        // Add load handlers to remove skeleton
+        const beforeImg = beforeContainer.querySelector('img');
+        const afterImg = afterContainer.querySelector('img');
+        
+        beforeImg.addEventListener('load', () => beforeImg.classList.remove('loading'));
+        afterImg.addEventListener('load', () => afterImg.classList.remove('loading'));
     }
     
     showTimelineVersion(versionElement) {
@@ -2103,6 +2192,62 @@ class WitnessReplayApp {
             console.error('Error loading server info:', error);
             this.ui.showToast('Failed to load server information', 'error');
         }
+    }
+    
+    // ======================================
+    // Keyboard Shortcuts Overlay
+    // ======================================
+    
+    showShortcuts() {
+        const overlay = document.getElementById('shortcuts-overlay');
+        if (overlay) {
+            overlay.classList.remove('hidden');
+            this.playSound('click');
+        }
+    }
+    
+    hideShortcuts() {
+        const overlay = document.getElementById('shortcuts-overlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+    }
+    
+    // ======================================
+    // Enhanced Scene Loading with Skeleton
+    // ======================================
+    
+    showSceneLoadingSkeleton() {
+        // Create skeleton loader for scene
+        this.sceneDisplay.innerHTML = `
+            <div class="scene-skeleton">
+                <div class="skeleton-shimmer"></div>
+                <div class="skeleton-overlay">
+                    <div class="loading-spinner"></div>
+                    <p>Generating scene...</p>
+                </div>
+            </div>
+        `;
+    }
+    
+    // ======================================
+    // Enhanced Error Messages
+    // ======================================
+    
+    showConnectionError(message = 'Connection interrupted') {
+        this.ui.showToast(
+            `⚠️ ${message} — Detective Ray is reconnecting...`,
+            'error',
+            5000
+        );
+    }
+    
+    showTimeoutError(endpoint = 'server') {
+        this.ui.showToast(
+            `⏱️ Request timeout — ${endpoint} took too long to respond`,
+            'error',
+            6000
+        );
     }
 }
 

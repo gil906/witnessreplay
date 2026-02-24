@@ -573,6 +573,87 @@
         
         document.getElementById('skip-onboarding')?.addEventListener('click', closeOnboarding);
         document.getElementById('start-session-btn')?.addEventListener('click', closeOnboarding);
+        
+        // Initialize app
+        window.app = new WitnessReplayApp();
     </script>
+
+    <!-- Comparison Modal -->
+    <div id="comparison-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="comparison-modal-title">
+        <div class="modal-content modal-fullwidth">
+            <div class="modal-header">
+                <h2 id="comparison-modal-title">🔀 Version Comparison</h2>
+                <button class="modal-close" id="close-comparison-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="comparison-modal-body">
+                <div class="comparison-panel">
+                    <div class="comparison-header">Before</div>
+                    <div id="comparison-before" class="comparison-image-container">
+                        <!-- Before image inserted here -->
+                    </div>
+                    <div id="comparison-before-description" class="comparison-description">
+                        <!-- Description -->
+                    </div>
+                </div>
+                <div class="comparison-divider-vertical">
+                    <div class="divider-handle">⇄</div>
+                </div>
+                <div class="comparison-panel">
+                    <div class="comparison-header">After</div>
+                    <div id="comparison-after" class="comparison-image-container">
+                        <!-- After image inserted here -->
+                    </div>
+                    <div id="comparison-after-description" class="comparison-description">
+                        <!-- Description -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-close-comparison-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Overlay -->
+    <div id="shortcuts-overlay" class="shortcuts-overlay hidden" role="dialog" aria-modal="true">
+        <div class="shortcuts-content">
+            <h2>⌨️ Keyboard Shortcuts</h2>
+            <div class="shortcuts-grid">
+                <div class="shortcut-item">
+                    <kbd>Space</kbd>
+                    <span>Start/Stop recording</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>Esc</kbd>
+                    <span>Cancel recording / Close modal</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>?</kbd>
+                    <span>Show this help</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>N</kbd>
+                    <span>New session</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>S</kbd>
+                    <span>Show sessions list</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>M</kbd>
+                    <span>Open model selector</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>A</kbd>
+                    <span>Show analytics</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>I</kbd>
+                    <span>Server information</span>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="window.app.hideShortcuts()">Close</button>
+        </div>
+    </div>
 </body>
 </html>

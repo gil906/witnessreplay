@@ -4155,3 +4155,333 @@ input:focus-visible {
         );
     }
 }
+
+/* ======================================
+   Comparison Modal Styles
+   ====================================== */
+
+.modal-fullwidth {
+    max-width: 95vw;
+    width: 1400px;
+}
+
+.comparison-modal-body {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 2rem;
+    min-height: 600px;
+    padding: 1.5rem 0;
+}
+
+.comparison-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.comparison-header {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    text-align: center;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.comparison-image-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    min-height: 400px;
+}
+
+.comparison-image {
+    max-width: 100%;
+    max-height: 500px;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    transition: opacity var(--transition-base);
+}
+
+.comparison-image.loading {
+    opacity: 0.3;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.version-badge {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    z-index: 10;
+}
+
+.comparison-description {
+    padding: 1rem;
+    background: var(--glass-bg);
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+.comparison-divider-vertical {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.comparison-divider-vertical::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        var(--accent-blue),
+        transparent
+    );
+    transform: translateX(-50%);
+}
+
+.divider-handle {
+    font-size: 2rem;
+    color: var(--accent-blue);
+    background: var(--bg-secondary);
+    padding: 1rem;
+    border-radius: 50%;
+    border: 2px solid var(--accent-blue);
+    box-shadow: var(--shadow-glow);
+    z-index: 1;
+}
+
+/* ======================================
+   Keyboard Shortcuts Overlay
+   ====================================== */
+
+.shortcuts-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn var(--transition-base);
+}
+
+.shortcuts-overlay.hidden {
+    display: none;
+}
+
+.shortcuts-content {
+    background: var(--bg-secondary);
+    border: 2px solid var(--accent-blue);
+    border-radius: 16px;
+    padding: 2.5rem;
+    max-width: 700px;
+    width: 90%;
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.shortcuts-content h2 {
+    margin-bottom: 2rem;
+    text-align: center;
+    color: var(--accent-blue);
+    font-size: 1.75rem;
+}
+
+.shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.shortcut-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--glass-bg);
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    transition: all var(--transition-fast);
+}
+
+.shortcut-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--accent-blue);
+}
+
+.shortcut-item kbd {
+    background: var(--bg-primary);
+    border: 2px solid var(--accent-blue);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    min-width: 50px;
+    text-align: center;
+    box-shadow: 0 2px 0 var(--accent-blue);
+}
+
+.shortcut-item span {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.shortcuts-content .btn {
+    width: 100%;
+    margin-top: 1rem;
+}
+
+/* ======================================
+   Scene Loading Skeleton
+   ====================================== */
+
+.scene-skeleton {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    background: linear-gradient(
+        135deg,
+        var(--bg-tertiary) 0%,
+        var(--bg-secondary) 50%,
+        var(--bg-tertiary) 100%
+    );
+    background-size: 200% 200%;
+    animation: gradientShift 3s ease infinite;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.skeleton-shimmer {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(0, 212, 255, 0.1),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+.skeleton-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid var(--border-color);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    margin: 0 auto 1rem;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ======================================
+   Enhanced Detective Ray Avatar Animation
+   ====================================== */
+
+.detective-avatar {
+    position: relative;
+    transition: all var(--transition-base);
+}
+
+.detective-avatar.listening {
+    animation: avatarPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes avatarPulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: drop-shadow(0 0 8px var(--accent-blue));
+    }
+    50% {
+        transform: scale(1.1);
+        filter: drop-shadow(0 0 16px var(--accent-blue));
+    }
+}
+
+/* ======================================
+   Responsive Adjustments for New Features
+   ====================================== */
+
+@media (max-width: 768px) {
+    .comparison-modal-body {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .comparison-divider-vertical {
+        display: none;
+    }
+    
+    .shortcuts-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .shortcuts-content {
+        padding: 1.5rem;
+    }
+    
+    .modal-fullwidth {
+        width: 95vw;
+        max-width: none;
+    }
+}
