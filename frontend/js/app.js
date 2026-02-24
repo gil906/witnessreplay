@@ -29,7 +29,12 @@ class WitnessReplayApp {
         this.initializeAudio();
         this.initializeModals();
         this.initializeSounds();
+        this.initializeParticles();
+        this.initializeSceneZoom();
         this.fetchAndDisplayVersion(); // Fetch version from API
+        
+        // Show onboarding for first-time users
+        this.checkOnboarding();
     }
     
     /**
@@ -2409,6 +2414,220 @@ class WitnessReplayApp {
             'error',
             6000
         );
+    }
+    
+    /**
+     * Check if user has seen onboarding before
+     */
+    checkOnboarding() {
+        const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
+        if (!hasSeenOnboarding) {
+            setTimeout(() => {
+                this.showOnboardingModal();
+            }, 1000); // Show after 1 second delay
+        }
+    }
+    
+    /**
+     * Show onboarding modal for first-time users
+     */
+    showOnboardingModal() {
+        const modal = document.getElementById('onboarding-modal');
+        if (!modal) return;
+        
+        modal.classList.remove('hidden');
+        
+        // Start button
+        const startBtn = document.getElementById('onboarding-start-btn');
+        if (startBtn) {
+            startBtn.onclick = () => {
+                const dontShowAgain = document.getElementById('dont-show-onboarding');
+                if (dontShowAgain && dontShowAgain.checked) {
+                    localStorage.setItem('hasSeenOnboarding', 'true');
+                }
+                modal.classList.add('hidden');
+                this.ui.showToast('🎙️ Ready to start! Press Space to record', 'info', 3000);
+            };
+        }
+        
+        // Close on escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                modal.classList.add('hidden');
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+    
+    /**
+     * Initialize particle background effect
+     */
+    initializeParticles() {
+        const canvas = document.getElementById('particle-canvas');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        const particles = [];
+        const particleCount = 50;
+        
+        // Create particles
+        for (let i = 0; i < particleCount; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5,
+                radius: Math.random() * 2 + 1
+            });
+        }
+        
+        // Animation loop
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw particles
+            particles.forEach(p => {
+                // Move particle
+                p.x += p.vx;
+                p.y += p.vy;
+                
+                // Wrap around screen
+                if (p.x < 0) p.x = canvas.width;
+                if (p.x > canvas.width) p.x = 0;
+                if (p.y < 0) p.y = canvas.height;
+                if (p.y > canvas.height) p.y = 0;
+                
+                // Draw particle
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 212, 255, 0.3)';
+                ctx.fill();
+            });
+            
+            // Draw connections
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(0, 212, 255, ${0.15 * (1 - distance / 150)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        };
+        
+        animate();
+        
+        // Resize handler
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    }
+    
+    /**
+     * Initialize scene zoom and pan functionality
+     */
+    initializeSceneZoom() {
+        const zoomBtn = document.getElementById('zoom-btn');
+        const sceneDisplay = document.getElementById('scene-display');
+        
+        if (!zoomBtn || !sceneDisplay) return;
+        
+        let isZoomed = false;
+        let scale = 1;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        
+        zoomBtn.addEventListener('click', () => {
+            isZoomed = !isZoomed;
+            
+            if (isZoomed) {
+                scale = 2;
+                sceneDisplay.classList.add('zoomed');
+                zoomBtn.textContent = '🔍-';
+                zoomBtn.setAttribute('data-tooltip', 'Zoom Out');
+            } else {
+                scale = 1;
+                panX = 0;
+                panY = 0;
+                sceneDisplay.classList.remove('zoomed');
+                zoomBtn.textContent = '🔍';
+                zoomBtn.setAttribute('data-tooltip', 'Zoom In');
+            }
+            
+            this.updateSceneTransform(scale, panX, panY);
+        });
+        
+        // Pan on drag
+        sceneDisplay.addEventListener('mousedown', (e) => {
+            if (!isZoomed) return;
+            isDragging = true;
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            sceneDisplay.style.cursor = 'grabbing';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !isZoomed) return;
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            this.updateSceneTransform(scale, panX, panY);
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                sceneDisplay.style.cursor = 'grab';
+            }
+        });
+        
+        // Wheel zoom
+        sceneDisplay.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(1, Math.min(3, scale + delta));
+            
+            if (scale === 1) {
+                panX = 0;
+                panY = 0;
+                isZoomed = false;
+                sceneDisplay.classList.remove('zoomed');
+                zoomBtn.textContent = '🔍';
+            } else {
+                isZoomed = true;
+                sceneDisplay.classList.add('zoomed');
+                zoomBtn.textContent = '🔍-';
+            }
+            
+            this.updateSceneTransform(scale, panX, panY);
+        });
+    }
+    
+    /**
+     * Update scene transform for zoom/pan
+     */
+    updateSceneTransform(scale, panX, panY) {
+        const sceneImage = this.sceneDisplay.querySelector('img');
+        if (sceneImage) {
+            sceneImage.style.transform = `scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
+        }
     }
 }
 

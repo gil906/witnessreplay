@@ -659,10 +659,56 @@
         </div>
     </div>
 
+    <!-- Onboarding Modal (First-Time Experience) -->
+    <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+        <div class="modal-content modal-wide onboarding-modal">
+            <div class="modal-header onboarding-header">
+                <h2 id="onboarding-title">👋 Welcome to WitnessReplay</h2>
+            </div>
+            
+            <div class="onboarding-content">
+                <div class="onboarding-step">
+                    <div class="onboarding-icon">🎙️</div>
+                    <h3>Voice-Driven Reconstruction</h3>
+                    <p>Speak naturally to describe what you witnessed. Detective Ray will ask clarifying questions and build the scene.</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="onboarding-icon">🎬</div>
+                    <h3>Progressive Scene Building</h3>
+                    <p>Watch as the scene evolves with each statement. Make corrections and add details at any time.</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="onboarding-icon">⌨️</div>
+                    <h3>Keyboard Shortcuts</h3>
+                    <p>Press <kbd>Space</kbd> to record, <kbd>?</kbd> for help, <kbd>Esc</kbd> to cancel. Full keyboard navigation supported.</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="onboarding-icon">🔍</div>
+                    <h3>Professional Tools</h3>
+                    <p>Export reports, track evidence, compare scene versions, and manage multiple cases.</p>
+                </div>
+            </div>
+            
+            <div class="onboarding-footer">
+                <label class="onboarding-checkbox">
+                    <input type="checkbox" id="dont-show-onboarding">
+                    <span>Don't show this again</span>
+                </label>
+                <button class="btn btn-primary btn-lg" id="onboarding-start-btn">Start Investigation →</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Version Display -->
     <div class="version-badge" id="version-display">
         <span class="version-label">v</span>
-        <span class="version-number">0.051</span>
+        <span class="version-number">0.052</span>
     </div>
+    
+    <!-- Particle Background Canvas -->
+    <canvas id="particle-canvas" class="particle-canvas"></canvas>
 </body>
 </html>
