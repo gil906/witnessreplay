@@ -10,6 +10,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/admin.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body class="admin-portal">
     <!-- Login Overlay -->
@@ -162,10 +163,54 @@
                 </div>
             </section>
 
+            <!-- Advanced Search Toolbar -->
+            <div class="search-toolbar">
+                <div class="search-input-wrapper">
+                    <input type="text" id="search-query" placeholder="Search cases, reports, witnesses..." 
+                           oninput="window.adminPortal?.debounceSearch()">
+                    <span class="search-icon">🔍</span>
+                </div>
+                <div class="filter-chips">
+                    <select id="adv-filter-status" onchange="window.adminPortal?.applyAdvancedFilters()">
+                        <option value="">All Status</option>
+                        <option value="open">Open</option>
+                        <option value="under_review">Under Review</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                    <select id="adv-filter-type" onchange="window.adminPortal?.applyAdvancedFilters()">
+                        <option value="">All Types</option>
+                        <option value="accident">Accident</option>
+                        <option value="crime">Crime</option>
+                        <option value="incident">Incident</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <input type="date" id="filter-date-from" onchange="window.adminPortal?.applyAdvancedFilters()" title="From date">
+                    <input type="date" id="filter-date-to" onchange="window.adminPortal?.applyAdvancedFilters()" title="To date">
+                    <select id="filter-source" onchange="window.adminPortal?.applyAdvancedFilters()">
+                        <option value="">All Sources</option>
+                        <option value="chat">💬 Chat</option>
+                        <option value="phone">📞 Phone</option>
+                        <option value="voice">🎙️ Voice</option>
+                        <option value="email">📧 Email</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Bulk Operations Toolbar -->
+            <div id="bulk-toolbar" class="bulk-toolbar" style="display:none;">
+                <span id="selected-count">0 selected</span>
+                <button onclick="window.adminPortal?.bulkUpdateStatus('under_review')" class="bulk-btn">📋 Set Under Review</button>
+                <button onclick="window.adminPortal?.bulkUpdateStatus('closed')" class="bulk-btn">✅ Close Cases</button>
+                <button onclick="window.adminPortal?.bulkExport()" class="bulk-btn">📥 Export Selected</button>
+                <button onclick="window.adminPortal?.clearSelection()" class="bulk-btn danger">✖ Clear</button>
+            </div>
+
             <!-- View Toggle Tabs -->
             <section class="view-toggle">
                 <button class="view-tab active" data-view="cases">📁 Cases View</button>
                 <button class="view-tab" data-view="reports">📝 Reports View</button>
+                <button class="view-tab" data-view="dashboard">📊 Dashboard</button>
+                <button class="view-tab" data-view="map">🗺️ Map</button>
             </section>
 
             <!-- Cases List -->
@@ -195,6 +240,32 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="dashboard-grid" style="display:none;">
+                <div class="chart-card">
+                    <h3>📈 Cases Over Time</h3>
+                    <canvas id="cases-timeline-chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📊 Report Sources</h3>
+                    <canvas id="source-distribution-chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>🏷️ Incident Types</h3>
+                    <canvas id="incident-types-chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📋 Case Status</h3>
+                    <canvas id="case-status-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Map View -->
+            <div id="map-view" class="map-container" style="display:none;">
+                <div id="incident-map" style="height: 500px; width: 100%; border-radius: 12px;"></div>
+                <div id="map-no-data" class="empty-state" style="display:none;">No location data available for cases</div>
+            </div>
         </div>
     </div>
 
@@ -309,11 +380,20 @@
                         <button id="update-status-btn" class="btn btn-primary">Update Status</button>
                     </div>
 
+                    <!-- Case Assignment -->
+                    <div class="assign-section">
+                        <label>Assigned To:</label>
+                        <input type="text" id="detail-assigned-to" class="assign-input" 
+                               placeholder="Officer name or badge #"
+                               onchange="window.adminPortal?.assignCurrentCase(this.value)">
+                    </div>
+
                     <!-- Actions -->
                     <section class="case-actions">
                         <button id="regenerate-summary-btn" class="btn btn-primary">🤖 Regenerate Summary</button>
                         <button id="compare-reports-btn" class="btn btn-secondary">📊 Compare Reports</button>
                         <button id="upload-evidence-btn" class="btn btn-secondary">📷 Upload Evidence Photo</button>
+                        <button id="print-report-btn" class="btn btn-secondary">🖨️ Print Report</button>
                         <button id="export-case-btn" class="btn btn-secondary">📥 Export Case</button>
                         <button id="delete-case-btn" class="btn btn-danger">🗑️ Delete Case</button>
                     </section>
@@ -333,6 +413,8 @@
         <span class="version-number">0.051</span>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/static/js/admin.js"></script>
 </body>
 </html>

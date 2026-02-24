@@ -1452,6 +1452,227 @@
     outline-offset: 2px;
 }
 
+/* ─── #31 Dashboard Grid ─────────────────────────────────── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.chart-card {
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 1.25rem;
+}
+
+.chart-card h3 {
+    color: #e2e8f0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+}
+
+/* ─── #32 Advanced Search Toolbar ────────────────────────── */
+.search-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #0f1923;
+    padding: 0.75rem 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.search-input-wrapper {
+    position: relative;
+    margin-bottom: 0.625rem;
+}
+
+.search-input-wrapper input {
+    width: 100%;
+    padding: 0.625rem 0.875rem 0.625rem 2.25rem;
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease;
+}
+
+.search-input-wrapper input:focus {
+    border-color: #3b82f6;
+    outline: none;
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.875rem;
+    pointer-events: none;
+}
+
+.filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-chips select,
+.filter-chips input[type="date"] {
+    padding: 0.375rem 0.625rem;
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.filter-chips select:focus,
+.filter-chips input[type="date"]:focus {
+    border-color: #3b82f6;
+    outline: none;
+}
+
+/* ─── #33 Bulk Toolbar ───────────────────────────────────── */
+.bulk-toolbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1e2d3d;
+    border-top: 2px solid #3b82f6;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    z-index: 100;
+    animation: slideUp 0.2s ease;
+    flex-wrap: wrap;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+}
+
+.bulk-toolbar span {
+    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-right: 0.5rem;
+}
+
+.bulk-btn {
+    padding: 0.375rem 0.75rem;
+    background: rgba(59,130,246,0.15);
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 6px;
+    color: #93c5fd;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.bulk-btn:hover {
+    background: rgba(59,130,246,0.25);
+}
+
+.bulk-btn.danger {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: #fca5a5;
+}
+
+.bulk-btn.danger:hover {
+    background: rgba(239,68,68,0.25);
+}
+
+.case-checkbox {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+    margin-right: 0.25rem;
+}
+
+/* ─── #34 Case Assignment ────────────────────────────────── */
+.assign-section {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #243447;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.assign-section label {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.assign-input {
+    flex: 1;
+    padding: 0.375rem 0.625rem;
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.8125rem;
+}
+
+.assign-input:focus {
+    border-color: #3b82f6;
+    outline: none;
+}
+
+.assigned-badge {
+    margin-top: 0.25rem;
+    font-size: 0.75rem !important;
+    color: #93c5fd !important;
+}
+
+/* ─── #35 Report Verification ────────────────────────────── */
+.verification-workflow {
+    margin-top: 0.5rem;
+}
+
+.verification-select {
+    padding: 0.25rem 0.5rem;
+    background: #1e2d3d;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.verification-select:focus {
+    border-color: #3b82f6;
+    outline: none;
+}
+
+/* ─── #36 Incident Map ───────────────────────────────────── */
+.map-container {
+    margin-top: 1rem;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+#incident-map {
+    background: #1e2d3d;
+}
+
 /* ─── Responsive: Tablet ──────────────────────────────────── */
 @media (max-width: 1024px) {
     .stats-overview {
@@ -1460,6 +1681,10 @@
 
     .admin-header .header-content {
         padding: 0.75rem 1rem;
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -1531,6 +1756,21 @@
 
     .analytics-grid {
         grid-template-columns: 1fr;
+    }
+
+    .filter-chips {
+        flex-direction: column;
+    }
+
+    .filter-chips select,
+    .filter-chips input[type="date"] {
+        width: 100%;
+    }
+
+    .bulk-toolbar {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
     }
 
     .scene-grid {

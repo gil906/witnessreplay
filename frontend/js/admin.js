@@ -13,6 +13,11 @@ class AdminPortal {
         this.currentView = 'cases';
         this.fetchTimeout = 10000;
         this.authToken = null;
+        this.selectedCases = new Set();
+        this.searchDebounceTimer = null;
+        this.chartInstances = {};
+        this.incidentMap = null;
+        this.mapMarkers = [];
         
         this.checkAuth();
     }
@@ -182,6 +187,7 @@ class AdminPortal {
             this.showToast('📷 Evidence photo upload coming soon!', 'info');
         });
         document.getElementById('update-status-btn')?.addEventListener('click', () => this.updateCaseStatus());
+        document.getElementById('print-report-btn')?.addEventListener('click', () => this.printCaseReport());
     }
     
     switchView(view) {
@@ -192,9 +198,15 @@ class AdminPortal {
         
         document.getElementById('cases-section').style.display = view === 'cases' ? '' : 'none';
         document.getElementById('reports-section').style.display = view === 'reports' ? '' : 'none';
+        document.getElementById('dashboard-view').style.display = view === 'dashboard' ? '' : 'none';
+        document.getElementById('map-view').style.display = view === 'map' ? '' : 'none';
         
         if (view === 'reports') {
             this.renderReports();
+        } else if (view === 'dashboard') {
+            this.renderDashboardCharts();
+        } else if (view === 'map') {
+            setTimeout(() => this.initMap(), 100);
         }
     }
     
@@ -395,6 +407,9 @@ class AdminPortal {
         
         return `
             <div class="case-card case-card-enhanced" data-case-id="${caseData.id}">
+                <input type="checkbox" class="case-checkbox" data-case-id="${caseData.id}" 
+                       ${this.selectedCases.has(caseData.id) ? 'checked' : ''}
+                       onclick="event.stopPropagation(); window.adminPortal?.updateBulkSelection()">
                 <div class="case-icon">📁</div>
                 <div class="case-info">
                     <div class="case-header">
@@ -440,6 +455,11 @@ class AdminPortal {
                     <div class="card-progress-bar">
                         <div class="card-progress-fill" style="width:${progressPct}%"></div>
                     </div>
+                    ${caseData.metadata?.assigned_to ? `
+                    <div class="case-meta-item assigned-badge">
+                        <span>👮</span>
+                        <span>${caseData.metadata.assigned_to}</span>
+                    </div>` : ''}
                 </div>
                 <div class="case-stats">
                     <div class="case-stat">
@@ -466,6 +486,7 @@ class AdminPortal {
         const sourceType = report.source_type || 'chat';
         const sourceIcon = this.getSourceIcon(sourceType);
         const sourceBadgeClass = `source-badge ${sourceType}`;
+        const verification = report.metadata?.verification || 'pending';
         
         return `
             <div class="case-card report-card" data-report-id="${report.id}">
@@ -498,6 +519,13 @@ class AdminPortal {
                             <span class="unassigned-label">Unassigned</span>
                         </div>
                         `}
+                    </div>
+                    <div class="verification-workflow">
+                        <select class="verification-select" onchange="window.adminPortal?.setVerification('${report.id}', this.value)" onclick="event.stopPropagation()">
+                            <option value="pending" ${verification === 'pending' ? 'selected' : ''}>⏳ Pending</option>
+                            <option value="verified" ${verification === 'verified' ? 'selected' : ''}>✅ Verified</option>
+                            <option value="flagged" ${verification === 'flagged' ? 'selected' : ''}>🚩 Flagged</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -579,6 +607,12 @@ class AdminPortal {
             const statusSelect = document.getElementById('case-status-select');
             if (statusSelect) {
                 statusSelect.value = caseData.status || 'open';
+            }
+            
+            // Set assigned to
+            const assignInput = document.getElementById('detail-assigned-to');
+            if (assignInput) {
+                assignInput.value = caseData.metadata?.assigned_to || '';
             }
             
             // Key elements
@@ -994,6 +1028,408 @@ class AdminPortal {
             console.error('Error updating case status:', error);
             this.showToast('Failed to update case status', 'error');
         }
+    }
+    
+    // ======================================
+    // #31 Dashboard Charts
+    // ======================================
+    
+    renderDashboardCharts() {
+        if (typeof Chart === 'undefined') return;
+        
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.1)';
+        
+        this.renderCasesTimelineChart();
+        this.renderSourceDistributionChart();
+        this.renderIncidentTypesChart();
+        this.renderCaseStatusChart();
+    }
+    
+    destroyChart(key) {
+        if (this.chartInstances[key]) {
+            this.chartInstances[key].destroy();
+            this.chartInstances[key] = null;
+        }
+    }
+    
+    renderCasesTimelineChart() {
+        this.destroyChart('casesTimeline');
+        const ctx = document.getElementById('cases-timeline-chart');
+        if (!ctx) return;
+        
+        const dateCounts = {};
+        this.cases.forEach(c => {
+            const d = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Unknown';
+            dateCounts[d] = (dateCounts[d] || 0) + 1;
+        });
+        
+        const labels = Object.keys(dateCounts);
+        const data = Object.values(dateCounts);
+        
+        this.chartInstances['casesTimeline'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Cases',
+                    data,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+    }
+    
+    renderSourceDistributionChart() {
+        this.destroyChart('sourceDist');
+        const ctx = document.getElementById('source-distribution-chart');
+        if (!ctx) return;
+        
+        const counts = { chat: 0, phone: 0, voice: 0, email: 0 };
+        this.reports.forEach(r => {
+            const src = r.source_type || 'chat';
+            counts[src] = (counts[src] || 0) + 1;
+        });
+        
+        this.chartInstances['sourceDist'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Chat', 'Phone', 'Voice', 'Email'],
+                datasets: [{
+                    data: [counts.chat, counts.phone, counts.voice, counts.email],
+                    backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444']
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+    
+    renderIncidentTypesChart() {
+        this.destroyChart('incidentTypes');
+        const ctx = document.getElementById('incident-types-chart');
+        if (!ctx) return;
+        
+        const counts = { accident: 0, crime: 0, incident: 0, other: 0 };
+        this.cases.forEach(c => {
+            const t = (c.metadata?.incident_type || this.guessIncidentType(c)).toLowerCase();
+            counts[t] = (counts[t] || 0) + 1;
+        });
+        
+        this.chartInstances['incidentTypes'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Accident', 'Crime', 'Incident', 'Other'],
+                datasets: [{
+                    label: 'Count',
+                    data: [counts.accident, counts.crime, counts.incident, counts.other],
+                    backgroundColor: ['#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6']
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+    }
+    
+    renderCaseStatusChart() {
+        this.destroyChart('caseStatus');
+        const ctx = document.getElementById('case-status-chart');
+        if (!ctx) return;
+        
+        const counts = { open: 0, under_review: 0, closed: 0 };
+        this.cases.forEach(c => {
+            const s = c.status || 'open';
+            counts[s] = (counts[s] || 0) + 1;
+        });
+        
+        this.chartInstances['caseStatus'] = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Open', 'Under Review', 'Closed'],
+                datasets: [{
+                    data: [counts.open, counts.under_review, counts.closed],
+                    backgroundColor: ['#22c55e', '#f59e0b', '#64748b']
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+    
+    // ======================================
+    // #32 Advanced Search with Filters
+    // ======================================
+    
+    debounceSearch() {
+        clearTimeout(this.searchDebounceTimer);
+        this.searchDebounceTimer = setTimeout(() => this.applyAdvancedFilters(), 300);
+    }
+    
+    applyAdvancedFilters() {
+        const query = (document.getElementById('search-query')?.value || '').toLowerCase();
+        const status = document.getElementById('adv-filter-status')?.value || '';
+        const type = document.getElementById('adv-filter-type')?.value || '';
+        const dateFrom = document.getElementById('filter-date-from')?.value || '';
+        const dateTo = document.getElementById('filter-date-to')?.value || '';
+        const source = document.getElementById('filter-source')?.value || '';
+        
+        this.filteredCases = this.cases.filter(c => {
+            if (query && !JSON.stringify(c).toLowerCase().includes(query)) return false;
+            if (status && (c.status || 'open') !== status) return false;
+            if (type && (c.metadata?.incident_type || this.guessIncidentType(c)).toLowerCase() !== type) return false;
+            if (dateFrom && c.created_at < dateFrom) return false;
+            if (dateTo && c.created_at > dateTo + 'T23:59:59') return false;
+            return true;
+        });
+        
+        this.filteredReports = this.reports.filter(r => {
+            if (query && !JSON.stringify(r).toLowerCase().includes(query)) return false;
+            if (source && (r.source_type || '') !== source) return false;
+            return true;
+        });
+        
+        this.renderCases();
+        if (this.currentView === 'reports') this.renderReports();
+        
+        document.getElementById('cases-count-subtitle').textContent = 
+            `— ${this.filteredCases.length} case${this.filteredCases.length !== 1 ? 's' : ''}`;
+        document.getElementById('reports-count-subtitle').textContent = 
+            `— ${this.filteredReports.length} report${this.filteredReports.length !== 1 ? 's' : ''}`;
+    }
+    
+    // ======================================
+    // #33 Bulk Operations
+    // ======================================
+    
+    updateBulkSelection() {
+        this.selectedCases.clear();
+        document.querySelectorAll('.case-checkbox:checked').forEach(cb => {
+            this.selectedCases.add(cb.dataset.caseId);
+        });
+        
+        const toolbar = document.getElementById('bulk-toolbar');
+        const countEl = document.getElementById('selected-count');
+        if (this.selectedCases.size > 0) {
+            toolbar.style.display = 'flex';
+            countEl.textContent = `${this.selectedCases.size} selected`;
+        } else {
+            toolbar.style.display = 'none';
+        }
+    }
+    
+    clearSelection() {
+        this.selectedCases.clear();
+        document.querySelectorAll('.case-checkbox').forEach(cb => cb.checked = false);
+        document.getElementById('bulk-toolbar').style.display = 'none';
+    }
+    
+    async bulkUpdateStatus(newStatus) {
+        if (this.selectedCases.size === 0) return;
+        
+        const ids = [...this.selectedCases];
+        let success = 0;
+        for (const id of ids) {
+            try {
+                const resp = await this.fetchWithTimeout(`/api/cases/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (resp.ok) success++;
+            } catch (e) { /* skip */ }
+        }
+        
+        this.showToast(`Updated ${success}/${ids.length} cases to ${newStatus}`, 'success');
+        this.clearSelection();
+        await this.loadCases();
+    }
+    
+    bulkExport() {
+        if (this.selectedCases.size === 0) return;
+        
+        const exportData = this.cases.filter(c => this.selectedCases.has(c.id));
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cases_export_${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showToast(`Exported ${exportData.length} cases`, 'success');
+    }
+    
+    // ======================================
+    // #34 Case Assignment
+    // ======================================
+    
+    async assignCurrentCase(value) {
+        if (!this.currentCase) return;
+        await this.assignCase(this.currentCase.id, value);
+    }
+    
+    async assignCase(caseId, assignedTo) {
+        try {
+            const caseData = this.cases.find(c => c.id === caseId);
+            const metadata = { ...(caseData?.metadata || {}), assigned_to: assignedTo };
+            
+            const resp = await this.fetchWithTimeout(`/api/cases/${caseId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metadata })
+            });
+            
+            if (!resp.ok) throw new Error('Assignment failed');
+            this.showToast(`Case assigned to ${assignedTo || 'nobody'}`, 'success');
+            await this.loadCases();
+        } catch (e) {
+            this.showToast('Failed to assign case', 'error');
+        }
+    }
+    
+    // ======================================
+    // #35 Report Verification
+    // ======================================
+    
+    async setVerification(reportId, status) {
+        try {
+            const report = this.reports.find(r => r.id === reportId);
+            const metadata = { ...(report?.metadata || {}), verification: status };
+            
+            const resp = await this.fetchWithTimeout(`/api/sessions/${reportId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metadata })
+            });
+            
+            if (!resp.ok) throw new Error('Update failed');
+            if (report) {
+                if (!report.metadata) report.metadata = {};
+                report.metadata.verification = status;
+            }
+            this.showToast(`Report marked as ${status}`, 'success');
+        } catch (e) {
+            this.showToast('Failed to update verification status', 'error');
+        }
+    }
+    
+    // ======================================
+    // #36 Interactive Incident Map
+    // ======================================
+    
+    initMap() {
+        if (typeof L === 'undefined') return;
+        if (this.incidentMap) {
+            this.incidentMap.invalidateSize();
+            this.plotCasesOnMap();
+            return;
+        }
+        
+        this.incidentMap = L.map('incident-map').setView([40.7128, -74.0060], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(this.incidentMap);
+        
+        this.plotCasesOnMap();
+    }
+    
+    plotCasesOnMap() {
+        if (!this.incidentMap) return;
+        
+        this.mapMarkers.forEach(m => m.remove());
+        this.mapMarkers = [];
+        
+        let hasData = false;
+        this.cases.forEach(c => {
+            if (c.metadata?.coordinates) {
+                hasData = true;
+                const [lat, lng] = c.metadata.coordinates;
+                const marker = L.marker([lat, lng])
+                    .bindPopup(`<b>${c.case_number || ''}</b><br>${c.title || 'Untitled'}`)
+                    .addTo(this.incidentMap);
+                this.mapMarkers.push(marker);
+            }
+        });
+        
+        const noDataEl = document.getElementById('map-no-data');
+        if (noDataEl) noDataEl.style.display = hasData ? 'none' : '';
+        
+        if (hasData && this.mapMarkers.length > 0) {
+            const group = L.featureGroup(this.mapMarkers);
+            this.incidentMap.fitBounds(group.getBounds().pad(0.1));
+        }
+    }
+    
+    // ======================================
+    // #37 Print-Ready Case Report
+    // ======================================
+    
+    printCaseReport() {
+        const caseData = this.currentCase;
+        if (!caseData) return;
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Case Report - ${caseData.case_number || caseData.id}</title>
+                <style>
+                    body { font-family: 'Times New Roman', serif; max-width: 800px; margin: 40px auto; color: #000; }
+                    h1 { text-align: center; border-bottom: 2px solid #000; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .badge { display: inline-block; padding: 2px 8px; border: 1px solid #000; font-size: 12px; }
+                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                    td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                    .section { margin: 20px 0; }
+                    .section h2 { border-bottom: 1px solid #666; }
+                    @media print { body { margin: 20px; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🛡️ WitnessReplay Case Report</h1>
+                    <p><strong>Case #:</strong> ${caseData.case_number || caseData.id} | 
+                       <strong>Status:</strong> ${caseData.status || 'Open'} |
+                       <strong>Date:</strong> ${new Date(caseData.created_at).toLocaleDateString()}</p>
+                    ${caseData.metadata?.assigned_to ? `<p><strong>Assigned To:</strong> ${caseData.metadata.assigned_to}</p>` : ''}
+                </div>
+                <div class="section">
+                    <h2>Case Summary</h2>
+                    <p>${caseData.summary || 'No summary available'}</p>
+                </div>
+                <div class="section">
+                    <h2>Location</h2>
+                    <p>${caseData.location || 'Unknown'}</p>
+                </div>
+                <div class="section">
+                    <h2>Timeframe</h2>
+                    <p>${caseData.timeframe?.description || 'Unknown'}</p>
+                </div>
+                <div class="section">
+                    <h2>Reports (${caseData.report_ids?.length || (caseData.reports || []).length || 0})</h2>
+                    <table>
+                        <tr><th>#</th><th>Report ID</th><th>Source</th><th>Date</th></tr>
+                        ${(caseData.reports || []).map((r, i) => 
+                            `<tr><td>${i+1}</td><td>${(r.report_number || r.id || '').substring(0,12)}</td><td>${r.source_type || '-'}</td><td>${r.created_at ? new Date(r.created_at).toLocaleDateString() : '-'}</td></tr>`
+                        ).join('') || (caseData.report_ids || []).map((rid, i) => 
+                            `<tr><td>${i+1}</td><td>${rid.substring(0,8)}</td><td>-</td><td>-</td></tr>`
+                        ).join('')}
+                    </table>
+                </div>
+                <div class="section">
+                    <h2>Key Elements</h2>
+                    <p>${(caseData.metadata?.key_elements || []).join(', ') || 'None extracted'}</p>
+                </div>
+                <hr>
+                <p style="text-align:center; font-size:11px; color:#666;">
+                    Generated by WitnessReplay on ${new Date().toLocaleString()} | 
+                    Confidential Law Enforcement Document
+                </p>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
     }
     
     // Utility functions
