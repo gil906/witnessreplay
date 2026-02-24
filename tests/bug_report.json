@@ -1,0 +1,118 @@
+{
+  "timestamp": "2026-02-24T01:17:00Z",
+  "tester": "tester_agent",
+  "cycle": 10,
+  "previous_changes_tested": [
+    "Feature Agent: Intelligent model selection with auto-fallback (commit be71e50)",
+    "UX Agent: Comprehensive admin portal (commit 096fc91)"
+  ],
+  "bugs": [
+    {
+      "id": 40,
+      "title": "Admin portal not accessible via web interface",
+      "description": "UX Agent created admin.html, admin.css, and admin.js files, and added a button to index.html that links to the admin portal. However, accessing /admin.html or /static/admin.html returns 404. The frontend files exist in the repository (frontend/admin.html) but are not being served by the FastAPI server. The button in index.html redirects to '/static/admin.html' but this path is not accessible. Other static files like /static/js/app.js work correctly (200 OK), but HTML files in the static directory return 404.",
+      "severity": "critical",
+      "steps_to_reproduce": "1. Open http://localhost:8088/\n2. Click the 'Admin Portal' button\n3. Browser tries to navigate to /static/admin.html\n4. Receives 404 Not Found\n5. Direct access to http://localhost:8088/admin.html also returns 404\n6. Direct access to http://localhost:8088/static/admin.html also returns 404\n7. Test that /static/js/app.js works: curl -I http://localhost:8088/static/js/app.js → 200 OK",
+      "expected_behavior": "Admin portal should be accessible at /admin.html or /static/admin.html. FastAPI should serve admin.html file similar to how it serves index.html at /. Either: (1) Add a route in main.py: @app.get('/admin') or @app.get('/admin.html') that serves admin.html, OR (2) Configure StaticFiles to serve HTML files, not just JS/CSS.",
+      "actual_behavior": "404 Not Found for /admin.html, /static/admin.html. Button click in index.html redirects but page doesn't load. Users cannot access the admin case management features added by UX Agent in Idea #4.",
+      "affected_files": ["backend/app/main.py", "frontend/admin.html", "frontend/js/app.js"],
+      "related_to": "Idea #4: Admin portal implementation"
+    },
+    {
+      "id": 41,
+      "title": "PDF export still fails with 500 error despite Bug #38 fix",
+      "description": "Feature Agent claimed to fix Bug #38 (PDF export fpdf2 API incompatibility) in commit be71e50 by removing the .encode('latin1') call. The code fix is correct (line 416 in routes.py now uses pdf.output() directly), but the endpoint still returns HTTP 500 with error message 'Failed to export session'. This suggests there's a different issue causing the PDF export to fail, possibly related to: (1) Missing session data, (2) Issue with font loading in fpdf, (3) Error in PDF generation logic earlier in the function, (4) Server environment issue. The error is caught in a try/except block but the actual exception is not logged or returned to the client.",
+      "severity": "high",
+      "steps_to_reproduce": "1. Create a session: POST /api/sessions → get session_id\n2. Try PDF export: GET /api/sessions/{session_id}/export\n3. Receive HTTP 500: {'detail':'Failed to export session'}\n4. Check routes.py line 416 - code is correct (no .encode)\n5. fpdf2 is installed (version 2.8.1)\n6. Error message doesn't reveal actual cause",
+      "expected_behavior": "PDF export should either: (1) Generate PDF successfully and return it with Content-Type: application/pdf, OR (2) Return detailed error message explaining what failed (e.g., 'Session has no data to export', 'Font loading failed'). The try/except block should log the actual exception.",
+      "actual_behavior": "Returns generic HTTP 500 error without details. Code fix for Bug #38 is present but a different error is occurring. Actual exception is hidden from both API response and visible logs.",
+      "affected_files": ["backend/app/api/routes.py"],
+      "related_to": "Bug #38 (partially fixed, but new issue found)"
+    },
+    {
+      "id": 42,
+      "title": "ModelSelector class missing get_current_model() method",
+      "description": "The new model_selector.py service (added by Feature Agent in commit be71e50) implements intelligent model selection with auto-fallback. However, the class is missing a get_current_model() method. Testing the class directly fails with AttributeError: 'ModelSelector' object has no attribute 'get_current_model'. The class has get_best_model_for_scene() and get_best_model_for_chat() methods, but no way to query what model is currently selected. This suggests incomplete implementation or mismatch between the class design and how it's being used.",
+      "severity": "medium",
+      "steps_to_reproduce": "1. Import ModelSelector: from app.services.model_selector import ModelSelector\n2. Create instance: selector = ModelSelector()\n3. Try to get current model: selector.get_current_model()\n4. AttributeError: 'ModelSelector' object has no attribute 'get_current_model'",
+      "expected_behavior": "ModelSelector should have a get_current_model() method that returns the currently selected model name, OR the class design should use a different pattern (e.g., store selected model in instance variable and expose it as a property).",
+      "actual_behavior": "No get_current_model() method exists. The class only has get_best_model_for_scene() and get_best_model_for_chat() which are async methods that determine the best model dynamically.",
+      "affected_files": ["backend/app/services/model_selector.py"],
+      "related_to": "Feature Agent commit be71e50 - Idea #2 (model auto-fallback)"
+    },
+    {
+      "id": 43,
+      "title": "Server restart required to register new routes (Bug #37 not auto-resolved)",
+      "description": "Feature Agent fixed the route ordering issues in commit 5bad536, and the code is correct. However, the running server on port 8088 still has the old route table with only 12 registered routes instead of 20. The OpenAPI spec shows missing endpoints: /api/info, /api/sessions/{id}/insights, /api/sessions/{id}/timeline, /api/sessions/export/bulk, /api/sessions/{id}/export/evidence. Testing shows routes.py has 20 @router decorators, and importing the module fresh in Python shows 20 routes. But the live server hasn't reloaded. The server is running as PID 1 in a Docker container and cannot be easily restarted by the tester agent.",
+      "severity": "high",
+      "steps_to_reproduce": "1. Check routes.py: grep -c '@router\\.' backend/app/api/routes.py → 20 decorators\n2. Check OpenAPI spec: curl http://localhost:8088/openapi.json → only 12 paths\n3. Test missing endpoints:\n   - curl http://localhost:8088/api/info → 404\n   - curl http://localhost:8088/api/sessions/{id}/insights → 404\n   - curl http://localhost:8088/api/sessions/{id}/timeline → 404\n4. Fresh Python import works: python3 -c 'from app.api.routes import router; print(len(router.routes))' → 20",
+      "expected_behavior": "Server should auto-reload when routes.py changes (if using --reload flag), OR server should be restarted after route fixes, OR provide explicit instruction to orchestrator to restart the server.",
+      "actual_behavior": "Server continues using stale route table. UX Agent features (timeline, insights) are broken because their backend endpoints return 404. Admin portal analytics would fail silently.",
+      "affected_files": ["backend/app/api/routes.py", "backend/app/main.py"],
+      "related_to": "Bug #37, Bug #30, Bug #29 - route registration issues"
+    }
+  ],
+  "bugs_fixed": [
+    {
+      "id": 23,
+      "title": "Model config update now persists correctly",
+      "description": "Previously, POST /api/models/config would return success but GET /api/models/current would still show old model. Now tested and working: updating model to gemini-2.0-flash persists correctly, subsequent GET returns the new model. Feature Agent's fix in commit be71e50 successfully resolved this issue.",
+      "verification": "Tested with multiple model updates (gemini-2.0-flash, gemini-2.5-pro) and current model endpoint reflects changes immediately."
+    },
+    {
+      "id": 38,
+      "title": "PDF export fpdf2 API fix applied (but endpoint still has different issue)",
+      "description": "Feature Agent correctly fixed the .encode('latin1') issue in routes.py line 416. Code now uses pdf.output() directly which returns bytearray in fpdf2 2.8.1. However, endpoint still returns 500 for a different reason (see Bug #41).",
+      "verification": "Code review shows pdf.output() is used correctly without .encode(). Issue is partially fixed."
+    },
+    {
+      "id": 27,
+      "title": "Console.log statements removed from frontend",
+      "description": "UX Agent successfully removed all console.log statements from frontend JavaScript. Verified by grepping all JS files - no console.log found.",
+      "verification": "grep 'console\\.log' frontend/js/*.js returns no results"
+    }
+  ],
+  "tests_passed": [
+    "GET /api/health - returns 200 with status 'degraded'",
+    "GET /api/models - returns list of 6 Gemini models with correct structure",
+    "GET /api/models/quota - returns detailed quota info for all models",
+    "GET /api/models/current - returns current model configuration",
+    "POST /api/models/config - successfully updates model selection",
+    "GET /api/sessions - returns list of 18 sessions",
+    "POST /api/sessions - creates new session successfully",
+    "GET /api/analytics/stats - returns analytics data",
+    "Frontend index.html loads correctly with title",
+    "No console.log statements in frontend JS files",
+    "Static JS files accessible via /static/js/",
+    "Model config update persistence (Bug #23 fix verified)"
+  ],
+  "tests_failed": [
+    "GET /admin.html - 404 Not Found",
+    "GET /static/admin.html - 404 Not Found", 
+    "GET /api/info - 404 Not Found (route not registered)",
+    "GET /api/sessions/{id}/timeline - 404 Not Found (route not registered)",
+    "GET /api/sessions/{id}/insights - 404 Not Found (route not registered)",
+    "GET /api/sessions/{id}/export (PDF) - 500 Internal Server Error",
+    "ModelSelector.get_current_model() - AttributeError"
+  ],
+  "critical_issues": [
+    "Bug #40: Admin portal completely inaccessible (blocks Idea #4 demo)",
+    "Bug #43: Server needs restart to register 8 missing routes",
+    "Bug #10: API server deadlock after first request (ongoing)",
+    "Bug #3: Blocking Firestore calls (ongoing)"
+  ],
+  "high_priority_fixes": [
+    "Add route in main.py to serve admin.html",
+    "Restart server to register missing routes",
+    "Fix PDF export 500 error root cause",
+    "Add proper error logging for PDF export"
+  ],
+  "summary": "Tested Features and UX Agent changes from commits be71e50 and 096fc91. POSITIVE: Bug #23 (model config persistence) is FIXED ✓, Bug #27 (console.log) is FIXED ✓, model selector endpoints work well, quota tracking is excellent. NEGATIVE: Admin portal (Idea #4) is completely inaccessible due to missing route (Bug #40 - CRITICAL), server needs restart to register 8 missing routes (Bug #43), PDF export still fails with different error (Bug #41). The model selector service has good architecture but is missing a get_current_model() method (Bug #42). Overall app quality: GOOD backend implementation, BROKEN admin portal integration. Recommendation: Fix admin portal route immediately (critical for demo), restart server to enable timeline/insights features.",
+  "recommendations": [
+    "URGENT: Add admin portal route in main.py: @app.get('/admin') to serve admin.html",
+    "HIGH: Restart backend server to register missing routes",
+    "MEDIUM: Add detailed error logging in PDF export try/except block",
+    "MEDIUM: Add get_current_model() method to ModelSelector or document the intended usage pattern",
+    "LOW: Add health check to verify all expected routes are registered on startup"
+  ]
+}
