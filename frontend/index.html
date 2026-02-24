@@ -160,6 +160,15 @@
                     </div>
                 </div>
 
+                <!-- Mobile Scene Preview Strip (visible only on mobile when scene available) -->
+                <div id="mobile-scene-strip" class="mobile-scene-strip" aria-label="Scene preview">
+                    <img id="mobile-scene-strip-img" src="" alt="Scene reconstruction" class="mobile-scene-strip-img">
+                    <div class="mobile-scene-strip-overlay">
+                        <span class="mobile-scene-strip-label">Scene reconstruction</span>
+                        <span class="mobile-scene-strip-expand">⤢</span>
+                    </div>
+                </div>
+
                 <!-- Chat transcript -->
                 <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite" aria-label="Interview conversation">
                     <p class="empty-state">Your conversation will appear here. Start by describing what happened.</p>
@@ -181,6 +190,7 @@
                 </div>
 
                 <!-- Voice Control - always visible, voice-first -->
+                <div class="voice-first-label">Voice-first — click mic or type below</div>
                 <div class="controls expanded" id="voice-controls">
                     <!-- VAD Controls -->
                     <div class="vad-controls" id="vad-controls">
