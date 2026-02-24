@@ -33,6 +33,7 @@ class SceneElement(BaseModel):
     color: Optional[str] = None
     size: Optional[str] = None
     confidence: float = 0.5
+    needs_review: bool = Field(default=False, description="True if confidence is below threshold")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     relationships: List[str] = []  # IDs of related ElementRelationship objects
     evidence_tags: List[str] = []  # IDs of related EvidenceTag objects
@@ -45,6 +46,8 @@ class TimelineEvent(BaseModel):
     description: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     image_url: Optional[str] = None
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence score 0.0-1.0")
+    needs_review: bool = Field(default=False, description="True if confidence is below threshold")
 
 
 class AnimationKeyframe(BaseModel):
@@ -169,6 +172,8 @@ class WitnessStatement(BaseModel):
     """Represents a witness statement."""
     id: str
     text: str
+    original_text: Optional[str] = None  # Original text in witness's language (if translated)
+    detected_language: Optional[str] = None  # Detected language code (e.g., 'es', 'zh')
     audio_url: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     is_correction: bool = False
@@ -196,6 +201,28 @@ class InterviewBranchingPath(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class WitnessReliabilityFactors(BaseModel):
+    """Individual factors contributing to the reliability score."""
+    contradiction_rate: float = Field(default=0.0, ge=0.0, le=1.0, description="Rate of contradictions (lower is better)")
+    correction_frequency: float = Field(default=0.0, ge=0.0, le=1.0, description="Frequency of corrections (lower is better)")
+    consistency_score: float = Field(default=0.5, ge=0.0, le=1.0, description="Internal consistency (higher is better)")
+    evidence_alignment: float = Field(default=0.5, ge=0.0, le=1.0, description="Alignment with physical evidence (higher is better)")
+    statement_detail: float = Field(default=0.0, ge=0.0, le=1.0, description="Level of detail in statements (higher is better)")
+
+
+class WitnessReliabilityProfile(BaseModel):
+    """Complete reliability profile for a witness."""
+    overall_score: float = Field(default=50.0, ge=0.0, le=100.0, description="Overall reliability score (0-100)")
+    reliability_grade: str = Field(default="C", description="Letter grade: A, B, C, D, or F")
+    factors: WitnessReliabilityFactors = Field(default_factory=WitnessReliabilityFactors)
+    contradiction_count: int = Field(default=0, ge=0)
+    confirmation_count: int = Field(default=0, ge=0)
+    correction_count: int = Field(default=0, ge=0)
+    evidence_matches: int = Field(default=0, ge=0)
+    evidence_conflicts: int = Field(default=0, ge=0)
+    last_calculated: Optional[datetime] = None
+
+
 class Witness(BaseModel):
     """Represents an individual witness in a multi-witness session."""
     id: str
@@ -203,7 +230,9 @@ class Witness(BaseModel):
     contact: Optional[str] = None
     location: Optional[str] = None  # Location at time of incident
     source_type: str = "chat"  # chat, phone, voice, email
+    preferred_language: str = "en"  # Preferred language code for translation
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    reliability: Optional[WitnessReliabilityProfile] = None  # Reliability scoring profile
     metadata: Dict[str, Any] = {}
 
 
@@ -272,6 +301,7 @@ class WitnessCreate(BaseModel):
     contact: Optional[str] = None
     location: Optional[str] = None
     source_type: str = "chat"
+    preferred_language: str = "en"  # Preferred language code for translation
     metadata: Optional[Dict[str, Any]] = {}
 
     @field_validator('name')
@@ -288,6 +318,7 @@ class WitnessUpdate(BaseModel):
     contact: Optional[str] = None
     location: Optional[str] = None
     source_type: Optional[str] = None
+    preferred_language: Optional[str] = None  # Preferred language code for translation
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -298,8 +329,10 @@ class WitnessResponse(BaseModel):
     contact: Optional[str] = None
     location: Optional[str] = None
     source_type: str = "chat"
+    preferred_language: str = "en"  # Preferred language code
     created_at: datetime
     statement_count: int = 0
+    reliability: Optional[WitnessReliabilityProfile] = None
     metadata: Dict[str, Any] = {}
 
 
@@ -414,6 +447,9 @@ class CaseResponse(BaseModel):
     scene_image_url: Optional[str] = None
     timeframe: Dict[str, Any] = {}
     incident_type: Optional[str] = None
+    priority_score: Optional[float] = None
+    priority_label: Optional[str] = None
+    priority: Optional[Dict[str, Any]] = None
 
 
 class SceneGenerateRequest(BaseModel):
@@ -552,6 +588,7 @@ class TimelineEventExtracted(BaseModel):
     time: Optional[str] = Field(default=None, description="Specific time if mentioned")
     description: str = Field(description="What happened at this point")
     elements_involved: List[str] = Field(default_factory=list, description="Elements involved in this event")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence score based on testimony clarity")
 
 
 class LocationInfo(BaseModel):
@@ -620,6 +657,18 @@ class IncidentClassificationResponse(BaseModel):
     type: str = Field(description="Incident type: accident, crime, incident, or other")
     subtype: str = Field(description="Specific incident subtype")
     severity: str = Field(description="Severity level: critical, high, medium, or low")
+
+
+class CasePriorityScore(BaseModel):
+    """Priority score breakdown for a case."""
+    total_score: float = Field(default=0.0, ge=0.0, le=100.0, description="Overall priority score 0-100")
+    severity_score: float = Field(default=0.0, ge=0.0, le=40.0, description="Score based on incident severity (max 40)")
+    age_score: float = Field(default=0.0, ge=0.0, le=20.0, description="Score based on case age (max 20)")
+    solvability_score: float = Field(default=0.0, ge=0.0, le=25.0, description="Score based on solvability factors (max 25)")
+    witness_score: float = Field(default=0.0, ge=0.0, le=15.0, description="Score based on witness count (max 15)")
+    priority_label: str = Field(default="normal", description="Priority label: critical, high, medium, normal, low")
+    factors: List[str] = Field(default_factory=list, description="Contributing factors to the priority")
+    calculated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CaseTimeframe(BaseModel):
@@ -710,3 +759,376 @@ class CaseSimilarityResult(BaseModel):
     title: str
     similarity_score: float
     matching_factors: List[str]  # e.g. ["location", "time_proximity", "semantic"]
+
+
+# ============================================================================
+# Pattern Detection Schemas
+# ============================================================================
+
+class PatternMatch(BaseModel):
+    """A single match found in pattern analysis."""
+    case_id: str
+    case_number: str
+    title: str
+    match_reason: Optional[str] = None
+    similarity: Optional[float] = None
+    location: Optional[str] = None
+    incident_type: Optional[str] = None
+
+
+class CasePatternResult(BaseModel):
+    """Pattern analysis results for a specific case."""
+    case_id: str
+    case_number: str
+    time_matches: List[PatternMatch] = []
+    location_matches: List[PatternMatch] = []
+    mo_matches: List[PatternMatch] = []
+    semantic_matches: List[PatternMatch] = []
+
+
+class TimePatternInfo(BaseModel):
+    """Time-based pattern information."""
+    pattern_type: str  # "day_of_week", "time_of_day", "recurring"
+    description: str
+    case_count: int
+    cases: List[Dict[str, Any]] = []
+    confidence: float
+    details: Dict[str, Any] = {}
+
+
+class LocationPatternInfo(BaseModel):
+    """Location-based pattern information."""
+    pattern_type: str = "location"
+    area: str
+    case_count: int
+    cases: List[Dict[str, Any]] = []
+    confidence: float
+    radius_description: str = ""
+    hotspot_type: str = "cluster"
+
+
+class MOPatternInfo(BaseModel):
+    """Modus operandi pattern information."""
+    pattern_type: str = "mo"
+    mo_type: str
+    description: str
+    case_count: int
+    cases: List[Dict[str, Any]] = []
+    confidence: float
+    shared_elements: List[str] = []
+
+
+class PatternAnalysisResponse(BaseModel):
+    """Complete pattern analysis response."""
+    time_patterns: List[TimePatternInfo] = []
+    location_patterns: List[LocationPatternInfo] = []
+    mo_patterns: List[MOPatternInfo] = []
+    semantic_clusters: List[Dict[str, Any]] = []
+    summary: str = ""
+    total_patterns: int = 0
+
+
+# ============================================================================
+# Witness Memory Schemas
+# ============================================================================
+
+class WitnessMemoryBase(BaseModel):
+    """Base model for witness memory data."""
+    memory_type: str = Field(description="Type: fact, testimony, behavior, relationship")
+    content: str = Field(description="The memory content (1-2 sentences)")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence score")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('memory_type')
+    @classmethod
+    def validate_memory_type(cls, v):
+        valid = ['fact', 'testimony', 'behavior', 'relationship']
+        if v not in valid:
+            raise ValueError(f'memory_type must be one of {valid}')
+        return v
+
+
+class WitnessMemoryCreate(WitnessMemoryBase):
+    """Request model for creating a witness memory."""
+    witness_id: str
+    session_id: Optional[str] = None
+    case_id: Optional[str] = None
+
+
+class WitnessMemoryUpdate(BaseModel):
+    """Request model for updating a witness memory."""
+    content: Optional[str] = None
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class WitnessMemoryResponse(BaseModel):
+    """Response model for a witness memory."""
+    id: str
+    witness_id: str
+    memory_type: str
+    content: str
+    session_id: Optional[str] = None
+    case_id: Optional[str] = None
+    confidence: float
+    created_at: str
+    metadata: Dict[str, Any] = {}
+
+
+class WitnessMemorySearchRequest(BaseModel):
+    """Request for semantic memory search."""
+    query: str = Field(description="Search query text")
+    top_k: int = Field(default=5, ge=1, le=20, description="Max results")
+    threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Min similarity")
+    memory_types: Optional[List[str]] = Field(default=None, description="Filter by types")
+
+
+class WitnessMemorySearchResult(BaseModel):
+    """A memory search result with similarity score."""
+    memory: WitnessMemoryResponse
+    similarity_score: float
+
+
+class WitnessMemoryStatsResponse(BaseModel):
+    """Response for memory statistics."""
+    total_memories: int
+    by_type: Dict[str, int] = {}
+    by_witness: Dict[str, int] = {}
+
+
+class ExtractMemoriesRequest(BaseModel):
+    """Request to extract memories from a session."""
+    session_id: str
+    witness_id: str
+    case_id: Optional[str] = None
+
+
+# ============================================================================
+# Evidence Chain of Custody Schemas
+# ============================================================================
+
+class CustodyAction(BaseModel):
+    """Types of custody actions for evidence tracking."""
+    action: str  # "created", "viewed", "modified", "exported", "transferred", "deleted"
+    
+    @field_validator('action')
+    @classmethod
+    def validate_action(cls, v):
+        valid = ['created', 'viewed', 'modified', 'exported', 'transferred', 'deleted', 'accessed']
+        if v not in valid:
+            raise ValueError(f'action must be one of {valid}')
+        return v
+
+
+class CustodyEvent(BaseModel):
+    """Represents a single event in the evidence chain of custody."""
+    id: str
+    evidence_type: str  # "session", "case", "evidence_marker", "scene_version", "statement"
+    evidence_id: str  # ID of the evidence item
+    action: str  # "created", "viewed", "modified", "exported", "transferred"
+    actor: str  # User or system that performed the action
+    actor_role: Optional[str] = None  # "investigator", "admin", "system", etc.
+    details: Optional[str] = None  # Description of what changed
+    metadata: Dict[str, Any] = {}  # Additional context (IP, session info, etc.)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    hash_before: Optional[str] = None  # Hash of evidence state before change
+    hash_after: Optional[str] = None  # Hash of evidence state after change
+
+
+class CustodyEventCreate(BaseModel):
+    """Request model for creating a custody event."""
+    evidence_type: str
+    evidence_id: str
+    action: str
+    actor: str
+    actor_role: Optional[str] = None
+    details: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = {}
+
+    @field_validator('evidence_type')
+    @classmethod
+    def validate_evidence_type(cls, v):
+        valid = ['session', 'case', 'evidence_marker', 'scene_version', 'statement', 'sketch', 'measurement']
+        if v not in valid:
+            raise ValueError(f'evidence_type must be one of {valid}')
+        return v
+
+    @field_validator('action')
+    @classmethod
+    def validate_action(cls, v):
+        valid = ['created', 'viewed', 'modified', 'exported', 'transferred', 'deleted', 'accessed']
+        if v not in valid:
+            raise ValueError(f'action must be one of {valid}')
+        return v
+
+
+class CustodyEventResponse(BaseModel):
+    """Response model for custody events."""
+    id: str
+    evidence_type: str
+    evidence_id: str
+    action: str
+    actor: str
+    actor_role: Optional[str]
+    details: Optional[str]
+    timestamp: datetime
+    hash_before: Optional[str]
+    hash_after: Optional[str]
+
+
+class CustodyChainResponse(BaseModel):
+    """Response model for a complete chain of custody."""
+    evidence_type: str
+    evidence_id: str
+    total_events: int
+    events: List[CustodyEventResponse]
+    first_access: Optional[datetime]
+    last_access: Optional[datetime]
+    unique_actors: List[str]
+
+
+# ─────────────────────────────────────────────────────────────
+# Investigator Assignment Models
+# ─────────────────────────────────────────────────────────────
+
+class Investigator(BaseModel):
+    """Represents an investigator who can be assigned to cases."""
+    id: str
+    name: str
+    badge_number: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    active: bool = True
+    max_cases: int = Field(default=10, ge=1, le=50, description="Maximum concurrent case assignments")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InvestigatorCreate(BaseModel):
+    """Request model for creating an investigator."""
+    name: str = Field(min_length=2, max_length=100)
+    badge_number: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    max_cases: int = Field(default=10, ge=1, le=50)
+
+
+class InvestigatorUpdate(BaseModel):
+    """Request model for updating an investigator."""
+    name: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    badge_number: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    active: Optional[bool] = None
+    max_cases: Optional[int] = Field(default=None, ge=1, le=50)
+
+
+class CaseAssignment(BaseModel):
+    """Represents an assignment of a case to an investigator."""
+    id: str
+    case_id: str
+    investigator_id: str
+    investigator_name: str
+    assigned_by: str  # Who made the assignment
+    assigned_at: datetime = Field(default_factory=datetime.utcnow)
+    unassigned_at: Optional[datetime] = None  # When assignment ended
+    notes: Optional[str] = None
+    is_active: bool = True
+
+
+class CaseAssignmentCreate(BaseModel):
+    """Request model for creating a case assignment."""
+    investigator_id: str
+    assigned_by: str = "admin"
+    notes: Optional[str] = None
+
+
+class CaseAssignmentResponse(BaseModel):
+    """Response model for case assignment."""
+    id: str
+    case_id: str
+    investigator_id: str
+    investigator_name: str
+    assigned_by: str
+    assigned_at: datetime
+    unassigned_at: Optional[datetime]
+    notes: Optional[str]
+    is_active: bool
+
+
+class InvestigatorWorkload(BaseModel):
+    """Response model for investigator workload statistics."""
+    investigator_id: str
+    investigator_name: str
+    badge_number: Optional[str]
+    department: Optional[str]
+    active_cases: int
+    max_cases: int
+    utilization_percent: float  # (active_cases / max_cases) * 100
+    cases: List[Dict[str, Any]] = []  # Brief info about assigned cases
+    total_assignments: int  # Historical total
+    active: bool
+
+
+class WorkloadSummary(BaseModel):
+    """Summary of all investigators' workloads."""
+    total_investigators: int
+    active_investigators: int
+    total_active_cases: int
+    unassigned_cases: int
+    investigators: List[InvestigatorWorkload]
+    avg_utilization: float
+
+
+# ==================== Interview Comfort Features ====================
+
+class InterviewComfortState(BaseModel):
+    """Represents the comfort state of an interview session."""
+    session_id: str
+    is_paused: bool = False
+    total_duration_seconds: int = 0
+    total_pause_duration_seconds: int = 0
+    breaks_taken: int = 0
+    break_details: List[Dict[str, Any]] = []
+    last_support_prompt_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InterviewPauseRequest(BaseModel):
+    """Request model for pausing/resuming an interview."""
+    paused: bool
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InterviewPauseResponse(BaseModel):
+    """Response model for pause state changes."""
+    session_id: str
+    paused: bool
+    message: str
+    timestamp: datetime
+
+
+class EmotionalSupportRequest(BaseModel):
+    """Request model for getting AI emotional support prompt."""
+    context: str  # Current interview context/situation
+    trigger: Optional[str] = None  # distress, confusion, fatigue, encouragement
+
+
+class EmotionalSupportResponse(BaseModel):
+    """Response model for emotional support prompts."""
+    prompt: str
+    trigger: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InterviewProgressResponse(BaseModel):
+    """Response model for interview progress with comfort metrics."""
+    session_id: str
+    statement_count: int
+    scene_version_count: int
+    estimated_completion_percent: float
+    phase: str  # intro, narrative, details, review
+    is_paused: bool
+    total_duration_seconds: int
+    active_duration_seconds: int
+    breaks_taken: int

@@ -18,6 +18,11 @@ class AdminPortal {
         this.chartInstances = {};
         this.incidentMap = null;
         this.mapMarkers = [];
+        this.dashboardStats = null;
+        this.dashboardMapInstance = null;
+        this.dashboardMapMarkers = [];
+        this.investigators = [];
+        this.workloadData = null;
         
         this.checkAuth();
     }
@@ -195,6 +200,9 @@ class AdminPortal {
         document.getElementById('simple-timeline-btn')?.addEventListener('click', () => this.switchTimelineView('simple'));
         document.getElementById('interactive-timeline-btn')?.addEventListener('click', () => this.switchTimelineView('interactive'));
         
+        // Add investigator button
+        document.getElementById('add-investigator-btn')?.addEventListener('click', () => this.showInvestigatorModal());
+        
         // Initialize timeline visualization
         this.timelineViz = null;
     }
@@ -207,11 +215,14 @@ class AdminPortal {
         
         document.getElementById('cases-section').style.display = view === 'cases' ? '' : 'none';
         document.getElementById('reports-section').style.display = view === 'reports' ? '' : 'none';
+        document.getElementById('workload-section').style.display = view === 'workload' ? '' : 'none';
         document.getElementById('dashboard-view').style.display = view === 'dashboard' ? '' : 'none';
         document.getElementById('map-view').style.display = view === 'map' ? '' : 'none';
         
         if (view === 'reports') {
             this.renderReports();
+        } else if (view === 'workload') {
+            this.loadWorkload();
         } else if (view === 'dashboard') {
             this.renderDashboardCharts();
         } else if (view === 'map') {
@@ -346,6 +357,10 @@ class AdminPortal {
                     return new Date(b.created_at || 0) - new Date(a.created_at || 0);
                 case 'date-asc':
                     return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+                case 'priority-desc':
+                    return (b.priority_score || 0) - (a.priority_score || 0);
+                case 'priority-asc':
+                    return (a.priority_score || 0) - (b.priority_score || 0);
                 case 'witnesses-desc':
                     return (b.report_count || 0) - (a.report_count || 0);
                 case 'scenes-desc':
@@ -414,6 +429,11 @@ class AdminPortal {
         // Time since last update
         const timeSinceStr = this.timeSince(caseData.updated_at || caseData.created_at);
         
+        // Priority badge
+        const priorityLabel = caseData.priority_label || 'normal';
+        const priorityScore = caseData.priority_score != null ? Math.round(caseData.priority_score) : null;
+        const priorityBadge = this.renderPriorityBadge(priorityLabel, priorityScore);
+        
         return `
             <div class="case-card case-card-enhanced" data-case-id="${caseData.id}">
                 <input type="checkbox" class="case-checkbox" data-case-id="${caseData.id}" 
@@ -427,6 +447,7 @@ class AdminPortal {
                             <div class="case-id">${caseData.case_number || caseData.id}</div>
                         </div>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
+                            ${priorityBadge}
                             <span class="incident-type-badge">${incidentIcon} ${incidentType}</span>
                             <div class="case-status-badge ${statusClass}">
                                 ${status}
@@ -475,9 +496,69 @@ class AdminPortal {
                         <span class="case-stat-value">${reportCount}</span>
                         <span class="case-stat-label">Reports</span>
                     </div>
+                    ${priorityScore != null ? `
+                    <div class="case-stat priority-stat">
+                        <span class="case-stat-value priority-${priorityLabel}">${priorityScore}</span>
+                        <span class="case-stat-label">Priority</span>
+                    </div>` : ''}
                 </div>
             </div>
         `;
+    }
+    
+    renderPriorityBadge(label, score) {
+        const icons = {
+            critical: '🔴',
+            high: '🟠',
+            medium: '🟡',
+            normal: '🟢',
+            low: '⚪'
+        };
+        const icon = icons[label] || '⚪';
+        const title = score != null ? `Priority: ${label} (${score}/100)` : `Priority: ${label}`;
+        return `<span class="priority-badge priority-${label}" title="${title}">${icon}</span>`;
+    }
+    
+    renderPrioritySection(caseData) {
+        const section = document.getElementById('detail-priority-section');
+        if (!section) return;
+        
+        const priority = caseData.priority || {};
+        const totalScore = priority.total_score != null ? Math.round(priority.total_score) : '-';
+        const label = priority.priority_label || 'normal';
+        
+        // Update score display
+        const scoreEl = document.getElementById('detail-priority-score');
+        if (scoreEl) {
+            scoreEl.textContent = totalScore;
+            scoreEl.className = `priority-score-value priority-${label}`;
+        }
+        
+        // Update label badge
+        const labelEl = document.getElementById('detail-priority-label');
+        if (labelEl) {
+            const icons = { critical: '🔴', high: '🟠', medium: '🟡', normal: '🟢', low: '⚪' };
+            labelEl.textContent = `${icons[label] || ''} ${label.toUpperCase()}`;
+            labelEl.className = `priority-label-badge priority-${label}`;
+        }
+        
+        // Update breakdown
+        document.getElementById('priority-severity').textContent = 
+            priority.severity_score != null ? Math.round(priority.severity_score) : '-';
+        document.getElementById('priority-age').textContent = 
+            priority.age_score != null ? Math.round(priority.age_score) : '-';
+        document.getElementById('priority-solvability').textContent = 
+            priority.solvability_score != null ? Math.round(priority.solvability_score) : '-';
+        document.getElementById('priority-witnesses').textContent = 
+            priority.witness_score != null ? Math.round(priority.witness_score) : '-';
+        
+        // Update factors list
+        const factorsList = document.getElementById('detail-priority-factors');
+        if (factorsList && priority.factors) {
+            factorsList.innerHTML = priority.factors
+                .map(f => `<span class="priority-factor-tag">${f}</span>`)
+                .join('');
+        }
     }
     
     renderReports() {
@@ -551,6 +632,11 @@ class AdminPortal {
         return icons[sourceType] || '💬';
     }
     
+    openCaseDetail(caseId) {
+        // Wrapper for showCaseDetail - useful for onclick handlers
+        this.showCaseDetail(caseId);
+    }
+    
     async showCaseDetail(caseId) {
         try {
             const response = await this.fetchWithTimeout(`/api/cases/${caseId}`);
@@ -570,6 +656,9 @@ class AdminPortal {
             document.getElementById('detail-case-status').textContent = caseData.status || 'active';
             document.getElementById('detail-created').textContent = this.formatDateTime(caseData.created_at);
             document.getElementById('detail-updated').textContent = this.formatDateTime(caseData.updated_at || caseData.created_at);
+            
+            // Priority section
+            this.renderPrioritySection(caseData);
             
             // Timeframe
             const tfSection = document.getElementById('detail-timeframe-section');
@@ -618,11 +707,17 @@ class AdminPortal {
                 statusSelect.value = caseData.status || 'open';
             }
             
-            // Set assigned to
-            const assignInput = document.getElementById('detail-assigned-to');
-            if (assignInput) {
-                assignInput.value = caseData.metadata?.assigned_to || '';
-            }
+            // Populate investigators dropdown and load assignment data
+            await this.populateInvestigatorSelect();
+            await this.loadCaseAssignmentHistory(caseId);
+            
+            // Show current assignment if exists
+            const currentAssignment = caseData.metadata?.assignment_id ? {
+                investigator_id: caseData.metadata.assigned_investigator_id,
+                investigator_name: caseData.metadata.assigned_to,
+                is_active: true
+            } : null;
+            this.updateAssignmentUI(currentAssignment, null);
             
             // Key elements
             const elementsSection = document.getElementById('detail-key-elements-section');
@@ -638,6 +733,11 @@ class AdminPortal {
             // Related cases
             this.renderRelatedCases(caseData.related_cases || []);
             this.setupRelatedCasesHandlers();
+            this.setupPatternDetectionHandlers();
+            
+            // Reset pattern display
+            document.getElementById('patterns-container').style.display = 'none';
+            document.getElementById('patterns-empty').style.display = 'block';
             
             this.showModal('case-detail-modal');
         } catch (error) {
@@ -854,6 +954,107 @@ class AdminPortal {
     navigateToRelatedCase(caseId) {
         this.hideModal('case-detail-modal');
         setTimeout(() => this.showCaseDetail(caseId), 300);
+    }
+    
+    // ── Pattern Detection ─────────────────────────────────────────
+    
+    setupPatternDetectionHandlers() {
+        document.getElementById('analyze-patterns-btn')?.addEventListener('click', () => this.analyzePatterns());
+    }
+    
+    async analyzePatterns() {
+        if (!this.currentCase) return;
+        
+        const btn = document.getElementById('analyze-patterns-btn');
+        const container = document.getElementById('patterns-container');
+        const emptyState = document.getElementById('patterns-empty');
+        
+        try {
+            btn.disabled = true;
+            btn.textContent = '⏳ Analyzing...';
+            
+            const response = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/patterns`);
+            if (!response.ok) throw new Error('Failed to analyze patterns');
+            
+            const data = await response.json();
+            const patterns = data.patterns;
+            
+            // Hide empty state
+            emptyState.style.display = 'none';
+            container.style.display = 'flex';
+            
+            // Render time patterns
+            this.renderPatternList(
+                'time-patterns-list',
+                patterns.time_matches || [],
+                'time',
+                match => `Same day (${match.match_reason || 'Unknown'})`,
+                match => `${match.case_number} - ${match.title}`
+            );
+            
+            // Render location patterns
+            this.renderPatternList(
+                'location-patterns-list',
+                patterns.location_matches || [],
+                'location',
+                match => `${match.location || 'Same area'}`,
+                match => `${match.case_number} - ${match.title}`
+            );
+            
+            // Render MO patterns
+            this.renderPatternList(
+                'mo-patterns-list',
+                patterns.mo_matches || [],
+                'mo',
+                match => `${match.incident_type || 'Similar method'}`,
+                match => `${match.case_number} - ${match.title}`
+            );
+            
+            // Render semantic patterns
+            this.renderPatternList(
+                'semantic-patterns-list',
+                patterns.semantic_matches || [],
+                'semantic',
+                match => `${Math.round((match.similarity || 0) * 100)}% similar`,
+                match => `${match.case_number} - ${match.title}`
+            );
+            
+            btn.textContent = '📊 Analyze Patterns';
+            btn.disabled = false;
+            
+        } catch (error) {
+            console.error('Error analyzing patterns:', error);
+            this.showToast('Failed to analyze patterns', 'error');
+            btn.textContent = '📊 Analyze Patterns';
+            btn.disabled = false;
+        }
+    }
+    
+    renderPatternList(containerId, matches, type, getDescription, getTitle) {
+        const list = document.getElementById(containerId);
+        if (!list) return;
+        
+        if (!matches || matches.length === 0) {
+            list.innerHTML = '<p class="pattern-empty">No patterns found</p>';
+            return;
+        }
+        
+        const confidenceClass = matches.length >= 3 ? 'high-confidence' : 
+                               matches.length >= 2 ? 'medium-confidence' : '';
+        
+        list.innerHTML = matches.map(match => `
+            <div class="pattern-item ${confidenceClass}">
+                <div class="pattern-info">
+                    <div class="pattern-description">${getTitle(match)}</div>
+                    <div class="pattern-details">
+                        <span class="pattern-badge ${type}">${getDescription(match)}</span>
+                    </div>
+                </div>
+                <span class="pattern-case-link" onclick="window.adminPortal.navigateToRelatedCase('${match.case_id}')">
+                    View →
+                </span>
+            </div>
+        `).join('');
     }
     
     renderCaseReports(reports) {
@@ -1290,16 +1491,383 @@ class AdminPortal {
     // #31 Dashboard Charts
     // ======================================
     
-    renderDashboardCharts() {
+    async renderDashboardCharts() {
         if (typeof Chart === 'undefined') return;
         
         Chart.defaults.color = '#9ca3af';
         Chart.defaults.borderColor = 'rgba(255,255,255,0.1)';
         
+        // Fetch comprehensive dashboard stats
+        try {
+            const response = await this.fetchWithTimeout('/api/admin/dashboard/stats');
+            if (response.ok) {
+                this.dashboardStats = await response.json();
+                this.renderDashboardFromStats();
+            } else {
+                // Fallback to local data
+                this.renderDashboardFallback();
+            }
+        } catch (error) {
+            console.warn('Failed to fetch dashboard stats, using local data:', error);
+            this.renderDashboardFallback();
+        }
+        
+        // Setup period toggle buttons
+        this.setupDashboardControls();
+    }
+    
+    setupDashboardControls() {
+        document.querySelectorAll('.chart-period-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.chart-period-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.renderTrendChart(e.target.dataset.period);
+            });
+        });
+    }
+    
+    renderDashboardFromStats() {
+        const stats = this.dashboardStats;
+        if (!stats) return;
+        
+        // Update summary cards
+        document.getElementById('dash-total-cases').textContent = stats.summary?.total_cases || 0;
+        document.getElementById('dash-cases-today').textContent = stats.summary?.cases_today || 0;
+        document.getElementById('dash-cases-week').textContent = stats.summary?.cases_this_week || 0;
+        document.getElementById('dash-avg-response').textContent = stats.response_times?.average_hours?.toFixed(1) || '-';
+        
+        // Render all charts
+        this.renderTrendChart('daily');
+        this.renderIncidentTypesChartFromStats();
+        this.renderCaseStatusChartFromStats();
+        this.renderResponseTimeChart();
+        this.renderSourceDistributionChartFromStats();
+        this.renderHourDistributionChart();
+        this.renderDayDistributionChart();
+        this.renderDashboardMap();
+        this.renderTopLocations();
+    }
+    
+    renderDashboardFallback() {
+        // Use local case data
         this.renderCasesTimelineChart();
         this.renderSourceDistributionChart();
         this.renderIncidentTypesChart();
         this.renderCaseStatusChart();
+    }
+    
+    renderTrendChart(period = 'daily') {
+        this.destroyChart('casesTimeline');
+        const ctx = document.getElementById('cases-timeline-chart');
+        if (!ctx || !this.dashboardStats?.trends) return;
+        
+        const trends = this.dashboardStats.trends;
+        let data, labels;
+        
+        switch (period) {
+            case 'weekly':
+                labels = (trends.weekly || []).map(d => d.week.replace('W', 'Week '));
+                data = (trends.weekly || []).map(d => d.count);
+                break;
+            case 'monthly':
+                labels = (trends.monthly || []).map(d => {
+                    const [y, m] = d.month.split('-');
+                    return new Date(y, parseInt(m) - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                });
+                data = (trends.monthly || []).map(d => d.count);
+                break;
+            default: // daily
+                labels = (trends.daily || []).map(d => {
+                    const date = new Date(d.date);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                data = (trends.daily || []).map(d => d.count);
+        }
+        
+        this.chartInstances['casesTimeline'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Cases',
+                    data,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#1e2d3d',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+    
+    renderIncidentTypesChartFromStats() {
+        this.destroyChart('incidentTypes');
+        const ctx = document.getElementById('incident-types-chart');
+        if (!ctx || !this.dashboardStats?.by_type) return;
+        
+        const typeData = this.dashboardStats.by_type;
+        const labels = Object.keys(typeData).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+        const data = Object.values(typeData);
+        const colors = ['#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#22c55e', '#ec4899'];
+        
+        this.chartInstances['incidentTypes'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: colors.slice(0, data.length),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } }
+                }
+            }
+        });
+    }
+    
+    renderCaseStatusChartFromStats() {
+        this.destroyChart('caseStatus');
+        const ctx = document.getElementById('case-status-chart');
+        if (!ctx || !this.dashboardStats?.by_status) return;
+        
+        const statusData = this.dashboardStats.by_status;
+        const statusLabels = { open: 'Open', under_review: 'Under Review', closed: 'Closed' };
+        const statusColors = { open: '#22c55e', under_review: '#f59e0b', closed: '#64748b' };
+        
+        const labels = Object.keys(statusData).map(s => statusLabels[s] || s);
+        const data = Object.values(statusData);
+        const colors = Object.keys(statusData).map(s => statusColors[s] || '#94a3b8');
+        
+        this.chartInstances['caseStatus'] = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } }
+                }
+            }
+        });
+    }
+    
+    renderResponseTimeChart() {
+        this.destroyChart('responseTime');
+        const ctx = document.getElementById('response-time-chart');
+        if (!ctx || !this.dashboardStats?.response_times?.by_type) return;
+        
+        const responseData = this.dashboardStats.response_times.by_type;
+        const labels = Object.keys(responseData).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+        const data = Object.values(responseData);
+        
+        // Color based on response time (green < 24h, yellow < 48h, red > 48h)
+        const colors = data.map(h => h < 24 ? '#22c55e' : h < 48 ? '#f59e0b' : '#ef4444');
+        
+        this.chartInstances['responseTime'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Avg Hours',
+                    data,
+                    backgroundColor: colors,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Hours' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+    
+    renderSourceDistributionChartFromStats() {
+        this.destroyChart('sourceDist');
+        const ctx = document.getElementById('source-distribution-chart');
+        if (!ctx || !this.dashboardStats?.by_source) return;
+        
+        const sourceData = this.dashboardStats.by_source;
+        const sourceLabels = { chat: '💬 Chat', phone: '📞 Phone', voice: '🎙️ Voice', email: '📧 Email' };
+        const sourceColors = { chat: '#3b82f6', phone: '#22c55e', voice: '#f59e0b', email: '#ef4444' };
+        
+        const labels = Object.keys(sourceData).map(s => sourceLabels[s] || s);
+        const data = Object.values(sourceData);
+        const colors = Object.keys(sourceData).map(s => sourceColors[s] || '#94a3b8');
+        
+        this.chartInstances['sourceDist'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true } }
+                }
+            }
+        });
+    }
+    
+    renderHourDistributionChart() {
+        this.destroyChart('hourDist');
+        const ctx = document.getElementById('hour-distribution-chart');
+        if (!ctx || !this.dashboardStats?.time_analysis?.by_hour) return;
+        
+        const hourData = this.dashboardStats.time_analysis.by_hour;
+        const labels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+        const data = labels.map((_, i) => hourData[i] || 0);
+        
+        this.chartInstances['hourDist'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Incidents',
+                    data,
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    borderRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    x: { 
+                        grid: { display: false },
+                        ticks: { maxRotation: 45, minRotation: 45, callback: (val, idx) => idx % 3 === 0 ? labels[idx] : '' }
+                    }
+                }
+            }
+        });
+    }
+    
+    renderDayDistributionChart() {
+        this.destroyChart('dayDist');
+        const ctx = document.getElementById('day-distribution-chart');
+        if (!ctx || !this.dashboardStats?.time_analysis?.by_day_of_week) return;
+        
+        const dayData = this.dashboardStats.time_analysis.by_day_of_week;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const data = days.map(d => dayData[d] || 0);
+        
+        this.chartInstances['dayDist'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: days.map(d => d.slice(0, 3)),
+                datasets: [{
+                    label: 'Incidents',
+                    data,
+                    backgroundColor: '#8b5cf6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+    
+    renderDashboardMap() {
+        const mapContainer = document.getElementById('dashboard-map');
+        if (!mapContainer || !this.dashboardStats?.geographic?.geo_points) return;
+        
+        // Initialize map if not already
+        if (!this.dashboardMapInstance) {
+            this.dashboardMapInstance = L.map('dashboard-map').setView([39.8283, -98.5795], 4);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(this.dashboardMapInstance);
+        }
+        
+        // Clear existing markers
+        if (this.dashboardMapMarkers) {
+            this.dashboardMapMarkers.forEach(m => m.remove());
+        }
+        this.dashboardMapMarkers = [];
+        
+        const points = this.dashboardStats.geographic.geo_points;
+        if (points.length === 0) {
+            mapContainer.innerHTML = '<div class="empty-state" style="padding: 2rem;">No geographic data available</div>';
+            return;
+        }
+        
+        const typeColors = { accident: '#f59e0b', crime: '#ef4444', incident: '#3b82f6', other: '#8b5cf6' };
+        const bounds = [];
+        
+        points.forEach(p => {
+            const color = typeColors[p.type?.toLowerCase()] || '#3b82f6';
+            const marker = L.circleMarker([p.lat, p.lng], {
+                radius: 8,
+                fillColor: color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(this.dashboardMapInstance);
+            
+            marker.bindPopup(`<b>${p.title || 'Case'}</b><br>${p.type || 'Unknown type'}`);
+            this.dashboardMapMarkers.push(marker);
+            bounds.push([p.lat, p.lng]);
+        });
+        
+        if (bounds.length > 0) {
+            this.dashboardMapInstance.fitBounds(bounds, { padding: [20, 20] });
+        }
+    }
+    
+    renderTopLocations() {
+        const container = document.getElementById('top-locations-list');
+        if (!container || !this.dashboardStats?.geographic?.top_locations) return;
+        
+        const locations = this.dashboardStats.geographic.top_locations;
+        if (locations.length === 0) {
+            container.innerHTML = '<p class="empty-state">No location data</p>';
+            return;
+        }
+        
+        container.innerHTML = locations.slice(0, 8).map(loc => `
+            <div class="location-item">
+                <span class="location-name" title="${loc.location}">${loc.location}</span>
+                <span class="location-count">${loc.count}</span>
+            </div>
+        `).join('');
     }
     
     destroyChart(key) {
@@ -1516,7 +2084,7 @@ class AdminPortal {
     }
     
     // ======================================
-    // #34 Case Assignment
+    // #34 Case Assignment (Enhanced with Investigators)
     // ======================================
     
     async assignCurrentCase(value) {
@@ -1540,6 +2108,301 @@ class AdminPortal {
             await this.loadCases();
         } catch (e) {
             this.showToast('Failed to assign case', 'error');
+        }
+    }
+    
+    async loadInvestigators() {
+        try {
+            const resp = await this.fetchWithTimeout('/api/investigators?active_only=true');
+            if (resp.ok) {
+                const data = await resp.json();
+                this.investigators = data.investigators || [];
+            }
+        } catch (e) {
+            console.error('Failed to load investigators:', e);
+        }
+    }
+    
+    async populateInvestigatorSelect() {
+        await this.loadInvestigators();
+        const select = document.getElementById('investigator-select');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">-- Select Investigator --</option>';
+        this.investigators.forEach(inv => {
+            const workload = inv.active_cases !== undefined ? ` (${inv.active_cases}/${inv.max_cases})` : '';
+            const opt = document.createElement('option');
+            opt.value = inv.id;
+            opt.textContent = `${inv.name}${inv.badge_number ? ` #${inv.badge_number}` : ''}${workload}`;
+            select.appendChild(opt);
+        });
+    }
+    
+    async assignCaseToInvestigator() {
+        if (!this.currentCase) return;
+        const select = document.getElementById('investigator-select');
+        const investigatorId = select?.value;
+        
+        if (!investigatorId) {
+            this.showToast('Please select an investigator', 'warning');
+            return;
+        }
+        
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ investigator_id: investigatorId, assigned_by: 'admin' })
+            });
+            
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || 'Assignment failed');
+            }
+            
+            const data = await resp.json();
+            this.showToast(`Case assigned to ${data.investigator?.name}`, 'success');
+            await this.loadCases();
+            await this.loadCaseAssignmentHistory(this.currentCase.id);
+            this.updateAssignmentUI(data.assignment, data.investigator);
+        } catch (e) {
+            this.showToast(e.message || 'Failed to assign case', 'error');
+        }
+    }
+    
+    async unassignCase() {
+        if (!this.currentCase) return;
+        
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${this.currentCase.id}/assign`, {
+                method: 'DELETE'
+            });
+            
+            if (!resp.ok) throw new Error('Failed to unassign');
+            
+            this.showToast('Case unassigned', 'success');
+            await this.loadCases();
+            this.updateAssignmentUI(null, null);
+        } catch (e) {
+            this.showToast('Failed to unassign case', 'error');
+        }
+    }
+    
+    async loadCaseAssignmentHistory(caseId) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/cases/${caseId}/assignments`);
+            if (!resp.ok) return;
+            
+            const data = await resp.json();
+            this.renderAssignmentHistory(data);
+        } catch (e) {
+            console.error('Failed to load assignment history:', e);
+        }
+    }
+    
+    renderAssignmentHistory(data) {
+        const section = document.getElementById('assignment-history-section');
+        const list = document.getElementById('assignment-history-list');
+        if (!section || !list) return;
+        
+        if (!data.assignment_history || data.assignment_history.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+        
+        section.style.display = 'block';
+        list.innerHTML = data.assignment_history.map(a => `
+            <div class="assignment-history-item ${a.is_active ? 'active' : 'inactive'}">
+                <span class="name">${a.investigator_name} ${a.is_active ? '✓' : ''}</span>
+                <span class="date">${this.formatDate(a.assigned_at)}${a.unassigned_at ? ' - ' + this.formatDate(a.unassigned_at) : ''}</span>
+            </div>
+        `).join('');
+    }
+    
+    updateAssignmentUI(assignment, investigator) {
+        const currentAssignment = document.getElementById('current-assignment');
+        const assigneeName = document.getElementById('current-assignee-name');
+        const unassignBtn = document.getElementById('unassign-btn');
+        const select = document.getElementById('investigator-select');
+        
+        if (assignment && assignment.is_active) {
+            if (currentAssignment) currentAssignment.style.display = 'block';
+            if (assigneeName) assigneeName.textContent = investigator?.name || assignment.investigator_name;
+            if (unassignBtn) unassignBtn.style.display = 'inline-block';
+            if (select) select.value = assignment.investigator_id || '';
+        } else {
+            if (currentAssignment) currentAssignment.style.display = 'none';
+            if (unassignBtn) unassignBtn.style.display = 'none';
+            if (select) select.value = '';
+        }
+    }
+    
+    // ======================================
+    // Workload View
+    // ======================================
+    
+    async loadWorkload() {
+        try {
+            const resp = await this.fetchWithTimeout('/api/workload');
+            if (!resp.ok) throw new Error('Failed to load workload');
+            
+            this.workloadData = await resp.json();
+            this.renderWorkload();
+        } catch (e) {
+            console.error('Failed to load workload:', e);
+            document.getElementById('investigators-grid').innerHTML = 
+                '<div class="empty-state">Failed to load workload data</div>';
+        }
+    }
+    
+    renderWorkload() {
+        if (!this.workloadData) return;
+        
+        // Update stats
+        const setEl = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        
+        setEl('stat-total-investigators', this.workloadData.active_investigators);
+        setEl('stat-active-cases', this.workloadData.total_active_cases);
+        setEl('stat-unassigned-cases', this.workloadData.unassigned_cases);
+        setEl('stat-avg-utilization', `${this.workloadData.avg_utilization}%`);
+        
+        // Render investigators grid
+        const grid = document.getElementById('investigators-grid');
+        if (!grid) return;
+        
+        if (!this.workloadData.investigators || this.workloadData.investigators.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <p>No investigators configured yet.</p>
+                    <button class="btn btn-primary" onclick="window.adminPortal?.showInvestigatorModal()">➕ Add Investigator</button>
+                </div>`;
+            return;
+        }
+        
+        grid.innerHTML = this.workloadData.investigators.map(inv => this.renderInvestigatorCard(inv)).join('');
+    }
+    
+    renderInvestigatorCard(inv) {
+        const utilization = inv.utilization_percent || 0;
+        const barClass = utilization > 80 ? 'high' : (utilization > 50 ? 'medium' : 'low');
+        
+        const casesHtml = (inv.cases || []).map(c => 
+            `<span class="case-chip" onclick="window.adminPortal?.openCaseDetail('${c.case_id}')" title="${c.title}">${c.case_number}</span>`
+        ).join('');
+        
+        return `
+            <div class="investigator-card" data-investigator-id="${inv.investigator_id}">
+                <div class="investigator-header">
+                    <div class="investigator-avatar">👮</div>
+                    <div class="investigator-info">
+                        <h4>${inv.investigator_name}</h4>
+                        ${inv.badge_number ? `<span class="badge-number">#${inv.badge_number}</span>` : ''}
+                    </div>
+                </div>
+                ${inv.department ? `<div class="investigator-meta"><span>📍 ${inv.department}</span></div>` : ''}
+                <div class="workload-bar">
+                    <div class="workload-bar-fill ${barClass}" style="width: ${utilization}%"></div>
+                </div>
+                <div class="workload-text">
+                    <span>${inv.active_cases} / ${inv.max_cases} cases</span>
+                    <span>${utilization}% capacity</span>
+                </div>
+                ${casesHtml ? `<div class="investigator-cases">${casesHtml}</div>` : ''}
+                <div class="investigator-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.editInvestigator('${inv.investigator_id}')">✏️ Edit</button>
+                </div>
+            </div>
+        `;
+    }
+    
+    showInvestigatorModal(investigator = null) {
+        const modal = document.getElementById('investigator-modal');
+        const title = document.getElementById('investigator-modal-title');
+        const form = document.getElementById('investigator-form');
+        
+        if (!modal || !form) return;
+        
+        // Reset form
+        form.reset();
+        document.getElementById('inv-edit-id').value = '';
+        document.getElementById('inv-max-cases').value = '10';
+        
+        if (investigator) {
+            title.textContent = 'Edit Investigator';
+            document.getElementById('inv-edit-id').value = investigator.id || investigator.investigator_id;
+            document.getElementById('inv-name').value = investigator.name || investigator.investigator_name || '';
+            document.getElementById('inv-badge').value = investigator.badge_number || '';
+            document.getElementById('inv-email').value = investigator.email || '';
+            document.getElementById('inv-department').value = investigator.department || '';
+            document.getElementById('inv-max-cases').value = investigator.max_cases || 10;
+        } else {
+            title.textContent = 'Add Investigator';
+        }
+        
+        modal.style.display = 'flex';
+        
+        // Setup form submit handler
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            this.saveInvestigator();
+        };
+    }
+    
+    closeInvestigatorModal() {
+        const modal = document.getElementById('investigator-modal');
+        if (modal) modal.style.display = 'none';
+    }
+    
+    async editInvestigator(investigatorId) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/investigators/${investigatorId}`);
+            if (!resp.ok) throw new Error('Failed to load investigator');
+            const inv = await resp.json();
+            this.showInvestigatorModal(inv);
+        } catch (e) {
+            this.showToast('Failed to load investigator', 'error');
+        }
+    }
+    
+    async saveInvestigator() {
+        const editId = document.getElementById('inv-edit-id').value;
+        const data = {
+            name: document.getElementById('inv-name').value,
+            badge_number: document.getElementById('inv-badge').value || null,
+            email: document.getElementById('inv-email').value || null,
+            department: document.getElementById('inv-department').value || null,
+            max_cases: parseInt(document.getElementById('inv-max-cases').value) || 10
+        };
+        
+        try {
+            let resp;
+            if (editId) {
+                resp = await this.fetchWithTimeout(`/api/investigators/${editId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            } else {
+                resp = await this.fetchWithTimeout('/api/investigators', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            }
+            
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || 'Failed to save');
+            }
+            
+            this.showToast(editId ? 'Investigator updated' : 'Investigator created', 'success');
+            this.closeInvestigatorModal();
+            await this.loadWorkload();
+        } catch (e) {
+            this.showToast(e.message || 'Failed to save investigator', 'error');
         }
     }
     

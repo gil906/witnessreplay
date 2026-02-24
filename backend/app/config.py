@@ -51,11 +51,22 @@ class Settings(BaseSettings):
     rpd_budget_exceed_action: str = "reject"  # reject, queue, or allow
     rpd_budget_windows: str = ""  # JSON array of window configs (optional)
     
+    # Multi-Model Verification
+    multi_model_verification_enabled: bool = True  # Enable cross-model verification
+    
     # Quota Alerts
     quota_alert_threshold: float = 0.80  # Default 80% warning threshold
     quota_alert_critical_threshold: float = 0.95  # Default 95% critical threshold
     quota_alert_webhook_url: str = ""  # Webhook URL for alerts
     quota_alert_check_interval: int = 60  # Seconds between periodic checks
+    
+    # Request Batching
+    batch_embedding_size: int = 20  # Max embedding requests per batch
+    batch_embedding_wait_ms: int = 100  # Max wait time for batch to fill
+    batch_embedding_enabled: bool = True  # Enable embedding batching
+    batch_classification_size: int = 10  # Max classification requests per batch
+    batch_classification_wait_ms: int = 150  # Max wait time for batch to fill
+    batch_classification_enabled: bool = True  # Enable classification batching
     
     # Admin Configuration
     admin_password: str = "change_this_password_immediately"
@@ -66,6 +77,10 @@ class Settings(BaseSettings):
     # Session Configuration
     session_timeout_minutes: int = 60
     max_session_size_mb: int = 100
+    
+    # AI Confidence Thresholds
+    confidence_threshold: float = 0.7  # Minimum confidence for auto-acceptance
+    low_confidence_threshold: float = 0.4  # Below this is flagged as low confidence
     
     model_config = SettingsConfigDict(
         env_file=".env",

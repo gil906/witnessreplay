@@ -37,6 +37,14 @@ Phase 3 - Detail Refinement (exchanges 7+):
   - Probe timeline: "Did this happen before or after...?"
   - Gently test reliability: "You mentioned X earlier, can you tell me more about that?"
 
+TIMELINE DISAMBIGUATION:
+When witnesses use vague time references, clarify them naturally:
+- Vague phrases to watch for: "a few minutes later", "shortly after", "at some point", "then"
+- Ask for anchors: "When you say 'a few minutes later', what had just happened before that?"
+- Clarify sequences: "So just to confirm - first X happened, then Y? Did I get that right?"
+- Estimate durations: "Was that more like 30 seconds or several minutes?"
+- Build relative timeline: Connect events to anchor points (specific times or memorable moments)
+
 Phase 4 - Scene Generation:
   - When you have enough detail (4+ substantial facts about the scene), say:
     "I think I have enough to create an initial reconstruction. Let me generate that for you."
@@ -133,6 +141,12 @@ CLARIFICATION_PROMPTS = {
     "action": "What was {element} doing? Can you describe the movement?",
     "sequence": "Did this happen before or after {reference_event}?",
     "confirmation": "Just to confirm: {statement}. Is that correct?",
+    # Timeline disambiguation prompts
+    "timeline_anchor": "When you say {time_ref}, what had just happened before that moment?",
+    "timeline_duration": "You mentioned {time_ref}. Can you estimate roughly how long that was — seconds, a minute, or several minutes?",
+    "timeline_sequence": "Help me understand the sequence: which came first — {event_a} or {event_b}?",
+    "timeline_confirm": "So just to confirm: first {event_a}, then {event_b}. Is that correct?",
+    "timeline_gap": "Roughly how much time passed between {event_a} and {event_b}?",
 }
 
 CORRECTION_ACKNOWLEDGMENT = [
@@ -158,6 +172,7 @@ CONTRADICTION_FOLLOW_UP = """I noticed something I want to clarify. Earlier you 
 Could you help me understand which is more accurate? Take your time — it's completely normal for details to shift as you recall them."""
 
 # Prompt for extracting structured scene information
+# Note: Few-shot examples can be added via build_scene_extraction_prompt()
 SCENE_EXTRACTION_PROMPT = """Analyze the entire conversation and extract ALL structured scene information.
 
 Return a JSON object with these fields:
@@ -204,6 +219,93 @@ Return a JSON object with these fields:
 
 Be thorough - extract every detail mentioned, even minor ones. Rate confidence based on specificity and consistency."""
 
+
+def build_scene_extraction_prompt(
+    include_examples: bool = True,
+    incident_type: str = None,
+    tags: list = None,
+    compact: bool = False
+) -> str:
+    """Build a scene extraction prompt with optional few-shot examples.
+    
+    Args:
+        include_examples: Whether to include few-shot examples
+        incident_type: Optional incident type to filter examples (e.g., 'traffic_accident')
+        tags: Optional list of tags to filter examples (e.g., ['weapon', 'vehicle'])
+        compact: Use compact format for examples (saves tokens)
+        
+    Returns:
+        Complete extraction prompt string with examples if requested
+    """
+    base_prompt = SCENE_EXTRACTION_PROMPT
+    
+    if not include_examples:
+        return base_prompt
+    
+    try:
+        from app.agents.few_shot_examples import (
+            format_examples_for_extraction_prompt,
+            IncidentType,
+        )
+        
+        # Map string incident type to enum if provided
+        incident_type_enum = None
+        if incident_type:
+            type_mapping = {
+                "traffic_accident": IncidentType.TRAFFIC_ACCIDENT,
+                "armed_robbery": IncidentType.ARMED_ROBBERY,
+                "assault": IncidentType.ASSAULT,
+                "hit_and_run": IncidentType.HIT_AND_RUN,
+                "theft": IncidentType.THEFT,
+                "suspicious_activity": IncidentType.SUSPICIOUS_ACTIVITY,
+            }
+            incident_type_enum = type_mapping.get(incident_type.lower())
+        
+        examples_section = format_examples_for_extraction_prompt(
+            incident_type=incident_type_enum,
+            tags=tags,
+            limit=2,
+            compact=compact,
+        )
+        
+        if examples_section:
+            return base_prompt + "\n" + examples_section
+        
+    except ImportError:
+        # Fall back to base prompt if examples module not available
+        pass
+    
+    return base_prompt
+
+# Optimized prompt (moderate compression - ~40% token reduction)
+SYSTEM_PROMPT_OPTIMIZED = """You are Detective Ray, AI crime scene reconstruction specialist.
+
+IDENTITY: Professional, calm, empathetic. Patient with traumatized witnesses. Methodical. Never judgmental.
+
+MULTILINGUAL: Respond in witness's language. Handle code-switching.
+
+INTERVIEW PHASES:
+1. Rapport (1-2 exchanges): Greet, ask where they were, what caught their attention.
+2. Systematic (3-6): ONE question at a time. Cover: Location→People→Vehicles→Objects→Timeline→Environment. Use sensory questions.
+3. Refinement (7+): Clarify colors, sizes, positions, distances, timing.
+4. Generation: When 4+ facts gathered, generate scene. Ask "How does this compare?"
+
+TOPIC BRANCHES:
+- Violence: What happened? Injuries? Intervention?
+- Weapon: Describe it. Pointed at anyone? Where did it end up?
+- Vehicle: Color/make/model? Plate? Direction?
+- Suspect: Height/build? Clothing? Marks/tattoos?
+- Escape: Direction? Running/walking? Got into vehicle?
+- Multiple people: How many? Know each other?
+
+TRACK ELEMENTS: type|desc|position|color|size|movement|confidence
+
+CONTRADICTIONS: Note without alarm. Say "I want to make sure I have this right..." Present both versions.
+
+FORMAT: 2-3 sentences max. Conversational. Show active listening. End with follow-up question OR indicate scene generation ready. No bullet points.
+
+LEGAL: No leading questions. No suggesting details. No opinions on guilt. Record exactly what witness says."""
+
 # Compact prompt variants for lightweight models (gemma-3, low TPM)
 SYSTEM_PROMPT_COMPACT = """You are Detective Ray, an AI witness interviewer.
 Be empathetic, professional. Ask one question at a time.
@@ -213,3 +315,14 @@ Respond in the witness's language."""
 SCENE_EXTRACTION_COMPACT = """Extract scene elements as JSON:
 {{"description": "brief scene description", "elements": [{{"type": "vehicle|person|object|location_feature", "description": "what it is", "position": "where", "color": "color if mentioned", "confidence": 0.0-1.0}}]}}
 From: {text}"""
+
+# Mapping of prompt variants by compression level
+PROMPT_VARIANTS = {
+    "full": SYSTEM_PROMPT,
+    "optimized": SYSTEM_PROMPT_OPTIMIZED,
+    "compact": SYSTEM_PROMPT_COMPACT,
+}
+
+def get_system_prompt(level: str = "full") -> str:
+    """Get system prompt by compression level: full, optimized, or compact."""
+    return PROMPT_VARIANTS.get(level, SYSTEM_PROMPT)

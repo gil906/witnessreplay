@@ -126,6 +126,213 @@ class TimelineVisualization {
         }
     }
     
+    async loadClarifiedTimeline(sessionId) {
+        /**
+         * Load the disambiguated timeline with clarity indicators.
+         */
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}/timeline/clarified`, {
+                headers: this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}
+            });
+            if (!response.ok) throw new Error('Failed to load clarified timeline');
+            const clarifiedData = await response.json();
+            this.clarifiedTimeline = clarifiedData;
+            this.renderClarityOverlay();
+            return clarifiedData;
+        } catch (error) {
+            console.error('Error loading clarified timeline:', error);
+            return null;
+        }
+    }
+    
+    async getDisambiguationPrompt(sessionId) {
+        /**
+         * Get any pending disambiguation prompts for the timeline.
+         */
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}/timeline/disambiguation`, {
+                headers: this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}
+            });
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error('Error getting disambiguation prompt:', error);
+            return null;
+        }
+    }
+    
+    renderClarityOverlay() {
+        /**
+         * Render clarity indicators over timeline events.
+         */
+        if (!this.clarifiedTimeline || !this.container) return;
+        
+        // Remove existing overlay
+        const existingOverlay = this.container.querySelector('.clarity-overlay');
+        if (existingOverlay) existingOverlay.remove();
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'clarity-overlay';
+        
+        // Add clarity summary
+        const { overall_clarity, clarity_score, events_needing_clarification, total_events } = this.clarifiedTimeline;
+        
+        const clarityClass = overall_clarity === 'high' ? 'clarity-high' : 
+                            overall_clarity === 'medium' ? 'clarity-medium' : 'clarity-low';
+        
+        overlay.innerHTML = `
+            <div class="clarity-summary ${clarityClass}">
+                <span class="clarity-label">Timeline Clarity:</span>
+                <span class="clarity-score">${Math.round(clarity_score * 100)}%</span>
+                <span class="clarity-level">(${overall_clarity})</span>
+                ${events_needing_clarification > 0 ? `
+                    <span class="clarity-warning">⚠️ ${events_needing_clarification} event(s) need clarification</span>
+                ` : ''}
+            </div>
+        `;
+        
+        // Add event clarity markers
+        if (this.clarifiedTimeline.events) {
+            const markersContainer = document.createElement('div');
+            markersContainer.className = 'clarity-markers';
+            
+            this.clarifiedTimeline.events.forEach((event, idx) => {
+                if (event.needs_clarification) {
+                    const marker = document.createElement('div');
+                    marker.className = 'clarity-marker needs-clarification';
+                    marker.title = event.clarification_question || 'Needs timeline clarification';
+                    marker.dataset.eventId = event.id;
+                    marker.innerHTML = `
+                        <span class="marker-icon">⏱️</span>
+                        <span class="marker-text">${this.escapeHtml(event.description.substring(0, 30))}...</span>
+                        <span class="marker-clarity clarity-${event.clarity}">${event.clarity}</span>
+                    `;
+                    
+                    // Click to show clarification dialog
+                    marker.addEventListener('click', () => {
+                        this.showClarificationDialog(event);
+                    });
+                    
+                    markersContainer.appendChild(marker);
+                }
+            });
+            
+            if (markersContainer.children.length > 0) {
+                overlay.appendChild(markersContainer);
+            }
+        }
+        
+        // Insert overlay before the timeline viewport
+        const viewport = this.container.querySelector('.timeline-viewport');
+        if (viewport) {
+            viewport.parentNode.insertBefore(overlay, viewport);
+        }
+    }
+    
+    showClarificationDialog(event) {
+        /**
+         * Show a dialog for clarifying a vague timeline event.
+         */
+        const panel = this.container.querySelector('.timeline-detail-panel');
+        const content = panel.querySelector('.detail-content');
+        
+        content.innerHTML = `
+            <div class="detail-header clarification-header">
+                <span class="detail-type">⏱️ Timeline Clarification Needed</span>
+            </div>
+            <div class="clarification-context">
+                <strong>Event:</strong>
+                <p>${this.escapeHtml(event.description)}</p>
+            </div>
+            <div class="clarification-issue">
+                <strong>Time Reference:</strong>
+                <span class="time-ref">${this.escapeHtml(event.original_time_ref || 'Not specified')}</span>
+                <span class="clarity-badge clarity-${event.clarity}">${event.clarity}</span>
+            </div>
+            ${event.clarification_question ? `
+                <div class="clarification-prompt">
+                    <strong>Suggested Question:</strong>
+                    <p class="suggested-question">"${this.escapeHtml(event.clarification_question)}"</p>
+                </div>
+            ` : ''}
+            <div class="clarification-input">
+                <label>Clarified Timing:</label>
+                <input type="text" class="clarify-offset-input" 
+                       placeholder="e.g., 'about 2 minutes after the car arrived'">
+                <button class="btn btn-primary apply-clarification-btn" data-event-id="${event.id}">
+                    Apply Clarification
+                </button>
+            </div>
+            <div class="sequence-position">
+                <label>Sequence Position:</label>
+                <input type="number" class="clarify-sequence-input" 
+                       value="${event.sequence}" min="1">
+            </div>
+        `;
+        
+        // Setup apply handler
+        const applyBtn = content.querySelector('.apply-clarification-btn');
+        applyBtn.addEventListener('click', async () => {
+            const offsetInput = content.querySelector('.clarify-offset-input');
+            const sequenceInput = content.querySelector('.clarify-sequence-input');
+            
+            await this.applyClarification(event.id, {
+                offset_description: offsetInput.value,
+                sequence: parseInt(sequenceInput.value, 10)
+            });
+        });
+        
+        panel.style.display = 'block';
+    }
+    
+    async applyClarification(eventId, clarification) {
+        /**
+         * Apply a clarification to a timeline event.
+         */
+        if (!this.data?.session_id && !this.clarifiedTimeline?.session_id) {
+            console.error('No session ID available');
+            return false;
+        }
+        
+        const sessionId = this.data?.session_id || this.clarifiedTimeline?.session_id;
+        
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}/timeline/clarify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {})
+                },
+                body: JSON.stringify({
+                    event_id: eventId,
+                    offset_description: clarification.offset_description,
+                    sequence: clarification.sequence
+                })
+            });
+            
+            if (!response.ok) throw new Error('Failed to apply clarification');
+            
+            const result = await response.json();
+            
+            // Refresh the clarified timeline
+            await this.loadClarifiedTimeline(sessionId);
+            this.hideDetailPanel();
+            
+            // Show success
+            if (window.adminPortal?.showToast) {
+                window.adminPortal.showToast('Timeline clarification applied', 'success');
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error applying clarification:', error);
+            if (window.adminPortal?.showToast) {
+                window.adminPortal.showToast('Failed to apply clarification', 'error');
+            }
+            return false;
+        }
+    }
+    
     setData(data) {
         this.data = data;
         this.render();
@@ -232,8 +439,20 @@ class TimelineVisualization {
             marker.classList.add('has-conflict');
         }
         
-        // Tooltip on hover
-        marker.title = `${event.type}: ${event.description}\n${this.formatTime(eventTime)}`;
+        // Check for low confidence / needs review
+        const confidence = event.confidence || 0.5;
+        const needsReview = event.needs_review || confidence < 0.7;
+        if (needsReview) {
+            marker.classList.add('needs-review');
+        }
+        
+        // Add confidence class for styling
+        const confClass = confidence >= 0.7 ? 'conf-high' : confidence >= 0.4 ? 'conf-med' : 'conf-low';
+        marker.classList.add(confClass);
+        
+        // Tooltip on hover with confidence
+        const confText = needsReview ? ` [${Math.round(confidence * 100)}% - Needs Review]` : ` [${Math.round(confidence * 100)}%]`;
+        marker.title = `${event.type}: ${event.description}\n${this.formatTime(eventTime)}${confText}`;
         
         // Click to show details
         marker.addEventListener('click', (e) => {
@@ -289,10 +508,22 @@ class TimelineVisualization {
         // Find related contradictions
         const relatedContradictions = contradictions.filter(c => c.event_ids.includes(event.id));
         
+        // Calculate confidence display
+        const confidence = event.confidence || 0.5;
+        const needsReview = event.needs_review || confidence < 0.7;
+        const confPercent = Math.round(confidence * 100);
+        const confClass = confidence >= 0.7 ? 'high' : confidence >= 0.4 ? 'med' : 'low';
+        const confLabel = confidence >= 0.7 ? 'High' : confidence >= 0.4 ? 'Medium' : 'Low';
+        
         content.innerHTML = `
             <div class="detail-header">
                 <span class="detail-type ${event.type}">${this.getEventIcon(event.type)} ${event.type}</span>
                 <span class="detail-time">${this.formatTime(new Date(event.event_time))}</span>
+            </div>
+            <div class="detail-confidence">
+                <strong>Confidence:</strong>
+                <span class="confidence-badge ${confClass}">${confPercent}% (${confLabel})</span>
+                ${needsReview ? '<span class="review-badge">⚠️ Needs Review</span>' : ''}
             </div>
             <div class="detail-witness">
                 <strong>Witness:</strong> ${this.escapeHtml(event.witness_name)}

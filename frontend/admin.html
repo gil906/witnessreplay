@@ -173,6 +173,8 @@
                     <select id="sort-by" class="filter-select">
                         <option value="date-desc">Newest First</option>
                         <option value="date-asc">Oldest First</option>
+                        <option value="priority-desc">Highest Priority</option>
+                        <option value="priority-asc">Lowest Priority</option>
                         <option value="witnesses-desc">Most Witnesses</option>
                         <option value="scenes-desc">Most Scenes</option>
                     </select>
@@ -227,6 +229,7 @@
             <section class="view-toggle">
                 <button class="view-tab active" data-view="cases">📁 Cases View</button>
                 <button class="view-tab" data-view="reports">📝 Reports View</button>
+                <button class="view-tab" data-view="workload">👮 Workload</button>
                 <button class="view-tab" data-view="dashboard">📊 Dashboard</button>
                 <button class="view-tab" data-view="map">🗺️ Map</button>
             </section>
@@ -259,23 +262,166 @@
                 </div>
             </section>
 
+            <!-- Workload View -->
+            <section id="workload-section" class="workload-section" style="display: none;">
+                <div class="section-header">
+                    <h2>👮 Investigator Workload</h2>
+                    <button id="add-investigator-btn" class="btn btn-primary btn-sm">➕ Add Investigator</button>
+                </div>
+
+                <!-- Workload Summary Stats -->
+                <div class="workload-stats" id="workload-stats">
+                    <div class="workload-stat-card">
+                        <div class="workload-stat-value" id="stat-total-investigators">0</div>
+                        <div class="workload-stat-label">Investigators</div>
+                    </div>
+                    <div class="workload-stat-card">
+                        <div class="workload-stat-value" id="stat-active-cases">0</div>
+                        <div class="workload-stat-label">Assigned Cases</div>
+                    </div>
+                    <div class="workload-stat-card">
+                        <div class="workload-stat-value" id="stat-unassigned-cases">0</div>
+                        <div class="workload-stat-label">Unassigned</div>
+                    </div>
+                    <div class="workload-stat-card">
+                        <div class="workload-stat-value" id="stat-avg-utilization">0%</div>
+                        <div class="workload-stat-label">Avg Utilization</div>
+                    </div>
+                </div>
+
+                <!-- Investigators Grid -->
+                <div id="investigators-grid" class="investigators-grid">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <p>Loading workload data...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Add/Edit Investigator Modal -->
+            <div id="investigator-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="investigator-modal-title">Add Investigator</h2>
+                        <button class="modal-close" onclick="window.adminPortal?.closeInvestigatorModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="investigator-form">
+                            <input type="hidden" id="inv-edit-id">
+                            <div class="form-group">
+                                <label for="inv-name">Name *</label>
+                                <input type="text" id="inv-name" class="form-input" placeholder="Officer name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="inv-badge">Badge Number</label>
+                                <input type="text" id="inv-badge" class="form-input" placeholder="Badge #">
+                            </div>
+                            <div class="form-group">
+                                <label for="inv-email">Email</label>
+                                <input type="email" id="inv-email" class="form-input" placeholder="email@department.gov">
+                            </div>
+                            <div class="form-group">
+                                <label for="inv-department">Department</label>
+                                <input type="text" id="inv-department" class="form-input" placeholder="e.g., Homicide, Traffic">
+                            </div>
+                            <div class="form-group">
+                                <label for="inv-max-cases">Max Cases</label>
+                                <input type="number" id="inv-max-cases" class="form-input" value="10" min="1" max="50">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="window.adminPortal?.closeInvestigatorModal()">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             <!-- Dashboard View -->
-            <div id="dashboard-view" class="dashboard-grid" style="display:none;">
-                <div class="chart-card">
-                    <h3>📈 Cases Over Time</h3>
-                    <canvas id="cases-timeline-chart"></canvas>
+            <div id="dashboard-view" class="dashboard-container" style="display:none;">
+                <!-- Dashboard Summary Cards -->
+                <div class="dashboard-summary-row">
+                    <div class="dashboard-summary-card">
+                        <div class="summary-icon">📁</div>
+                        <div class="summary-content">
+                            <div class="summary-value" id="dash-total-cases">0</div>
+                            <div class="summary-label">Total Cases</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-summary-card">
+                        <div class="summary-icon">📆</div>
+                        <div class="summary-content">
+                            <div class="summary-value" id="dash-cases-today">0</div>
+                            <div class="summary-label">Cases Today</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-summary-card">
+                        <div class="summary-icon">📅</div>
+                        <div class="summary-content">
+                            <div class="summary-value" id="dash-cases-week">0</div>
+                            <div class="summary-label">This Week</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-summary-card">
+                        <div class="summary-icon">⏱️</div>
+                        <div class="summary-content">
+                            <div class="summary-value" id="dash-avg-response">-</div>
+                            <div class="summary-label">Avg Response (hrs)</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="chart-card">
-                    <h3>📊 Report Sources</h3>
-                    <canvas id="source-distribution-chart"></canvas>
+                
+                <!-- Chart Grid -->
+                <div class="dashboard-grid">
+                    <div class="chart-card chart-card-wide">
+                        <h3>📈 Crime Trends Over Time</h3>
+                        <div class="chart-controls">
+                            <button class="chart-period-btn active" data-period="daily">Daily</button>
+                            <button class="chart-period-btn" data-period="weekly">Weekly</button>
+                            <button class="chart-period-btn" data-period="monthly">Monthly</button>
+                        </div>
+                        <canvas id="cases-timeline-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🏷️ Cases by Type</h3>
+                        <canvas id="incident-types-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>📋 Case Status Distribution</h3>
+                        <canvas id="case-status-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>⏱️ Response Time by Type</h3>
+                        <canvas id="response-time-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>📊 Report Sources</h3>
+                        <canvas id="source-distribution-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🕐 Incidents by Hour</h3>
+                        <canvas id="hour-distribution-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>📅 Incidents by Day of Week</h3>
+                        <canvas id="day-distribution-chart"></canvas>
+                    </div>
                 </div>
-                <div class="chart-card">
-                    <h3>🏷️ Incident Types</h3>
-                    <canvas id="incident-types-chart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>📋 Case Status</h3>
-                    <canvas id="case-status-chart"></canvas>
+                
+                <!-- Geographic Distribution Section -->
+                <div class="geo-distribution-section">
+                    <h3>🗺️ Geographic Distribution</h3>
+                    <div class="geo-content">
+                        <div class="geo-map-container">
+                            <div id="dashboard-map" style="height: 350px; width: 100%; border-radius: 8px;"></div>
+                        </div>
+                        <div class="geo-top-locations">
+                            <h4>Top Locations</h4>
+                            <div id="top-locations-list" class="top-locations-list">
+                                <p class="empty-state">Loading locations...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -302,6 +448,37 @@
                         <span>🔒</span>
                         <span>Witness identities are protected. Report numbers are used instead of names.</span>
                     </div>
+
+                    <!-- Priority Section -->
+                    <section class="case-priority-section" id="detail-priority-section">
+                        <h3>📊 Priority Assessment</h3>
+                        <div class="priority-overview">
+                            <div class="priority-score-display">
+                                <span class="priority-score-value" id="detail-priority-score">-</span>
+                                <span class="priority-score-label">/100</span>
+                            </div>
+                            <span class="priority-label-badge" id="detail-priority-label">-</span>
+                        </div>
+                        <div class="priority-breakdown" id="detail-priority-breakdown">
+                            <div class="priority-factor">
+                                <div class="priority-factor-value" id="priority-severity">-</div>
+                                <div class="priority-factor-label">Severity</div>
+                            </div>
+                            <div class="priority-factor">
+                                <div class="priority-factor-value" id="priority-age">-</div>
+                                <div class="priority-factor-label">Age</div>
+                            </div>
+                            <div class="priority-factor">
+                                <div class="priority-factor-value" id="priority-solvability">-</div>
+                                <div class="priority-factor-label">Solvability</div>
+                            </div>
+                            <div class="priority-factor">
+                                <div class="priority-factor-value" id="priority-witnesses">-</div>
+                                <div class="priority-factor-label">Witnesses</div>
+                            </div>
+                        </div>
+                        <div class="priority-factors-list" id="detail-priority-factors"></div>
+                    </section>
 
                     <!-- Case Info -->
                     <section class="case-info">
@@ -426,6 +603,33 @@
                         <button id="add-link-btn" class="btn btn-secondary btn-sm">➕ Link Case Manually</button>
                     </section>
 
+                    <!-- Pattern Detection -->
+                    <section class="pattern-detection-section" id="pattern-detection-section">
+                        <div class="section-header">
+                            <h3>🔍 Pattern Analysis</h3>
+                            <button id="analyze-patterns-btn" class="btn btn-secondary btn-sm">📊 Analyze Patterns</button>
+                        </div>
+                        <div id="patterns-container" class="patterns-container" style="display: none;">
+                            <div class="pattern-category" id="time-patterns">
+                                <h4>⏰ Time Patterns</h4>
+                                <div class="pattern-list" id="time-patterns-list"></div>
+                            </div>
+                            <div class="pattern-category" id="location-patterns">
+                                <h4>📍 Location Patterns</h4>
+                                <div class="pattern-list" id="location-patterns-list"></div>
+                            </div>
+                            <div class="pattern-category" id="mo-patterns">
+                                <h4>🎯 MO Patterns</h4>
+                                <div class="pattern-list" id="mo-patterns-list"></div>
+                            </div>
+                            <div class="pattern-category" id="semantic-patterns">
+                                <h4>🧠 Semantic Matches</h4>
+                                <div class="pattern-list" id="semantic-patterns-list"></div>
+                            </div>
+                        </div>
+                        <p id="patterns-empty" class="empty-state">Click "Analyze Patterns" to detect patterns related to this case</p>
+                    </section>
+
                     <!-- Status Workflow -->
                     <div class="status-workflow">
                         <label>Case Status:</label>
@@ -438,12 +642,27 @@
                     </div>
 
                     <!-- Case Assignment -->
-                    <div class="assign-section">
-                        <label>Assigned To:</label>
-                        <input type="text" id="detail-assigned-to" class="assign-input" 
-                               placeholder="Officer name or badge #"
-                               onchange="window.adminPortal?.assignCurrentCase(this.value)">
-                    </div>
+                    <section class="case-assignment-section">
+                        <h3>👮 Case Assignment</h3>
+                        <div class="assignment-controls">
+                            <div class="form-group">
+                                <label for="investigator-select">Assign to Investigator:</label>
+                                <select id="investigator-select" class="filter-select">
+                                    <option value="">-- Select Investigator --</option>
+                                </select>
+                                <button id="assign-btn" class="btn btn-primary btn-sm" onclick="window.adminPortal?.assignCaseToInvestigator()">Assign</button>
+                                <button id="unassign-btn" class="btn btn-secondary btn-sm" onclick="window.adminPortal?.unassignCase()" style="display:none;">Unassign</button>
+                            </div>
+                            <div class="current-assignment" id="current-assignment" style="display:none;">
+                                <span class="assignment-badge">👮 Assigned to: <strong id="current-assignee-name"></strong></span>
+                            </div>
+                        </div>
+                        <!-- Assignment History -->
+                        <div class="assignment-history" id="assignment-history-section" style="display:none;">
+                            <h4>📋 Assignment History</h4>
+                            <div id="assignment-history-list" class="assignment-history-list"></div>
+                        </div>
+                    </section>
 
                     <!-- Actions -->
                     <section class="case-actions">

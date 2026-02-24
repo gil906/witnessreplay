@@ -1,6 +1,8 @@
 """
 Embedding service using Gemini Embedding 1 for semantic case matching.
 100 RPM / 30K TPM / 1K RPD - very generous quota!
+
+Now supports request batching to reduce RPM consumption.
 """
 import logging
 import asyncio
@@ -118,14 +120,63 @@ class EmbeddingService:
     async def embed_batch(
         self, 
         texts: List[str], 
-        task_type: str = "SEMANTIC_SIMILARITY"
+        task_type: str = "SEMANTIC_SIMILARITY",
+        use_batcher: bool = True
     ) -> List[Tuple[Optional[List[float]], Optional[Dict]]]:
-        """Embed multiple texts. More efficient than individual calls."""
-        results = []
-        for text in texts:
-            embedding, token_info = await self.embed_text(text, task_type)
-            results.append((embedding, token_info))
-        return results
+        """Embed multiple texts efficiently using the request batcher.
+        
+        Args:
+            texts: List of texts to embed
+            task_type: Embedding task type
+            use_batcher: If True, use request batcher for RPM efficiency
+            
+        Returns:
+            List of (embedding vector, token_info) tuples
+        """
+        if not use_batcher:
+            # Fall back to sequential processing
+            results = []
+            for text in texts:
+                embedding, token_info = await self.embed_text(text, task_type)
+                results.append((embedding, token_info))
+            return results
+        
+        # Use the request batcher for efficient batching
+        try:
+            from app.services.request_batcher import request_batcher
+            
+            # Create batch items
+            batch_items = [
+                {"text": text, "task_type": task_type}
+                for text in texts
+            ]
+            
+            # Submit all items to the batcher concurrently
+            tasks = [
+                request_batcher.add_to_batch("embedding", item)
+                for item in batch_items
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Convert exceptions to error tuples
+            processed_results = []
+            for r in results:
+                if isinstance(r, Exception):
+                    processed_results.append((None, {"error": str(r)}))
+                else:
+                    processed_results.append(r)
+            
+            return processed_results
+            
+        except Exception as e:
+            logger.warning(f"Batcher failed, falling back to sequential: {e}")
+            # Fall back to sequential processing
+            results = []
+            for text in texts:
+                embedding, token_info = await self.embed_text(text, task_type)
+                results.append((embedding, token_info))
+            return results
 
     @staticmethod
     def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:

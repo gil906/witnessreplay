@@ -1,10 +1,10 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import io
 import asyncio
 import json
@@ -28,6 +28,8 @@ from app.models.schemas import (
     WitnessCreate,
     WitnessUpdate,
     WitnessResponse,
+    WitnessReliabilityProfile,
+    WitnessReliabilityFactors,
     SceneGenerateRequest,
     BackgroundTaskResponse,
     SceneMeasurement,
@@ -43,6 +45,16 @@ from app.models.schemas import (
     AnimationKeyframe,
     WitnessSketch,
     SketchInterpretationResponse,
+    CustodyEventCreate,
+    CustodyEventResponse,
+    CustodyChainResponse,
+    WitnessMemoryCreate,
+    WitnessMemoryUpdate,
+    WitnessMemoryResponse,
+    WitnessMemorySearchRequest,
+    WitnessMemorySearchResult,
+    WitnessMemoryStatsResponse,
+    ExtractMemoriesRequest,
 )
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
@@ -50,8 +62,11 @@ from app.services.image_gen import image_service
 from app.services.usage_tracker import usage_tracker
 from app.services.token_estimator import token_estimator, TokenEstimate, QuotaCheckResult
 from app.services.case_manager import case_manager
+from app.services.priority_scoring import priority_scoring_service
 from app.services.interview_templates import get_all_templates, get_template, get_templates_by_category
 from app.services.tts_service import tts_service
+from app.services.custody_chain import custody_chain_service
+from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit
@@ -598,6 +613,18 @@ async def export_session_evidence(session_id: str):
         from fastapi.responses import Response
         import json
         
+        # Record export in custody chain
+        await custody_chain_service.record_evidence_exported(
+            evidence_type="session",
+            evidence_id=session_id,
+            actor="api_user",
+            export_format="evidence_report",
+            metadata={"endpoint": "export_session_evidence"}
+        )
+        
+        # Get custody chain for this session
+        custody_events = await custody_chain_service.get_all_custody_for_session(session_id)
+        
         # Build structured evidence report
         evidence_report = {
             "case_metadata": {
@@ -608,6 +635,27 @@ async def export_session_evidence(session_id: str):
                 "status": session.status,
                 "generated_by": "WitnessReplay AI Reconstruction System v1.0",
                 "generated_at": datetime.utcnow().isoformat(),
+            },
+            "chain_of_custody": {
+                "total_events": len(custody_events),
+                "first_access": min((e.timestamp for e in custody_events), default=None),
+                "last_access": max((e.timestamp for e in custody_events), default=None),
+                "unique_actors": list(set(e.actor for e in custody_events)),
+                "events": [
+                    {
+                        "event_id": e.id,
+                        "timestamp": e.timestamp.isoformat() if hasattr(e.timestamp, 'isoformat') else str(e.timestamp),
+                        "evidence_type": e.evidence_type,
+                        "evidence_id": e.evidence_id,
+                        "action": e.action,
+                        "actor": e.actor,
+                        "actor_role": e.actor_role,
+                        "details": e.details,
+                        "hash_before": e.hash_before,
+                        "hash_after": e.hash_after,
+                    }
+                    for e in custody_events
+                ],
             },
             "witness_statements": [
                 {
@@ -662,6 +710,8 @@ async def export_session_evidence(session_id: str):
                     "description": evt.description,
                     "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
                     "image_url": evt.image_url,
+                    "confidence": getattr(evt, 'confidence', 0.5),
+                    "needs_review": getattr(evt, 'needs_review', False),
                 }
                 for evt in session.timeline
             ],
@@ -672,11 +722,13 @@ async def export_session_evidence(session_id: str):
                 "total_reconstructions": len(session.scene_versions),
                 "timeline_events": len(session.timeline),
                 "total_measurements": sum(len(getattr(ver, 'measurements', []) or []) for ver in session.scene_versions),
+                "custody_events": len(custody_events),
             },
             "notes": [
                 "This report was generated using AI-assisted witness interview and scene reconstruction technology.",
                 "All scene reconstructions are based on witness statements and should be verified with physical evidence.",
                 "Confidence scores indicate the AI's certainty based on statement consistency and detail.",
+                "Chain of custody records track all access and modifications to this evidence.",
             ]
         }
         
@@ -715,8 +767,21 @@ async def export_session_json(session_id: str):
         from fastapi.responses import Response
         import json
         
+        # Record export in custody chain
+        await custody_chain_service.record_evidence_exported(
+            evidence_type="session",
+            evidence_id=session_id,
+            actor="api_user",
+            export_format="JSON",
+            metadata={"endpoint": "export_session_json"}
+        )
+        
+        # Get custody chain for inclusion
+        custody_events = await custody_chain_service.get_all_custody_for_session(session_id)
+        
         # Convert to JSON with proper datetime handling
         session_data = session.model_dump(mode='json')
+        session_data['custody_chain'] = [e.model_dump(mode='json') if hasattr(e, 'model_dump') else e for e in custody_events]
         json_str = json.dumps(session_data, indent=2, default=str)
         
         return Response(
@@ -863,6 +928,60 @@ async def export_session(session_id: str):
                     logger.warning(f"Error adding evidence marker: {e}")
                     pdf.cell(0, 8, "[Evidence marker could not be encoded]", ln=True)
         
+        # Chain of Custody section
+        try:
+            custody_events = await custody_chain_service.get_all_custody_for_session(session_id)
+            if custody_events:
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 14)
+                pdf.cell(0, 10, "Evidence Chain of Custody:", ln=True)
+                pdf.set_font("Arial", "", 10)
+                pdf.ln(5)
+                
+                pdf.cell(0, 8, f"Total custody events: {len(custody_events)}", ln=True)
+                pdf.ln(3)
+                
+                # Group events by evidence type
+                events_by_type = {}
+                for event in custody_events:
+                    ev_type = event.evidence_type
+                    if ev_type not in events_by_type:
+                        events_by_type[ev_type] = []
+                    events_by_type[ev_type].append(event)
+                
+                for ev_type, events in events_by_type.items():
+                    pdf.set_font("Arial", "B", 11)
+                    pdf.cell(0, 8, f"{ev_type.replace('_', ' ').title()} ({len(events)} events):", ln=True)
+                    pdf.set_font("Arial", "", 10)
+                    
+                    for event in events[:10]:  # Limit to 10 per type for readability
+                        try:
+                            timestamp_str = event.timestamp.strftime('%Y-%m-%d %H:%M:%S') if hasattr(event.timestamp, 'strftime') else str(event.timestamp)
+                            actor = str(event.actor).encode('latin-1', errors='replace').decode('latin-1')
+                            action = str(event.action).encode('latin-1', errors='replace').decode('latin-1')
+                            details = str(event.details or '').encode('latin-1', errors='replace').decode('latin-1')
+                            
+                            pdf.cell(0, 6, f"  [{timestamp_str}] {action} by {actor}", ln=True)
+                            if details:
+                                pdf.cell(0, 6, f"    Details: {details[:100]}", ln=True)
+                        except Exception as e:
+                            logger.warning(f"Error adding custody event to PDF: {e}")
+                    
+                    if len(events) > 10:
+                        pdf.cell(0, 6, f"  ... and {len(events) - 10} more events", ln=True)
+                    pdf.ln(3)
+        except Exception as e:
+            logger.warning(f"Error adding custody chain to PDF: {e}")
+        
+        # Record the export in custody chain
+        await custody_chain_service.record_evidence_exported(
+            evidence_type="session",
+            evidence_id=session_id,
+            actor="api_user",  # In real implementation, get from auth
+            export_format="PDF",
+            metadata={"endpoint": "export_session"}
+        )
+        
         # Output PDF (fpdf2 returns bytearray, no need to encode)
         pdf_bytes = pdf.output()
         pdf_bytes = pdf.output()
@@ -961,8 +1080,44 @@ async def get_session_insights(session_id: str):
                     for i, v in enumerate(session.scene_versions)
                 ]
             },
-            "recommendations": []
+            "recommendations": [],
+            "needs_review": {
+                "elements": [],
+                "timeline_events": [],
+                "count": 0,
+                "threshold": settings.confidence_threshold
+            }
         }
+        
+        # Identify elements needing review (confidence below threshold)
+        from app.config import settings
+        for elem in scene_summary.get("elements", []):
+            confidence = elem.get("confidence", 0.5)
+            if confidence < settings.confidence_threshold:
+                insights["needs_review"]["elements"].append({
+                    "id": elem.get("id"),
+                    "type": elem.get("type"),
+                    "description": elem.get("description"),
+                    "confidence": confidence,
+                    "reason": "Low AI confidence - requires human verification"
+                })
+        
+        # Identify timeline events needing review
+        for evt in session.timeline:
+            confidence = getattr(evt, 'confidence', 0.5)
+            if confidence < settings.confidence_threshold:
+                insights["needs_review"]["timeline_events"].append({
+                    "id": evt.id,
+                    "sequence": evt.sequence,
+                    "description": evt.description,
+                    "confidence": confidence,
+                    "reason": "Low AI confidence - requires human verification"
+                })
+        
+        insights["needs_review"]["count"] = (
+            len(insights["needs_review"]["elements"]) +
+            len(insights["needs_review"]["timeline_events"])
+        )
         
         # Generate recommendations based on insights
         if insights["completeness"]["completeness_percentage"] < 30:
@@ -987,6 +1142,12 @@ async def get_session_insights(session_id: str):
             insights["recommendations"].append({
                 "type": "few_elements",
                 "message": "Few scene elements identified. Continue gathering details about the scene."
+            })
+        
+        if insights["needs_review"]["count"] > 0:
+            insights["recommendations"].append({
+                "type": "needs_review",
+                "message": f"{insights['needs_review']['count']} items flagged for review due to low AI confidence (below {int(settings.confidence_threshold * 100)}%). Verify these with the witness."
             })
         
         return insights
@@ -1073,6 +1234,125 @@ async def get_session_timeline(session_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get session timeline: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/timeline/disambiguation")
+async def get_timeline_disambiguation(session_id: str):
+    """
+    Get timeline clarity analysis and any pending disambiguation prompts.
+    Returns clarity scores, vague references, and suggested clarifying questions.
+    """
+    try:
+        agent = get_agent(session_id)
+        
+        # Get clarity analysis
+        analysis = agent.get_timeline_clarity_analysis()
+        
+        # Get disambiguation prompt if needed
+        disambiguation = agent.get_timeline_disambiguation_prompt()
+        
+        # Get pending clarifications
+        pending = agent.get_pending_timeline_clarifications()
+        
+        return {
+            "session_id": session_id,
+            "clarity_analysis": analysis,
+            "disambiguation_prompt": disambiguation,
+            "pending_clarifications": pending,
+            "needs_action": analysis.get("needs_disambiguation", False) or len(pending) > 0
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting timeline disambiguation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get timeline disambiguation: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/timeline/clarified")
+async def get_clarified_timeline(session_id: str):
+    """
+    Get the disambiguated timeline with clarity indicators for each event.
+    Shows which events have clear timing and which need clarification.
+    """
+    try:
+        agent = get_agent(session_id)
+        
+        # Build the disambiguated timeline
+        timeline_events = agent.build_disambiguated_timeline()
+        
+        # Get overall clarity
+        analysis = agent.get_timeline_clarity_analysis()
+        
+        return {
+            "session_id": session_id,
+            "overall_clarity": analysis.get("overall_clarity", "unknown"),
+            "clarity_score": analysis.get("clarity_score", 0.0),
+            "has_anchor_points": analysis.get("has_anchor_points", False),
+            "events": timeline_events,
+            "events_needing_clarification": sum(1 for e in timeline_events if e.get("needs_clarification")),
+            "total_events": len(timeline_events)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting clarified timeline: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get clarified timeline: {str(e)}"
+        )
+
+
+class TimelineClarificationRequest(BaseModel):
+    """Request to apply a clarification to a timeline event."""
+    event_id: str
+    offset_description: Optional[str] = None
+    relative_to: Optional[str] = None
+    sequence: Optional[int] = None
+
+
+@router.post("/sessions/{session_id}/timeline/clarify")
+async def apply_timeline_clarification(session_id: str, request: TimelineClarificationRequest):
+    """
+    Apply a witness's clarification to a timeline event.
+    Updates the event with clearer temporal positioning.
+    """
+    try:
+        agent = get_agent(session_id)
+        
+        clarification = {}
+        if request.offset_description:
+            clarification["offset_description"] = request.offset_description
+        if request.relative_to:
+            clarification["relative_to"] = request.relative_to
+        if request.sequence is not None:
+            clarification["sequence"] = request.sequence
+        
+        success = agent.apply_timeline_clarification(request.event_id, clarification)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Event {request.event_id} not found in timeline"
+            )
+        
+        # Return updated timeline
+        timeline_events = agent.build_disambiguated_timeline()
+        
+        return {
+            "success": True,
+            "event_id": request.event_id,
+            "updated_events": timeline_events
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying timeline clarification: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to apply clarification: {str(e)}"
         )
 
 
@@ -1490,14 +1770,51 @@ async def delete_measurement(session_id: str, measurement_id: str):
 
 
 @router.get("/sessions/{session_id}/witnesses")
-async def get_witnesses(session_id: str):
-    """Get all witnesses for a session."""
+async def get_witnesses(session_id: str, include_reliability: bool = False):
+    """Get all witnesses for a session, optionally with reliability scores."""
+    from app.services.witness_reliability import witness_reliability_service
+    from app.services.contradiction_detector import contradiction_detector
+    from app.models.schemas import WitnessReliabilityProfile, WitnessReliabilityFactors
+    
     try:
         session = await firestore_service.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
         witnesses_list = getattr(session, 'witnesses', []) or []
+        
+        # Pre-compute reliability data if requested
+        reliability_data = {}
+        if include_reliability:
+            contradictions = contradiction_detector.get_contradictions(session_id)
+            evidence_markers = []
+            scene_elements = []
+            if session.scene_versions:
+                latest = session.scene_versions[-1]
+                evidence_markers = getattr(latest, 'evidence_markers', []) or []
+            scene_elements = session.current_scene_elements or []
+            
+            for witness in witnesses_list:
+                reliability = witness_reliability_service.calculate_reliability(
+                    session_id=session_id,
+                    witness_id=witness.id,
+                    witness_name=witness.name,
+                    statements=session.witness_statements,
+                    contradictions=contradictions,
+                    evidence_markers=evidence_markers,
+                    scene_elements=scene_elements,
+                )
+                reliability_data[witness.id] = WitnessReliabilityProfile(
+                    overall_score=reliability.overall_score,
+                    reliability_grade=reliability.reliability_grade,
+                    factors=WitnessReliabilityFactors(**reliability.factors.to_dict()),
+                    contradiction_count=reliability.contradiction_count,
+                    confirmation_count=reliability.confirmation_count,
+                    correction_count=reliability.correction_count,
+                    evidence_matches=reliability.evidence_matches,
+                    evidence_conflicts=reliability.evidence_conflicts,
+                    last_calculated=reliability.calculated_at,
+                )
         
         # Count statements per witness
         witness_responses = []
@@ -1514,6 +1831,7 @@ async def get_witnesses(session_id: str):
                 source_type=witness.source_type,
                 created_at=witness.created_at,
                 statement_count=stmt_count,
+                reliability=reliability_data.get(witness.id) if include_reliability else witness.reliability,
                 metadata=witness.metadata
             ))
         
@@ -1777,6 +2095,138 @@ async def get_statements_by_witness(session_id: str):
         raise HTTPException(status_code=500, detail="Failed to get statements by witness")
 
 
+# ==================== Witness Reliability Endpoints ====================
+
+
+@router.get("/sessions/{session_id}/witnesses/{witness_id}/reliability")
+async def get_witness_reliability(session_id: str, witness_id: str):
+    """
+    Get reliability score for a specific witness.
+    
+    Returns reliability assessment including:
+    - Overall score (0-100)
+    - Letter grade (A-F)
+    - Individual factors (contradiction rate, consistency, evidence alignment, etc.)
+    - Statistics (contradictions, confirmations, corrections)
+    """
+    from app.services.witness_reliability import witness_reliability_service
+    from app.services.contradiction_detector import contradiction_detector
+    
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Find the witness
+        witnesses_list = getattr(session, 'witnesses', []) or []
+        witness = next((w for w in witnesses_list if w.id == witness_id), None)
+        
+        # If no specific witness found, use session-level witness info
+        witness_name = "Primary Witness"
+        if witness:
+            witness_name = witness.name
+        elif session.witness_name:
+            witness_name = session.witness_name
+        
+        # Get contradictions for this session
+        contradictions = contradiction_detector.get_contradictions(session_id)
+        
+        # Get evidence markers and scene elements
+        evidence_markers = []
+        scene_elements = []
+        if session.scene_versions:
+            latest = session.scene_versions[-1]
+            evidence_markers = getattr(latest, 'evidence_markers', []) or []
+        scene_elements = session.current_scene_elements or []
+        
+        # Calculate reliability score
+        reliability = witness_reliability_service.calculate_reliability(
+            session_id=session_id,
+            witness_id=witness_id,
+            witness_name=witness_name,
+            statements=session.witness_statements,
+            contradictions=contradictions,
+            evidence_markers=evidence_markers,
+            scene_elements=scene_elements,
+        )
+        
+        return reliability.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating witness reliability: {e}")
+        raise HTTPException(status_code=500, detail="Failed to calculate witness reliability")
+
+
+@router.get("/sessions/{session_id}/witnesses/reliability")
+async def get_all_witnesses_reliability(session_id: str):
+    """
+    Get reliability scores for all witnesses in a session.
+    
+    Returns list of reliability assessments for each witness.
+    """
+    from app.services.witness_reliability import witness_reliability_service
+    from app.services.contradiction_detector import contradiction_detector
+    
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        witnesses_list = getattr(session, 'witnesses', []) or []
+        
+        # Get shared data
+        contradictions = contradiction_detector.get_contradictions(session_id)
+        evidence_markers = []
+        scene_elements = []
+        if session.scene_versions:
+            latest = session.scene_versions[-1]
+            evidence_markers = getattr(latest, 'evidence_markers', []) or []
+        scene_elements = session.current_scene_elements or []
+        
+        results = []
+        
+        # If no explicit witnesses, create reliability for session-level witness
+        if not witnesses_list:
+            witness_id = "primary"
+            witness_name = session.witness_name or "Primary Witness"
+            
+            reliability = witness_reliability_service.calculate_reliability(
+                session_id=session_id,
+                witness_id=witness_id,
+                witness_name=witness_name,
+                statements=session.witness_statements,
+                contradictions=contradictions,
+                evidence_markers=evidence_markers,
+                scene_elements=scene_elements,
+            )
+            results.append(reliability.to_dict())
+        else:
+            # Calculate for each witness
+            for witness in witnesses_list:
+                reliability = witness_reliability_service.calculate_reliability(
+                    session_id=session_id,
+                    witness_id=witness.id,
+                    witness_name=witness.name,
+                    statements=session.witness_statements,
+                    contradictions=contradictions,
+                    evidence_markers=evidence_markers,
+                    scene_elements=scene_elements,
+                )
+                results.append(reliability.to_dict())
+        
+        return {
+            "session_id": session_id,
+            "witness_count": len(results),
+            "reliability_scores": results,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating witnesses reliability: {e}")
+        raise HTTPException(status_code=500, detail="Failed to calculate witnesses reliability")
+
+
 # ==================== Evidence Markers Endpoints ====================
 
 
@@ -1929,6 +2379,122 @@ async def delete_evidence_marker(session_id: str, marker_id: str):
     except Exception as e:
         logger.error(f"Error deleting evidence marker: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete evidence marker")
+
+
+# ==================== Chain of Custody Endpoints ====================
+
+
+@router.get("/sessions/{session_id}/custody-chain")
+async def get_session_custody_chain(session_id: str):
+    """
+    Get the full chain of custody for a session and all its evidence.
+    
+    Returns complete audit trail showing who accessed/modified evidence and when.
+    """
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Record this access
+        await custody_chain_service.record_session_viewed(
+            session_id=session_id,
+            actor="api_user",  # In real implementation, get from auth
+            metadata={"endpoint": "get_custody_chain"}
+        )
+        
+        # Get all custody events for this session
+        events = await custody_chain_service.get_all_custody_for_session(session_id)
+        
+        # Group by evidence type
+        grouped = {}
+        for event in events:
+            ev_type = event.evidence_type
+            if ev_type not in grouped:
+                grouped[ev_type] = []
+            grouped[ev_type].append(event.model_dump(mode='json') if hasattr(event, 'model_dump') else event)
+        
+        return {
+            "session_id": session_id,
+            "total_events": len(events),
+            "events_by_type": grouped,
+            "events": [e.model_dump(mode='json') if hasattr(e, 'model_dump') else e for e in events],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting custody chain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get custody chain")
+
+
+@router.get("/custody/{evidence_type}/{evidence_id}")
+async def get_evidence_custody_chain(evidence_type: str, evidence_id: str):
+    """
+    Get the chain of custody for a specific evidence item.
+    
+    Args:
+        evidence_type: Type of evidence (session, case, evidence_marker, statement, etc.)
+        evidence_id: ID of the evidence item
+    
+    Returns:
+        CustodyChainResponse with all custody events
+    """
+    try:
+        chain = await custody_chain_service.get_custody_chain(evidence_type, evidence_id)
+        return chain.model_dump(mode='json')
+    except Exception as e:
+        logger.error(f"Error getting custody chain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get custody chain")
+
+
+@router.post("/custody/events", status_code=status.HTTP_201_CREATED)
+async def create_custody_event(event: CustodyEventCreate):
+    """
+    Manually record a custody event.
+    
+    Use this to track evidence handling that isn't automatically captured.
+    """
+    try:
+        custody_event = await custody_chain_service.record_event(
+            evidence_type=event.evidence_type,
+            evidence_id=event.evidence_id,
+            action=event.action,
+            actor=event.actor,
+            actor_role=event.actor_role,
+            details=event.details,
+            metadata=event.metadata,
+        )
+        return custody_event.model_dump(mode='json')
+    except Exception as e:
+        logger.error(f"Error creating custody event: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create custody event")
+
+
+@router.get("/custody/exports")
+async def get_export_audit_trail(evidence_type: Optional[str] = None, limit: int = 100):
+    """
+    Get audit trail of all evidence exports.
+    
+    Args:
+        evidence_type: Optional filter by evidence type
+        limit: Maximum number of events to return
+    
+    Returns:
+        List of export custody events
+    """
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        exports = await db.get_custody_exports(evidence_type, limit)
+        return {
+            "total": len(exports),
+            "exports": exports,
+        }
+    except Exception as e:
+        logger.error(f"Error getting export audit trail: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get export audit trail")
 
 
 # ==================== Witness Sketch Upload Endpoints ====================
@@ -2996,6 +3562,7 @@ async def get_server_info():
             "export_json": True,
             "export_csv": True,
             "export_evidence": True,
+            "chain_of_custody": True,
             "websocket": True,
             "metrics": True,
         },
@@ -3630,6 +4197,175 @@ async def get_admin_analytics(auth=Depends(require_admin_auth)):
         )
 
 
+@router.get("/admin/dashboard/stats")
+async def get_dashboard_stats(auth=Depends(require_admin_auth)):
+    """
+    Get comprehensive statistics for the analytics dashboard.
+    
+    Returns:
+    - Crime trends over time (daily/weekly/monthly)
+    - Cases by type and status
+    - Response time metrics
+    - Geographic distribution data
+    """
+    try:
+        from collections import defaultdict
+        from datetime import timedelta
+        
+        # Get all cases and sessions
+        cases = await firestore_service.list_cases(limit=1000)
+        sessions = await firestore_service.list_sessions(limit=1000)
+        
+        now = datetime.utcnow()
+        
+        # ---- Crime trends over time ----
+        # Daily counts for last 30 days
+        daily_counts = defaultdict(int)
+        weekly_counts = defaultdict(int)
+        monthly_counts = defaultdict(int)
+        
+        for case in cases:
+            created = case.created_at if case.created_at else now
+            # Daily key (last 30 days)
+            day_key = created.strftime("%Y-%m-%d")
+            daily_counts[day_key] += 1
+            
+            # Weekly key (week number)
+            week_key = created.strftime("%Y-W%W")
+            weekly_counts[week_key] += 1
+            
+            # Monthly key
+            month_key = created.strftime("%Y-%m")
+            monthly_counts[month_key] += 1
+        
+        # Sort and limit to reasonable ranges
+        sorted_daily = sorted(daily_counts.items(), key=lambda x: x[0])[-30:]
+        sorted_weekly = sorted(weekly_counts.items(), key=lambda x: x[0])[-12:]
+        sorted_monthly = sorted(monthly_counts.items(), key=lambda x: x[0])[-12:]
+        
+        # ---- Cases by type ----
+        type_counts = defaultdict(int)
+        for case in cases:
+            incident_type = case.metadata.get("incident_type", "other") if case.metadata else "other"
+            type_counts[incident_type.lower()] += 1
+        
+        # ---- Cases by status ----
+        status_counts = defaultdict(int)
+        for case in cases:
+            status_counts[case.status or "open"] += 1
+        
+        # ---- Response time metrics ----
+        # Calculate time from case creation to first update (simulated response time)
+        response_times = []
+        for case in cases:
+            if case.created_at and case.updated_at:
+                delta = (case.updated_at - case.created_at).total_seconds() / 3600  # hours
+                if delta > 0:  # Only if there was an update
+                    response_times.append(delta)
+        
+        # Calculate average response times by type
+        response_by_type = defaultdict(list)
+        for case in cases:
+            if case.created_at and case.updated_at:
+                delta = (case.updated_at - case.created_at).total_seconds() / 3600
+                if delta > 0:
+                    incident_type = case.metadata.get("incident_type", "other") if case.metadata else "other"
+                    response_by_type[incident_type.lower()].append(delta)
+        
+        avg_response_by_type = {
+            t: round(sum(times) / len(times), 2) if times else 0
+            for t, times in response_by_type.items()
+        }
+        
+        # Overall response metrics
+        avg_response = round(sum(response_times) / len(response_times), 2) if response_times else 0
+        min_response = round(min(response_times), 2) if response_times else 0
+        max_response = round(max(response_times), 2) if response_times else 0
+        
+        # ---- Geographic distribution ----
+        location_counts = defaultdict(int)
+        geo_points = []
+        for case in cases:
+            location = case.location or "Unknown"
+            location_counts[location] += 1
+            
+            # Extract coordinates if available in metadata
+            if case.metadata:
+                lat = case.metadata.get("latitude") or case.metadata.get("lat")
+                lng = case.metadata.get("longitude") or case.metadata.get("lng") or case.metadata.get("lon")
+                if lat and lng:
+                    geo_points.append({
+                        "lat": float(lat),
+                        "lng": float(lng),
+                        "case_id": case.id,
+                        "title": case.title,
+                        "type": case.metadata.get("incident_type", "other")
+                    })
+        
+        # Top locations
+        top_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # ---- Priority distribution ----
+        priority_counts = defaultdict(int)
+        for case in cases:
+            priority = case.metadata.get("priority", "medium") if case.metadata else "medium"
+            priority_counts[priority.lower()] += 1
+        
+        # ---- Sessions/reports statistics ----
+        source_counts = defaultdict(int)
+        for session in sessions:
+            source = getattr(session, "source_type", None) or "voice"
+            source_counts[source] += 1
+        
+        # ---- Time-based analysis ----
+        hour_distribution = defaultdict(int)
+        day_of_week_distribution = defaultdict(int)
+        for case in cases:
+            if case.created_at:
+                hour_distribution[case.created_at.hour] += 1
+                day_of_week_distribution[case.created_at.strftime("%A")] += 1
+        
+        return {
+            "timestamp": now.isoformat(),
+            "summary": {
+                "total_cases": len(cases),
+                "total_reports": len(sessions),
+                "cases_today": sum(1 for c in cases if c.created_at and c.created_at.date() == now.date()),
+                "cases_this_week": sum(1 for c in cases if c.created_at and (now - c.created_at).days <= 7),
+                "cases_this_month": sum(1 for c in cases if c.created_at and (now - c.created_at).days <= 30),
+            },
+            "trends": {
+                "daily": [{"date": d, "count": c} for d, c in sorted_daily],
+                "weekly": [{"week": w, "count": c} for w, c in sorted_weekly],
+                "monthly": [{"month": m, "count": c} for m, c in sorted_monthly],
+            },
+            "by_type": dict(type_counts),
+            "by_status": dict(status_counts),
+            "by_priority": dict(priority_counts),
+            "by_source": dict(source_counts),
+            "response_times": {
+                "average_hours": avg_response,
+                "min_hours": min_response,
+                "max_hours": max_response,
+                "by_type": avg_response_by_type,
+            },
+            "geographic": {
+                "top_locations": [{"location": loc, "count": cnt} for loc, cnt in top_locations],
+                "geo_points": geo_points[:100],  # Limit to 100 points for performance
+            },
+            "time_analysis": {
+                "by_hour": dict(hour_distribution),
+                "by_day_of_week": dict(day_of_week_distribution),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting dashboard stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get dashboard statistics"
+        )
+
+
 # ==================== RELATIONSHIPS AND EVIDENCE ENDPOINTS ====================
 
 @router.get("/sessions/{session_id}/relationships")
@@ -4115,30 +4851,118 @@ async def get_request_metrics():
 # ── Case Management ──────────────────────────────────
 
 @router.get("/cases")
-async def list_cases(limit: int = 50):
-    """List all cases with report counts."""
+async def list_cases(limit: int = 50, sort_by: str = "updated"):
+    """List all cases with report counts and priority scores.
+    
+    Args:
+        limit: Maximum number of cases to return
+        sort_by: Sort order - "updated" (default), "created", "priority"
+    """
     try:
         cases = await firestore_service.list_cases(limit=limit)
-        cases_list = [
-            CaseResponse(
+        cases_list = []
+        for case in cases:
+            report_count = len(case.report_ids)
+            # Calculate priority score
+            priority = priority_scoring_service.calculate_priority(case, report_count)
+            
+            cases_list.append(CaseResponse(
                 id=case.id,
                 case_number=case.case_number,
                 title=case.title,
                 summary=case.summary,
                 location=case.location,
                 status=case.status,
-                report_count=len(case.report_ids),
+                report_count=report_count,
                 created_at=case.created_at,
                 updated_at=case.updated_at,
                 scene_image_url=case.scene_image_url,
-                timeframe=case.timeframe
-            )
-            for case in cases
-        ]
+                timeframe=case.timeframe,
+                priority_score=priority.total_score,
+                priority_label=priority.priority_label,
+                priority=priority.model_dump()
+            ))
+        
+        # Sort by priority if requested
+        if sort_by == "priority":
+            cases_list.sort(key=lambda c: c.priority_score or 0, reverse=True)
+        elif sort_by == "created":
+            cases_list.sort(key=lambda c: c.created_at, reverse=True)
+        # Default is already sorted by updated_at from firestore
+        
         return {"cases": cases_list}
     except Exception as e:
         logger.error(f"Error listing cases: {e}")
         raise HTTPException(status_code=500, detail="Failed to list cases")
+
+
+@router.get("/cases/priority")
+async def list_cases_by_priority(limit: int = 50, min_score: float = 0):
+    """List cases sorted by priority score (highest first).
+    
+    Args:
+        limit: Maximum number of cases to return
+        min_score: Minimum priority score threshold (0-100)
+    """
+    try:
+        cases = await firestore_service.list_cases(limit=limit * 2)  # Get more to filter
+        cases_list = []
+        for case in cases:
+            report_count = len(case.report_ids)
+            priority = priority_scoring_service.calculate_priority(case, report_count)
+            
+            if priority.total_score >= min_score:
+                cases_list.append(CaseResponse(
+                    id=case.id,
+                    case_number=case.case_number,
+                    title=case.title,
+                    summary=case.summary,
+                    location=case.location,
+                    status=case.status,
+                    report_count=report_count,
+                    created_at=case.created_at,
+                    updated_at=case.updated_at,
+                    scene_image_url=case.scene_image_url,
+                    timeframe=case.timeframe,
+                    priority_score=priority.total_score,
+                    priority_label=priority.priority_label,
+                    priority=priority.model_dump()
+                ))
+        
+        # Sort by priority score descending
+        cases_list.sort(key=lambda c: c.priority_score or 0, reverse=True)
+        
+        return {
+            "cases": cases_list[:limit],
+            "total": len(cases_list),
+            "min_score_filter": min_score
+        }
+    except Exception as e:
+        logger.error(f"Error listing cases by priority: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list cases by priority")
+
+
+@router.get("/cases/{case_id}/priority")
+async def get_case_priority(case_id: str):
+    """Get detailed priority score for a specific case."""
+    try:
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        report_count = len(case.report_ids)
+        priority = priority_scoring_service.calculate_priority(case, report_count)
+        
+        return {
+            "case_id": case_id,
+            "case_number": case.case_number,
+            "priority": priority.model_dump()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting case priority: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get case priority")
 
 
 @router.get("/cases/{case_id}")
@@ -4174,6 +4998,10 @@ async def get_case_detail(case_id: str):
 
         # Get related cases
         related_cases = await case_linking_service.get_related_cases(case_id)
+        
+        # Calculate priority score
+        report_count = len(case.report_ids)
+        priority = priority_scoring_service.calculate_priority(case, report_count)
 
         return {
             "id": case.id,
@@ -4189,6 +5017,9 @@ async def get_case_detail(case_id: str):
             "reports": reports,
             "metadata": case.metadata,
             "related_cases": [r.model_dump(mode="json") for r in related_cases],
+            "priority_score": priority.total_score,
+            "priority_label": priority.priority_label,
+            "priority": priority.model_dump(mode="json"),
         }
     except HTTPException:
         raise
@@ -4408,15 +5239,72 @@ async def get_all_quota_status():
         from app.services.model_selector import model_selector
         from app.services.imagen_service import imagen_service
         from app.services.embedding_service import embedding_service
+        from app.services.request_batcher import request_batcher
 
         return {
             "models": await model_selector.quota.get_quota_status() if hasattr(model_selector, 'quota') else {},
             "imagen": imagen_service.get_quota_status(),
             "embeddings": embedding_service.get_quota_status(),
+            "batching": request_batcher.get_stats(),
         }
     except Exception as e:
         logger.error(f"Error getting all quota status: {e}")
-        return {"models": {}, "imagen": {}, "embeddings": {}, "error": str(e)}
+        return {"models": {}, "imagen": {}, "embeddings": {}, "batching": {}, "error": str(e)}
+
+
+# ── Request Batching Status ────────────────────────────────
+
+@router.get("/batching/status")
+async def get_batching_status():
+    """
+    Get request batching statistics and configuration.
+    
+    Returns:
+        Batching stats including items processed, RPM saved, and current config.
+    """
+    try:
+        from app.services.request_batcher import request_batcher
+        
+        return request_batcher.get_stats()
+    except Exception as e:
+        logger.error(f"Error getting batching status: {e}")
+        return {"error": str(e)}
+
+
+@router.post("/batching/configure")
+async def configure_batching(
+    batch_type: str,
+    max_batch_size: Optional[int] = None,
+    max_wait_ms: Optional[int] = None,
+    enabled: Optional[bool] = None,
+):
+    """
+    Configure batching parameters for a specific request type.
+    
+    Args:
+        batch_type: Type of batch (embedding, classification, intent, preprocessing)
+        max_batch_size: Maximum items per batch
+        max_wait_ms: Maximum milliseconds to wait for batch to fill
+        enabled: Enable/disable batching for this type
+    """
+    try:
+        from app.services.request_batcher import request_batcher
+        
+        request_batcher.configure(
+            batch_type=batch_type,
+            max_batch_size=max_batch_size,
+            max_wait_ms=max_wait_ms,
+            enabled=enabled,
+        )
+        
+        return {
+            "success": True,
+            "batch_type": batch_type,
+            "config": request_batcher.get_stats()["configs"].get(batch_type, {}),
+        }
+    except Exception as e:
+        logger.error(f"Error configuring batching: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Quota Dashboard Status ────────────────────────────────
@@ -4600,6 +5488,54 @@ async def estimate_tokens_simple(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to estimate tokens: {str(e)}"
+        )
+
+
+# ── Prompt Compression Stats Endpoint ───────────────────────
+
+@router.get("/prompt/compression-stats")
+async def get_compression_stats():
+    """
+    Get prompt compression statistics showing tokens saved.
+    
+    Returns:
+        Total tokens saved, compression count, average savings, and breakdown by method.
+    """
+    try:
+        from app.services.prompt_optimizer import prompt_optimizer
+        return prompt_optimizer.get_savings_stats()
+    except Exception as e:
+        logger.error(f"Error getting compression stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get compression statistics"
+        )
+
+
+@router.post("/prompt/compress")
+async def compress_prompt_endpoint(
+    prompt: str,
+    level: str = "moderate"
+):
+    """
+    Compress a prompt to reduce token usage.
+    
+    Args:
+        prompt: The prompt text to compress
+        level: Compression level - "light", "moderate", or "aggressive"
+    
+    Returns:
+        Compressed prompt and compression statistics.
+    """
+    try:
+        from app.services.prompt_optimizer import compress_prompt
+        result = compress_prompt(prompt, level=level)
+        return result.to_dict()
+    except Exception as e:
+        logger.error(f"Error compressing prompt: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compress prompt: {str(e)}"
         )
 
 
@@ -5310,6 +6246,8 @@ async def get_case_timeline_visualization(case_id: str):
                     "description": tl_event.description,
                     "full_text": tl_event.description,
                     "image_url": tl_event.image_url,
+                    "confidence": getattr(tl_event, 'confidence', 0.5),
+                    "needs_review": getattr(tl_event, 'needs_review', False),
                     "editable": True,
                 }
                 all_events.append(event)
@@ -5567,6 +6505,8 @@ async def get_session_timeline_visualization(session_id: str):
                 "description": tl_event.description,
                 "full_text": tl_event.description,
                 "image_url": tl_event.image_url,
+                "confidence": getattr(tl_event, 'confidence', 0.5),
+                "needs_review": getattr(tl_event, 'needs_review', False),
                 "editable": True,
             })
 
@@ -5876,6 +6816,328 @@ async def auto_link_cases(case_id: str, threshold: float = 0.75, auth=Depends(re
 
 
 # ============================================================================
+# Pattern Detection Endpoints
+# ============================================================================
+
+@router.get("/patterns/analyze")
+async def analyze_patterns(
+    days_back: int = 90,
+    limit: int = 100,
+    case_ids: Optional[str] = None
+):
+    """
+    Analyze patterns across cases.
+    
+    Args:
+        days_back: Number of days to look back (default 90)
+        limit: Maximum cases to analyze (default 100)
+        case_ids: Comma-separated list of specific case IDs to analyze (optional)
+    """
+    from app.services.pattern_detection import pattern_detection_service
+    
+    try:
+        # Parse case_ids if provided
+        ids_list = None
+        if case_ids:
+            ids_list = [cid.strip() for cid in case_ids.split(",") if cid.strip()]
+        
+        result = await pattern_detection_service.analyze_patterns(
+            case_ids=ids_list,
+            days_back=days_back,
+            limit=limit
+        )
+        
+        return {
+            "success": True,
+            "analysis": result.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing patterns: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cases/{case_id}/patterns")
+async def get_case_patterns(case_id: str):
+    """
+    Find patterns related to a specific case.
+    Returns time, location, MO, and semantic matches.
+    """
+    from app.services.pattern_detection import pattern_detection_service
+    
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    try:
+        patterns = await pattern_detection_service.find_related_patterns(case_id)
+        
+        return {
+            "success": True,
+            "case_id": case_id,
+            "case_number": case.case_number,
+            "patterns": patterns,
+        }
+    except Exception as e:
+        logger.error(f"Error finding patterns for case {case_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# RMS (Records Management System) Export Endpoints
+# ============================================================================
+
+@router.get("/cases/{case_id}/export/rms")
+async def export_case_rms(
+    case_id: str,
+    format: str = "niem_json"
+):
+    """
+    Export case data in RMS-compatible formats.
+    
+    Supported formats:
+    - `niem_json`: NIEM-compliant JSON (default) - simplified NIEM 4.0 Justice domain format
+    - `xml`: Standard XML format for RMS import
+    - `csv`: CSV files (returned as ZIP) for bulk import
+    
+    Args:
+        case_id: The case ID to export
+        format: Export format - 'niem_json', 'xml', or 'csv'
+    
+    Returns:
+        Export data in the requested format
+    """
+    from app.services.rms_export import rms_export_service
+    
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    valid_formats = ["niem_json", "xml", "csv"]
+    if format not in valid_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid format. Must be one of: {', '.join(valid_formats)}"
+        )
+    
+    try:
+        if format == "xml":
+            xml_content = await rms_export_service.export_to_xml(case_id)
+            if not xml_content:
+                raise HTTPException(status_code=500, detail="Failed to generate XML export")
+            
+            # Record export in custody chain
+            await custody_chain_service.record_evidence_exported(
+                evidence_type="case",
+                evidence_id=case_id,
+                actor="api_user",
+                export_format="RMS_XML",
+                metadata={"endpoint": "export_case_rms", "case_number": case.case_number}
+            )
+            
+            from fastapi.responses import Response
+            return Response(
+                content=xml_content,
+                media_type="application/xml",
+                headers={
+                    "Content-Disposition": f"attachment; filename=case_{case.case_number}_rms.xml"
+                }
+            )
+        
+        elif format == "csv":
+            csv_files = await rms_export_service.export_to_csv(case_id)
+            if not csv_files:
+                raise HTTPException(status_code=500, detail="Failed to generate CSV export")
+            
+            # Record export in custody chain
+            await custody_chain_service.record_evidence_exported(
+                evidence_type="case",
+                evidence_id=case_id,
+                actor="api_user",
+                export_format="RMS_CSV",
+                metadata={"endpoint": "export_case_rms", "case_number": case.case_number, "files": list(csv_files.keys())}
+            )
+            
+            # Create a ZIP file containing all CSV files
+            import zipfile
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for filename, content in csv_files.items():
+                    zf.writestr(filename, content)
+            zip_buffer.seek(0)
+            
+            return StreamingResponse(
+                zip_buffer,
+                media_type="application/zip",
+                headers={
+                    "Content-Disposition": f"attachment; filename=case_{case.case_number}_rms_csv.zip"
+                }
+            )
+        
+        else:  # niem_json (default)
+            niem_data = await rms_export_service.export_to_niem_json(case_id)
+            if not niem_data:
+                raise HTTPException(status_code=500, detail="Failed to generate NIEM JSON export")
+            
+            # Record export in custody chain
+            await custody_chain_service.record_evidence_exported(
+                evidence_type="case",
+                evidence_id=case_id,
+                actor="api_user",
+                export_format="RMS_NIEM_JSON",
+                metadata={"endpoint": "export_case_rms", "case_number": case.case_number}
+            )
+            
+            from fastapi.responses import Response
+            json_str = json.dumps(niem_data, indent=2, default=str)
+            return Response(
+                content=json_str,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename=case_{case.case_number}_niem.json"
+                }
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting case {case_id} in RMS format: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export case in RMS format: {str(e)}"
+        )
+
+
+@router.get("/cases/export/rms/bulk")
+async def export_cases_rms_bulk(
+    format: str = "niem_json",
+    status_filter: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Bulk export multiple cases in RMS-compatible formats.
+    
+    Args:
+        format: Export format - 'niem_json', 'xml', or 'csv'
+        status_filter: Optional filter by case status (open, under_review, closed)
+        limit: Maximum number of cases to export (default 50, max 100)
+    
+    Returns:
+        ZIP archive containing all exported cases
+    """
+    from app.services.rms_export import rms_export_service
+    import zipfile
+    
+    valid_formats = ["niem_json", "xml", "csv"]
+    if format not in valid_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid format. Must be one of: {', '.join(valid_formats)}"
+        )
+    
+    limit = min(max(1, limit), 100)  # Clamp between 1 and 100
+    
+    try:
+        cases = await firestore_service.list_cases(limit=limit)
+        
+        if status_filter:
+            cases = [c for c in cases if c.status == status_filter]
+        
+        if not cases:
+            return {"message": "No cases found matching criteria", "count": 0}
+        
+        # Create ZIP archive with all exports
+        zip_buffer = io.BytesIO()
+        exported_count = 0
+        
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for case in cases:
+                try:
+                    if format == "xml":
+                        content = await rms_export_service.export_to_xml(case.id)
+                        if content:
+                            zf.writestr(f"{case.case_number}_rms.xml", content)
+                            exported_count += 1
+                    
+                    elif format == "csv":
+                        csv_files = await rms_export_service.export_to_csv(case.id)
+                        if csv_files:
+                            # Create a subfolder for each case's CSV files
+                            for filename, csv_content in csv_files.items():
+                                zf.writestr(f"{case.case_number}/{filename}", csv_content)
+                            exported_count += 1
+                    
+                    else:  # niem_json
+                        niem_data = await rms_export_service.export_to_niem_json(case.id)
+                        if niem_data:
+                            json_str = json.dumps(niem_data, indent=2, default=str)
+                            zf.writestr(f"{case.case_number}_niem.json", json_str)
+                            exported_count += 1
+                
+                except Exception as e:
+                    logger.warning(f"Failed to export case {case.id}: {e}")
+                    continue
+        
+        if exported_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to export any cases")
+        
+        # Record bulk export in custody chain
+        await custody_chain_service.record_evidence_exported(
+            evidence_type="case_bulk",
+            evidence_id="bulk_export",
+            actor="api_user",
+            export_format=f"RMS_{format.upper()}_BULK",
+            metadata={
+                "endpoint": "export_cases_rms_bulk",
+                "case_count": exported_count,
+                "format": format
+            }
+        )
+        
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename=cases_rms_bulk_{format}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk RMS export: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export cases: {str(e)}")
+
+
+class PatternAnalysisRequest(BaseModel):
+    """Request for pattern analysis on specific cases."""
+    case_ids: List[str]
+
+
+@router.post("/patterns/analyze")
+async def analyze_specific_patterns(request: PatternAnalysisRequest):
+    """Analyze patterns for a specific set of cases."""
+    from app.services.pattern_detection import pattern_detection_service
+    
+    if not request.case_ids:
+        raise HTTPException(status_code=400, detail="At least one case ID required")
+    
+    try:
+        result = await pattern_detection_service.analyze_patterns(
+            case_ids=request.case_ids
+        )
+        
+        return {
+            "success": True,
+            "case_count": len(request.case_ids),
+            "analysis": result.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing patterns: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # Scene Animation Endpoints
 # ============================================================================
 
@@ -6104,4 +7366,1496 @@ async def _generate_animation_from_timeline(session: ReconstructionSession, vers
         "total_duration": total_duration,
         "keyframes": keyframes,
         "auto_generated": True
+    }
+
+
+# ============================================================================
+# Multi-Model Verification Endpoints
+# ============================================================================
+
+class VerificationToggleRequest(BaseModel):
+    """Request model for toggling multi-model verification."""
+    enabled: bool
+
+
+class VerificationTestRequest(BaseModel):
+    """Request model for testing verification with a custom prompt."""
+    prompt: str
+    comparison_fields: Optional[List[str]] = None
+
+
+@router.get("/verification/status")
+async def get_verification_status():
+    """
+    Get current multi-model verification status and statistics.
+    
+    Returns:
+        Verification enabled/disabled status and statistics.
+    """
+    from app.services.multi_model_verifier import multi_model_verifier
+    
+    return {
+        "enabled": multi_model_verifier.enabled,
+        "statistics": multi_model_verifier.get_stats(),
+        "config": {
+            "multi_model_verification_enabled": settings.multi_model_verification_enabled,
+        }
+    }
+
+
+@router.post("/verification/toggle")
+async def toggle_verification(request: VerificationToggleRequest, _=Depends(require_admin_auth)):
+    """
+    Enable or disable multi-model verification (admin only).
+    
+    When enabled, critical extractions are cross-verified using both
+    Gemini and Gemma models to detect discrepancies.
+    """
+    from app.services.multi_model_verifier import multi_model_verifier
+    
+    multi_model_verifier.set_enabled(request.enabled)
+    
+    return {
+        "success": True,
+        "enabled": multi_model_verifier.enabled,
+        "message": f"Multi-model verification {'enabled' if request.enabled else 'disabled'}",
+    }
+
+
+@router.post("/verification/test")
+async def test_verification(request: VerificationTestRequest, _=Depends(require_admin_auth)):
+    """
+    Test multi-model verification with a custom prompt (admin only).
+    
+    Sends the prompt to both Gemini and Gemma and returns comparison results.
+    Useful for testing verification behavior before deploying to production.
+    """
+    from app.services.multi_model_verifier import multi_model_verifier
+    
+    # Temporarily enable for test
+    was_enabled = multi_model_verifier.enabled
+    multi_model_verifier.enabled = True
+    
+    try:
+        result = await multi_model_verifier.verify_extraction(
+            prompt=request.prompt,
+            comparison_fields=request.comparison_fields,
+        )
+        
+        return {
+            "verification_result": result.result.value,
+            "confidence_score": result.confidence_score,
+            "discrepancies": result.discrepancies,
+            "primary_model": result.primary_response.model_name if result.primary_response else None,
+            "secondary_model": result.secondary_response.model_name if result.secondary_response else None,
+            "primary_response": result.primary_response.response_text[:500] if result.primary_response else None,
+            "secondary_response": result.secondary_response.response_text[:500] if result.secondary_response else None,
+            "metadata": result.metadata,
+        }
+    finally:
+        multi_model_verifier.enabled = was_enabled
+
+
+@router.get("/verification/stats")
+async def get_verification_stats():
+    """
+    Get detailed verification statistics.
+    
+    Returns:
+        Statistics including total verifications, consistency rate, and discrepancy rate.
+    """
+    from app.services.multi_model_verifier import multi_model_verifier
+    
+    stats = multi_model_verifier.get_stats()
+    
+    return {
+        "statistics": stats,
+        "summary": {
+            "total_verifications": stats["total_verifications"],
+            "consistency_rate": (
+                stats["consistent"] / max(1, stats["total_verifications"])
+            ),
+            "discrepancy_rate": stats["discrepancy_rate"],
+            "fallback_rate": (
+                stats["single_model_fallback"] / max(1, stats["total_verifications"])
+            ),
+        }
+    }
+
+
+# ── Model Performance Metrics ─────────────────────────────────────────────
+
+@router.get("/models/metrics")
+async def get_model_metrics():
+    """
+    Get AI model performance metrics dashboard data.
+    
+    Returns comprehensive metrics including:
+    - Per-model latency (avg, p50, p95)
+    - Success/failure rates
+    - Token usage
+    - Error type breakdown
+    - Optimization hints
+    """
+    from app.services.model_metrics import model_metrics
+    
+    try:
+        return model_metrics.get_dashboard_data()
+    except Exception as e:
+        logger.error(f"Error getting model metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get model metrics: {str(e)}"
+        )
+
+
+@router.get("/models/metrics/{model_name}")
+async def get_model_metrics_detail(model_name: str):
+    """
+    Get detailed performance metrics for a specific model.
+    
+    Args:
+        model_name: Name of the AI model
+        
+    Returns:
+        Detailed performance summary for the specified model
+    """
+    from app.services.model_metrics import model_metrics
+    
+    try:
+        summary = model_metrics.get_model_summary(model_name)
+        historical = await model_metrics.get_historical_metrics(model=model_name, days=7)
+        hints = model_metrics.get_model_optimization_hints()
+        
+        return {
+            "model": model_name,
+            "current": summary.to_dict(),
+            "historical": historical,
+            "optimization_hints": hints.get(model_name, {}),
+        }
+    except Exception as e:
+        logger.error(f"Error getting model metrics for {model_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get model metrics: {str(e)}"
+        )
+
+
+@router.get("/models/metrics/history")
+async def get_model_metrics_history(
+    model: Optional[str] = None,
+    days: int = 7
+):
+    """
+    Get historical model metrics from the database.
+    
+    Args:
+        model: Optional model name filter
+        days: Number of days of history (default 7, max 30)
+        
+    Returns:
+        Historical metrics aggregated by day and model
+    """
+    from app.services.model_metrics import model_metrics
+    
+    days = min(max(1, days), 30)  # Clamp to 1-30
+    
+    try:
+        return await model_metrics.get_historical_metrics(model=model, days=days)
+    except Exception as e:
+        logger.error(f"Error getting historical metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get historical metrics: {str(e)}"
+        )
+
+
+@router.get("/models/metrics/optimization")
+async def get_model_optimization_hints():
+    """
+    Get model selection optimization recommendations.
+    
+    Returns recommendations based on:
+    - Success rates
+    - Latency patterns
+    - Error frequency
+    - Rate limit pressure
+    
+    Use these hints to optimize model selection for different task types.
+    """
+    from app.services.model_metrics import model_metrics
+    
+    try:
+        hints = model_metrics.get_model_optimization_hints()
+        task_metrics = model_metrics.get_task_metrics()
+        
+        # Generate task-specific recommendations
+        task_recommendations = {}
+        for task_type, models in task_metrics.items():
+            best_model = None
+            best_score = -1
+            
+            for model, metrics in models.items():
+                # Score based on success rate and latency
+                success_rate = metrics.get("success_rate", 0)
+                avg_latency = metrics.get("avg_latency_ms", 10000)
+                latency_score = max(0, 1 - (avg_latency / 10000))
+                score = success_rate * 0.7 + latency_score * 0.3
+                
+                if score > best_score:
+                    best_score = score
+                    best_model = model
+            
+            task_recommendations[task_type] = {
+                "recommended_model": best_model,
+                "score": best_score,
+                "models_evaluated": len(models),
+            }
+        
+        return {
+            "model_hints": hints,
+            "task_recommendations": task_recommendations,
+            "generated_at": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Error getting optimization hints: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get optimization hints: {str(e)}"
+        )
+
+
+# ============================================================================
+# Witness Memory Endpoints
+# ============================================================================
+
+@router.post("/memories", response_model=WitnessMemoryResponse, status_code=status.HTTP_201_CREATED)
+async def create_memory(
+    memory_data: WitnessMemoryCreate,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Create a new memory about a witness.
+    
+    Memories persist across sessions and can be retrieved semantically.
+    """
+    from app.services.memory_service import memory_service
+    
+    try:
+        memory = await memory_service.store_memory(
+            witness_id=memory_data.witness_id,
+            memory_type=memory_data.memory_type,
+            content=memory_data.content,
+            session_id=memory_data.session_id,
+            case_id=memory_data.case_id,
+            confidence=memory_data.confidence,
+            metadata=memory_data.metadata,
+        )
+        
+        if not memory:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create memory"
+            )
+        
+        return WitnessMemoryResponse(**memory.to_dict())
+    except Exception as e:
+        logger.error(f"Error creating memory: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create memory: {str(e)}"
+        )
+
+
+@router.get("/memories/{memory_id}", response_model=WitnessMemoryResponse)
+async def get_memory(
+    memory_id: str,
+    _auth: dict = Depends(authenticate),
+):
+    """Get a specific memory by ID."""
+    from app.services.memory_service import memory_service
+    
+    memory = await memory_service.get_memory(memory_id)
+    if not memory:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found"
+        )
+    
+    return WitnessMemoryResponse(**memory.to_dict())
+
+
+@router.put("/memories/{memory_id}", response_model=WitnessMemoryResponse)
+async def update_memory(
+    memory_id: str,
+    update_data: WitnessMemoryUpdate,
+    _auth: dict = Depends(authenticate),
+):
+    """Update an existing memory."""
+    from app.services.memory_service import memory_service
+    
+    memory = await memory_service.update_memory(
+        memory_id=memory_id,
+        content=update_data.content,
+        confidence=update_data.confidence,
+        metadata=update_data.metadata,
+    )
+    
+    if not memory:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found"
+        )
+    
+    return WitnessMemoryResponse(**memory.to_dict())
+
+
+@router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_memory(
+    memory_id: str,
+    _auth: dict = Depends(authenticate),
+):
+    """Delete a memory."""
+    from app.services.memory_service import memory_service
+    
+    success = await memory_service.delete_memory(memory_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Memory not found or could not be deleted"
+        )
+
+
+@router.get("/witnesses/{witness_id}/memories", response_model=List[WitnessMemoryResponse])
+async def get_witness_memories(
+    witness_id: str,
+    memory_type: Optional[str] = None,
+    limit: int = 50,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Get all memories for a specific witness.
+    
+    Args:
+        witness_id: The witness ID
+        memory_type: Optional filter by type (fact, testimony, behavior, relationship)
+        limit: Maximum number to return
+    """
+    from app.services.memory_service import memory_service
+    
+    memory_types = [memory_type] if memory_type else None
+    memories = await memory_service.get_witness_memories(
+        witness_id=witness_id,
+        memory_types=memory_types,
+        limit=limit,
+    )
+    
+    return [WitnessMemoryResponse(**m.to_dict()) for m in memories]
+
+
+@router.post("/witnesses/{witness_id}/memories/search", response_model=List[WitnessMemorySearchResult])
+async def search_witness_memories(
+    witness_id: str,
+    search_request: WitnessMemorySearchRequest,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Search memories for a witness using semantic similarity.
+    
+    Uses embeddings to find memories relevant to the query.
+    """
+    from app.services.memory_service import memory_service
+    
+    results = await memory_service.retrieve_relevant_memories(
+        witness_id=witness_id,
+        query=search_request.query,
+        top_k=search_request.top_k,
+        threshold=search_request.threshold,
+        memory_types=search_request.memory_types,
+    )
+    
+    return [
+        WitnessMemorySearchResult(
+            memory=WitnessMemoryResponse(**memory.to_dict()),
+            similarity_score=score
+        )
+        for memory, score in results
+    ]
+
+
+@router.post("/memories/extract", response_model=List[WitnessMemoryResponse])
+async def extract_memories_from_session(
+    request: ExtractMemoriesRequest,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Extract and store memories from a completed interview session.
+    
+    Uses AI to identify key facts from witness testimony.
+    """
+    from app.services.memory_service import memory_service
+    
+    # Get the session
+    session = await firestore_service.get_session(request.session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+    
+    # Get statements
+    statements = [
+        {"text": stmt.text, "timestamp": stmt.timestamp.isoformat() if stmt.timestamp else None}
+        for stmt in session.witness_statements
+    ]
+    
+    if not statements:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session has no statements to extract memories from"
+        )
+    
+    try:
+        memories = await memory_service.extract_memories_from_session(
+            session_id=request.session_id,
+            witness_id=request.witness_id,
+            statements=statements,
+            case_id=request.case_id,
+        )
+        
+        return [WitnessMemoryResponse(**m.to_dict()) for m in memories]
+    except Exception as e:
+        logger.error(f"Error extracting memories: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to extract memories: {str(e)}"
+        )
+
+
+@router.get("/memories/stats", response_model=WitnessMemoryStatsResponse)
+async def get_memory_stats(
+    witness_id: Optional[str] = None,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Get memory statistics.
+    
+    Args:
+        witness_id: Optional filter by witness
+    """
+    from app.services.memory_service import memory_service
+    
+    stats = await memory_service.get_memory_stats(witness_id=witness_id)
+    return WitnessMemoryStatsResponse(**stats)
+
+
+@router.post("/sessions/{session_id}/load-memories")
+async def load_session_memories(
+    session_id: str,
+    witness_id: Optional[str] = None,
+    _auth: dict = Depends(authenticate),
+):
+    """
+    Load relevant memories for a session's witness into the AI context.
+    
+    Call this at the start of a session with a returning witness
+    to include their prior testimony and facts in the AI context.
+    
+    Args:
+        session_id: The session ID
+        witness_id: Optional specific witness ID (otherwise uses session witness)
+    
+    Returns:
+        The memory context that will be included in AI prompts.
+    """
+    from app.services.memory_service import memory_service
+    
+    # Get the session
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+    
+    # Determine witness ID
+    if not witness_id:
+        if session.active_witness_id:
+            witness_id = session.active_witness_id
+        elif session.witnesses:
+            witness_id = session.witnesses[0].id
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No witness ID provided and session has no witnesses"
+            )
+    
+    # Get recent statements for context
+    recent_statements = " ".join([
+        stmt.text for stmt in session.witness_statements[-5:]
+    ]) if session.witness_statements else "starting a new interview"
+    
+    # Build memory context
+    context = await memory_service.build_memory_context(
+        witness_id=witness_id,
+        current_statement=recent_statements,
+        max_memories=5,
+    )
+    
+    # Get the agent and update its context
+    agent = get_agent(session_id)
+    
+    # Get memory stats for response
+    memories = await memory_service.get_witness_memories(witness_id, limit=10)
+    
+    return {
+        "witness_id": witness_id,
+        "memories_loaded": len(memories),
+        "memory_context": context,
+        "message": f"Loaded {len(memories)} memories for witness {witness_id}"
+    }
+
+
+# ── Spatial Validation Endpoints ─────────────────────────────
+
+class SpatialValidationRequest(BaseModel):
+    """Request body for spatial validation."""
+    include_corrections: bool = False
+
+
+@router.post("/sessions/{session_id}/validate-spatial", tags=["spatial-validation"])
+async def validate_session_spatial(
+    session_id: str,
+    request: SpatialValidationRequest,
+    _: bool = Depends(authenticate),
+) -> Dict:
+    """
+    Validate spatial plausibility of the current scene in a session.
+    
+    Checks for:
+    - Element overlaps (physical impossibilities)
+    - Realistic distances between elements
+    - Position constraints (e.g., vehicles on roads, people on sidewalks)
+    - Consistent spatial relationships
+    
+    Args:
+        session_id: Session ID to validate
+        request: Validation options (include_corrections flag)
+        
+    Returns:
+        Validation results with issues and optional corrections
+    """
+    # Get session from firestore
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Get the latest scene version
+    if not session.scene_versions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session has no scene versions to validate"
+        )
+    
+    latest_scene = session.scene_versions[-1]
+    
+    # Get relationships if available
+    relationships = getattr(session, 'element_relationships', []) or []
+    
+    if request.include_corrections:
+        result = get_spatial_corrections(latest_scene, relationships)
+    else:
+        result = {"validation": validate_scene_spatial(latest_scene, relationships)}
+    
+    logger.info(f"Spatial validation for session {session_id}: {result['validation']['summary']}")
+    
+    return {
+        "session_id": session_id,
+        "scene_version": latest_scene.version,
+        **result
+    }
+
+
+@router.post("/sessions/{session_id}/versions/{version}/validate-spatial", tags=["spatial-validation"])
+async def validate_scene_version_spatial(
+    session_id: str,
+    version: int,
+    request: SpatialValidationRequest,
+    _: bool = Depends(authenticate),
+) -> Dict:
+    """
+    Validate spatial plausibility of a specific scene version.
+    
+    Args:
+        session_id: Session ID
+        version: Scene version number to validate
+        request: Validation options
+        
+    Returns:
+        Validation results with issues and optional corrections
+    """
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Find the requested version
+    scene_version = None
+    for sv in session.scene_versions:
+        if sv.version == version:
+            scene_version = sv
+            break
+    
+    if not scene_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scene version {version} not found in session {session_id}"
+        )
+    
+    relationships = getattr(session, 'element_relationships', []) or []
+    
+    if request.include_corrections:
+        result = get_spatial_corrections(scene_version, relationships)
+    else:
+        result = {"validation": validate_scene_spatial(scene_version, relationships)}
+    
+    return {
+        "session_id": session_id,
+        "scene_version": version,
+        **result
+    }
+
+
+class BatchValidationRequest(BaseModel):
+    """Request for validating multiple sessions."""
+    session_ids: List[str]
+    include_corrections: bool = False
+
+
+@router.post("/validate-spatial/batch", tags=["spatial-validation"])
+async def validate_spatial_batch(
+    request: BatchValidationRequest,
+    _: bool = Depends(authenticate),
+) -> Dict:
+    """
+    Validate spatial plausibility across multiple sessions.
+    
+    Useful for bulk validation of scenes.
+    
+    Returns:
+        Summary of validation results for all sessions
+    """
+    results = []
+    
+    for session_id in request.session_ids:
+        try:
+            session = await firestore_service.get_session(session_id)
+            if not session or not session.scene_versions:
+                results.append({
+                    "session_id": session_id,
+                    "status": "skipped",
+                    "reason": "No session or scene versions"
+                })
+                continue
+            
+            latest_scene = session.scene_versions[-1]
+            relationships = getattr(session, 'element_relationships', []) or []
+            
+            validation = validate_scene_spatial(latest_scene, relationships)
+            
+            results.append({
+                "session_id": session_id,
+                "status": "validated",
+                "is_valid": validation["is_valid"],
+                "error_count": validation["error_count"],
+                "warning_count": validation["warning_count"],
+                "summary": validation["summary"]
+            })
+        except Exception as e:
+            logger.error(f"Error validating session {session_id}: {e}")
+            results.append({
+                "session_id": session_id,
+                "status": "error",
+                "reason": str(e)
+            })
+    
+    # Calculate summary stats
+    validated = [r for r in results if r.get("status") == "validated"]
+    valid_count = len([r for r in validated if r.get("is_valid")])
+    
+    return {
+        "total_sessions": len(request.session_ids),
+        "validated": len(validated),
+        "valid": valid_count,
+        "with_errors": len(validated) - valid_count,
+        "skipped": len([r for r in results if r.get("status") == "skipped"]),
+        "errors": len([r for r in results if r.get("status") == "error"]),
+        "results": results
+    }
+
+
+# ── Translation Endpoints ─────────────────────────────────────────────────────
+
+
+class TranslateRequest(BaseModel):
+    """Request model for translation."""
+    text: str
+    target_language: str
+    source_language: Optional[str] = None
+
+
+class TranslateResponse(BaseModel):
+    """Response model for translation."""
+    original_text: str
+    translated_text: str
+    source_language: str
+    target_language: str
+
+
+class DetectLanguageRequest(BaseModel):
+    """Request model for language detection."""
+    text: str
+
+
+class DetectLanguageResponse(BaseModel):
+    """Response model for language detection."""
+    language_code: str
+    language_name: str
+    confidence: float
+
+
+class SupportedLanguagesResponse(BaseModel):
+    """Response model for supported languages."""
+    languages: Dict[str, str]
+
+
+@router.get("/translation/languages", response_model=SupportedLanguagesResponse)
+async def get_supported_languages():
+    """
+    Get list of supported languages for translation.
+    
+    Returns language codes and their display names.
+    """
+    from app.services.translation_service import translation_service
+    
+    return SupportedLanguagesResponse(
+        languages=translation_service.get_supported_languages()
+    )
+
+
+@router.post("/translation/detect", response_model=DetectLanguageResponse)
+async def detect_language(request: DetectLanguageRequest):
+    """
+    Detect the language of the given text.
+    
+    Uses Gemini to analyze text and determine language.
+    """
+    from app.services.translation_service import translation_service, SUPPORTED_LANGUAGES
+    
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text cannot be empty"
+        )
+    
+    lang_code, confidence = await translation_service.detect_language(request.text)
+    lang_name = SUPPORTED_LANGUAGES.get(lang_code, lang_code)
+    
+    return DetectLanguageResponse(
+        language_code=lang_code,
+        language_name=lang_name,
+        confidence=confidence
+    )
+
+
+@router.post("/translation/translate", response_model=TranslateResponse)
+async def translate_text(request: TranslateRequest):
+    """
+    Translate text to target language.
+    
+    If source_language is not provided, it will be auto-detected.
+    """
+    from app.services.translation_service import translation_service
+    
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text cannot be empty"
+        )
+    
+    translated, source_lang = await translation_service.translate(
+        text=request.text,
+        target_language=request.target_language,
+        source_language=request.source_language,
+    )
+    
+    return TranslateResponse(
+        original_text=request.text,
+        translated_text=translated,
+        source_language=source_lang,
+        target_language=request.target_language
+    )
+
+
+@router.put("/sessions/{session_id}/witnesses/{witness_id}/language")
+async def set_witness_language(
+    session_id: str,
+    witness_id: str,
+    language_code: str,
+):
+    """
+    Set the preferred language for a witness.
+    
+    This language will be used to translate AI responses for the witness.
+    """
+    from app.services.translation_service import SUPPORTED_LANGUAGES
+    
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Validate language code
+    if language_code not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported language code: {language_code}. Supported: {list(SUPPORTED_LANGUAGES.keys())}"
+        )
+    
+    # Find and update witness
+    witness_found = False
+    for witness in session.witnesses:
+        if witness.id == witness_id:
+            witness.preferred_language = language_code
+            witness_found = True
+            break
+    
+    if not witness_found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Witness {witness_id} not found in session {session_id}"
+        )
+    
+    await firestore_service.update_session(session)
+    
+    return {
+        "witness_id": witness_id,
+        "preferred_language": language_code,
+        "language_name": SUPPORTED_LANGUAGES[language_code],
+        "message": f"Language preference updated to {SUPPORTED_LANGUAGES[language_code]}"
+    }
+
+
+@router.get("/sessions/{session_id}/witnesses/{witness_id}/language")
+async def get_witness_language(
+    session_id: str,
+    witness_id: str,
+):
+    """
+    Get the preferred language for a witness.
+    """
+    from app.services.translation_service import SUPPORTED_LANGUAGES
+    
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found"
+        )
+    
+    # Find witness
+    for witness in session.witnesses:
+        if witness.id == witness_id:
+            lang_code = getattr(witness, 'preferred_language', 'en')
+            return {
+                "witness_id": witness_id,
+                "preferred_language": lang_code,
+                "language_name": SUPPORTED_LANGUAGES.get(lang_code, lang_code)
+            }
+    
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Witness {witness_id} not found in session {session_id}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investigator Management Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/investigators")
+async def list_investigators(active_only: bool = False, auth=Depends(require_admin_auth)):
+    """List all investigators."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        investigators = await db.list_investigators(active_only=active_only)
+        return {"investigators": investigators, "total": len(investigators)}
+    except Exception as e:
+        logger.error(f"Error listing investigators: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/investigators", status_code=status.HTTP_201_CREATED)
+async def create_investigator(data: dict, auth=Depends(require_admin_auth)):
+    """Create a new investigator."""
+    try:
+        from app.services.database import get_database
+        investigator_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        
+        investigator_dict = {
+            "id": investigator_id,
+            "name": data.get("name"),
+            "badge_number": data.get("badge_number"),
+            "email": data.get("email"),
+            "department": data.get("department"),
+            "active": True,
+            "max_cases": data.get("max_cases", 10),
+            "created_at": now,
+            "updated_at": now,
+        }
+        
+        if not investigator_dict["name"]:
+            raise HTTPException(status_code=400, detail="Name is required")
+        
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        await db.save_investigator(investigator_dict)
+        
+        return {"message": "Investigator created", "investigator": investigator_dict}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating investigator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/investigators/{investigator_id}")
+async def get_investigator(investigator_id: str, auth=Depends(require_admin_auth)):
+    """Get investigator by ID."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        investigator = await db.get_investigator(investigator_id)
+        if not investigator:
+            raise HTTPException(status_code=404, detail="Investigator not found")
+        return investigator
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting investigator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/investigators/{investigator_id}")
+async def update_investigator(investigator_id: str, updates: dict, auth=Depends(require_admin_auth)):
+    """Update an investigator."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        investigator = await db.get_investigator(investigator_id)
+        if not investigator:
+            raise HTTPException(status_code=404, detail="Investigator not found")
+        
+        for key in ["name", "badge_number", "email", "department", "active", "max_cases"]:
+            if key in updates:
+                investigator[key] = updates[key]
+        investigator["updated_at"] = datetime.utcnow().isoformat()
+        
+        await db.save_investigator(investigator)
+        return {"message": "Investigator updated", "investigator": investigator}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating investigator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/investigators/{investigator_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_investigator(investigator_id: str, auth=Depends(require_admin_auth)):
+    """Deactivate an investigator (soft delete)."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        await db.delete_investigator(investigator_id)
+    except Exception as e:
+        logger.error(f"Error deleting investigator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Case Assignment Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/cases/{case_id}/assign")
+async def assign_case(case_id: str, data: dict, auth=Depends(require_admin_auth)):
+    """Assign a case to an investigator."""
+    try:
+        from app.services.database import get_database
+        
+        investigator_id = data.get("investigator_id")
+        assigned_by = data.get("assigned_by", "admin")
+        notes = data.get("notes")
+        
+        if not investigator_id:
+            raise HTTPException(status_code=400, detail="investigator_id is required")
+        
+        # Verify case exists
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        # Verify investigator exists
+        investigator = await db.get_investigator(investigator_id)
+        if not investigator:
+            raise HTTPException(status_code=404, detail="Investigator not found")
+        
+        if not investigator.get("active"):
+            raise HTTPException(status_code=400, detail="Investigator is not active")
+        
+        # Check workload
+        current_assignments = await db.get_investigator_assignments(investigator_id, active_only=True)
+        if len(current_assignments) >= investigator.get("max_cases", 10):
+            raise HTTPException(status_code=400, detail="Investigator has reached maximum case capacity")
+        
+        # Deactivate existing assignments for this case
+        await db.deactivate_case_assignments(case_id)
+        
+        # Create new assignment
+        assignment_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        assignment_dict = {
+            "id": assignment_id,
+            "case_id": case_id,
+            "investigator_id": investigator_id,
+            "investigator_name": investigator.get("name"),
+            "assigned_by": assigned_by,
+            "assigned_at": now,
+            "notes": notes,
+            "is_active": True,
+        }
+        await db.save_case_assignment(assignment_dict)
+        
+        # Update case metadata
+        if not case.metadata:
+            case.metadata = {}
+        case.metadata["assigned_to"] = investigator.get("name")
+        case.metadata["assigned_investigator_id"] = investigator_id
+        case.metadata["assignment_id"] = assignment_id
+        case.updated_at = datetime.utcnow()
+        await firestore_service.update_case(case)
+        
+        # Log custody event
+        try:
+            await custody_chain_service.log_event(
+                evidence_type="case",
+                evidence_id=case_id,
+                action="transferred",
+                actor=assigned_by,
+                actor_role="admin",
+                details=f"Case assigned to {investigator.get('name')}",
+            )
+        except Exception as ce:
+            logger.warning(f"Failed to log custody event: {ce}")
+        
+        return {
+            "message": "Case assigned successfully",
+            "assignment": assignment_dict,
+            "investigator": investigator,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning case: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/cases/{case_id}/assign")
+async def unassign_case(case_id: str, auth=Depends(require_admin_auth)):
+    """Remove case assignment (unassign from investigator)."""
+    try:
+        from app.services.database import get_database
+        
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        await db.deactivate_case_assignments(case_id)
+        
+        # Update case metadata
+        if case.metadata:
+            case.metadata.pop("assigned_to", None)
+            case.metadata.pop("assigned_investigator_id", None)
+            case.metadata.pop("assignment_id", None)
+        case.updated_at = datetime.utcnow()
+        await firestore_service.update_case(case)
+        
+        return {"message": "Case unassigned successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unassigning case: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cases/{case_id}/assignments")
+async def get_case_assignment_history(case_id: str, auth=Depends(require_admin_auth)):
+    """Get assignment history for a case."""
+    try:
+        from app.services.database import get_database
+        
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        assignments = await db.get_case_assignments(case_id)
+        active_assignment = next((a for a in assignments if a.get("is_active")), None)
+        
+        return {
+            "case_id": case_id,
+            "case_number": case.case_number,
+            "active_assignment": active_assignment,
+            "assignment_history": assignments,
+            "total_assignments": len(assignments),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting case assignments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/investigators/{investigator_id}/cases")
+async def get_investigator_cases(investigator_id: str, active_only: bool = True, auth=Depends(require_admin_auth)):
+    """Get cases assigned to an investigator."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        investigator = await db.get_investigator(investigator_id)
+        if not investigator:
+            raise HTTPException(status_code=404, detail="Investigator not found")
+        
+        assignments = await db.get_investigator_assignments(investigator_id, active_only=active_only)
+        
+        # Fetch case details
+        cases = []
+        for assignment in assignments:
+            case = await firestore_service.get_case(assignment.get("case_id"))
+            if case:
+                cases.append({
+                    "case_id": case.id,
+                    "case_number": case.case_number,
+                    "title": case.title,
+                    "status": case.status,
+                    "assigned_at": assignment.get("assigned_at"),
+                    "is_active": assignment.get("is_active"),
+                })
+        
+        return {
+            "investigator_id": investigator_id,
+            "investigator_name": investigator.get("name"),
+            "cases": cases,
+            "active_cases": len([c for c in cases if c.get("is_active")]),
+            "total_assignments": len(assignments),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting investigator cases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/workload")
+async def get_workload_summary(auth=Depends(require_admin_auth)):
+    """Get workload summary for all investigators."""
+    try:
+        from app.services.database import get_database
+        db = get_database()
+        if db._db is None:
+            await db.initialize()
+        
+        stats = await db.get_workload_stats()
+        unassigned = await db.count_unassigned_cases()
+        
+        investigators = []
+        total_active_cases = 0
+        total_utilization = 0
+        
+        for row in stats:
+            active_cases = row.get("active_cases", 0)
+            max_cases = row.get("max_cases", 10)
+            utilization = (active_cases / max_cases * 100) if max_cases > 0 else 0
+            total_active_cases += active_cases
+            total_utilization += utilization
+            
+            # Fetch assigned cases for this investigator
+            assignments = await db.get_investigator_assignments(row.get("investigator_id"), active_only=True)
+            cases = []
+            for assignment in assignments:
+                case = await firestore_service.get_case(assignment.get("case_id"))
+                if case:
+                    cases.append({
+                        "case_id": case.id,
+                        "case_number": case.case_number,
+                        "title": case.title,
+                        "status": case.status,
+                    })
+            
+            investigators.append({
+                "investigator_id": row.get("investigator_id"),
+                "investigator_name": row.get("investigator_name"),
+                "badge_number": row.get("badge_number"),
+                "department": row.get("department"),
+                "active_cases": active_cases,
+                "max_cases": max_cases,
+                "utilization_percent": round(utilization, 1),
+                "total_assignments": row.get("total_assignments", 0),
+                "cases": cases,
+                "active": row.get("active", True),
+            })
+        
+        active_investigators = len([i for i in investigators if i.get("active")])
+        avg_utilization = (total_utilization / len(investigators)) if investigators else 0
+        
+        return {
+            "total_investigators": len(investigators),
+            "active_investigators": active_investigators,
+            "total_active_cases": total_active_cases,
+            "unassigned_cases": unassigned,
+            "avg_utilization": round(avg_utilization, 1),
+            "investigators": investigators,
+        }
+    except Exception as e:
+        logger.error(f"Error getting workload summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Interview Comfort Features ====================
+
+# In-memory store for comfort states (would use Firestore in production)
+_comfort_states: Dict[str, dict] = {}
+
+
+class InterviewPauseRequest(BaseModel):
+    paused: bool
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EmotionalSupportRequest(BaseModel):
+    context: str
+    trigger: Optional[str] = None
+
+
+@router.post("/sessions/{session_id}/comfort/pause")
+async def set_interview_pause_state(session_id: str, request: InterviewPauseRequest):
+    """
+    Set the pause state for an interview session.
+    
+    Tracks when interviews are paused/resumed for comfort tracking.
+    """
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Initialize comfort state if needed
+    if session_id not in _comfort_states:
+        _comfort_states[session_id] = {
+            "is_paused": False,
+            "pause_events": [],
+            "total_pause_duration": 0,
+            "breaks_taken": 0
+        }
+    
+    state = _comfort_states[session_id]
+    
+    if request.paused and not state["is_paused"]:
+        # Starting a pause
+        state["is_paused"] = True
+        state["pause_start"] = request.timestamp.isoformat()
+        state["pause_events"].append({
+            "type": "pause",
+            "timestamp": request.timestamp.isoformat()
+        })
+    elif not request.paused and state["is_paused"]:
+        # Ending a pause
+        state["is_paused"] = False
+        if "pause_start" in state:
+            pause_start = datetime.fromisoformat(state["pause_start"])
+            duration = (request.timestamp - pause_start).total_seconds()
+            state["total_pause_duration"] += duration
+            if duration > 30:  # Count as break if > 30 seconds
+                state["breaks_taken"] += 1
+        state["pause_events"].append({
+            "type": "resume",
+            "timestamp": request.timestamp.isoformat()
+        })
+    
+    return {
+        "session_id": session_id,
+        "paused": state["is_paused"],
+        "message": "Interview paused" if state["is_paused"] else "Interview resumed",
+        "total_pause_duration": state["total_pause_duration"],
+        "breaks_taken": state["breaks_taken"]
+    }
+
+
+@router.get("/sessions/{session_id}/comfort/state")
+async def get_comfort_state(session_id: str):
+    """
+    Get the current comfort state for an interview session.
+    """
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    state = _comfort_states.get(session_id, {
+        "is_paused": False,
+        "total_pause_duration": 0,
+        "breaks_taken": 0,
+        "pause_events": []
+    })
+    
+    return {
+        "session_id": session_id,
+        **state
+    }
+
+
+@router.post("/sessions/{session_id}/comfort/support")
+async def get_emotional_support_prompt(session_id: str, request: EmotionalSupportRequest):
+    """
+    Get an AI-generated emotional support prompt based on interview context.
+    
+    Uses the session context to generate appropriate supportive messages.
+    """
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Default support prompts by trigger type
+    support_prompts = {
+        "distress": [
+            "Take your time. There's no rush here.",
+            "It's okay to feel emotional. We can pause whenever you need.",
+            "You're doing great. Would you like to take a short break?",
+            "I understand this is difficult. Your comfort matters."
+        ],
+        "confusion": [
+            "Let me rephrase that for you.",
+            "There are no wrong answers here. Just share what you remember.",
+            "We can come back to this question later if you'd like.",
+            "It's perfectly normal if some details are unclear."
+        ],
+        "fatigue": [
+            "We've been talking for a while. How about a 5-minute break?",
+            "You've provided a lot of helpful information. Let's take a breather.",
+            "Would you like some water? We can pause here.",
+            "Your wellbeing is important. Please rest if you need to."
+        ],
+        "encouragement": [
+            "That's very helpful information. Thank you.",
+            "You're doing an excellent job remembering the details.",
+            "These details are valuable for understanding what happened.",
+            "Your account is clear and well-organized. Keep going."
+        ]
+    }
+    
+    trigger = request.trigger or "encouragement"
+    prompts = support_prompts.get(trigger, support_prompts["encouragement"])
+    
+    import random
+    selected_prompt = random.choice(prompts)
+    
+    # Record that we sent a support prompt
+    if session_id in _comfort_states:
+        _comfort_states[session_id]["last_support_at"] = datetime.utcnow().isoformat()
+    
+    return {
+        "prompt": selected_prompt,
+        "trigger": trigger,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.get("/sessions/{session_id}/comfort/progress")
+async def get_interview_progress(session_id: str):
+    """
+    Get comprehensive interview progress including comfort metrics.
+    """
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Calculate progress
+    statement_count = len(session.witness_statements)
+    scene_count = len(session.scene_versions)
+    
+    # Estimate completion based on typical interview patterns
+    completion = min(100, (statement_count * 10) + (scene_count * 15))
+    
+    # Determine phase
+    if statement_count == 0:
+        phase = "intro"
+    elif statement_count < 3:
+        phase = "narrative"
+    elif scene_count == 0:
+        phase = "details"
+    else:
+        phase = "review"
+    
+    # Get comfort state
+    comfort_state = _comfort_states.get(session_id, {
+        "is_paused": False,
+        "total_pause_duration": 0,
+        "breaks_taken": 0
+    })
+    
+    # Calculate durations
+    created_at = session.created_at
+    total_duration = (datetime.utcnow() - created_at).total_seconds()
+    active_duration = total_duration - comfort_state.get("total_pause_duration", 0)
+    
+    return {
+        "session_id": session_id,
+        "statement_count": statement_count,
+        "scene_version_count": scene_count,
+        "estimated_completion_percent": completion,
+        "phase": phase,
+        "is_paused": comfort_state.get("is_paused", False),
+        "total_duration_seconds": int(total_duration),
+        "active_duration_seconds": int(active_duration),
+        "breaks_taken": comfort_state.get("breaks_taken", 0)
     }

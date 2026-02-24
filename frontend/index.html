@@ -108,6 +108,29 @@
                     </div>
                 </div>
 
+                <!-- Interview Comfort Panel -->
+                <div id="interview-comfort-panel" class="interview-comfort-panel">
+                    <div class="comfort-controls">
+                        <button id="comfort-pause-btn" class="comfort-btn" title="Pause interview">
+                            ⏸️ Pause
+                        </button>
+                        <button id="comfort-break-btn" class="comfort-btn" title="Take a 5-minute break">
+                            ☕ Take Break
+                        </button>
+                        <button id="comfort-support-btn" class="comfort-btn" title="Get encouragement">
+                            💚 Support
+                        </button>
+                    </div>
+                    <div class="interview-duration">
+                        <span>⏱️ Duration:</span>
+                        <span id="interview-duration-display" class="interview-duration-display">0:00</span>
+                        <div class="breaks-counter">
+                            <span>☕</span>
+                            <span class="count" id="breaks-count">0</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Scene Preview Panel (Item 24) -->
                 <div id="scene-preview-panel" class="scene-preview" style="display:none;" role="complementary" aria-label="Scene reconstruction preview">
                     <div class="scene-preview-header">
@@ -187,6 +210,28 @@
                 <!-- Text Input — always visible -->
                 <div class="text-input">
                     <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record">🎤</button>
+                    <!-- Language Selector for Translation -->
+                    <select id="language-selector" class="language-selector" aria-label="Select your language" title="Select your language">
+                        <option value="en">🇺🇸 English</option>
+                        <option value="es">🇪🇸 Español</option>
+                        <option value="zh">🇨🇳 中文</option>
+                        <option value="vi">🇻🇳 Tiếng Việt</option>
+                        <option value="ko">🇰🇷 한국어</option>
+                        <option value="tl">🇵🇭 Tagalog</option>
+                        <option value="ar">🇸🇦 العربية</option>
+                        <option value="fr">🇫🇷 Français</option>
+                        <option value="de">🇩🇪 Deutsch</option>
+                        <option value="pt">🇧🇷 Português</option>
+                        <option value="ru">🇷🇺 Русский</option>
+                        <option value="ja">🇯🇵 日本語</option>
+                        <option value="hi">🇮🇳 हिन्दी</option>
+                        <option value="it">🇮🇹 Italiano</option>
+                        <option value="pl">🇵🇱 Polski</option>
+                        <option value="uk">🇺🇦 Українська</option>
+                        <option value="fa">🇮🇷 فارسی</option>
+                        <option value="th">🇹🇭 ไทย</option>
+                        <option value="he">🇮🇱 עברית</option>
+                    </select>
                     <button id="upload-evidence-btn" class="evidence-upload-btn" onclick="uploadEvidence()" aria-label="Attach photo evidence" title="Attach photo">
                         📎
                     </button>
@@ -319,6 +364,10 @@
                             <div class="view-toggle-group">
                                 <button class="view-toggle-btn active" id="view-2d-btn" onclick="toggleSceneView('2d')" title="2D View">2D</button>
                                 <button class="view-toggle-btn" id="view-3d-btn" onclick="toggleSceneView('3d')" title="3D View">3D</button>
+                            </div>
+                            <div class="perspective-toggle-group" id="perspective-toggle-group">
+                                <button class="perspective-toggle-btn active" id="view-bird-btn" onclick="togglePerspective('bird')" title="Bird's Eye View">🦅</button>
+                                <button class="perspective-toggle-btn" id="view-street-btn" onclick="togglePerspective('street')" title="Street Level View">🚶</button>
                             </div>
                             <button class="template-selector-btn" onclick="sceneTemplateManager.showTemplateSelector()" title="Choose Template">📐 Templates</button>
                             <button class="palette-toggle-btn" onclick="sceneElementLibrary.togglePalette()" title="Toggle palette">▼</button>
@@ -762,6 +811,7 @@
     <script src="/static/js/scene-3d.js"></script>
     <script src="/static/js/scene-animation.js"></script>
     <script src="/static/js/location.js"></script>
+    <script src="/static/js/interview-comfort.js"></script>
     <script src="/static/js/app.js"></script>
     
     <!-- Initialize Scene Element Library and 3D Viewer -->
@@ -777,6 +827,8 @@
         
         // Toggle between 2D and 3D scene views
         let currentSceneView = '2d';
+        let currentPerspective = 'bird';
+        
         function toggleSceneView(view) {
             if (view === currentSceneView) return;
             currentSceneView = view;
@@ -787,6 +839,7 @@
             const btn2d = document.getElementById('view-2d-btn');
             const btn3d = document.getElementById('view-3d-btn');
             const palette = document.getElementById('scene-element-palette');
+            const perspectiveGroup = document.getElementById('perspective-toggle-group');
             
             if (view === '3d') {
                 // Switch to 3D
@@ -796,6 +849,8 @@
                 palette.style.display = 'none';
                 btn2d.classList.remove('active');
                 btn3d.classList.add('active');
+                // Hide perspective toggle in 3D view (3D has its own camera controls)
+                if (perspectiveGroup) perspectiveGroup.style.display = 'none';
                 
                 if (window.scene3DViewer) {
                     window.scene3DViewer.activate(canvas3d);
@@ -808,11 +863,37 @@
                 palette.style.display = '';
                 btn2d.classList.add('active');
                 btn3d.classList.remove('active');
+                // Show perspective toggle in 2D view
+                if (perspectiveGroup) perspectiveGroup.style.display = 'flex';
                 
                 if (window.scene3DViewer) {
                     window.scene3DViewer.deactivate();
                 }
             }
+        }
+        
+        // Toggle between Bird's Eye and Street Level perspective
+        function togglePerspective(perspective) {
+            if (perspective === currentPerspective) return;
+            currentPerspective = perspective;
+            
+            const canvas = document.getElementById('scene-editor-canvas');
+            const btnBird = document.getElementById('view-bird-btn');
+            const btnStreet = document.getElementById('view-street-btn');
+            
+            if (!canvas) return;
+            
+            // Remove all perspective classes
+            canvas.classList.remove('perspective-bird', 'perspective-street');
+            
+            // Add the new perspective class
+            canvas.classList.add(`perspective-${perspective}`);
+            
+            // Update button states
+            btnBird.classList.toggle('active', perspective === 'bird');
+            btnStreet.classList.toggle('active', perspective === 'street');
+            
+            console.log('[Scene] Perspective switched to:', perspective);
         }
     </script>
     

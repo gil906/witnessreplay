@@ -260,6 +260,53 @@ class ModelSelector:
         logger.warning("All models in chain exhausted, returning first anyway")
         return first_model
 
+    async def _pick_from_chain_optimized(
+        self, chain: List[Tuple[str, Dict[str, int]]], task_type: str = "unknown"
+    ) -> str:
+        """Pick model from chain using performance metrics for optimization.
+        
+        Considers:
+        - Quota availability (primary)
+        - Rate limit status
+        - Historical success rate
+        - Latency performance
+        """
+        from app.services.model_metrics import model_metrics
+        
+        self._cleanup_rate_limits()
+        hints = model_metrics.get_model_optimization_hints()
+        
+        # Build list of available models with scores
+        available_models = []
+        for model, _ in chain:
+            if self._is_rate_limited(model):
+                continue
+            if not await quota_tracker.can_make_request(model):
+                continue
+            
+            # Get optimization score (default to 0.5 if no data)
+            model_hint = hints.get(model, {})
+            score = model_hint.get("overall_score", 0.5)
+            
+            # Penalize models with high rate limit pressure
+            rate_pressure = model_hint.get("rate_limit_pressure", 0)
+            if rate_pressure > 0.1:
+                score *= (1 - rate_pressure)
+            
+            available_models.append((model, score))
+        
+        if not available_models:
+            # Fall back to standard selection
+            return await self._pick_from_chain(chain)
+        
+        # Sort by score descending and return best
+        available_models.sort(key=lambda x: x[1], reverse=True)
+        best_model = available_models[0][0]
+        
+        logger.debug(f"Optimized model selection for {task_type}: {best_model} "
+                    f"(score={available_models[0][1]:.2f})")
+        return best_model
+
     # -- public API (backward compatible) ----------------------------------
 
     async def get_best_model_for_scene(self) -> str:
@@ -284,7 +331,9 @@ class ModelSelector:
             logger.info(f"Selected lightweight model: {model}")
             return model
 
-    async def get_best_model_for_task(self, task_type: str) -> str:
+    async def get_best_model_for_task(
+        self, task_type: str, use_optimization: bool = True
+    ) -> str:
         """Smart routing: pick the cheapest sufficient model for *task_type*.
 
         Supported task_types:
@@ -295,10 +344,22 @@ class ModelSelector:
             embedding                   → Embedding chain
             tts                         → TTS chain
             live                        → Live/audio chain
+            
+        Args:
+            task_type: Type of task to route
+            use_optimization: If True, use performance metrics to influence selection
         """
         chain = TASK_CHAINS.get(task_type, CHAT_MODELS)
         async with self._lock:
-            model = await self._pick_from_chain(chain)
+            if use_optimization:
+                try:
+                    model = await self._pick_from_chain_optimized(chain, task_type)
+                except Exception as e:
+                    logger.debug(f"Optimized selection failed, using standard: {e}")
+                    model = await self._pick_from_chain(chain)
+            else:
+                model = await self._pick_from_chain(chain)
+            
             logger.info(f"Selected model for task '{task_type}': {model}")
             # Update current model tracking for backward compat
             if task_type in ("chat", "analysis"):
@@ -354,7 +415,7 @@ class ModelSelector:
 
 
 # ---------------------------------------------------------------------------
-# Exponential backoff with jitter for 429 retries
+# Exponential backoff with jitter for 429 retries + performance metrics
 # ---------------------------------------------------------------------------
 
 async def call_with_retry(
@@ -362,13 +423,48 @@ async def call_with_retry(
     *args: Any,
     max_retries: int = 3,
     model_name: Optional[str] = None,
+    task_type: str = "unknown",
     **kwargs: Any,
 ) -> Any:
-    """Call *func* with exponential backoff + jitter on 429 / RESOURCE_EXHAUSTED."""
+    """Call *func* with exponential backoff + jitter on 429 / RESOURCE_EXHAUSTED.
+    
+    Also tracks performance metrics for model selection optimization.
+    """
+    import time
+    from app.services.model_metrics import model_metrics
+    
+    start_time = time.perf_counter()
+    last_error = None
+    
     for attempt in range(max_retries):
         try:
-            return await func(*args, **kwargs)
+            result = await func(*args, **kwargs)
+            
+            # Record success
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            input_tokens = 0
+            output_tokens = 0
+            
+            # Extract token usage if available
+            if hasattr(result, "usage_metadata"):
+                usage = result.usage_metadata
+                input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+            
+            if model_name:
+                model_metrics.record_request(
+                    model=model_name,
+                    task_type=task_type,
+                    latency_ms=latency_ms,
+                    success=True,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
+            
+            return result
+            
         except Exception as e:
+            last_error = e
             err = str(e)
             if "429" in err or "RESOURCE_EXHAUSTED" in err:
                 wait = (2 ** attempt) + random.uniform(0, 1)
@@ -380,9 +476,51 @@ async def call_with_retry(
                     await model_selector.mark_rate_limited(model_name)
                 await asyncio.sleep(wait)
             else:
+                # Record failure for non-retryable errors
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                if model_name:
+                    model_metrics.record_request(
+                        model=model_name,
+                        task_type=task_type,
+                        latency_ms=latency_ms,
+                        success=False,
+                        error=e,
+                    )
                 raise
-    # Final attempt – let exception propagate
-    return await func(*args, **kwargs)
+    
+    # Final attempt – record and let exception propagate
+    try:
+        result = await func(*args, **kwargs)
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(result, "usage_metadata"):
+            usage = result.usage_metadata
+            input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+            output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        
+        if model_name:
+            model_metrics.record_request(
+                model=model_name,
+                task_type=task_type,
+                latency_ms=latency_ms,
+                success=True,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        return result
+    except Exception as e:
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        if model_name:
+            model_metrics.record_request(
+                model=model_name,
+                task_type=task_type,
+                latency_ms=latency_ms,
+                success=False,
+                error=e,
+            )
+        raise
 
 
 # ---------------------------------------------------------------------------

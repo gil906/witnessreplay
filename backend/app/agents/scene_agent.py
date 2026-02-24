@@ -11,15 +11,20 @@ from app.services.usage_tracker import usage_tracker
 from app.services.response_cache import response_cache
 from app.services.token_estimator import token_estimator, TokenEstimate, QuotaCheckResult
 from app.services.interview_branching import interview_branching
+from app.services.prompt_optimizer import prompt_optimizer
+from app.services.timeline_disambiguator import timeline_disambiguator
 from google.genai import types
 from app.services.model_selector import model_selector, call_with_retry
 from typing import AsyncIterator
 from app.agents.prompts import (
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_OPTIMIZED,
     SYSTEM_PROMPT_COMPACT,
     INITIAL_GREETING,
     CLARIFICATION_PROMPTS,
     CONTRADICTION_FOLLOW_UP,
+    get_system_prompt,
+    build_scene_extraction_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,7 @@ class SceneReconstructionAgent:
     Core agent for managing witness interviews and scene reconstruction.
     Uses Gemini to understand witness statements, ask questions, and track scene state.
     Supports dynamic interview branching based on detected topics.
+    Includes memory context from prior sessions for returning witnesses.
     """
     
     def __init__(self, session_id: str):
@@ -44,12 +50,26 @@ class SceneReconstructionAgent:
         self.key_facts: Dict[str, Any] = {}
         self.template: Optional[Dict[str, Any]] = None
         self.detected_topics: List[Dict[str, Any]] = []  # Topics detected during interview
+        self.memory_context: str = ""  # Context from prior sessions
+        self.active_witness_id: Optional[str] = None  # Current witness for memory tracking
+        self._current_prompt_level: str = "full"  # Track current prompt compression level
+        self._pending_timeline_clarification: Optional[Dict[str, Any]] = None  # Timeline disambiguation
+        self._timeline_events: List[Dict[str, Any]] = []  # Events for timeline building
         self._initialize_model()
     
     def _log_structured(self, event: str, **kwargs):
         """Emit structured log entry."""
         entry = {"event": event, "session_id": self.session_id, **kwargs}
         logger.info(json.dumps(entry))
+    
+    def _get_prompt_level_for_model(self, model_name: str) -> str:
+        """Determine appropriate prompt compression level for model."""
+        model_lower = model_name.lower()
+        if any(x in model_lower for x in ["gemma", "4b", "12b"]):
+            return "compact"
+        elif any(x in model_lower for x in ["lite", "27b"]):
+            return "optimized"
+        return "full"
 
     def _initialize_model(self):
         """Initialize the Gemini model for conversation."""
@@ -100,6 +120,84 @@ I understand you're here to report a **{template_name}**. Everything you share h
         
         return greeting
     
+    async def load_witness_memories(self, witness_id: str, context_hint: str = "") -> str:
+        """
+        Load relevant memories for a witness into the agent's context.
+        
+        Args:
+            witness_id: The witness ID
+            context_hint: Optional current context to find relevant memories
+            
+        Returns:
+            The memory context string added to the system prompt
+        """
+        try:
+            from app.services.memory_service import memory_service
+            
+            self.active_witness_id = witness_id
+            
+            # Build memory context from prior sessions
+            self.memory_context = await memory_service.build_memory_context(
+                witness_id=witness_id,
+                current_statement=context_hint or "starting interview",
+                max_memories=5,
+            )
+            
+            self._log_structured("memories_loaded", 
+                               witness_id=witness_id,
+                               context_length=len(self.memory_context))
+            
+            # If we have a chat, we'll inject memory context on next message
+            return self.memory_context
+        except Exception as e:
+            logger.warning(f"Failed to load witness memories: {e}")
+            return ""
+    
+    async def save_session_memories(self, witness_id: Optional[str] = None, case_id: Optional[str] = None) -> int:
+        """
+        Extract and save memories from the current session.
+        
+        Args:
+            witness_id: Optional witness ID (uses active_witness_id if not provided)
+            case_id: Optional case ID
+            
+        Returns:
+            Number of memories saved
+        """
+        try:
+            from app.services.memory_service import memory_service
+            
+            wid = witness_id or self.active_witness_id
+            if not wid:
+                logger.warning("No witness ID available for saving memories")
+                return 0
+            
+            # Convert conversation history to statement format
+            statements = [
+                {"text": msg["content"], "timestamp": msg.get("timestamp")}
+                for msg in self.conversation_history
+                if msg["role"] == "user"
+            ]
+            
+            if not statements:
+                return 0
+            
+            memories = await memory_service.extract_memories_from_session(
+                session_id=self.session_id,
+                witness_id=wid,
+                statements=statements,
+                case_id=case_id,
+            )
+            
+            self._log_structured("memories_saved",
+                               witness_id=wid,
+                               memories_count=len(memories))
+            
+            return len(memories)
+        except Exception as e:
+            logger.error(f"Failed to save session memories: {e}")
+            return 0
+    
     async def process_statement(
         self,
         statement: str,
@@ -123,14 +221,19 @@ I understand you're here to report a **{template_name}**. Everything you share h
             # Initialize chat if not already done (lazy init with best model)
             if not self.chat:
                 chat_model = await model_selector.get_best_model_for_task("chat")
+                # Select prompt level based on model
+                self._current_prompt_level = self._get_prompt_level_for_model(chat_model)
+                selected_prompt = get_system_prompt(self._current_prompt_level)
                 self.chat = self.client.chats.create(
                     model=chat_model,
                     config={
-                        "system_instruction": SYSTEM_PROMPT,
+                        "system_instruction": selected_prompt,
                         "temperature": 0.7,
                     }
                 )
-                self._log_structured("chat_initialized", model=chat_model)
+                self._log_structured("chat_initialized", 
+                                     model=chat_model,
+                                     prompt_level=self._current_prompt_level)
             
             # Add context if this is a correction
             if is_correction:
@@ -139,12 +242,26 @@ I understand you're here to report a **{template_name}**. Everything you share h
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
             
+            # Get current prompt for quota estimation
+            current_prompt = get_system_prompt(self._current_prompt_level)
+            
+            # Optimize history if needed (compress older messages)
+            optimized_history = self.conversation_history
+            if len(self.conversation_history) > 6:
+                optimized_history, hist_stats = prompt_optimizer.summarize_history(
+                    self.conversation_history,
+                    max_messages=6
+                )
+                if hist_stats.tokens_saved > 0:
+                    self._log_structured("history_compressed",
+                                         tokens_saved=hist_stats.tokens_saved)
+            
             # Pre-check token quota before sending request
             quota_check, token_estimate = usage_tracker.precheck_request(
                 model_name=current_model,
                 prompt=statement,
-                system_prompt=SYSTEM_PROMPT,
-                history=self.conversation_history,
+                system_prompt=current_prompt,
+                history=optimized_history,
                 task_type="chat",
                 enforce=settings.enforce_rate_limits,
             )
@@ -179,6 +296,8 @@ I understand you're here to report a **{template_name}**. Everything you share h
                         asyncio.to_thread,
                         self.chat.send_message,
                         statement,
+                        model_name=current_model,
+                        task_type="chat",
                     )
                     break
                 except Exception as e:
@@ -197,13 +316,17 @@ I understand you're here to report a **{template_name}**. Everything you share h
                         # Try a different model
                         new_model = await model_selector.get_best_model_for_task("chat")
                         if new_model != current_model:
+                            # Select appropriate prompt level for new model
+                            self._current_prompt_level = self._get_prompt_level_for_model(new_model)
+                            new_prompt = get_system_prompt(self._current_prompt_level)
                             self._log_structured("model_switched",
                                                  old_model=current_model,
-                                                 new_model=new_model)
+                                                 new_model=new_model,
+                                                 prompt_level=self._current_prompt_level)
                             self.chat = self.client.chats.create(
                                 model=new_model,
                                 config={
-                                    "system_instruction": SYSTEM_PROMPT,
+                                    "system_instruction": new_prompt,
                                     "temperature": 0.7,
                                 }
                             )
@@ -246,6 +369,13 @@ I understand you're here to report a **{template_name}**. Everything you share h
                 } for t in detected])
                 self._log_structured("topics_detected",
                                      topics=[t.category.value for t in detected])
+            
+            # Detect timeline references and check for disambiguation needs
+            time_refs = timeline_disambiguator.detect_time_references(statement, statement_index)
+            if time_refs:
+                self._log_structured("time_refs_detected",
+                                     count=len(time_refs),
+                                     types=[r.type.value for r in time_refs])
             
             # Store in history
             self.conversation_history.append({
@@ -313,14 +443,23 @@ I understand you're here to report a **{template_name}**. Everything you share h
             # Initialize chat if not already done
             if not self.chat:
                 chat_model = await model_selector.get_best_model_for_task("chat")
+                self._current_prompt_level = self._get_prompt_level_for_model(chat_model)
+                selected_prompt = get_system_prompt(self._current_prompt_level)
+                
+                # Append memory context if available
+                if self.memory_context:
+                    selected_prompt = selected_prompt + "\n" + self.memory_context
+                
                 self.chat = self.client.chats.create(
                     model=chat_model,
                     config={
-                        "system_instruction": SYSTEM_PROMPT,
+                        "system_instruction": selected_prompt,
                         "temperature": 0.7,
                     }
                 )
-                self._log_structured("chat_initialized", model=chat_model)
+                self._log_structured("chat_initialized", 
+                                     model=chat_model,
+                                     has_memory_context=bool(self.memory_context))
             
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
@@ -535,6 +674,7 @@ I understand you're here to report a **{template_name}**. Everything you share h
                     contents=prompt,
                     config={"temperature": 0.1},
                     model_name=lightweight_model,
+                    task_type="lightweight",
                 )
                 
                 summary = response.text.strip()
@@ -588,6 +728,44 @@ I understand you're here to report a **{template_name}**. Everything you share h
             "rating": "high" if overall > 0.7 else "medium" if overall > 0.4 else "low"
         }
     
+    def _detect_incident_type_from_conversation(self, conversation_text: str) -> Optional[str]:
+        """Detect incident type from conversation text for few-shot example selection.
+        
+        Args:
+            conversation_text: The full conversation text
+            
+        Returns:
+            Incident type string or None if unclear
+        """
+        text_lower = conversation_text.lower()
+        
+        # Traffic accident keywords
+        if any(kw in text_lower for kw in ['collision', 'crashed', 'ran the light', 'ran the red', 
+                                            'car accident', 'vehicle accident', 'fender bender']):
+            return "traffic_accident"
+        
+        # Hit and run keywords
+        if any(kw in text_lower for kw in ['hit and run', 'didn\'t stop', 'drove off', 'fled', 
+                                            'pedestrian hit', 'struck and left']):
+            return "hit_and_run"
+        
+        # Armed robbery keywords
+        if any(kw in text_lower for kw in ['gun', 'weapon', 'robbery', 'robbed', 'stick up', 
+                                            'holdup', 'hold up', 'pointed at']):
+            return "armed_robbery"
+        
+        # Assault keywords
+        if any(kw in text_lower for kw in ['punch', 'beat', 'assault', 'attacked', 'fight', 
+                                            'hitting', 'beating']):
+            return "assault"
+        
+        # Theft keywords
+        if any(kw in text_lower for kw in ['stole', 'stolen', 'theft', 'stealing', 'took my', 
+                                            'package theft', 'shoplifting']):
+            return "theft"
+        
+        return None
+    
     async def _extract_scene_information(self):
         """
         Extract structured scene information from the conversation.
@@ -605,14 +783,34 @@ I understand you're here to report a **{template_name}**. Everything you share h
                 for msg in self.conversation_history
             ])
             
-            # Build extraction prompt (simplified since schema enforces structure)
-            extraction_prompt = f"""Analyze this witness interview and extract all scene information.
+            # Detect incident type hints from conversation for selecting relevant examples
+            detected_incident_type = self._detect_incident_type_from_conversation(conversation_text)
+            
+            # Build extraction prompt with few-shot examples
+            base_prompt = build_scene_extraction_prompt(
+                include_examples=True,
+                incident_type=detected_incident_type,
+                compact=False  # Use full examples for better accuracy
+            )
+            
+            extraction_prompt = f"""{base_prompt}
+
+Analyze this witness interview and extract all scene information.
 
 Conversation:
 {conversation_text}
 
 Extract every detail mentioned: people, vehicles, objects, locations, timeline, environmental conditions.
-Rate confidence based on specificity and consistency of witness statements."""
+
+CONFIDENCE SCORING GUIDELINES (0.0-1.0):
+- 0.9-1.0: Very specific details with exact values (e.g., "red Honda Civic", "6 feet tall")
+- 0.7-0.9: Clear descriptions with some specifics (e.g., "dark colored sedan", "about 30 years old")
+- 0.5-0.7: General descriptions lacking details (e.g., "a car", "a man")
+- 0.3-0.5: Vague or uncertain mentions (e.g., "I think there was a car", "maybe someone")
+- 0.0-0.3: Highly uncertain or contradicted information
+
+Rate each element and timeline event confidence based on specificity and witness certainty.
+Items with confidence below 0.7 will be flagged for review."""
             
             # Check response cache first for similar scene extraction requests
             cached = await response_cache.get(
@@ -641,6 +839,7 @@ Rate confidence based on specificity and consistency of witness statements."""
                         response_json_schema=SceneExtractionResponse,
                     ),
                     model_name=scene_model,
+                    task_type="scene",
                 )
                 
                 if not response:
@@ -673,9 +872,12 @@ Rate confidence based on specificity and consistency of witness statements."""
                 # Update scene description
                 self.scene_description = scene_data.scene_description
                 
-                # Update elements from structured response
+                # Update elements from structured response with confidence thresholds
                 self.current_elements = []
                 for i, elem_data in enumerate(scene_data.elements):
+                    confidence = elem_data.confidence
+                    # Flag for review if below confidence threshold
+                    needs_review = confidence < settings.confidence_threshold
                     element = SceneElement(
                         id=f"elem_{self.session_id}_{i}",
                         type=elem_data.type,
@@ -683,14 +885,18 @@ Rate confidence based on specificity and consistency of witness statements."""
                         position=elem_data.position,
                         color=elem_data.color,
                         size=elem_data.size,
-                        confidence=elem_data.confidence,
+                        confidence=confidence,
+                        needs_review=needs_review,
                         relationships=[],
                         evidence_tags=[]
                     )
                     self.current_elements.append(element)
                 
+                # Log elements flagged for review
+                review_count = sum(1 for e in self.current_elements if e.needs_review)
                 self._log_structured("scene_updated",
                                      elements_count=len(self.current_elements),
+                                     needs_review_count=review_count,
                                      mode="structured_output")
                 
                 # Auto-detect relationships from latest statement
@@ -932,9 +1138,152 @@ Rate confidence based on specificity and consistency of witness statements."""
         self.contradictions = []
         self.key_facts = {}
         self.detected_topics = []
+        self.memory_context = ""
+        self.active_witness_id = None
         self.chat = None
         # Reset branching state for this session
         interview_branching.reset_session(self.session_id)
+        # Reset timeline disambiguation state
+        timeline_disambiguator.reset_session(self.session_id)
+        self._pending_timeline_clarification = None
+        self._timeline_events = []
+    
+    def get_timeline_disambiguation_prompt(self) -> Optional[Dict[str, Any]]:
+        """
+        Check if timeline disambiguation is needed and return a clarifying question.
+        
+        Returns:
+            Dict with disambiguation question and metadata, or None
+        """
+        if len(self.conversation_history) < 4:
+            return None
+        
+        # Prepare statements for analysis
+        user_statements = [
+            {"content": msg["content"]}
+            for msg in self.conversation_history
+            if msg["role"] == "user"
+        ]
+        
+        # Get recent events mentioned (from scene elements and timeline)
+        events_mentioned = [
+            e.description[:40] for e in self.current_elements[:5]
+        ] if self.current_elements else []
+        
+        # Check if disambiguation is needed
+        prompt = timeline_disambiguator.get_next_disambiguation_prompt(
+            self.session_id,
+            user_statements,
+            events_mentioned
+        )
+        
+        if prompt:
+            self._pending_timeline_clarification = prompt
+            self._log_structured("timeline_disambiguation_needed",
+                                 target_ref=prompt.get("target_reference"),
+                                 clarity_issue=prompt.get("clarity_issue"))
+        
+        return prompt
+    
+    def get_timeline_clarity_analysis(self) -> Dict[str, Any]:
+        """
+        Get analysis of the current timeline clarity.
+        
+        Returns:
+            Dict with clarity scores and issues
+        """
+        user_statements = [
+            {"content": msg["content"]}
+            for msg in self.conversation_history
+            if msg["role"] == "user"
+        ]
+        
+        return timeline_disambiguator.analyze_timeline_clarity(
+            self.session_id,
+            user_statements
+        )
+    
+    def build_disambiguated_timeline(self) -> List[Dict[str, Any]]:
+        """
+        Build a relative timeline from the conversation with disambiguation status.
+        
+        Returns:
+            List of timeline events with clarity indicators
+        """
+        # Extract events from conversation for timeline
+        events = []
+        for idx, msg in enumerate(self.conversation_history):
+            if msg["role"] == "user":
+                events.append({
+                    "description": msg["content"][:100],
+                    "time_ref": msg["content"],
+                    "statement_index": idx,
+                })
+        
+        # Build the timeline
+        disambiguated = timeline_disambiguator.build_relative_timeline(
+            self.session_id,
+            events
+        )
+        
+        self._log_structured("timeline_built",
+                             event_count=len(disambiguated),
+                             needs_clarification=sum(1 for e in disambiguated if e.needs_clarification))
+        
+        return [
+            {
+                "id": e.id,
+                "description": e.description,
+                "sequence": e.sequence,
+                "original_time_ref": e.original_time_ref,
+                "clarity": e.clarity.value,
+                "confidence": e.confidence,
+                "needs_clarification": e.needs_clarification,
+                "clarification_question": e.clarification_question,
+                "relative_position": e.offset_description,
+            }
+            for e in disambiguated
+        ]
+    
+    def apply_timeline_clarification(self, event_id: str, clarification: Dict[str, Any]) -> bool:
+        """
+        Apply a witness's clarification to a timeline event.
+        
+        Args:
+            event_id: ID of the event being clarified
+            clarification: Dict with 'offset_description', 'relative_to', 'sequence'
+            
+        Returns:
+            True if applied successfully
+        """
+        success = timeline_disambiguator.apply_clarification(
+            self.session_id,
+            event_id,
+            clarification
+        )
+        
+        if success:
+            self._pending_timeline_clarification = None
+            self._log_structured("timeline_clarification_applied", event_id=event_id)
+        
+        return success
+    
+    def get_pending_timeline_clarifications(self) -> List[Dict[str, Any]]:
+        """Get events that still need timeline clarification."""
+        return timeline_disambiguator.get_pending_clarifications(self.session_id)
+    
+    async def reset_async(self, save_memories: bool = True, case_id: Optional[str] = None):
+        """
+        Async reset that optionally saves memories before clearing state.
+        
+        Args:
+            save_memories: Whether to extract and save memories from this session
+            case_id: Optional case ID for memory association
+        """
+        if save_memories and self.active_witness_id and self.conversation_history:
+            await self.save_session_memories(case_id=case_id)
+        
+        self.reset()
 
 
 # Agent instance cache

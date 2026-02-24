@@ -18,7 +18,9 @@ from app.services.image_gen import image_service
 from app.services.model_selector import model_selector, quota_tracker
 from app.services.imagen_service import imagen_service
 from app.services.embedding_service import embedding_service
+from app.services.translation_service import translation_service
 from app.agents.scene_agent import get_agent, remove_agent
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class WebSocketHandler:
         self.agent = get_agent(session_id)
         self.is_connected = False
         self.version_counter = 0
+        self.witness_language = "en"  # Current witness's preferred language
     
     async def connect(self):
         """Accept the WebSocket connection."""
@@ -42,11 +45,49 @@ class WebSocketHandler:
         
         # Only send greeting if the session has no prior statements (i.e. fresh session, not reconnect)
         session = await firestore_service.get_session(self.session_id)
-        if session and len(session.witness_statements) == 0:
-            greeting = await self.agent.start_interview()
-            await self.send_message("text", {"text": greeting, "speaker": "agent"})
-        
-        await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
+        if session:
+            # Load witness language preference
+            await self._load_witness_language(session)
+            
+            if len(session.witness_statements) == 0:
+                greeting = await self.agent.start_interview()
+                # Translate greeting if witness language is not English
+                await self._send_translated_agent_message(greeting)
+            else:
+                await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
+        else:
+            await self.send_message("status", {"status": "ready", "message": "Ready to listen"})
+    
+    async def _load_witness_language(self, session):
+        """Load the active witness's preferred language."""
+        if session.active_witness_id:
+            for witness in session.witnesses:
+                if witness.id == session.active_witness_id:
+                    self.witness_language = getattr(witness, 'preferred_language', 'en')
+                    logger.debug(f"Loaded witness language: {self.witness_language}")
+                    return
+        self.witness_language = "en"
+    
+    async def _send_translated_agent_message(self, text: str, message_id: str = None):
+        """Send an agent message, translating if necessary."""
+        if self.witness_language != "en":
+            translation_result = await translation_service.translate_for_witness(
+                agent_response=text,
+                witness_language=self.witness_language,
+            )
+            await self.send_message("text", {
+                "text": translation_result["translated"],
+                "original_text": translation_result["original"],
+                "speaker": "agent",
+                "language": self.witness_language,
+                "message_id": message_id or str(uuid.uuid4())
+            })
+        else:
+            await self.send_message("text", {
+                "text": text,
+                "speaker": "agent",
+                "message_id": message_id or str(uuid.uuid4())
+            })
     
     async def disconnect(self):
         """Close the WebSocket connection."""
@@ -124,12 +165,42 @@ class WebSocketHandler:
                 await self.send_message("pong", {})
             elif message_type == "health_check":
                 await self._send_health_status()
+            elif message_type == "set_language":
+                await self._handle_set_language(data)
             else:
                 logger.warning(f"Unknown message type: {message_type}")
         
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
             await self.send_message("error", {"message": str(e)})
+    
+    async def _handle_set_language(self, data: dict):
+        """Handle language preference change from client."""
+        language_code = data.get("language", "en")
+        from app.services.translation_service import SUPPORTED_LANGUAGES
+        
+        if language_code not in SUPPORTED_LANGUAGES:
+            await self.send_message("error", {
+                "message": f"Unsupported language: {language_code}"
+            })
+            return
+        
+        self.witness_language = language_code
+        logger.info(f"Session {self.session_id} language set to: {language_code}")
+        
+        # Update witness in session if there's an active witness
+        session = await firestore_service.get_session(self.session_id)
+        if session and session.active_witness_id:
+            for witness in session.witnesses:
+                if witness.id == session.active_witness_id:
+                    witness.preferred_language = language_code
+                    await firestore_service.update_session(session)
+                    break
+        
+        await self.send_message("language_changed", {
+            "language": language_code,
+            "language_name": SUPPORTED_LANGUAGES[language_code]
+        })
     
     async def handle_audio(self, data: dict):
         """Handle audio data from the client using Gemini for transcription."""
@@ -202,7 +273,7 @@ class WebSocketHandler:
             await self.send_message("error", {"message": f"Audio processing error: {str(e)}"})
     
     async def handle_text(self, data: dict):
-        """Handle text input from the client with streaming response."""
+        """Handle text input from the client with streaming response and translation."""
         try:
             text = data.get("text", "").strip()
             if not text:
@@ -211,23 +282,57 @@ class WebSocketHandler:
             # Send status update
             await self.send_message("status", {"status": "thinking", "message": "Analyzing..."})
             
+            # Detect and translate witness input if needed
+            original_text = text
+            detected_language = None
+            
+            if self.witness_language != "en":
+                # Process witness input - translate to English for the AI
+                translation_result = await translation_service.process_witness_input(
+                    witness_text=text,
+                    expected_language=self.witness_language,
+                )
+                text = translation_result["english_text"]
+                detected_language = translation_result["detected_language"]
+                logger.debug(f"Translated witness input from {detected_language} to English")
+            
             # Process with agent using streaming
             is_correction = data.get("is_correction", False)
             message_id = str(uuid.uuid4())
             should_generate_image = False
             token_info = None
+            full_response = ""
             
             # Stream the response (now returns 4-tuple with token_info)
             async for chunk, is_final, should_gen, tok_info in self.agent.process_statement_streaming(
                 text, is_correction
             ):
                 if chunk:
-                    await self.send_streaming_chunk(chunk, is_final=False, message_id=message_id)
+                    full_response += chunk
+                    # For non-English witnesses, we'll translate the full response after streaming
+                    if self.witness_language == "en":
+                        await self.send_streaming_chunk(chunk, is_final=False, message_id=message_id)
                 if is_final:
                     should_generate_image = should_gen
                     token_info = tok_info
-                    # Send final marker with token info
-                    await self.send_streaming_chunk("", is_final=True, message_id=message_id, token_info=token_info)
+            
+            # Translate full response if witness language is not English
+            if self.witness_language != "en" and full_response:
+                translation_result = await translation_service.translate_for_witness(
+                    agent_response=full_response,
+                    witness_language=self.witness_language,
+                )
+                # Send translated response
+                await self.send_message("text", {
+                    "text": translation_result["translated"],
+                    "original_text": translation_result["original"],
+                    "speaker": "agent",
+                    "language": self.witness_language,
+                    "message_id": message_id
+                })
+            else:
+                # Send final marker for English responses
+                await self.send_streaming_chunk("", is_final=True, message_id=message_id, token_info=token_info)
             
             # Get session to retrieve active witness info
             session = await firestore_service.get_session(self.session_id)
@@ -254,10 +359,12 @@ class WebSocketHandler:
                 if not witness_name:
                     witness_name = session.witness_name
             
-            # Save witness statement to session with witness info
+            # Save witness statement to session with witness info and translation data
             statement = WitnessStatement(
                 id=str(uuid.uuid4()),
-                text=text,
+                text=text,  # English text (for AI processing)
+                original_text=original_text if original_text != text else None,  # Original in witness's language
+                detected_language=detected_language,
                 is_correction=is_correction,
                 witness_id=witness_id,
                 witness_name=witness_name
@@ -335,6 +442,12 @@ class WebSocketHandler:
             # Get witness confidence assessment
             confidence = await self.agent.assess_confidence()
 
+            # Count elements needing review
+            needs_review_count = sum(
+                1 for e in elements_raw 
+                if e.get("needs_review", False) or e.get("confidence", 0.5) < settings.confidence_threshold
+            )
+
             await self.send_message("scene_state", {
                 "elements": elements_raw,
                 "completeness": round(completeness, 2),
@@ -343,6 +456,9 @@ class WebSocketHandler:
                 "complexity": round(complexity, 3),
                 "statement_count": statement_count,
                 "confidence": confidence,
+                "confidence_threshold": settings.confidence_threshold,
+                "low_confidence_threshold": settings.low_confidence_threshold,
+                "needs_review_count": needs_review_count,
             })
         except Exception as e:
             logger.error(f"Error sending scene_state: {e}")

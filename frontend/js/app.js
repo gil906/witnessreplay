@@ -42,6 +42,9 @@ class WitnessReplayApp {
         this.ttsPlayer = null;
         this.initializeTTS();
         
+        // Interview Comfort Manager
+        this.comfortManager = null;
+        
         this.initializeUI();
         this.initializeAudio();
         this.initializeVAD();
@@ -52,6 +55,8 @@ class WitnessReplayApp {
         this.initializeMeasurementTool();
         this.initializeEvidenceMarkerTool();
         this.initializeWitnessTabs(); // Initialize multi-witness UI
+        this.initializeComfortFeatures(); // Initialize interview comfort features
+        this.initializeLanguageSelector(); // Initialize translation language selector
         this.fetchAndDisplayVersion(); // Fetch version from API
         
         // Show onboarding for first-time users
@@ -855,6 +860,11 @@ class WitnessReplayApp {
             // Start duration timer
             this.startDurationTimer();
             
+            // Start comfort manager interview tracking
+            if (this.comfortManager) {
+                this.comfortManager.startInterview();
+            }
+            
             // Clear UI
             this.chatTranscript.innerHTML = '';
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
@@ -1043,10 +1053,13 @@ class WitnessReplayApp {
         switch (message.type) {
             case 'text':
                 const speaker = message.data.speaker || 'agent';
+                const originalText = message.data.original_text;
+                const language = message.data.language;
+                
                 // Prevent duplicate greetings on reconnect
                 if (speaker === 'agent' && !this.hasReceivedGreeting) {
                     this.hasReceivedGreeting = true;
-                    this.displayMessage(message.data.text, speaker);
+                    this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                     this.ui.playSound('notification');
                     // TTS: Speak agent response for accessibility
                     this.speakAIResponse(message.data.text);
@@ -1054,13 +1067,13 @@ class WitnessReplayApp {
                     // Check if this is the same greeting text (duplicate from reconnect)
                     const isGreeting = message.data.text && message.data.text.includes("I'm Detective Ray");
                     if (!isGreeting) {
-                        this.displayMessage(message.data.text, speaker);
+                        this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                         this.ui.playSound('notification');
                         // TTS: Speak agent response for accessibility
                         this.speakAIResponse(message.data.text);
                     }
                 } else {
-                    this.displayMessage(message.data.text, speaker);
+                    this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                 }
                 break;
             
@@ -1119,6 +1132,10 @@ class WitnessReplayApp {
             
             case 'text_stream':
                 this.handleStreamingText(message.data);
+                break;
+            
+            case 'language_changed':
+                this.handleLanguageChanged(message.data);
                 break;
             
             default:
@@ -1396,6 +1413,11 @@ class WitnessReplayApp {
         const text = this.textInput.value.trim();
         if (!text) return;
         
+        // Check for distress signals and provide support
+        if (this.comfortManager) {
+            this.comfortManager.detectDistress(text);
+        }
+        
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             // Include active witness ID for multi-witness support
             const messageData = { text: text };
@@ -1444,6 +1466,80 @@ class WitnessReplayApp {
         }
         
         messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span><br>${this._escapeHtml(text)}`;
+        
+        this.chatTranscript.appendChild(messageDiv);
+        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        
+        // Track statement count for user messages
+        if (speaker === 'user') {
+            this.statementCount++;
+            if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+        }
+        
+        // Update interview progress phases
+        this.updateInterviewProgress();
+    }
+    
+    /**
+     * Display a message with optional translation information
+     */
+    displayMessageWithTranslation(text, speaker, originalText = null, language = null) {
+        if (this.chatTranscript.querySelector('.empty-state')) {
+            this.chatTranscript.innerHTML = '';
+        }
+        
+        // Hide typing indicator
+        this._hideTyping();
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message message-${speaker}`;
+        messageDiv.setAttribute('role', 'listitem');
+        
+        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
+        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        // Add witness badge for multi-witness sessions
+        let witnessBadge = '';
+        if (speaker === 'user' && this.witnesses.length > 0 && this.activeWitnessId) {
+            const activeWitness = this.witnesses.find(w => w.id === this.activeWitnessId);
+            if (activeWitness) {
+                witnessBadge = `<span class="msg-witness-badge">${this.escapeHtmlAttr(activeWitness.name)}</span>`;
+            }
+        }
+        
+        // Add language badge if translated
+        let languageBadge = '';
+        if (language && language !== 'en') {
+            const languageNames = {
+                'es': 'ES', 'zh': 'ZH', 'vi': 'VI', 'ko': 'KO', 'tl': 'TL',
+                'ar': 'AR', 'fr': 'FR', 'de': 'DE', 'pt': 'PT', 'ru': 'RU',
+                'ja': 'JA', 'hi': 'HI', 'it': 'IT', 'pl': 'PL', 'uk': 'UK',
+                'fa': 'FA', 'th': 'TH', 'he': 'HE'
+            };
+            languageBadge = `<span class="language-badge">🌐 ${languageNames[language] || language.toUpperCase()}</span>`;
+        }
+        
+        // Build translation toggle if original text exists
+        let translationInfo = '';
+        if (originalText && originalText !== text) {
+            const escapedOriginal = this._escapeHtml(originalText);
+            translationInfo = `
+                <div class="translation-indicator">
+                    <span class="translation-toggle" onclick="this.parentElement.querySelector('.original-text').classList.toggle('hidden')">
+                        📝 Show original
+                    </span>
+                    <span class="original-text hidden">${escapedOriginal}</span>
+                </div>`;
+        }
+        
+        messageDiv.innerHTML = `
+            <span class="msg-avatar">${avatar}</span>
+            <strong>${labelText}</strong>${witnessBadge}${languageBadge}
+            <span class="msg-time">${timeStr}</span><br>
+            ${this._escapeHtml(text)}
+            ${translationInfo}`;
         
         this.chatTranscript.appendChild(messageDiv);
         this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
@@ -2612,15 +2708,19 @@ class WitnessReplayApp {
         });
         
         let html = '';
+        let needsReviewCount = 0;
         elements.forEach(e => {
             const conf = e.confidence || 0.5;
-            const confClass = conf > 0.7 ? 'high' : conf > 0.4 ? 'med' : 'low';
+            const needsReview = e.needs_review || conf < 0.7;
+            if (needsReview) needsReviewCount++;
+            const confClass = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'med' : 'low';
             const icon = typeIcons[e.type] || '❓';
             const elemKey = e.type + '_' + (e.description || '').substring(0, 30);
             const contradictionSeverity = contradictionMap.get(elemKey);
             const isContradiction = !!contradictionSeverity;
             const severityClass = contradictionSeverity ? `severity-${contradictionSeverity.level}` : '';
-            const cardClass = isContradiction ? `evidence-card contradiction ${severityClass}` : 'evidence-card';
+            let cardClass = isContradiction ? `evidence-card contradiction ${severityClass}` : 'evidence-card';
+            if (needsReview) cardClass += ' needs-review';
             
             let meta = '';
             if (e.color) meta += `🎨 ${e.color} `;
@@ -2632,17 +2732,29 @@ class WitnessReplayApp {
                 ? `<span class="severity-badge severity-${contradictionSeverity.level}">${this._getSeverityIcon(contradictionSeverity.level)} ${contradictionSeverity.level}</span>`
                 : '';
             
+            // Add review flag badge if needs review
+            const reviewBadge = needsReview && !isContradiction
+                ? `<span class="review-badge">⚠️ Review</span>`
+                : '';
+            
             html += `<div class="${cardClass}">
-                <div><span class="ev-icon">${icon}</span><span class="ev-type">${e.type}</span>${severityBadge}</div>
+                <div><span class="ev-icon">${icon}</span><span class="ev-type">${e.type}</span>${severityBadge}${reviewBadge}</div>
                 <div class="ev-desc">${this._escapeHtml(e.description || '')}</div>
                 <div class="ev-meta">
-                    <span class="confidence-dot ${confClass}"></span>${Math.round(conf * 100)}%
+                    <span class="confidence-dot ${confClass}" title="Confidence: ${Math.round(conf * 100)}%"></span>${Math.round(conf * 100)}%
                     ${meta ? ' · ' + meta : ''}
                 </div>
             </div>`;
         });
         
         container.innerHTML = html;
+        
+        // Update needs review indicator if exists
+        const reviewIndicator = document.getElementById('needs-review-count');
+        if (reviewIndicator) {
+            reviewIndicator.textContent = needsReviewCount;
+            reviewIndicator.style.display = needsReviewCount > 0 ? 'inline-flex' : 'none';
+        }
         
         // Update event timeline from conversation history
         this._updateEvidenceTimeline(elements);
@@ -3834,6 +3946,43 @@ class WitnessReplayApp {
         }
     }
 
+    // ==================== Interview Comfort Features ====================
+    
+    initializeComfortFeatures() {
+        // Initialize the comfort manager
+        if (window.InterviewComfortManager) {
+            this.comfortManager = new InterviewComfortManager(this);
+        }
+        
+        // Update duration display periodically
+        setInterval(() => {
+            if (this.comfortManager && this.sessionStartTime) {
+                this.comfortManager.updateDurationDisplay();
+                this.updateBreaksCount();
+            }
+        }, 1000);
+    }
+    
+    updateBreaksCount() {
+        if (!this.comfortManager) return;
+        const progress = this.comfortManager.getProgress();
+        const countEl = document.getElementById('breaks-count');
+        if (countEl) {
+            countEl.textContent = progress.breaksTaken;
+        }
+    }
+    
+    getInterviewProgress() {
+        // Get comprehensive interview progress including comfort metrics
+        const comfortProgress = this.comfortManager ? this.comfortManager.getProgress() : {};
+        return {
+            sessionId: this.sessionId,
+            statementCount: this.statementCount,
+            currentVersion: this.currentVersion,
+            ...comfortProgress
+        };
+    }
+
     // ==================== Multi-Witness Management ====================
     
     initializeWitnessTabs() {
@@ -3844,13 +3993,94 @@ class WitnessReplayApp {
     }
     
     /**
+     * Initialize the language selector for translation support
+     */
+    initializeLanguageSelector() {
+        this.selectedLanguage = localStorage.getItem('witnessLanguage') || 'en';
+        const languageSelector = document.getElementById('language-selector');
+        
+        if (languageSelector) {
+            // Set initial value from localStorage
+            languageSelector.value = this.selectedLanguage;
+            
+            // Handle language change
+            languageSelector.addEventListener('change', (e) => {
+                const newLanguage = e.target.value;
+                this.setWitnessLanguage(newLanguage);
+            });
+        }
+    }
+    
+    /**
+     * Set the witness language and notify the server
+     */
+    setWitnessLanguage(languageCode) {
+        this.selectedLanguage = languageCode;
+        localStorage.setItem('witnessLanguage', languageCode);
+        
+        // Notify server via WebSocket if connected
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'set_language',
+                data: { language: languageCode }
+            }));
+        }
+        
+        // Update placeholder text based on language
+        this.updatePlaceholderForLanguage(languageCode);
+        
+        console.log(`Language set to: ${languageCode}`);
+    }
+    
+    /**
+     * Update input placeholder based on selected language
+     */
+    updatePlaceholderForLanguage(languageCode) {
+        const placeholders = {
+            'en': 'Describe what you witnessed...',
+            'es': 'Describa lo que presenció...',
+            'zh': '描述您目睹的情况...',
+            'vi': 'Mô tả những gì bạn đã chứng kiến...',
+            'ko': '목격한 것을 설명해 주세요...',
+            'tl': 'Ilarawan ang iyong nasaksihan...',
+            'ar': 'صف ما شهدته...',
+            'fr': 'Décrivez ce que vous avez vu...',
+            'de': 'Beschreiben Sie, was Sie gesehen haben...',
+            'pt': 'Descreva o que você testemunhou...',
+            'ru': 'Опишите, что вы видели...',
+            'ja': '目撃したことを説明してください...',
+            'hi': 'आपने जो देखा उसका वर्णन करें...',
+            'it': 'Descrivi cosa hai visto...',
+            'pl': 'Opisz, co widziałeś...',
+            'uk': 'Опишіть, що ви бачили...',
+            'fa': 'آنچه را که شاهد بودید توصیف کنید...',
+            'th': 'อธิบายสิ่งที่คุณเห็น...',
+            'he': 'תאר את מה שראית...'
+        };
+        
+        const textInput = document.getElementById('text-input');
+        if (textInput) {
+            textInput.placeholder = placeholders[languageCode] || placeholders['en'];
+        }
+    }
+    
+    /**
+     * Handle language change confirmation from server
+     */
+    handleLanguageChanged(data) {
+        const languageName = data.language_name || data.language;
+        this.ui?.showNotification(`Language set to ${languageName}`, 'success');
+    }
+    
+    /**
      * Load witnesses for current session and update UI
      */
     async loadWitnesses() {
         if (!this.sessionId) return;
         
         try {
-            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses`);
+            // Request reliability scores with witnesses
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses?include_reliability=true`);
             if (!response.ok) return;
             
             const data = await response.json();
@@ -3861,6 +4091,33 @@ class WitnessReplayApp {
         } catch (e) {
             console.warn('Failed to load witnesses:', e);
         }
+    }
+    
+    /**
+     * Get reliability grade color class
+     */
+    getReliabilityGradeClass(grade) {
+        const classes = {
+            'A': 'reliability-grade-a',
+            'B': 'reliability-grade-b',
+            'C': 'reliability-grade-c',
+            'D': 'reliability-grade-d',
+            'F': 'reliability-grade-f',
+        };
+        return classes[grade] || 'reliability-grade-c';
+    }
+    
+    /**
+     * Format reliability tooltip content
+     */
+    formatReliabilityTooltip(reliability) {
+        if (!reliability) return 'No reliability data yet';
+        const factors = reliability.factors || {};
+        return `Reliability: ${reliability.overall_score?.toFixed(1) || 'N/A'}/100 (Grade ${reliability.reliability_grade || 'N/A'})
+Consistency: ${((factors.consistency_score || 0) * 100).toFixed(0)}%
+Evidence Alignment: ${((factors.evidence_alignment || 0) * 100).toFixed(0)}%
+Contradictions: ${reliability.contradiction_count || 0}
+Corrections: ${reliability.correction_count || 0}`;
     }
     
     /**
@@ -3876,15 +4133,24 @@ class WitnessReplayApp {
         if (this.witnesses.length > 0) {
             selectorBar.style.display = 'flex';
             
-            tabsContainer.innerHTML = this.witnesses.map(witness => `
+            tabsContainer.innerHTML = this.witnesses.map(witness => {
+                const reliability = witness.reliability;
+                const grade = reliability?.reliability_grade || '';
+                const gradeClass = grade ? this.getReliabilityGradeClass(grade) : '';
+                const tooltip = this.formatReliabilityTooltip(reliability);
+                const score = reliability?.overall_score;
+                
+                return `
                 <div class="witness-tab ${witness.id === this.activeWitnessId ? 'active' : ''}"
                      data-witness-id="${witness.id}"
-                     onclick="window.app.setActiveWitness('${witness.id}')">
+                     onclick="window.app.setActiveWitness('${witness.id}')"
+                     title="${this.escapeHtmlAttr(tooltip)}">
                     <span class="witness-avatar">${this.getWitnessInitials(witness.name)}</span>
                     <span class="witness-tab-name">${this.escapeHtmlAttr(witness.name)}</span>
                     <span class="witness-stmt-count">${witness.statement_count || 0}</span>
+                    ${grade ? `<span class="witness-reliability-badge ${gradeClass}" onclick="event.stopPropagation(); window.app.showWitnessReliabilityModal('${witness.id}')">${grade}</span>` : ''}
                 </div>
-            `).join('');
+            `}).join('');
         } else {
             selectorBar.style.display = 'none';
         }
@@ -4014,6 +4280,119 @@ class WitnessReplayApp {
         } catch (e) {
             console.error('Failed to add witness:', e);
             this.ui.showToast('Failed to add witness', 'error');
+        }
+    }
+    
+    /**
+     * Show detailed reliability modal for a witness
+     */
+    async showWitnessReliabilityModal(witnessId) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witnesses/${witnessId}/reliability`);
+            if (!response.ok) throw new Error('Failed to fetch reliability');
+            
+            const data = await response.json();
+            const factors = data.factors || {};
+            const stats = data.stats || {};
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.id = 'reliability-modal';
+            modal.style.display = 'flex';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h2>📊 Witness Reliability</h2>
+                        <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="reliability-header">
+                            <div class="reliability-score-large ${this.getReliabilityGradeClass(data.reliability_grade)}">
+                                <span class="score-value">${data.overall_score?.toFixed(1) || 'N/A'}</span>
+                                <span class="score-label">/100</span>
+                            </div>
+                            <div class="reliability-grade-badge ${this.getReliabilityGradeClass(data.reliability_grade)}">
+                                Grade ${data.reliability_grade || 'N/A'}
+                            </div>
+                        </div>
+                        
+                        <div class="reliability-witness-name">${this.escapeHtmlAttr(data.witness_name || 'Unknown')}</div>
+                        
+                        <h3>Reliability Factors</h3>
+                        <div class="reliability-factors">
+                            <div class="factor-row">
+                                <span class="factor-label">Consistency</span>
+                                <div class="factor-bar">
+                                    <div class="factor-fill" style="width: ${(factors.consistency_score || 0) * 100}%; background: var(--success-color);"></div>
+                                </div>
+                                <span class="factor-value">${((factors.consistency_score || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="factor-row">
+                                <span class="factor-label">Evidence Alignment</span>
+                                <div class="factor-bar">
+                                    <div class="factor-fill" style="width: ${(factors.evidence_alignment || 0) * 100}%; background: var(--info-color);"></div>
+                                </div>
+                                <span class="factor-value">${((factors.evidence_alignment || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="factor-row">
+                                <span class="factor-label">Statement Detail</span>
+                                <div class="factor-bar">
+                                    <div class="factor-fill" style="width: ${(factors.statement_detail || 0) * 100}%; background: var(--primary-color);"></div>
+                                </div>
+                                <span class="factor-value">${((factors.statement_detail || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="factor-row">
+                                <span class="factor-label">Contradiction Rate</span>
+                                <div class="factor-bar">
+                                    <div class="factor-fill" style="width: ${(factors.contradiction_rate || 0) * 100}%; background: var(--error-color);"></div>
+                                </div>
+                                <span class="factor-value">${((factors.contradiction_rate || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="factor-row">
+                                <span class="factor-label">Correction Frequency</span>
+                                <div class="factor-bar">
+                                    <div class="factor-fill" style="width: ${(factors.correction_frequency || 0) * 100}%; background: var(--warning-color);"></div>
+                                </div>
+                                <span class="factor-value">${((factors.correction_frequency || 0) * 100).toFixed(0)}%</span>
+                            </div>
+                        </div>
+                        
+                        <h3>Statistics</h3>
+                        <div class="reliability-stats">
+                            <div class="stat-item">
+                                <span class="stat-value">${stats.total_statements || 0}</span>
+                                <span class="stat-label">Statements</span>
+                            </div>
+                            <div class="stat-item stat-positive">
+                                <span class="stat-value">${stats.confirmation_count || 0}</span>
+                                <span class="stat-label">Confirmations</span>
+                            </div>
+                            <div class="stat-item stat-negative">
+                                <span class="stat-value">${stats.contradiction_count || 0}</span>
+                                <span class="stat-label">Contradictions</span>
+                            </div>
+                            <div class="stat-item stat-neutral">
+                                <span class="stat-value">${stats.correction_count || 0}</span>
+                                <span class="stat-label">Corrections</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value">${stats.evidence_matches || 0}</span>
+                                <span class="stat-label">Evidence Matches</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } catch (e) {
+            console.error('Failed to show reliability modal:', e);
+            this.ui.showToast('Failed to load reliability data', 'error');
         }
     }
     

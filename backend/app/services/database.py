@@ -142,6 +142,74 @@ class DatabaseService:
 
             CREATE INDEX IF NOT EXISTS idx_case_rel_a ON case_relationships(case_a_id);
             CREATE INDEX IF NOT EXISTS idx_case_rel_b ON case_relationships(case_b_id);
+
+            CREATE TABLE IF NOT EXISTS custody_events (
+                id TEXT PRIMARY KEY,
+                evidence_type TEXT NOT NULL,
+                evidence_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                actor_role TEXT,
+                details TEXT,
+                metadata TEXT DEFAULT '{}',
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                hash_before TEXT,
+                hash_after TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_custody_evidence ON custody_events(evidence_type, evidence_id);
+            CREATE INDEX IF NOT EXISTS idx_custody_timestamp ON custody_events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_custody_actor ON custody_events(actor);
+
+            CREATE TABLE IF NOT EXISTS model_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                model TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                latency_ms REAL NOT NULL,
+                success INTEGER NOT NULL,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                error_type TEXT,
+                error_message TEXT,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_model_metrics_model ON model_metrics(model);
+            CREATE INDEX IF NOT EXISTS idx_model_metrics_timestamp ON model_metrics(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_model_metrics_task ON model_metrics(task_type);
+
+            CREATE TABLE IF NOT EXISTS investigators (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                badge_number TEXT,
+                email TEXT,
+                department TEXT,
+                active INTEGER DEFAULT 1,
+                max_cases INTEGER DEFAULT 10,
+                created_at TEXT,
+                updated_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_investigators_active ON investigators(active);
+            CREATE INDEX IF NOT EXISTS idx_investigators_department ON investigators(department);
+
+            CREATE TABLE IF NOT EXISTS case_assignments (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                investigator_id TEXT NOT NULL,
+                investigator_name TEXT NOT NULL,
+                assigned_by TEXT NOT NULL,
+                assigned_at TEXT NOT NULL,
+                unassigned_at TEXT,
+                notes TEXT,
+                is_active INTEGER DEFAULT 1,
+                FOREIGN KEY (case_id) REFERENCES cases(id),
+                FOREIGN KEY (investigator_id) REFERENCES investigators(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_assignments_case ON case_assignments(case_id);
+            CREATE INDEX IF NOT EXISTS idx_assignments_investigator ON case_assignments(investigator_id);
+            CREATE INDEX IF NOT EXISTS idx_assignments_active ON case_assignments(is_active);
         """)
         await self._db.commit()
 
@@ -516,6 +584,289 @@ class DatabaseService:
             if row:
                 return self._row_to_dict(row)
         return None
+
+    # ── Chain of Custody ─────────────────────────────────────
+
+    async def save_custody_event(self, event_dict: dict) -> bool:
+        """Save a custody event to the database."""
+        try:
+            metadata = event_dict.get("metadata", {})
+            if not isinstance(metadata, str):
+                metadata = json.dumps(metadata)
+            await self._db.execute(
+                """INSERT INTO custody_events
+                   (id, evidence_type, evidence_id, action, actor, actor_role, details, metadata, timestamp, hash_before, hash_after)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event_dict.get("id"),
+                    event_dict.get("evidence_type"),
+                    event_dict.get("evidence_id"),
+                    event_dict.get("action"),
+                    event_dict.get("actor"),
+                    event_dict.get("actor_role"),
+                    event_dict.get("details"),
+                    metadata,
+                    event_dict.get("timestamp", datetime.utcnow().isoformat()),
+                    event_dict.get("hash_before"),
+                    event_dict.get("hash_after"),
+                ),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_custody_event error: {e}")
+            return False
+
+    async def get_custody_events(self, evidence_type: str, evidence_id: str, limit: int = 100) -> List[dict]:
+        """Get custody events for a specific evidence item."""
+        rows = []
+        async with self._db.execute(
+            """SELECT * FROM custody_events 
+               WHERE evidence_type = ? AND evidence_id = ? 
+               ORDER BY timestamp DESC LIMIT ?""",
+            (evidence_type, evidence_id, limit),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(self._row_to_dict(row))
+        return rows
+
+    async def get_all_custody_for_session(self, session_id: str, limit: int = 500) -> List[dict]:
+        """Get all custody events related to a session (direct and via metadata)."""
+        rows = []
+        async with self._db.execute(
+            """SELECT * FROM custody_events 
+               WHERE (evidence_type = 'session' AND evidence_id = ?)
+                  OR metadata LIKE ?
+               ORDER BY timestamp DESC LIMIT ?""",
+            (session_id, f'%"session_id": "{session_id}"%', limit),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(self._row_to_dict(row))
+        return rows
+
+    async def get_custody_by_actor(self, actor: str, limit: int = 100) -> List[dict]:
+        """Get custody events by a specific actor."""
+        rows = []
+        async with self._db.execute(
+            """SELECT * FROM custody_events 
+               WHERE actor = ? 
+               ORDER BY timestamp DESC LIMIT ?""",
+            (actor, limit),
+        ) as cursor:
+            async for row in cursor:
+                rows.append(self._row_to_dict(row))
+        return rows
+
+    async def get_custody_exports(self, evidence_type: Optional[str] = None, limit: int = 100) -> List[dict]:
+        """Get all export custody events for audit trail."""
+        rows = []
+        if evidence_type:
+            async with self._db.execute(
+                """SELECT * FROM custody_events 
+                   WHERE action = 'exported' AND evidence_type = ?
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (evidence_type, limit),
+            ) as cursor:
+                async for row in cursor:
+                    rows.append(self._row_to_dict(row))
+        else:
+            async with self._db.execute(
+                """SELECT * FROM custody_events 
+                   WHERE action = 'exported'
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (limit,),
+            ) as cursor:
+                async for row in cursor:
+                    rows.append(self._row_to_dict(row))
+        return rows
+
+    # ── Investigator CRUD ──────────────────────────────────────
+
+    async def save_investigator(self, investigator_dict: dict) -> bool:
+        """Insert or replace an investigator."""
+        try:
+            now = datetime.utcnow().isoformat()
+            await self._db.execute(
+                """INSERT OR REPLACE INTO investigators
+                   (id, name, badge_number, email, department, active, max_cases, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    investigator_dict.get("id"),
+                    investigator_dict.get("name"),
+                    investigator_dict.get("badge_number"),
+                    investigator_dict.get("email"),
+                    investigator_dict.get("department"),
+                    1 if investigator_dict.get("active", True) else 0,
+                    investigator_dict.get("max_cases", 10),
+                    investigator_dict.get("created_at", now),
+                    now,
+                ),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_investigator error: {e}")
+            return False
+
+    async def get_investigator(self, investigator_id: str) -> Optional[dict]:
+        """Get an investigator by ID."""
+        async with self._db.execute(
+            "SELECT * FROM investigators WHERE id = ?", (investigator_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                result = self._row_to_dict(row)
+                result["active"] = bool(result.get("active", 1))
+                return result
+        return None
+
+    async def list_investigators(self, active_only: bool = False, limit: int = 100) -> List[dict]:
+        """List all investigators."""
+        rows = []
+        query = "SELECT * FROM investigators"
+        if active_only:
+            query += " WHERE active = 1"
+        query += " ORDER BY name ASC LIMIT ?"
+        async with self._db.execute(query, (limit,)) as cursor:
+            async for row in cursor:
+                result = self._row_to_dict(row)
+                result["active"] = bool(result.get("active", 1))
+                rows.append(result)
+        return rows
+
+    async def delete_investigator(self, investigator_id: str) -> bool:
+        """Delete an investigator (soft delete by setting active=0)."""
+        try:
+            await self._db.execute(
+                "UPDATE investigators SET active = 0, updated_at = ? WHERE id = ?",
+                (datetime.utcnow().isoformat(), investigator_id),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite delete_investigator error: {e}")
+            return False
+
+    # ── Case Assignment CRUD ──────────────────────────────────────
+
+    async def save_case_assignment(self, assignment_dict: dict) -> bool:
+        """Insert or replace a case assignment."""
+        try:
+            await self._db.execute(
+                """INSERT OR REPLACE INTO case_assignments
+                   (id, case_id, investigator_id, investigator_name, assigned_by, assigned_at, unassigned_at, notes, is_active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    assignment_dict.get("id"),
+                    assignment_dict.get("case_id"),
+                    assignment_dict.get("investigator_id"),
+                    assignment_dict.get("investigator_name"),
+                    assignment_dict.get("assigned_by"),
+                    assignment_dict.get("assigned_at", datetime.utcnow().isoformat()),
+                    assignment_dict.get("unassigned_at"),
+                    assignment_dict.get("notes"),
+                    1 if assignment_dict.get("is_active", True) else 0,
+                ),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite save_case_assignment error: {e}")
+            return False
+
+    async def get_case_assignments(self, case_id: str, active_only: bool = False) -> List[dict]:
+        """Get all assignments for a case."""
+        rows = []
+        query = "SELECT * FROM case_assignments WHERE case_id = ?"
+        if active_only:
+            query += " AND is_active = 1"
+        query += " ORDER BY assigned_at DESC"
+        async with self._db.execute(query, (case_id,)) as cursor:
+            async for row in cursor:
+                result = self._row_to_dict(row)
+                result["is_active"] = bool(result.get("is_active", 1))
+                rows.append(result)
+        return rows
+
+    async def get_active_assignment_for_case(self, case_id: str) -> Optional[dict]:
+        """Get the active assignment for a case."""
+        async with self._db.execute(
+            "SELECT * FROM case_assignments WHERE case_id = ? AND is_active = 1 LIMIT 1",
+            (case_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                result = self._row_to_dict(row)
+                result["is_active"] = bool(result.get("is_active", 1))
+                return result
+        return None
+
+    async def get_investigator_assignments(self, investigator_id: str, active_only: bool = False) -> List[dict]:
+        """Get all assignments for an investigator."""
+        rows = []
+        query = "SELECT * FROM case_assignments WHERE investigator_id = ?"
+        if active_only:
+            query += " AND is_active = 1"
+        query += " ORDER BY assigned_at DESC"
+        async with self._db.execute(query, (investigator_id,)) as cursor:
+            async for row in cursor:
+                result = self._row_to_dict(row)
+                result["is_active"] = bool(result.get("is_active", 1))
+                rows.append(result)
+        return rows
+
+    async def deactivate_case_assignments(self, case_id: str) -> bool:
+        """Deactivate all active assignments for a case (for reassignment)."""
+        try:
+            now = datetime.utcnow().isoformat()
+            await self._db.execute(
+                "UPDATE case_assignments SET is_active = 0, unassigned_at = ? WHERE case_id = ? AND is_active = 1",
+                (now, case_id),
+            )
+            await self._db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"SQLite deactivate_case_assignments error: {e}")
+            return False
+
+    async def get_workload_stats(self) -> List[dict]:
+        """Get workload statistics for all active investigators."""
+        rows = []
+        query = """
+            SELECT 
+                i.id as investigator_id,
+                i.name as investigator_name,
+                i.badge_number,
+                i.department,
+                i.max_cases,
+                i.active,
+                COUNT(CASE WHEN ca.is_active = 1 THEN 1 END) as active_cases,
+                COUNT(ca.id) as total_assignments
+            FROM investigators i
+            LEFT JOIN case_assignments ca ON i.id = ca.investigator_id
+            WHERE i.active = 1
+            GROUP BY i.id
+            ORDER BY i.name
+        """
+        async with self._db.execute(query) as cursor:
+            async for row in cursor:
+                result = self._row_to_dict(row)
+                result["active"] = bool(result.get("active", 1))
+                rows.append(result)
+        return rows
+
+    async def count_unassigned_cases(self) -> int:
+        """Count cases without active assignments."""
+        async with self._db.execute(
+            """SELECT COUNT(*) FROM cases c 
+               WHERE c.status != 'closed' 
+               AND NOT EXISTS (
+                   SELECT 1 FROM case_assignments ca 
+                   WHERE ca.case_id = c.id AND ca.is_active = 1
+               )"""
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 
 def get_database() -> DatabaseService:

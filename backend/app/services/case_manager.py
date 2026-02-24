@@ -17,6 +17,7 @@ from app.models.schemas import (
 from app.services.firestore import firestore_service
 from app.services.model_selector import model_selector
 from app.services.response_cache import response_cache
+from app.services.multi_model_verifier import multi_model_verifier, VerificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,10 @@ class CaseManager:
         return await self._find_matching_case_llm(report, cases)
 
     async def _find_matching_case_llm(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
-        """LLM-based case matching fallback when embeddings are unavailable.
+        """LLM-based case matching fallback with multi-model verification.
         
-        Uses structured JSON output for reliable parsing of match decisions.
+        This is a high-stakes decision as incorrect matching can corrupt case data.
+        Uses cross-verification between Gemini and Gemma to ensure accuracy.
         """
         try:
             report_text = self._get_report_text(report)
@@ -126,27 +128,40 @@ EXISTING CASES:
 
 Determine if this report matches any existing case. If it matches, provide the case_id."""
 
-            chat_model = await model_selector.get_best_model_for_chat()
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=chat_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_json_schema=CaseMatchResponse,
-                ),
+            # Use multi-model verification for this high-stakes matching decision
+            verification = await multi_model_verifier.verify_extraction(
+                prompt=prompt,
+                response_schema=CaseMatchResponse,
+                temperature=0.1,
+                comparison_fields=["matches_existing_case", "matched_case_id"],
             )
 
-            # Parse structured response
-            result = CaseMatchResponse.model_validate_json(response.text)
+            # Handle verification results
+            if verification.result == VerificationResult.ERROR:
+                logger.warning("Multi-model verification failed for case matching")
+                return None
 
-            if result.matches_existing_case and result.matched_case_id:
-                # Verify the case_id exists
-                for case in cases:
-                    if case.id == result.matched_case_id:
-                        logger.info(f"Report {report.id} matched to case {case.case_number} (LLM structured output, confidence: {result.confidence})")
-                        return case.id
+            if verification.result == VerificationResult.DISCREPANCY:
+                # Models disagree on case matching - be conservative and don't match
+                logger.warning(
+                    f"Case matching discrepancy for report {report.id}: "
+                    f"models disagreed, not matching to avoid corruption. "
+                    f"Discrepancies: {verification.discrepancies}"
+                )
+                return None
+
+            if verification.primary_response and verification.primary_response.parsed_response:
+                result = verification.primary_response.parsed_response
+
+                if result.matches_existing_case and result.matched_case_id:
+                    # Verify the case_id exists
+                    for case in cases:
+                        if case.id == result.matched_case_id:
+                            logger.info(
+                                f"Report {report.id} matched to case {case.case_number} "
+                                f"(verified, confidence: {verification.confidence_score})"
+                            )
+                            return case.id
 
             logger.info(f"Report {report.id} did not match any existing case")
             return None
@@ -301,11 +316,11 @@ Create a comprehensive summary combining all witness perspectives, identify key 
         return results
 
     async def _classify_incident(self, report: ReconstructionSession) -> Optional[Dict]:
-        """Use Gemini with structured JSON output to classify the incident type.
+        """Use multi-model verification to classify the incident type.
         
-        Uses response_json_schema for guaranteed valid JSON matching the schema,
-        eliminating parsing errors and reducing token waste.
-        Uses response cache for similar reports to reduce redundant API calls.
+        This is a high-stakes decision, so we cross-verify using both Gemini
+        and Gemma models to ensure accuracy. Falls back to single model if
+        verification is disabled or quota is exhausted.
         """
         if not self.client:
             return None
@@ -325,25 +340,50 @@ Determine the type (accident, crime, incident, or other), specific subtype, and 
             if cached:
                 response_text, _ = cached
                 logger.info("Using cached incident classification")
-            else:
-                chat_model = await model_selector.get_best_model_for_chat()
-                response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=chat_model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.1,
-                        response_mime_type="application/json",
-                        response_json_schema=IncidentClassificationResponse,
-                    ),
-                )
-                response_text = response.text
-                # Cache for similar future classifications
-                await response_cache.set(prompt, response_text, context_key="classify_incident", ttl_seconds=7200)
+                result = IncidentClassificationResponse.model_validate_json(response_text)
+                return result.model_dump()
             
-            # Parse structured response - guaranteed valid JSON
-            result = IncidentClassificationResponse.model_validate_json(response_text)
-            return result.model_dump()
+            # Use multi-model verification for this high-stakes classification
+            verification = await multi_model_verifier.verify_extraction(
+                prompt=prompt,
+                response_schema=IncidentClassificationResponse,
+                temperature=0.1,
+                comparison_fields=["type", "subtype", "severity"],
+            )
+            
+            # Handle verification results
+            if verification.result == VerificationResult.ERROR:
+                logger.warning("Multi-model verification failed, skipping classification")
+                return None
+            
+            if verification.result == VerificationResult.DISCREPANCY:
+                # Log discrepancy but still use primary response
+                logger.warning(
+                    f"Classification discrepancy detected for report {report.id}: "
+                    f"{verification.discrepancies}"
+                )
+            
+            if verification.primary_response and verification.primary_response.parsed_response:
+                result = verification.primary_response.parsed_response
+                response_text = verification.primary_response.response_text
+                
+                # Cache the verified result
+                await response_cache.set(
+                    prompt, response_text, 
+                    context_key="classify_incident", 
+                    ttl_seconds=7200
+                )
+                
+                result_dict = result.model_dump()
+                # Add verification metadata
+                result_dict["_verification"] = {
+                    "result": verification.result.value,
+                    "confidence": verification.confidence_score,
+                    "discrepancies": verification.discrepancies,
+                }
+                return result_dict
+            
+            return None
         except Exception as e:
             logger.warning(f"Failed to classify incident: {e}")
             return None
