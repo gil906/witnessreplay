@@ -10653,7 +10653,7 @@ async def remove_case_tag(case_id: str, tag: str, auth=Depends(require_admin_aut
 # ── Feature 27: Audit Trail Viewer ───────────────────────────────
 
 @router.get("/cases/{case_id}/audit-trail")
-async def get_audit_trail(case_id: str, limit: int = 50, auth=Depends(require_admin_auth)):
+async def get_case_audit_trail(case_id: str, limit: int = 50, auth=Depends(require_admin_auth)):
     from app.services.database import get_database
     db = get_database()
     cursor = await db._db.execute(
@@ -11148,9 +11148,9 @@ async def delete_webhook(webhook_id: str, auth=Depends(require_admin_auth)):
 
 # ── System Health Monitoring ───────────────────
 
-@router.get("/admin/system-health")
-async def get_system_health(auth=Depends(require_admin_auth)):
-    """Get comprehensive system health information for admin dashboard."""
+@router.get("/admin/system-info")
+async def get_system_info(auth=Depends(require_admin_auth)):
+    """Get comprehensive system info (psutil-based) for admin dashboard."""
     import psutil
     import platform
 
@@ -17621,7 +17621,7 @@ async def backup_manager(auth=Depends(require_admin_auth)):
 
 
 @router.post("/admin/backup-manager")
-async def create_backup(data: dict, auth=Depends(require_admin_auth)):
+async def create_backup_manager(data: dict, auth=Depends(require_admin_auth)):
     """Create a manual backup entry."""
     from datetime import datetime
     backup = {
@@ -18028,9 +18028,9 @@ async def testimony_redline(session_id: str):
 _audit_trail = deque(maxlen=1000)
 
 
-@router.get("/admin/audit-trail")
-async def get_audit_trail(auth=Depends(require_admin_auth)):
-    """Get admin audit trail with all logged actions."""
+@router.get("/admin/audit-trail-v2")
+async def get_audit_trail_v2(auth=Depends(require_admin_auth)):
+    """Get admin audit trail v2 with categorized actions."""
     from datetime import datetime
     entries = list(_audit_trail)
     # Categorize
@@ -18048,8 +18048,8 @@ async def get_audit_trail(auth=Depends(require_admin_auth)):
     }
 
 
-@router.post("/admin/audit-trail")
-async def add_audit_entry(data: dict, auth=Depends(require_admin_auth)):
+@router.post("/admin/audit-trail-v2")
+async def add_audit_entry_v2(data: dict, auth=Depends(require_admin_auth)):
     """Add entry to admin audit trail."""
     from datetime import datetime
     entry = {
