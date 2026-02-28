@@ -7575,6 +7575,13 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/wordcloud</code> — Word frequency cloud<br>' +
                 '<code>/compare [id]</code> — Compare with another session<br>' +
                 '<code>/autosummary</code> — Quick auto-summary<br>' +
+                '<code>/bookmark [note]</code> — Bookmark current statement<br>' +
+                '<code>/bookmarks</code> — View all bookmarks<br>' +
+                '<code>/contradictions</code> — Detect inconsistencies<br>' +
+                '<code>/markdown</code> — Export as markdown<br>' +
+                '<code>/evidence-links</code> — Find evidence references<br>' +
+                '<code>/diff [a b]</code> — Compare two statements<br>' +
+                '<code>/completeness</code> — Interview coverage check<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7686,6 +7693,29 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/events': () => {
             this._showExtractedTimeline();
+        },
+        '/bookmark': () => {
+            const note = text.slice(9).trim();
+            this._addBookmark(note);
+        },
+        '/bookmarks': () => {
+            this._showBookmarks();
+        },
+        '/contradictions': () => {
+            this._detectContradictions();
+        },
+        '/markdown': () => {
+            this._exportMarkdown();
+        },
+        '/evidence-links': () => {
+            this._showEvidenceLinks();
+        },
+        '/diff': () => {
+            const darg = text.slice(5).trim();
+            this._showStatementDiff(darg);
+        },
+        '/completeness': () => {
+            this._checkCompleteness();
         }
     };
     
@@ -7771,7 +7801,14 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/wordcloud', desc: 'Word frequency cloud' },
         { cmd: '/compare', desc: 'Compare sessions' },
         { cmd: '/autosummary', desc: 'Quick auto-summary' },
-        { cmd: '/events', desc: 'Extract timeline events' }
+        { cmd: '/events', desc: 'Extract timeline events' },
+        { cmd: '/bookmark', desc: 'Bookmark statement' },
+        { cmd: '/bookmarks', desc: 'View bookmarks' },
+        { cmd: '/contradictions', desc: 'Detect inconsistencies' },
+        { cmd: '/markdown', desc: 'Export as markdown' },
+        { cmd: '/evidence-links', desc: 'Evidence references' },
+        { cmd: '/diff', desc: 'Compare statements' },
+        { cmd: '/completeness', desc: 'Coverage check' }
     ];
     
     const filter = val.toLowerCase();
@@ -9673,5 +9710,253 @@ WitnessReplayApp.prototype._showAutoSummary = async function() {
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'W') {
             if (window.app?._showWordCloud) { window.app._showWordCloud(); e.preventDefault(); }
         }
+        // Ctrl+Shift+B — bookmark current
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
+            if (window.app?._addBookmark) { window.app._addBookmark(); e.preventDefault(); }
+        }
     });
 })();
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 41: Testimony Bookmark System
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._addBookmark = async function(note) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const body = { note: note || '', label: 'important' };
+    try {
+        const resp = await fetch(`/api/sessions/${this.sessionId}/bookmarks`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        const bm = data.bookmark;
+        this.displaySystemMessage(`🔖 Bookmark added! (${data.total} total)${bm.text_preview ? '<br><small>"' + this._escapeHtml(bm.text_preview) + '"</small>' : ''}${note ? '<br>📝 ' + this._escapeHtml(note) : ''}`);
+    } catch (e) { this.displaySystemMessage('❌ Could not add bookmark.'); }
+};
+
+WitnessReplayApp.prototype._showBookmarks = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/bookmarks`);
+        const data = await resp.json();
+        if (!data.bookmarks || data.bookmarks.length === 0) {
+            this.displaySystemMessage('🔖 No bookmarks yet. Use <code>/bookmark [note]</code> or <b>Ctrl+Shift+B</b> to bookmark the latest statement.');
+            return;
+        }
+        let html = `<div class="bookmarks-list">`;
+        html += `<h4>🔖 Bookmarks (${data.total})</h4>`;
+        data.bookmarks.forEach(bm => {
+            html += `<div class="bm-item">`;
+            html += `<div class="bm-meta"><span class="bm-label">#${bm.statement_index + 1}</span>`;
+            html += `<span class="bm-time">${new Date(bm.created_at).toLocaleTimeString()}</span></div>`;
+            if (bm.text_preview) html += `<div class="bm-preview">"${this._escapeHtml(bm.text_preview)}"</div>`;
+            if (bm.note) html += `<div class="bm-note">📝 ${this._escapeHtml(bm.note)}</div>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not load bookmarks.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 42: AI Contradiction Detector
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._detectContradictions = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔍 Analyzing testimony for contradictions...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/contradictions`);
+        const data = await resp.json();
+
+        let html = `<div class="contradiction-report">`;
+        html += `<h4>🔍 Contradiction Analysis</h4>`;
+        html += `<div class="ctr-summary">`;
+        const sevColor = data.severity_score > 8 ? '#ef4444' : data.severity_score > 3 ? '#eab308' : '#22c55e';
+        html += `<div class="ctr-score" style="border-color:${sevColor}">`;
+        html += `<span class="ctr-count">${data.count}</span>`;
+        html += `<span class="ctr-label">Issues</span></div>`;
+        html += `<div class="ctr-assess">${this._escapeHtml(data.assessment)}</div>`;
+        html += `</div>`;
+
+        if (data.contradictions && data.contradictions.length > 0) {
+            html += `<div class="ctr-list">`;
+            data.contradictions.forEach(c => {
+                const icon = c.type === 'quantity_mismatch' ? '🔢' : c.type === 'time_reference' ? '🕐' : '↔️';
+                const sevBadge = c.severity === 'high' ? '<span class="ctr-sev-high">HIGH</span>' : '<span class="ctr-sev-med">MED</span>';
+                html += `<div class="ctr-item">`;
+                html += `<div class="ctr-head">${icon} ${sevBadge} ${this._escapeHtml(c.description)}</div>`;
+                html += `<div class="ctr-excerpts">`;
+                html += `<div class="ctr-ex-a"><b>Stmt #${c.statement_a.index + 1}:</b> "${this._escapeHtml(c.statement_a.excerpt)}"</div>`;
+                html += `<div class="ctr-ex-b"><b>Stmt #${c.statement_b.index + 1}:</b> "${this._escapeHtml(c.statement_b.excerpt)}"</div>`;
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+        }
+
+        if (data.corrections && data.corrections.length > 0) {
+            html += `<div class="ctr-corrections"><h5>⚠️ Self-Corrections (${data.correction_count})</h5>`;
+            data.corrections.forEach(c => {
+                html += `<div class="ctr-corr-item">Stmt #${c.index + 1}: "${this._escapeHtml(c.excerpt)}"</div>`;
+            });
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze contradictions.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 43: Session Export to Markdown
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._exportMarkdown = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📄 Generating markdown export...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/export/markdown`);
+        const data = await resp.json();
+        if (!data.markdown) { this.displaySystemMessage('⚠️ No content to export.'); return; }
+
+        // Copy to clipboard
+        try {
+            await navigator.clipboard.writeText(data.markdown);
+            this.displaySystemMessage(`📄 Markdown exported! (${data.statements} statements)<br><b>✅ Copied to clipboard</b><br><small>Paste into any markdown editor or note-taking app.</small>`);
+        } catch (clipErr) {
+            // Fallback: show in a copyable text area
+            let html = `<div class="md-export">`;
+            html += `<h4>📄 Markdown Export</h4>`;
+            html += `<textarea class="md-export-area" rows="10" readonly onclick="this.select()">${this._escapeHtml(data.markdown)}</textarea>`;
+            html += `<small>Select all and copy (Ctrl+A, Ctrl+C)</small>`;
+            html += `</div>`;
+            this.displaySystemMessage(html);
+        }
+    } catch (e) { this.displaySystemMessage('❌ Could not export markdown.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 44: Smart Evidence Linker
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showEvidenceLinks = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔗 Scanning for evidence references...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/evidence-links`);
+        const data = await resp.json();
+        if (!data.evidence_refs || data.evidence_refs.length === 0) {
+            this.displaySystemMessage('🔗 No evidence references found yet. Mention exhibits, documents, photos, or files in your testimony.');
+            return;
+        }
+
+        let html = `<div class="evidence-links">`;
+        html += `<h4>🔗 Evidence References (${data.count} found)</h4>`;
+
+        if (data.cross_referenced && data.cross_referenced.length > 0) {
+            html += `<div class="evl-cross"><b>🔄 Cross-Referenced (mentioned multiple times):</b>`;
+            data.cross_referenced.forEach(r => {
+                html += `<div class="evl-item evl-cross-item">`;
+                html += `<span class="evl-ref">${this._escapeHtml(r.reference)}</span>`;
+                html += `<span class="evl-type">${r.type}</span>`;
+                html += `<span class="evl-count">Mentioned in ${r.mentioned_in.length} statements</span>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        }
+
+        html += `<div class="evl-all">`;
+        data.evidence_refs.forEach(r => {
+            const icon = { exhibit: '📑', document: '📄', photo: '📸', video: '🎥', recording: '🎙️', report: '📊', evidence: '🔬', file: '📁', item: '📦' }[r.type] || '📌';
+            html += `<div class="evl-item">`;
+            html += `<span class="evl-icon">${icon}</span>`;
+            html += `<span class="evl-ref">${this._escapeHtml(r.reference)}</span>`;
+            html += `<span class="evl-type">${r.type}</span>`;
+            html += `<span class="evl-stmts">Stmts: ${r.mentioned_in.map(i => '#' + (i + 1)).join(', ')}</span>`;
+            html += `</div>`;
+        });
+        html += `</div></div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not scan evidence references.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 46: Witness Statement Diff
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showStatementDiff = async function(arg) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    let a = 0, b = -1;
+    if (arg) {
+        const parts = arg.split(/[\s,]+/);
+        if (parts.length >= 2) { a = parseInt(parts[0]) - 1; b = parseInt(parts[1]) - 1; }
+        else if (parts.length === 1) { b = parseInt(parts[0]) - 1; }
+    }
+    this.displaySystemMessage('📝 Comparing statements...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/diff?a=${a}&b=${b}`);
+        const data = await resp.json();
+        if (data.error) { this.displaySystemMessage(`⚠️ ${data.error}`); return; }
+
+        const simColor = data.similarity_pct > 70 ? '#22c55e' : data.similarity_pct > 40 ? '#eab308' : '#ef4444';
+        let html = `<div class="stmt-diff">`;
+        html += `<h4>📝 Statement Diff</h4>`;
+        html += `<div class="sd-pair">`;
+        html += `<div class="sd-card sd-card-a"><b>Statement #${data.statement_a.index + 1}</b> (${data.statement_a.word_count} words)<p>${this._escapeHtml(data.statement_a.text)}</p></div>`;
+        html += `<div class="sd-card sd-card-b"><b>Statement #${data.statement_b.index + 1}</b> (${data.statement_b.word_count} words)<p>${this._escapeHtml(data.statement_b.text)}</p></div>`;
+        html += `</div>`;
+        html += `<div class="sd-stats">`;
+        html += `<div class="sd-sim" style="color:${simColor}">Similarity: ${data.similarity_pct}%</div>`;
+        html += `<div class="sd-changes">`;
+        html += `<span class="sd-added">+${data.added_count} new words</span>`;
+        html += `<span class="sd-removed">-${data.removed_count} removed words</span>`;
+        html += `</div></div>`;
+        if (data.added_words.length > 0) {
+            html += `<div class="sd-words-added"><b>Added:</b> ${data.added_words.slice(0, 15).map(w => '<span class="sd-w-add">' + this._escapeHtml(w) + '</span>').join(' ')}</div>`;
+        }
+        if (data.removed_words.length > 0) {
+            html += `<div class="sd-words-removed"><b>Removed:</b> ${data.removed_words.slice(0, 15).map(w => '<span class="sd-w-rem">' + this._escapeHtml(w) + '</span>').join(' ')}</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not compare statements.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 47: Interview Completeness Checker
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._checkCompleteness = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('✅ Checking interview completeness...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/completeness`);
+        const data = await resp.json();
+
+        const pctColor = data.completeness_pct >= 70 ? '#22c55e' : data.completeness_pct >= 40 ? '#eab308' : '#ef4444';
+        let html = `<div class="completeness-check">`;
+        html += `<h4>✅ Interview Completeness</h4>`;
+        html += `<div class="cc-score">`;
+        html += `<div class="cc-ring" style="--pct:${data.completeness_pct};--color:${pctColor}">`;
+        html += `<span class="cc-pct">${data.completeness_pct}%</span></div>`;
+        html += `<div class="cc-assess">${this._escapeHtml(data.assessment)}</div>`;
+        html += `<div class="cc-ratio">${data.areas_covered}/${data.total_areas} areas covered</div>`;
+        html += `</div>`;
+
+        html += `<div class="cc-areas">`;
+        Object.entries(data.coverage).forEach(([key, area]) => {
+            const barColor = area.covered ? '#22c55e' : '#374151';
+            const checkmark = area.covered ? '✅' : '❌';
+            html += `<div class="cc-area ${area.covered ? 'cc-covered' : 'cc-missing'}">`;
+            html += `<span class="cc-icon">${area.icon}</span>`;
+            html += `<span class="cc-name">${area.label}</span>`;
+            html += `<span class="cc-check">${checkmark}</span>`;
+            html += `<div class="cc-bar"><div class="cc-fill" style="width:${area.depth_score}%;background:${barColor}"></div></div>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+
+        if (data.suggestions && data.suggestions.length > 0) {
+            html += `<div class="cc-suggestions"><b>💡 Suggestions:</b>`;
+            data.suggestions.forEach(s => { html += `<div class="cc-sug">${this._escapeHtml(s)}</div>`; });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not check completeness.'); }
+};

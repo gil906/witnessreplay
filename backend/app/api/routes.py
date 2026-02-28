@@ -12296,3 +12296,505 @@ async def get_auto_summary(session_id: str):
             "locations_found": len(locations),
         },
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 41: Testimony Bookmark System
+# ═══════════════════════════════════════════════════════════════════
+_session_bookmarks: Dict[str, List[Dict[str, Any]]] = {}
+
+@router.post("/sessions/{session_id}/bookmarks")
+async def add_bookmark(session_id: str, data: dict):
+    """Add a bookmark to a specific statement in the session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    idx = data.get("statement_index", -1)
+    note = data.get("note", "")
+    label = data.get("label", "important")
+
+    statements = session.witness_statements
+    text_preview = ""
+    if 0 <= idx < len(statements):
+        text_preview = statements[idx].text[:120]
+    elif statements:
+        idx = len(statements) - 1
+        text_preview = statements[-1].text[:120]
+
+    bookmark = {
+        "id": f"bm-{session_id[:8]}-{len(_session_bookmarks.get(session_id, []))}",
+        "statement_index": idx,
+        "note": note[:200] if note else "",
+        "label": label,
+        "text_preview": text_preview,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if session_id not in _session_bookmarks:
+        _session_bookmarks[session_id] = []
+    _session_bookmarks[session_id].append(bookmark)
+
+    return {"bookmark": bookmark, "total": len(_session_bookmarks[session_id])}
+
+
+@router.get("/sessions/{session_id}/bookmarks")
+async def list_bookmarks(session_id: str):
+    """List all bookmarks for a session."""
+    return {
+        "session_id": session_id,
+        "bookmarks": _session_bookmarks.get(session_id, []),
+        "total": len(_session_bookmarks.get(session_id, [])),
+    }
+
+
+@router.delete("/sessions/{session_id}/bookmarks/{bookmark_id}")
+async def delete_bookmark(session_id: str, bookmark_id: str):
+    """Delete a bookmark."""
+    bms = _session_bookmarks.get(session_id, [])
+    _session_bookmarks[session_id] = [b for b in bms if b["id"] != bookmark_id]
+    return {"deleted": bookmark_id}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 42: AI Contradiction Detector
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/contradictions")
+async def detect_contradictions(session_id: str):
+    """Detect contradictions and inconsistencies in witness statements."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if len(statements) < 2:
+        return {"session_id": session_id, "contradictions": [], "count": 0,
+                "assessment": "Need at least 2 statements to detect contradictions."}
+
+    contradictions = []
+    texts = [s.text for s in statements]
+
+    # Time contradiction detection
+    time_refs = {}
+    for i, t in enumerate(texts):
+        times_found = re.findall(r'\b(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)\b', t)
+        events = re.findall(r'(?:when|while|during|before|after)\s+(.{10,40})', t, re.I)
+        for tf in times_found:
+            norm = tf.strip().lower()
+            if norm in time_refs and time_refs[norm]["index"] != i:
+                prev = time_refs[norm]
+                contradictions.append({
+                    "type": "time_reference",
+                    "severity": "medium",
+                    "description": f"Time '{tf}' mentioned in different contexts",
+                    "statement_a": {"index": prev["index"], "excerpt": prev["text"][:80]},
+                    "statement_b": {"index": i, "excerpt": t[:80]},
+                })
+            else:
+                time_refs[norm] = {"index": i, "text": t}
+
+    # Quantity contradiction detection
+    for i, t in enumerate(texts):
+        quantities = re.findall(r'\b(\d+)\s+(people|person|car|vehicle|man|men|woman|women|kid|child|children)\b', t, re.I)
+        for q_num, q_obj in quantities:
+            obj_norm = q_obj.lower()
+            for j in range(i + 1, len(texts)):
+                other_quantities = re.findall(r'\b(\d+)\s+' + re.escape(obj_norm) + r'\b', texts[j], re.I)
+                for oq in other_quantities:
+                    if oq != q_num:
+                        contradictions.append({
+                            "type": "quantity_mismatch",
+                            "severity": "high",
+                            "description": f"Conflicting counts: '{q_num} {q_obj}' vs '{oq} {obj_norm}'",
+                            "statement_a": {"index": i, "excerpt": texts[i][:80]},
+                            "statement_b": {"index": j, "excerpt": texts[j][:80]},
+                        })
+
+    # Direction / location inconsistency
+    directions = ["left", "right", "north", "south", "east", "west", "front", "back"]
+    for i, t in enumerate(texts):
+        for d in directions:
+            if re.search(r'\b' + d + r'\b', t, re.I):
+                opposites = {"left": "right", "right": "left", "north": "south", "south": "north",
+                             "east": "west", "west": "east", "front": "back", "back": "front"}
+                opp = opposites.get(d)
+                if opp:
+                    for j in range(i + 1, len(texts)):
+                        if re.search(r'\b' + opp + r'\b', texts[j], re.I):
+                            # Check if describing same event context
+                            words_i = set(t.lower().split())
+                            words_j = set(texts[j].lower().split())
+                            overlap = len(words_i & words_j)
+                            if overlap > 5:
+                                contradictions.append({
+                                    "type": "direction_inconsistency",
+                                    "severity": "medium",
+                                    "description": f"Opposite directions used: '{d}' vs '{opp}' in related statements",
+                                    "statement_a": {"index": i, "excerpt": texts[i][:80]},
+                                    "statement_b": {"index": j, "excerpt": texts[j][:80]},
+                                })
+
+    # Self-corrections detection
+    corrections = []
+    correction_phrases = [
+        r"(?:actually|wait|no|sorry|I mean|let me correct|I was wrong|I meant)",
+    ]
+    for i, t in enumerate(texts):
+        for pattern in correction_phrases:
+            if re.search(pattern, t, re.I):
+                corrections.append({"index": i, "excerpt": t[:100]})
+
+    severity_score = len([c for c in contradictions if c["severity"] == "high"]) * 3 + \
+                     len([c for c in contradictions if c["severity"] == "medium"]) * 1
+
+    if severity_score == 0:
+        assessment = "No significant contradictions detected"
+    elif severity_score <= 3:
+        assessment = "Minor inconsistencies found — may warrant clarification"
+    elif severity_score <= 8:
+        assessment = "Moderate contradictions detected — follow up recommended"
+    else:
+        assessment = "Significant contradictions — critical review needed"
+
+    return {
+        "session_id": session_id,
+        "contradictions": contradictions[:20],
+        "corrections": corrections[:10],
+        "count": len(contradictions),
+        "correction_count": len(corrections),
+        "severity_score": severity_score,
+        "assessment": assessment,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 43: Session Export to Markdown
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/export/markdown")
+async def export_session_markdown(session_id: str):
+    """Export session as formatted markdown text."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    title = getattr(session, "title", "Untitled Session")
+    created = getattr(session, "created_at", "Unknown")
+    statements = session.witness_statements
+
+    lines = []
+    lines.append(f"# 🛡️ WitnessReplay — {title}")
+    lines.append(f"")
+    lines.append(f"**Session ID:** `{session_id}`  ")
+    lines.append(f"**Created:** {created}  ")
+    lines.append(f"**Statements:** {len(statements)}  ")
+    lines.append(f"")
+    lines.append("---")
+    lines.append("")
+    lines.append("## Testimony Transcript")
+    lines.append("")
+
+    for i, s in enumerate(statements, 1):
+        speaker = getattr(s, "speaker", "witness").capitalize()
+        ts = getattr(s, "timestamp", "")
+        emoji = "🗣️" if speaker.lower() == "witness" else "🤖"
+        lines.append(f"### {emoji} {speaker} (#{i})")
+        if ts:
+            lines.append(f"*{ts}*")
+        lines.append("")
+        lines.append(f"> {s.text}")
+        lines.append("")
+
+    # Summary section
+    lines.append("---")
+    lines.append("")
+    lines.append("## Summary Statistics")
+    lines.append("")
+    total_words = sum(len(s.text.split()) for s in statements)
+    lines.append(f"- **Total statements:** {len(statements)}")
+    lines.append(f"- **Total words:** {total_words}")
+
+    # Extract key entities
+    all_text = " ".join(s.text for s in statements)
+    names = list(set(re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+))\b', all_text)))[:5]
+    times = list(set(re.findall(r'\b(\d{1,2}:\d{2}\s*(?:am|pm)?)\b', all_text, re.I)))[:5]
+    if names:
+        lines.append(f"- **People mentioned:** {', '.join(names)}")
+    if times:
+        lines.append(f"- **Times referenced:** {', '.join(times)}")
+
+    lines.append("")
+    lines.append("---")
+    lines.append(f"*Exported from WitnessReplay on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*")
+
+    markdown_text = "\n".join(lines)
+    return {"session_id": session_id, "markdown": markdown_text, "statements": len(statements)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 44: Smart Evidence Linker
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/evidence-links")
+async def extract_evidence_links(session_id: str):
+    """Detect evidence references (exhibits, documents, photos) across testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if not statements:
+        return {"session_id": session_id, "evidence_refs": [], "count": 0}
+
+    evidence_patterns = [
+        (r'\b(Exhibit\s+[A-Z0-9]+)\b', 'exhibit'),
+        (r'\b(Document\s+(?:#?\d+|[A-Z]))\b', 'document'),
+        (r'\b(Photo(?:graph)?\s+(?:#?\d+|[A-Z]))\b', 'photo'),
+        (r'\b(Video\s+(?:#?\d+|[A-Z]))\b', 'video'),
+        (r'\b(Recording\s+(?:#?\d+|[A-Z]))\b', 'recording'),
+        (r'\b(Report\s+(?:#?\d+|[A-Z]))\b', 'report'),
+        (r'\b(Evidence\s+(?:#?\d+|[A-Z]))\b', 'evidence'),
+        (r'\b(File\s+(?:#?\d+|[A-Z]))\b', 'file'),
+        (r'\b(Item\s+(?:#?\d+|[A-Z]))\b', 'item'),
+    ]
+
+    refs_map = {}
+    for i, s in enumerate(statements):
+        for pattern, etype in evidence_patterns:
+            matches = re.findall(pattern, s.text, re.I)
+            for m in matches:
+                key = m.strip().lower()
+                if key not in refs_map:
+                    refs_map[key] = {
+                        "reference": m.strip(),
+                        "type": etype,
+                        "mentioned_in": [],
+                        "contexts": [],
+                    }
+                refs_map[key]["mentioned_in"].append(i)
+                # Extract surrounding context
+                pos = s.text.lower().find(key)
+                start = max(0, pos - 30)
+                end = min(len(s.text), pos + len(key) + 30)
+                refs_map[key]["contexts"].append(s.text[start:end].strip())
+
+    evidence_refs = sorted(refs_map.values(), key=lambda x: len(x["mentioned_in"]), reverse=True)
+
+    # Flag cross-referenced evidence
+    cross_refs = [r for r in evidence_refs if len(r["mentioned_in"]) > 1]
+
+    return {
+        "session_id": session_id,
+        "evidence_refs": evidence_refs[:30],
+        "cross_referenced": cross_refs[:10],
+        "count": len(evidence_refs),
+        "cross_ref_count": len(cross_refs),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 45: Admin Case Analytics Dashboard
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/admin/case-analytics")
+async def get_case_analytics(auth=Depends(require_admin_auth)):
+    """Aggregated analytics for cases and sessions."""
+    all_sessions = await firestore_service.get_all_sessions()
+    now = datetime.now(timezone.utc)
+
+    total = len(all_sessions)
+    stmt_counts = []
+    word_counts = []
+    sessions_by_day = {}
+    status_dist = {}
+
+    for s in all_sessions:
+        stmts = s.witness_statements if hasattr(s, "witness_statements") else []
+        stmt_counts.append(len(stmts))
+        wc = sum(len(st.text.split()) for st in stmts)
+        word_counts.append(wc)
+
+        created = getattr(s, "created_at", None)
+        if created:
+            day = str(created)[:10]
+            sessions_by_day[day] = sessions_by_day.get(day, 0) + 1
+
+        st = getattr(s, "status", "active")
+        status_dist[st] = status_dist.get(st, 0) + 1
+
+    avg_stmts = round(sum(stmt_counts) / max(total, 1), 1)
+    avg_words = round(sum(word_counts) / max(total, 1), 1)
+
+    # Sort by day (last 30 days)
+    sorted_days = sorted(sessions_by_day.items())[-30:]
+
+    return {
+        "total_sessions": total,
+        "avg_statements_per_session": avg_stmts,
+        "avg_words_per_session": avg_words,
+        "max_statements": max(stmt_counts) if stmt_counts else 0,
+        "max_words": max(word_counts) if word_counts else 0,
+        "sessions_by_day": [{"date": d, "count": c} for d, c in sorted_days],
+        "status_distribution": status_dist,
+        "active_sessions": status_dist.get("active", 0),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 46: Witness Statement Diff
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/diff")
+async def diff_statements(session_id: str, a: int = 0, b: int = -1):
+    """Compare two statements within the same session to find changes."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if len(statements) < 2:
+        return {"error": "Need at least 2 statements to diff"}
+
+    if b < 0:
+        b = len(statements) - 1
+    if a < 0 or a >= len(statements) or b < 0 or b >= len(statements):
+        raise HTTPException(400, "Statement indices out of range")
+
+    text_a = statements[a].text
+    text_b = statements[b].text
+    words_a = text_a.lower().split()
+    words_b = text_b.lower().split()
+    set_a = set(words_a)
+    set_b = set(words_b)
+
+    added = set_b - set_a
+    removed = set_a - set_b
+    common = set_a & set_b
+
+    # Compute similarity
+    union = set_a | set_b
+    similarity = round(len(common) / max(len(union), 1) * 100, 1)
+
+    return {
+        "session_id": session_id,
+        "statement_a": {"index": a, "text": text_a[:300], "word_count": len(words_a)},
+        "statement_b": {"index": b, "text": text_b[:300], "word_count": len(words_b)},
+        "added_words": sorted(list(added))[:30],
+        "removed_words": sorted(list(removed))[:30],
+        "common_word_count": len(common),
+        "similarity_pct": similarity,
+        "added_count": len(added),
+        "removed_count": len(removed),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 47: Interview Completeness Checker
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/completeness")
+async def check_interview_completeness(session_id: str):
+    """Score how complete an interview is based on investigation area coverage."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    all_text = " ".join(s.text for s in statements).lower() if statements else ""
+
+    # Investigation areas to check
+    areas = {
+        "who": {
+            "label": "People / Suspects",
+            "patterns": [r'\b(he|she|they|man|woman|person|suspect|victim|witness|name|someone)\b'],
+            "icon": "👤",
+        },
+        "what": {
+            "label": "What Happened",
+            "patterns": [r'\b(happened|saw|heard|noticed|event|incident|attack|crash|shot|hit|stole)\b'],
+            "icon": "❓",
+        },
+        "when": {
+            "label": "Time / Date",
+            "patterns": [r'\b(\d{1,2}:\d{2}|morning|afternoon|evening|night|today|yesterday|o.clock|ago|around|about)\b'],
+            "icon": "🕐",
+        },
+        "where": {
+            "label": "Location / Place",
+            "patterns": [r'\b(street|road|building|house|store|park|corner|block|intersection|address|apartment|near)\b'],
+            "icon": "📍",
+        },
+        "how": {
+            "label": "Method / Manner",
+            "patterns": [r'\b(how|using|weapon|knife|gun|car|ran|drove|walked|broke|entered|forced)\b'],
+            "icon": "🔧",
+        },
+        "description": {
+            "label": "Physical Descriptions",
+            "patterns": [r'\b(tall|short|hair|wearing|shirt|jacket|hat|tattoo|scar|build|heavy|thin|old|young|age|color|white|black|red|blue)\b'],
+            "icon": "📋",
+        },
+        "vehicle": {
+            "label": "Vehicle Info",
+            "patterns": [r'\b(car|truck|van|motorcycle|bike|license|plate|model|make|color|sedan|suv)\b'],
+            "icon": "🚗",
+        },
+        "evidence": {
+            "label": "Physical Evidence",
+            "patterns": [r'\b(evidence|photo|video|recording|camera|fingerprint|blood|damage|broken|mark)\b'],
+            "icon": "🔬",
+        },
+        "sequence": {
+            "label": "Event Sequence",
+            "patterns": [r'\b(first|then|after|before|next|finally|later|suddenly|while|during|followed)\b'],
+            "icon": "📊",
+        },
+        "emotional": {
+            "label": "Emotional State",
+            "patterns": [r'\b(scared|afraid|angry|upset|nervous|calm|crying|shouting|panic|shock|confused)\b'],
+            "icon": "💭",
+        },
+    }
+
+    coverage = {}
+    total_score = 0
+    for key, area in areas.items():
+        match_count = 0
+        for pattern in area["patterns"]:
+            match_count += len(re.findall(pattern, all_text, re.I))
+        covered = match_count > 0
+        depth = min(match_count, 10)
+        score = min(round(depth / 3 * 100), 100)
+        coverage[key] = {
+            "label": area["label"],
+            "icon": area["icon"],
+            "covered": covered,
+            "match_count": match_count,
+            "depth_score": score,
+        }
+        if covered:
+            total_score += 1
+
+    completeness_pct = round(total_score / len(areas) * 100)
+    missing = [v for k, v in coverage.items() if not v["covered"]]
+
+    if completeness_pct >= 90:
+        assessment = "Excellent — nearly all areas covered"
+    elif completeness_pct >= 70:
+        assessment = "Good — most areas addressed"
+    elif completeness_pct >= 50:
+        assessment = "Moderate — several areas need more detail"
+    elif completeness_pct >= 30:
+        assessment = "Incomplete — many critical areas missing"
+    else:
+        assessment = "Early stage — continue gathering information"
+
+    suggestions = []
+    for area in missing[:3]:
+        suggestions.append(f"Ask about: {area['icon']} {area['label']}")
+
+    return {
+        "session_id": session_id,
+        "completeness_pct": completeness_pct,
+        "areas_covered": total_score,
+        "total_areas": len(areas),
+        "assessment": assessment,
+        "coverage": coverage,
+        "missing_areas": [{"label": m["label"], "icon": m["icon"]} for m in missing],
+        "suggestions": suggestions,
+    }

@@ -333,6 +333,19 @@
                 <div id="al-list" class="al-list"></div>
             </section>
 
+            <!-- Case Analytics Dashboard -->
+            <section class="admin-panel" id="case-analytics-section">
+                <h3>📈 Case Analytics <button id="ca-refresh-btn" class="admin-btn-sm" title="Refresh">🔄</button></h3>
+                <div class="ca-stats" id="ca-stats">
+                    <div class="ca-stat-card"><span class="ca-stat-num" id="ca-total">--</span><span class="ca-stat-label">Total Sessions</span></div>
+                    <div class="ca-stat-card"><span class="ca-stat-num" id="ca-avg-stmts">--</span><span class="ca-stat-label">Avg Statements</span></div>
+                    <div class="ca-stat-card"><span class="ca-stat-num" id="ca-avg-words">--</span><span class="ca-stat-label">Avg Words</span></div>
+                    <div class="ca-stat-card"><span class="ca-stat-num" id="ca-active">--</span><span class="ca-stat-label">Active</span></div>
+                </div>
+                <div id="ca-chart" class="ca-chart"></div>
+                <div id="ca-status-dist" class="ca-status-dist"></div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

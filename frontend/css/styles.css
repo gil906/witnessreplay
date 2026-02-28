@@ -12422,3 +12422,91 @@ textarea:disabled {
 .as-body { padding: 0 14px 12px; }
 .as-points { list-style: none; padding: 0; margin: 8px 0 0; }
 .as-points li { font-size: 0.78rem; color: #94a3b8; padding: 3px 0; border-left: 2px solid rgba(59, 130, 246, 0.3); padding-left: 8px; margin-bottom: 4px; }
+
+/* ── IMPROVEMENT 41: Bookmarks ────────────────────────────────── */
+.bookmarks-list { padding: 12px; }
+.bookmarks-list h4 { margin: 0 0 10px; color: #e2e8f0; }
+.bm-item { background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 8px 10px; margin-bottom: 8px; border-radius: 4px; }
+.bm-meta { display: flex; justify-content: space-between; font-size: 0.72rem; color: #64748b; margin-bottom: 4px; }
+.bm-label { background: #3b82f6; color: white; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.bm-preview { font-size: 0.8rem; color: #94a3b8; font-style: italic; margin: 4px 0; }
+.bm-note { font-size: 0.78rem; color: #60a5fa; }
+
+/* ── IMPROVEMENT 42: Contradiction Report ─────────────────────── */
+.contradiction-report { padding: 12px; }
+.contradiction-report h4 { margin: 0 0 10px; color: #e2e8f0; }
+.ctr-summary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.ctr-score { width: 60px; height: 60px; border: 3px solid; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ctr-count { font-size: 1.3rem; font-weight: 700; color: #e2e8f0; }
+.ctr-label { font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; }
+.ctr-assess { font-size: 0.85rem; color: #cbd5e1; }
+.ctr-list { display: flex; flex-direction: column; gap: 8px; }
+.ctr-item { background: rgba(239, 68, 68, 0.06); border-left: 3px solid rgba(239, 68, 68, 0.4); padding: 8px 10px; border-radius: 4px; }
+.ctr-head { font-size: 0.82rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
+.ctr-sev-high { background: #ef4444; color: white; padding: 1px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; }
+.ctr-sev-med { background: #eab308; color: #1a1a2e; padding: 1px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; }
+.ctr-excerpts { font-size: 0.75rem; color: #94a3b8; }
+.ctr-ex-a, .ctr-ex-b { padding: 2px 0; }
+.ctr-corrections { margin-top: 12px; }
+.ctr-corrections h5 { margin: 0 0 6px; color: #eab308; font-size: 0.82rem; }
+.ctr-corr-item { font-size: 0.75rem; color: #94a3b8; padding: 3px 0; border-left: 2px solid rgba(234, 179, 8, 0.3); padding-left: 8px; margin-bottom: 4px; }
+
+/* ── IMPROVEMENT 43: Markdown Export ──────────────────────────── */
+.md-export { padding: 12px; }
+.md-export h4 { margin: 0 0 8px; color: #e2e8f0; }
+.md-export-area { width: 100%; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; resize: vertical; }
+
+/* ── IMPROVEMENT 44: Evidence Links ───────────────────────────── */
+.evidence-links { padding: 12px; }
+.evidence-links h4 { margin: 0 0 10px; color: #e2e8f0; }
+.evl-cross { margin-bottom: 12px; padding: 8px; background: rgba(59, 130, 246, 0.08); border-radius: 6px; }
+.evl-cross b { color: #60a5fa; font-size: 0.8rem; display: block; margin-bottom: 6px; }
+.evl-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 0.8rem; }
+.evl-cross-item { background: rgba(59, 130, 246, 0.05); padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
+.evl-icon { font-size: 1rem; }
+.evl-ref { font-weight: 600; color: #e2e8f0; }
+.evl-type { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 3px; font-size: 0.68rem; color: #94a3b8; }
+.evl-stmts { color: #64748b; font-size: 0.72rem; margin-left: auto; }
+.evl-count { color: #60a5fa; font-size: 0.72rem; margin-left: auto; }
+
+/* ── IMPROVEMENT 46: Statement Diff ───────────────────────────── */
+.stmt-diff { padding: 12px; }
+.stmt-diff h4 { margin: 0 0 10px; color: #e2e8f0; }
+.sd-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.sd-card { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 8px 10px; font-size: 0.78rem; }
+.sd-card b { color: #e2e8f0; font-size: 0.75rem; display: block; margin-bottom: 4px; }
+.sd-card p { color: #94a3b8; margin: 0; line-height: 1.4; }
+.sd-card-a { border-left: 3px solid #ef4444; }
+.sd-card-b { border-left: 3px solid #22c55e; }
+.sd-stats { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.sd-sim { font-size: 1rem; font-weight: 700; }
+.sd-changes { display: flex; gap: 10px; font-size: 0.78rem; }
+.sd-added { color: #22c55e; }
+.sd-removed { color: #ef4444; }
+.sd-words-added, .sd-words-removed { font-size: 0.75rem; margin-bottom: 4px; }
+.sd-words-added b { color: #22c55e; }
+.sd-words-removed b { color: #ef4444; }
+.sd-w-add { background: rgba(34, 197, 94, 0.15); padding: 1px 4px; border-radius: 3px; color: #22c55e; }
+.sd-w-rem { background: rgba(239, 68, 68, 0.15); padding: 1px 4px; border-radius: 3px; color: #ef4444; text-decoration: line-through; }
+
+/* ── IMPROVEMENT 47: Completeness Checker ─────────────────────── */
+.completeness-check { padding: 12px; }
+.completeness-check h4 { margin: 0 0 10px; color: #e2e8f0; }
+.cc-score { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.cc-ring { width: 64px; height: 64px; border-radius: 50%; background: conic-gradient(var(--color) calc(var(--pct) * 3.6deg), rgba(255,255,255,0.05) 0); display: flex; align-items: center; justify-content: center; position: relative; }
+.cc-ring::before { content: ''; position: absolute; width: 48px; height: 48px; border-radius: 50%; background: #0f172a; }
+.cc-pct { position: relative; z-index: 1; font-size: 0.9rem; font-weight: 700; color: #e2e8f0; }
+.cc-assess { font-size: 0.85rem; color: #cbd5e1; }
+.cc-ratio { font-size: 0.72rem; color: #64748b; }
+.cc-areas { display: flex; flex-direction: column; gap: 4px; }
+.cc-area { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; font-size: 0.78rem; }
+.cc-covered { opacity: 1; }
+.cc-missing { opacity: 0.5; }
+.cc-icon { font-size: 1rem; width: 22px; text-align: center; }
+.cc-name { flex: 1; color: #e2e8f0; }
+.cc-check { font-size: 0.7rem; }
+.cc-bar { flex: 0 0 80px; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.cc-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.cc-suggestions { margin-top: 10px; padding: 8px 10px; background: rgba(59, 130, 246, 0.08); border-radius: 6px; }
+.cc-suggestions b { color: #60a5fa; font-size: 0.82rem; }
+.cc-sug { font-size: 0.78rem; color: #94a3b8; padding: 3px 0; }

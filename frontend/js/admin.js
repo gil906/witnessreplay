@@ -344,6 +344,7 @@ class AdminPortal {
         this._loadDataRetention();
         this._initSessionViewer();
         this._initActivityLog();
+        this._initCaseAnalytics();
     }
     
     _initModalKeyboardNav() {
@@ -5488,4 +5489,63 @@ AdminPortal.prototype._loadActivityLog = async function() {
     } catch (e) {
         container.innerHTML = `<div class="error">❌ ${this._escapeHtml(e.message)}</div>`;
     }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 45: Admin Case Analytics Dashboard
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayAdmin.prototype._initCaseAnalytics = function() {
+    const refreshBtn = document.getElementById('ca-refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this._loadCaseAnalytics());
+    this._loadCaseAnalytics();
+};
+
+WitnessReplayAdmin.prototype._loadCaseAnalytics = async function() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    try {
+        const resp = await fetch('/api/admin/case-analytics', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const totalEl = document.getElementById('ca-total');
+        const avgStEl = document.getElementById('ca-avg-stmts');
+        const avgWdEl = document.getElementById('ca-avg-words');
+        const activeEl = document.getElementById('ca-active');
+        if (totalEl) totalEl.textContent = data.total_sessions;
+        if (avgStEl) avgStEl.textContent = data.avg_statements_per_session;
+        if (avgWdEl) avgWdEl.textContent = data.avg_words_per_session;
+        if (activeEl) activeEl.textContent = data.active_sessions;
+
+        // Simple bar chart for sessions by day
+        const chartEl = document.getElementById('ca-chart');
+        if (chartEl && data.sessions_by_day && data.sessions_by_day.length > 0) {
+            const maxC = Math.max(...data.sessions_by_day.map(d => d.count), 1);
+            let chartHtml = '<div class="ca-chart-title">Sessions per Day (last 30 days)</div><div class="ca-bars">';
+            data.sessions_by_day.slice(-14).forEach(d => {
+                const pct = Math.round(d.count / maxC * 100);
+                const label = d.date.slice(5);
+                chartHtml += `<div class="ca-bar-col" title="${d.date}: ${d.count}"><div class="ca-bar" style="height:${pct}%"></div><span class="ca-bar-label">${label}</span></div>`;
+            });
+            chartHtml += '</div>';
+            chartEl.innerHTML = chartHtml;
+        }
+
+        // Status distribution
+        const distEl = document.getElementById('ca-status-dist');
+        if (distEl && data.status_distribution) {
+            const total = Object.values(data.status_distribution).reduce((a, b) => a + b, 0) || 1;
+            let distHtml = '<div class="ca-dist-title">Status Distribution</div><div class="ca-dist-bars">';
+            Object.entries(data.status_distribution).forEach(([status, count]) => {
+                const pct = Math.round(count / total * 100);
+                const colors = { active: '#22c55e', completed: '#3b82f6', archived: '#64748b' };
+                const color = colors[status] || '#a78bfa';
+                distHtml += `<div class="ca-dist-row"><span class="ca-dist-label">${status}</span><div class="ca-dist-track"><div class="ca-dist-fill" style="width:${pct}%;background:${color}"></div></div><span class="ca-dist-val">${count} (${pct}%)</span></div>`;
+            });
+            distHtml += '</div>';
+            distEl.innerHTML = distHtml;
+        }
+    } catch (e) { /* silent */ }
 };
