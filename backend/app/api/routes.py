@@ -11324,3 +11324,69 @@ async def classify_incident(session_id: str, auth=Depends(require_admin_auth)):
         "all_scores": {k: v for k, v in scores.items() if v > 0},
         "analyzed_statements": len(texts)
     }
+
+
+@router.get("/admin/audit-timeline")
+async def get_audit_timeline(limit: int = 100, auth=Depends(require_admin_auth)):
+    """Get recent audit log events as a timeline for the admin dashboard."""
+    limit = _guard_limit(limit)
+    try:
+        rows = await firestore_service.query(
+            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?",
+            (limit,)
+        )
+        events = []
+        for row in (rows or []):
+            r = dict(row) if hasattr(row, 'keys') else row
+            events.append({
+                "id": r.get("id"),
+                "entity_type": r.get("entity_type", ""),
+                "entity_id": r.get("entity_id", ""),
+                "action": r.get("action", ""),
+                "details": r.get("details", ""),
+                "timestamp": r.get("timestamp", ""),
+            })
+        return {"events": events, "total": len(events)}
+    except Exception as e:
+        logger.error(f"Error fetching audit timeline: {e}")
+        return {"events": [], "total": 0}
+
+
+@router.get("/admin/interview-analytics")
+async def get_interview_analytics(auth=Depends(require_admin_auth)):
+    """Get aggregate analytics about interviews for the admin dashboard."""
+    try:
+        sessions = await firestore_service.list_sessions(limit=200)
+        if not sessions:
+            return {"total_sessions": 0, "avg_statements": 0, "incident_types": {}, "hourly_distribution": {}}
+
+        total = len(sessions)
+        total_statements = 0
+        incident_types = {}
+        hourly = {}
+
+        for s in sessions:
+            sd = s if isinstance(s, dict) else s.model_dump()
+            stmts = sd.get("statements", []) or []
+            total_statements += len(stmts)
+
+            inc_type = (sd.get("metadata", {}) or {}).get("incident_type", "unknown")
+            incident_types[inc_type] = incident_types.get(inc_type, 0) + 1
+
+            created = sd.get("created_at", "")
+            if created and "T" in str(created):
+                try:
+                    hour = str(created).split("T")[1][:2]
+                    hourly[hour] = hourly.get(hour, 0) + 1
+                except (IndexError, ValueError):
+                    pass
+
+        return {
+            "total_sessions": total,
+            "avg_statements": round(total_statements / max(1, total), 1),
+            "incident_types": incident_types,
+            "hourly_distribution": dict(sorted(hourly.items())),
+        }
+    except Exception as e:
+        logger.error(f"Error computing interview analytics: {e}")
+        return {"total_sessions": 0, "avg_statements": 0, "incident_types": {}, "hourly_distribution": {}}

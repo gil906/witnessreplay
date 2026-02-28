@@ -335,6 +335,8 @@ class AdminPortal {
         this.loadQuotaDashboard();
         this.startQuotaRefresh();
         this.initSystemHealthPanel();
+        this.initAuditTimeline();
+        this.initInterviewAnalytics();
     }
     
     _initModalKeyboardNav() {
@@ -4916,6 +4918,127 @@ class AdminPortal {
             bar.className = 'health-bar-fill' + (percent > 90 ? ' danger' : percent > 70 ? ' warn' : '');
         }
         if (val) val.textContent = `${percent || 0}${suffix}`;
+    }
+
+    // ═══ Audit Timeline ═══
+    initAuditTimeline() {
+        const toggle = document.getElementById('audit-timeline-toggle');
+        const content = document.getElementById('audit-timeline-content');
+        if (toggle && content) {
+            toggle.addEventListener('click', () => {
+                const open = content.style.display !== 'none';
+                content.style.display = open ? 'none' : '';
+                toggle.querySelector('.quota-toggle-icon').textContent = open ? '▸' : '▾';
+                if (!open) this.loadAuditTimeline();
+            });
+        }
+    }
+
+    async loadAuditTimeline() {
+        const list = document.getElementById('audit-timeline-list');
+        const badge = document.getElementById('audit-event-count');
+        if (!list) return;
+        
+        try {
+            const resp = await fetch('/api/admin/audit-timeline?limit=50', {
+                headers: { 'Authorization': `Bearer ${this.authToken}` }
+            });
+            if (!resp.ok) throw new Error('Failed to load');
+            const data = await resp.json();
+            const events = data.events || [];
+            
+            if (badge) badge.textContent = `${events.length} events`;
+            
+            if (events.length === 0) {
+                list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">No audit events recorded yet.</div>';
+                return;
+            }
+            
+            const actionIcons = {
+                'login': '🔓', 'logout': '🔒', 'export': '📥', 'create': '➕',
+                'update': '✏️', 'delete': '🗑️', 'assign': '👤', 'view': '👁️'
+            };
+            
+            list.innerHTML = events.map(ev => {
+                const action = (ev.action || '').toLowerCase();
+                const actionClass = Object.keys(actionIcons).find(k => action.includes(k)) || '';
+                const icon = actionIcons[actionClass] || '📝';
+                const time = ev.timestamp ? new Date(ev.timestamp).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+                return `<div class="audit-event action-${actionClass}">
+                    <div class="audit-event-body">
+                        <div class="audit-event-action">${icon} ${this._sanitize(ev.action || 'Action')}</div>
+                        <div class="audit-event-detail">${this._sanitize(ev.entity_type || '')} ${this._sanitize(ev.entity_id || '')} ${this._sanitize(ev.details || '')}</div>
+                    </div>
+                    <div class="audit-event-time">${time}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">Could not load audit events.</div>';
+        }
+    }
+
+    // ═══ Interview Analytics ═══
+    initInterviewAnalytics() {
+        const toggle = document.getElementById('analytics-toggle');
+        const content = document.getElementById('interview-analytics-content');
+        if (toggle && content) {
+            toggle.addEventListener('click', () => {
+                const open = content.style.display !== 'none';
+                content.style.display = open ? 'none' : '';
+                toggle.querySelector('.quota-toggle-icon').textContent = open ? '▸' : '▾';
+                if (!open) this.loadInterviewAnalytics();
+            });
+        }
+    }
+
+    async loadInterviewAnalytics() {
+        const grid = document.getElementById('analytics-grid');
+        const badge = document.getElementById('analytics-summary');
+        if (!grid) return;
+        
+        try {
+            const resp = await fetch('/api/admin/interview-analytics', {
+                headers: { 'Authorization': `Bearer ${this.authToken}` }
+            });
+            if (!resp.ok) throw new Error('Failed to load');
+            const data = await resp.json();
+            
+            if (badge) badge.textContent = `${data.total_sessions || 0} interviews`;
+            
+            // Build analytics cards
+            let html = `
+                <div class="analytics-card">
+                    <div class="analytics-icon">📊</div>
+                    <div class="analytics-value">${data.total_sessions || 0}</div>
+                    <div class="analytics-label">Total Interviews</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-icon">💬</div>
+                    <div class="analytics-value">${data.avg_statements || 0}</div>
+                    <div class="analytics-label">Avg Statements</div>
+                </div>
+            `;
+            
+            // Incident type breakdown
+            const types = data.incident_types || {};
+            const typeEntries = Object.entries(types).sort((a, b) => b[1] - a[1]);
+            if (typeEntries.length > 0) {
+                const maxCount = Math.max(...typeEntries.map(e => e[1]));
+                html += `</div><div class="incident-type-bars"><div style="font-size:0.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Incident Types</div>`;
+                typeEntries.slice(0, 6).forEach(([type, count]) => {
+                    const pct = Math.round((count / maxCount) * 100);
+                    html += `<div class="incident-bar">
+                        <div class="incident-bar-label">${this._sanitize(type.replace(/_/g, ' '))}</div>
+                        <div class="incident-bar-fill"><div class="incident-bar-fill-inner" style="width:${pct}%"></div></div>
+                        <div class="incident-bar-count">${count}</div>
+                    </div>`;
+                });
+            }
+            
+            grid.innerHTML = html;
+        } catch (e) {
+            grid.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">Could not load analytics.</div>';
+        }
     }
 }
 

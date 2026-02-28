@@ -118,6 +118,10 @@ class WitnessReplayApp {
         this._initAutoTheme(); // Auto dark/light theme detection
         this._initCommandPalette(); // Feature 49: Command palette (Ctrl+K)
         this._initAutoSave(); // Auto-save interview progress
+        this._initSessionNotes(); // Session notes panel
+        this._initInterviewStatsBadge(); // Interview stats badge in header
+        this._initExportChatBtn(); // Export chat transcript button
+        this._initFocusMode(); // Focus mode indicator
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -2406,6 +2410,7 @@ class WitnessReplayApp {
             if (durationDisplay) {
                 durationDisplay.textContent = this._formatElapsedDuration(elapsed);
             }
+            this._updateInterviewStatsBadge();
         };
 
         tick();
@@ -3251,6 +3256,10 @@ class WitnessReplayApp {
         const text = this.textInput.value.trim();
         if (!text) return;
         
+        // Remove quick reply suggestions when user sends
+        const quickReplies = document.querySelector('.quick-reply-container');
+        if (quickReplies) quickReplies.remove();
+        
         // Slash command support
         if (text.startsWith('/')) {
             this._handleSlashCommand(text);
@@ -3343,6 +3352,7 @@ class WitnessReplayApp {
         messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span>${speaker === 'user' ? `<span class="emotion-badge">${this._getEmotionEmoji(text)}</span>` : ''}<br>${this._escapeHtml(text)}`;
         if (speaker === 'agent') {
             this._addAssistantCopyButton(messageDiv, text);
+            this._addMessageReactions(messageDiv, text);
             this.lastAgentMessage = text;
             if (!this._isSpeakingResponse && !this.isRecording) {
                 this._setConversationState('ready');
@@ -3352,6 +3362,11 @@ class WitnessReplayApp {
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
         
+        // Show quick reply suggestions after agent messages
+        if (speaker === 'agent') {
+            this._showQuickReplies(text);
+        }
+        
         // Track statement count for user messages
         if (speaker === 'user') {
             this.statementCount++;
@@ -3360,6 +3375,7 @@ class WitnessReplayApp {
         
         // Update interview progress phases
         this.updateInterviewProgress();
+        this._updateInterviewStatsBadge();
     }
     
     /**
@@ -3427,6 +3443,7 @@ class WitnessReplayApp {
             ${translationInfo}`;
         if (speaker === 'agent') {
             this._addAssistantCopyButton(messageDiv, text);
+            this._addMessageReactions(messageDiv, text);
             this.lastAgentMessage = text;
             if (!this._isSpeakingResponse && !this.isRecording) {
                 this._setConversationState('ready');
@@ -3436,6 +3453,11 @@ class WitnessReplayApp {
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
         
+        // Show quick reply suggestions after agent messages
+        if (speaker === 'agent') {
+            this._showQuickReplies(text);
+        }
+        
         // Track statement count for user messages
         if (speaker === 'user') {
             this.statementCount++;
@@ -3444,6 +3466,7 @@ class WitnessReplayApp {
         
         // Update interview progress phases
         this.updateInterviewProgress();
+        this._updateInterviewStatsBadge();
     }
     
     _escapeHtml(text) {
@@ -4657,25 +4680,31 @@ class WitnessReplayApp {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message-contradiction';
         
-        let html = '<strong>⚠️ Contradiction Detected</strong>';
+        const count = contradictions.length;
+        let html = `<strong>⚠️ ${count > 1 ? count + ' Contradictions' : 'Contradiction'} Detected</strong>`;
+        html += `<div style="font-size:0.78rem;color:var(--text-muted);margin:4px 0 8px;">The witness provided conflicting details — review carefully.</div>`;
         contradictions.forEach(c => {
             const severity = c.severity || { level: 'medium', score: 0.5 };
             const severityIcon = this._getSeverityIcon(severity.level);
             const scorePercent = Math.round((severity.score || 0.5) * 100);
+            const field = this._escapeHtml(c.field || c.element_type || 'Unknown field');
+            const oldVal = this._escapeHtml(c.old_value || c.original_value || '');
+            const newVal = this._escapeHtml(c.new_value || '');
+            const context = c.context ? `<div class="contradiction-context">💡 ${this._escapeHtml(c.context)}</div>` : '';
             
             html += `<div class="contradiction-item severity-${severity.level}">
                 <div class="contradiction-header">
-                    <div class="contradiction-field">${c.field || c.element_type || 'Unknown field'}</div>
+                    <div class="contradiction-field">${field}</div>
                     <span class="severity-badge severity-${severity.level}">
-                        ${severityIcon} ${severity.level}
+                        ${severityIcon} ${severity.level} · ${scorePercent}%
                     </span>
                 </div>
                 <div class="contradiction-change">
-                    <span class="old-value">"${c.old_value || c.original_value}"</span>
+                    <span class="old-value">"${oldVal}"</span>
                     <span class="arrow">→</span>
-                    <span class="new-value">"${c.new_value}"</span>
+                    <span class="new-value">"${newVal}"</span>
                 </div>
-                <div class="contradiction-score">Score: ${scorePercent}%</div>
+                ${context}
             </div>`;
         });
         
@@ -7343,6 +7372,9 @@ WitnessReplayApp.prototype._toggleCommandPalette = function() {
         { icon: '🌙', label: 'Toggle Dark Mode', action: () => document.body.classList.toggle('light-mode') },
         { icon: '📊', label: 'Open Admin', action: () => window.location.href = '/admin' },
         { icon: '❓', label: 'Help & Tutorial', action: () => this._showOnboardingTour?.() },
+        { icon: '🎯', label: 'Toggle Focus Mode', action: () => this._toggleFocusMode?.() },
+        { icon: '📥', label: 'Export Transcript', action: () => this._exportChatTranscript?.() },
+        { icon: '📝', label: 'Session Notes', action: () => this._toggleSessionNotes?.() },
     ];
 
     palette = document.createElement('div');
@@ -7481,12 +7513,14 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '📋 <b>Available Commands</b><br>' +
                 '<code>/summary</code> — Get a summary of the current interview<br>' +
                 '<code>/timeline</code> — Show event timeline<br>' +
-                '<code>/export</code> — Export this session<br>' +
+                '<code>/export</code> — Export chat transcript<br>' +
                 '<code>/scene</code> — Generate a scene reconstruction<br>' +
                 '<code>/new</code> — Start a new report<br>' +
                 '<code>/clear</code> — Clear chat display<br>' +
                 '<code>/status</code> — Show connection status<br>' +
                 '<code>/shortcuts</code> — Show keyboard shortcuts<br>' +
+                '<code>/focus</code> — Toggle focus mode<br>' +
+                '<code>/notes</code> — Open session notes<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7551,6 +7585,15 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/shortcuts': () => {
             this._showKeyboardShortcutsHelp();
+        },
+        '/focus': () => {
+            this._toggleFocusMode();
+        },
+        '/notes': () => {
+            this._toggleSessionNotes();
+        },
+        '/export': () => {
+            this._exportChatTranscript();
         }
     };
     
@@ -7622,7 +7665,9 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/new', desc: 'New report' },
         { cmd: '/clear', desc: 'Clear chat display' },
         { cmd: '/status', desc: 'Connection info' },
-        { cmd: '/shortcuts', desc: 'Keyboard shortcuts' }
+        { cmd: '/shortcuts', desc: 'Keyboard shortcuts' },
+        { cmd: '/focus', desc: 'Toggle focus mode' },
+        { cmd: '/notes', desc: 'Session notes' }
     ];
     
     const filter = val.toLowerCase();
@@ -7659,4 +7704,431 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         }
     };
     setTimeout(() => document.addEventListener('click', closeOnClick), 50);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 1: Quick Reply Suggestion Chips
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showQuickReplies = function(agentText) {
+    // Remove existing quick replies
+    const existing = document.querySelector('.quick-reply-container');
+    if (existing) existing.remove();
+    
+    const suggestions = this._generateQuickReplies(agentText);
+    if (!suggestions.length) return;
+    
+    const container = document.createElement('div');
+    container.className = 'quick-reply-container';
+    
+    suggestions.forEach(s => {
+        const chip = document.createElement('button');
+        chip.className = 'quick-reply-chip';
+        chip.innerHTML = `<span class="chip-icon">${s.icon}</span>${s.text}`;
+        chip.addEventListener('click', () => {
+            container.remove();
+            if (this.textInput) {
+                this.textInput.value = s.text;
+                this.textInput.dispatchEvent(new Event('input'));
+                this.textInput.focus();
+                // Auto-send
+                const sendBtn = document.getElementById('send-btn');
+                if (sendBtn && !sendBtn.disabled) sendBtn.click();
+            }
+        });
+        container.appendChild(chip);
+    });
+    
+    this.chatTranscript.appendChild(container);
+    this._scrollChatToBottom();
+};
+
+WitnessReplayApp.prototype._generateQuickReplies = function(text) {
+    const lower = (text || '').toLowerCase();
+    
+    // Context-sensitive suggestions based on what the agent asked
+    if (lower.includes('where') || lower.includes('location') || lower.includes('address')) {
+        return [
+            { icon: '📍', text: 'It was at an intersection' },
+            { icon: '🏢', text: 'Near a building' },
+            { icon: '🅿️', text: 'In a parking lot' }
+        ];
+    }
+    if (lower.includes('when') || lower.includes('time') || lower.includes('what time')) {
+        return [
+            { icon: '🌅', text: 'It was in the morning' },
+            { icon: '☀️', text: 'Around midday' },
+            { icon: '🌙', text: 'Late at night' }
+        ];
+    }
+    if (lower.includes('vehicle') || lower.includes('car') || lower.includes('drove')) {
+        return [
+            { icon: '🚗', text: 'It was a dark sedan' },
+            { icon: '🚙', text: 'An SUV' },
+            { icon: '🚐', text: 'A van or truck' }
+        ];
+    }
+    if (lower.includes('person') || lower.includes('people') || lower.includes('describe') || lower.includes('individual')) {
+        return [
+            { icon: '👤', text: 'One person, average height' },
+            { icon: '👥', text: 'There were multiple people' },
+            { icon: '🧥', text: 'They were wearing dark clothing' }
+        ];
+    }
+    if (lower.includes('weapon') || lower.includes('gun') || lower.includes('knife')) {
+        return [
+            { icon: '⚠️', text: 'I saw a weapon' },
+            { icon: '❌', text: 'No weapons that I saw' },
+            { icon: '🤔', text: "I'm not sure" }
+        ];
+    }
+    if (lower.includes('accurate') || lower.includes('compare') || lower.includes('correct') || lower.includes('right')) {
+        return [
+            { icon: '✅', text: "Yes, that looks right" },
+            { icon: '✏️', text: 'I need to correct something' },
+            { icon: '➕', text: "There's more to add" }
+        ];
+    }
+    if (lower.includes('anything else') || lower.includes('more to add') || lower.includes('missing')) {
+        return [
+            { icon: '💡', text: "I just remembered something" },
+            { icon: '✅', text: "That's everything I remember" },
+            { icon: '🎬', text: 'Can you generate a scene?' }
+        ];
+    }
+    // Default suggestions
+    return [
+        { icon: '💬', text: 'Let me describe what I saw' },
+        { icon: '🎬', text: 'Generate a scene' },
+        { icon: '��', text: 'Summarize so far' }
+    ];
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 2: Session Notes Panel
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initSessionNotes = function() {
+    this._sessionNotes = JSON.parse(localStorage.getItem('wr_session_notes_' + (this.sessionId || 'default')) || '[]');
+    
+    // Create toggle button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'session-notes-toggle';
+    toggleBtn.id = 'session-notes-toggle';
+    toggleBtn.innerHTML = '📝';
+    toggleBtn.title = 'Session Notes';
+    toggleBtn.setAttribute('aria-label', 'Toggle session notes');
+    
+    if (this._sessionNotes.length > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'notes-badge';
+        badge.textContent = this._sessionNotes.length;
+        toggleBtn.appendChild(badge);
+    }
+    
+    toggleBtn.addEventListener('click', () => this._toggleSessionNotes());
+    document.body.appendChild(toggleBtn);
+    
+    // Create panel
+    const panel = document.createElement('div');
+    panel.className = 'session-notes-panel hidden';
+    panel.id = 'session-notes-panel';
+    panel.innerHTML = `
+        <div class="session-notes-header">
+            <h3>📝 Notes</h3>
+            <button class="session-notes-close" id="session-notes-close">&times;</button>
+        </div>
+        <div class="session-notes-body" id="session-notes-body"></div>
+        <div class="session-notes-input">
+            <input type="text" id="session-note-input" placeholder="Add a private note..." maxlength="500">
+            <button id="session-note-add-btn">Add</button>
+        </div>
+    `;
+    document.body.appendChild(panel);
+    
+    document.getElementById('session-notes-close').addEventListener('click', () => this._toggleSessionNotes());
+    document.getElementById('session-note-add-btn').addEventListener('click', () => this._addSessionNote());
+    document.getElementById('session-note-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this._addSessionNote();
+    });
+    
+    this._renderSessionNotes();
+};
+
+WitnessReplayApp.prototype._toggleSessionNotes = function() {
+    const panel = document.getElementById('session-notes-panel');
+    if (panel) panel.classList.toggle('hidden');
+};
+
+WitnessReplayApp.prototype._addSessionNote = function() {
+    const input = document.getElementById('session-note-input');
+    const text = (input?.value || '').trim();
+    if (!text) return;
+    
+    const note = {
+        id: Date.now(),
+        text: text,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    this._sessionNotes.push(note);
+    localStorage.setItem('wr_session_notes_' + (this.sessionId || 'default'), JSON.stringify(this._sessionNotes));
+    input.value = '';
+    this._renderSessionNotes();
+    this._updateNotesBadge();
+};
+
+WitnessReplayApp.prototype._deleteSessionNote = function(noteId) {
+    this._sessionNotes = this._sessionNotes.filter(n => n.id !== noteId);
+    localStorage.setItem('wr_session_notes_' + (this.sessionId || 'default'), JSON.stringify(this._sessionNotes));
+    this._renderSessionNotes();
+    this._updateNotesBadge();
+};
+
+WitnessReplayApp.prototype._renderSessionNotes = function() {
+    const body = document.getElementById('session-notes-body');
+    if (!body) return;
+    
+    if (this._sessionNotes.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.82rem;">No notes yet.<br>Add private notes during the interview.</div>';
+        return;
+    }
+    
+    body.innerHTML = this._sessionNotes.map(n => `
+        <div class="session-note-item">
+            ${this._escapeHtml(n.text)}
+            <div class="note-time">${n.time}</div>
+            <button class="note-delete" onclick="window.app?._deleteSessionNote(${n.id})" title="Delete note">&times;</button>
+        </div>
+    `).join('');
+};
+
+WitnessReplayApp.prototype._updateNotesBadge = function() {
+    const toggle = document.getElementById('session-notes-toggle');
+    if (!toggle) return;
+    const existing = toggle.querySelector('.notes-badge');
+    if (existing) existing.remove();
+    if (this._sessionNotes.length > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'notes-badge';
+        badge.textContent = this._sessionNotes.length;
+        toggle.appendChild(badge);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 4: Interview Stats Badge in Header
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initInterviewStatsBadge = function() {
+    const sessionInfo = document.querySelector('.session-info');
+    if (!sessionInfo) return;
+    
+    const badge = document.createElement('div');
+    badge.className = 'interview-stats-badge';
+    badge.id = 'interview-stats-badge';
+    badge.innerHTML = `
+        <div class="stat-item"><span class="stat-icon">⏱️</span><span class="stat-val" id="stats-duration">0:00</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat-item"><span class="stat-icon">💬</span><span class="stat-val" id="stats-statements">0</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat-item"><span class="stat-icon">📊</span><span class="stat-val" id="stats-phase">Intro</span></div>
+    `;
+    
+    // Insert before theme toggle
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        sessionInfo.insertBefore(badge, themeToggle);
+    } else {
+        sessionInfo.appendChild(badge);
+    }
+};
+
+WitnessReplayApp.prototype._updateInterviewStatsBadge = function() {
+    const badge = document.getElementById('interview-stats-badge');
+    if (!badge) return;
+    
+    const stmts = this.statementCount || 0;
+    if (stmts === 0) return;
+    
+    badge.classList.add('visible');
+    
+    // Update duration
+    const durEl = document.getElementById('stats-duration');
+    if (durEl && this.sessionStartTime) {
+        const elapsed = Math.floor((Date.now() - this.sessionStartTime) / 1000);
+        const m = Math.floor(elapsed / 60);
+        const s = elapsed % 60;
+        durEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    }
+    
+    // Update statement count
+    const stmtEl = document.getElementById('stats-statements');
+    if (stmtEl) stmtEl.textContent = stmts;
+    
+    // Update phase
+    const phaseEl = document.getElementById('stats-phase');
+    if (phaseEl) {
+        const totalMessages = this.chatTranscript ? this.chatTranscript.querySelectorAll('.message').length : 0;
+        if (totalMessages <= 2) phaseEl.textContent = 'Intro';
+        else if (totalMessages <= 6) phaseEl.textContent = 'Narrative';
+        else if (totalMessages <= 14) phaseEl.textContent = 'Details';
+        else phaseEl.textContent = 'Review';
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 5: Message Reactions (thumbs up/down)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._addMessageReactions = function(messageDiv, messageText) {
+    const reactionsDiv = document.createElement('div');
+    reactionsDiv.className = 'msg-reactions';
+    
+    const thumbsUp = document.createElement('button');
+    thumbsUp.className = 'msg-reaction-btn';
+    thumbsUp.innerHTML = '👍';
+    thumbsUp.title = 'Helpful response';
+    thumbsUp.addEventListener('click', () => {
+        thumbsUp.classList.toggle('active');
+        thumbsDown.classList.remove('active');
+        this._sendReactionFeedback(messageText, thumbsUp.classList.contains('active') ? 'positive' : null);
+    });
+    
+    const thumbsDown = document.createElement('button');
+    thumbsDown.className = 'msg-reaction-btn';
+    thumbsDown.innerHTML = '👎';
+    thumbsDown.title = 'Not helpful';
+    thumbsDown.addEventListener('click', () => {
+        thumbsDown.classList.toggle('active');
+        thumbsDown.classList.toggle('negative', thumbsDown.classList.contains('active'));
+        thumbsUp.classList.remove('active');
+        this._sendReactionFeedback(messageText, thumbsDown.classList.contains('active') ? 'negative' : null);
+    });
+    
+    reactionsDiv.appendChild(thumbsUp);
+    reactionsDiv.appendChild(thumbsDown);
+    messageDiv.appendChild(reactionsDiv);
+};
+
+WitnessReplayApp.prototype._sendReactionFeedback = function(messageText, reaction) {
+    if (!this.sessionId || !reaction) return;
+    fetch(`/api/sessions/${this.sessionId}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            message_preview: (messageText || '').substring(0, 100),
+            reaction: reaction,
+            timestamp: new Date().toISOString()
+        })
+    }).catch(() => {});
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 6: Export Chat Transcript
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initExportChatBtn = function() {
+    const btn = document.createElement('button');
+    btn.className = 'export-chat-btn';
+    btn.id = 'export-chat-btn';
+    btn.innerHTML = '📥';
+    btn.title = 'Export chat transcript';
+    btn.setAttribute('aria-label', 'Export chat transcript');
+    btn.addEventListener('click', () => this._exportChatTranscript());
+    document.body.appendChild(btn);
+};
+
+WitnessReplayApp.prototype._exportChatTranscript = function() {
+    const messages = this.chatTranscript?.querySelectorAll('.message');
+    if (!messages || messages.length === 0) {
+        this.ui?.showToast('No messages to export', 'warning', 2000);
+        return;
+    }
+    
+    let transcript = `WITNESSREPLAY — Interview Transcript\n`;
+    transcript += `Session: ${this.sessionId || 'N/A'}\n`;
+    transcript += `Exported: ${new Date().toLocaleString()}\n`;
+    transcript += `${'═'.repeat(50)}\n\n`;
+    
+    messages.forEach(msg => {
+        const isUser = msg.classList.contains('message-user');
+        const isAgent = msg.classList.contains('message-agent');
+        const isSystem = msg.classList.contains('message-system');
+        
+        let speaker = 'System';
+        if (isUser) speaker = 'Witness';
+        else if (isAgent) speaker = 'Detective Ray';
+        
+        // Get the text content, stripping UI elements
+        const clone = msg.cloneNode(true);
+        clone.querySelectorAll('.msg-reactions, .msg-reaction-btn, .quick-reply-container, .copy-btn, .msg-avatar, .emotion-badge').forEach(el => el.remove());
+        const text = clone.textContent.replace(/\s+/g, ' ').trim();
+        
+        transcript += `[${speaker}] ${text}\n\n`;
+    });
+    
+    transcript += `${'═'.repeat(50)}\n`;
+    transcript += `Total messages: ${messages.length}\n`;
+    transcript += `Statements: ${this.statementCount || 0}\n`;
+    
+    // Download as text file
+    const blob = new Blob([transcript], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `witnessreplay-transcript-${this.sessionId || 'session'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    this.ui?.showToast('📥 Transcript exported', 'success', 2000);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 7: Focus Mode
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initFocusMode = function() {
+    // Add focus mode indicator
+    const sessionInfo = document.querySelector('.session-info');
+    if (!sessionInfo) return;
+    
+    const indicator = document.createElement('div');
+    indicator.className = 'focus-mode-indicator';
+    indicator.id = 'focus-mode-indicator';
+    indicator.innerHTML = '<span class="focus-dot"></span>Focus Mode';
+    sessionInfo.insertBefore(indicator, sessionInfo.firstChild);
+    
+    this._focusModeActive = false;
+};
+
+WitnessReplayApp.prototype._toggleFocusMode = function() {
+    this._focusModeActive = !this._focusModeActive;
+    const indicator = document.getElementById('focus-mode-indicator');
+    
+    if (this._focusModeActive) {
+        // Enter focus mode: hide distracting elements
+        document.body.classList.add('focus-mode');
+        if (indicator) indicator.classList.add('active');
+        
+        // Hide non-essential UI
+        const hideElements = [
+            '.challenge-badge', '.scene-panel', '.interview-comfort-panel',
+            '.keyboard-hint', '#hamburger-menu-btn'
+        ];
+        hideElements.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => el.style.display = 'none');
+        });
+        
+        this.ui?.showToast('🎯 Focus Mode ON — distractions hidden', 'success', 2000);
+    } else {
+        document.body.classList.remove('focus-mode');
+        if (indicator) indicator.classList.remove('active');
+        
+        // Restore elements
+        const restoreElements = [
+            '.challenge-badge', '.scene-panel', '.interview-comfort-panel',
+            '.keyboard-hint', '#hamburger-menu-btn'
+        ];
+        restoreElements.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => el.style.display = '');
+        });
+        
+        this.ui?.showToast('Focus Mode OFF', 'info', 1500);
+    }
 };

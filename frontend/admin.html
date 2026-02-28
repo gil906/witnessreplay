@@ -277,6 +277,32 @@
                 </div>
             </section>
 
+            <!-- Admin Audit Timeline -->
+            <section class="audit-timeline-panel" id="audit-timeline-panel">
+                <button class="quota-toggle" id="audit-timeline-toggle" type="button">
+                    <span class="quota-toggle-icon">▸</span> 📜 Audit Timeline
+                    <span class="health-status-badge" id="audit-event-count">0 events</span>
+                </button>
+                <div class="audit-timeline-content" id="audit-timeline-content" style="display: none;">
+                    <div class="audit-timeline-list" id="audit-timeline-list">
+                        <div style="text-align:center;padding:16px;color:var(--text-muted);">Loading audit events...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Interview Analytics Widget -->
+            <section class="interview-analytics-panel" id="interview-analytics-panel">
+                <button class="quota-toggle" id="analytics-toggle" type="button">
+                    <span class="quota-toggle-icon">▸</span> 📈 Interview Analytics
+                    <span class="health-status-badge" id="analytics-summary">--</span>
+                </button>
+                <div class="interview-analytics-content" id="interview-analytics-content" style="display: none;">
+                    <div class="analytics-grid" id="analytics-grid">
+                        <div style="text-align:center;padding:16px;color:var(--text-muted);">Loading analytics...</div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">
