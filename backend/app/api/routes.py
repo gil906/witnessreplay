@@ -4284,10 +4284,10 @@ async def analyze_witnesses(session_id: str):
         )
 
 
-@router.get("/sessions/compare/{session_id_1}/{session_id_2}")
-async def compare_sessions(session_id_1: str, session_id_2: str):
+@router.get("/sessions/compare-basic/{session_id_1}/{session_id_2}")
+async def compare_sessions_basic(session_id_1: str, session_id_2: str):
     """
-    Compare two witness accounts of the same event.
+    Compare two witness accounts of the same event (basic element comparison).
     
     Useful for multi-witness scenarios where different people describe the same incident.
     Returns similarities, differences, and potential discrepancies.

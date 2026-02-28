@@ -7683,6 +7683,9 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/autosummary': () => {
             this._showAutoSummary();
+        },
+        '/events': () => {
+            this._showExtractedTimeline();
         }
     };
     
@@ -7767,7 +7770,8 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/credibility', desc: 'Credibility score' },
         { cmd: '/wordcloud', desc: 'Word frequency cloud' },
         { cmd: '/compare', desc: 'Compare sessions' },
-        { cmd: '/autosummary', desc: 'Quick auto-summary' }
+        { cmd: '/autosummary', desc: 'Quick auto-summary' },
+        { cmd: '/events', desc: 'Extract timeline events' }
     ];
     
     const filter = val.toLowerCase();
