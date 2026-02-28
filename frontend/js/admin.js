@@ -340,6 +340,7 @@ class AdminPortal {
         this._initNotificationCenter();
         this._initQuickActions();
         this._initActivityHeatmap();
+        this._initDataRetention();
     }
     
     _initModalKeyboardNav() {
@@ -5290,3 +5291,68 @@ class AdminPortal {
 document.addEventListener('DOMContentLoaded', () => {
     window.adminPortal = new AdminPortal();
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 27: Admin Data Retention Panel
+// ═══════════════════════════════════════════════════════════════════
+AdminPortal.prototype._initDataRetention = function() {
+    const container = document.getElementById('data-retention-panel');
+    if (!container) return;
+
+    container.innerHTML = `
+        <h3>🗄️ Data Retention Settings</h3>
+        <div class="retention-controls">
+            <div class="retention-field">
+                <label>Retention Period (days)</label>
+                <input type="number" id="retention-days" value="90" min="7" max="365" class="admin-input">
+            </div>
+            <div class="retention-field">
+                <label><input type="checkbox" id="retention-auto-purge"> Auto-purge expired sessions</label>
+            </div>
+            <div class="retention-field">
+                <label><input type="checkbox" id="retention-archive" checked> Archive before deletion</label>
+            </div>
+            <div class="retention-actions">
+                <button id="retention-scan-btn" class="admin-btn">🔍 Scan Old Sessions</button>
+                <button id="retention-purge-btn" class="admin-btn admin-btn-danger" disabled>🗑️ Purge (Dry Run)</button>
+            </div>
+            <div id="retention-result" class="retention-result"></div>
+        </div>
+    `;
+
+    document.getElementById('retention-scan-btn')?.addEventListener('click', async () => {
+        const days = parseInt(document.getElementById('retention-days')?.value || '90');
+        const resultEl = document.getElementById('retention-result');
+        if (resultEl) resultEl.innerHTML = '<span class="loading">Scanning...</span>';
+        try {
+            const resp = await this.fetchWithTimeout('/api/admin/data-retention/purge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days })
+            });
+            const data = await resp.json();
+            if (resultEl) {
+                resultEl.innerHTML = `<div class="retention-info">` +
+                    `<b>${data.purged_count}</b> sessions older than <b>${days}</b> days<br>` +
+                    `<small>Cutoff: ${new Date(data.cutoff_date).toLocaleDateString()}</small></div>`;
+            }
+            const purgeBtn = document.getElementById('retention-purge-btn');
+            if (purgeBtn && data.purged_count > 0) purgeBtn.disabled = false;
+        } catch (e) {
+            if (resultEl) resultEl.innerHTML = '<span class="error">Failed to scan.</span>';
+        }
+    });
+};
+
+AdminPortal.prototype._loadDataRetention = async function() {
+    try {
+        const resp = await this.fetchWithTimeout('/api/admin/data-retention');
+        const data = await resp.json();
+        const daysInput = document.getElementById('retention-days');
+        if (daysInput && data.retention_days) daysInput.value = data.retention_days;
+        const autoCheckbox = document.getElementById('retention-auto-purge');
+        if (autoCheckbox) autoCheckbox.checked = data.auto_purge || false;
+        const archiveCheckbox = document.getElementById('retention-archive');
+        if (archiveCheckbox) archiveCheckbox.checked = data.archive_before_delete !== false;
+    } catch (e) { /* silent */ }
+};

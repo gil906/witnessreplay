@@ -129,6 +129,9 @@ class WitnessReplayApp {
         this._initPhaseProgressBar(); // Interview phase progress bar
         this._initSmartPlaceholder(); // Smart dynamic input placeholder
         this._initSessionTimer(); // Session duration live timer
+        this._initQualityScore(); // Interview quality score widget
+        this._initInfoChecklist(); // Interview info checklist
+        this._initScrollNav(); // Scroll navigation buttons
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -3378,6 +3381,17 @@ class WitnessReplayApp {
         // Add timestamp & update phase progress
         this._addMessageTimestamp?.(messageDiv);
         if (speaker === 'user') this._updatePhaseProgress?.();
+        if (speaker === 'agent') this._addReadAloudButton?.(messageDiv);
+        
+        // Update quality score periodically (every 3 user messages)
+        if (speaker === 'user') {
+            this._qualityMsgCount = (this._qualityMsgCount || 0) + 1;
+            if (this._qualityMsgCount % 3 === 0) {
+                this._updateQualityScore?.().then(() => {
+                    if (this._lastQualityData) this._updateInfoChecklist?.(this._lastQualityData);
+                });
+            }
+        }
         
         // Show quick reply suggestions after agent messages
         if (speaker === 'agent') {
@@ -7547,6 +7561,9 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/stats</code> — Interview word stats<br>' +
                 '<code>/evidence</code> — Extract evidence items<br>' +
                 '<code>/undo</code> — Remove last message<br>' +
+                '<code>/quality</code> — Interview quality score<br>' +
+                '<code>/sentiment</code> — Witness sentiment timeline<br>' +
+                '<code>/tag [name]</code> — Add/view session tags<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7629,6 +7646,16 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/undo': () => {
             this._undoLastMessage();
+        },
+        '/quality': () => {
+            this._showQualityDetails();
+        },
+        '/sentiment': () => {
+            this._showSentimentTimeline();
+        },
+        '/tag': () => {
+            const rest = text.slice(4).trim();
+            this._handleTagCommand(rest);
         }
     };
     
@@ -7705,7 +7732,10 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/notes', desc: 'Session notes' },
         { cmd: '/search', desc: 'Search chat messages' },
         { cmd: '/pins', desc: 'View pinned messages' },
-        { cmd: '/stats', desc: 'Interview word stats' }
+        { cmd: '/stats', desc: 'Interview word stats' },
+        { cmd: '/quality', desc: 'Quality score' },
+        { cmd: '/sentiment', desc: 'Sentiment timeline' },
+        { cmd: '/tag', desc: 'Session tags' }
     ];
     
     const filter = val.toLowerCase();
@@ -8697,3 +8727,270 @@ WitnessReplayApp.prototype._undoLastMessage = function() {
     last.remove();
     this.displaySystemMessage(`↩️ Removed last message: "<i>${this._escapeHtml(text)}...</i>"`);
 };
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 21: Interview Quality Score (/quality)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initQualityScore = function() {
+    const header = document.querySelector('.header-content');
+    if (!header || document.getElementById('quality-score-widget')) return;
+
+    const widget = document.createElement('div');
+    widget.id = 'quality-score-widget';
+    widget.className = 'quality-score-widget';
+    widget.innerHTML = '<span class="qs-icon">📊</span><span class="qs-label">Quality</span>' +
+        '<div class="qs-ring"><svg viewBox="0 0 36 36"><circle class="qs-bg" cx="18" cy="18" r="15.9"/>' +
+        '<circle class="qs-fill" cx="18" cy="18" r="15.9" stroke-dasharray="0 100"/></svg>' +
+        '<span class="qs-value">0</span></div>';
+    widget.title = 'Interview quality score — click for details';
+    widget.addEventListener('click', () => this._showQualityDetails());
+    const sessionInfo = document.querySelector('.session-info');
+    if (sessionInfo) sessionInfo.insertBefore(widget, sessionInfo.firstChild);
+};
+
+WitnessReplayApp.prototype._updateQualityScore = async function() {
+    if (!this.sessionId) return;
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/quality-score`);
+        const data = await resp.json();
+        const score = data.score || 0;
+        const fill = document.querySelector('.qs-fill');
+        const val = document.querySelector('.qs-value');
+        if (fill) fill.setAttribute('stroke-dasharray', `${score} ${100 - score}`);
+        if (val) val.textContent = score;
+        this._lastQualityData = data;
+    } catch (e) { /* silent */ }
+};
+
+WitnessReplayApp.prototype._showQualityDetails = async function() {
+    if (!this.sessionId) {
+        this.displaySystemMessage('⚠️ No active session.');
+        return;
+    }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/quality-score`);
+        const data = await resp.json();
+        let html = `📊 <b>Interview Quality Score: ${data.score}%</b><br>` +
+            '<div class="quality-grid">';
+        (data.categories || []).forEach(cat => {
+            html += `<div class="quality-cat ${cat.covered ? 'covered' : 'missing'}">` +
+                `<span class="qc-icon">${cat.covered ? '✅' : '⬜'}</span>` +
+                `<span class="qc-label">${cat.label}</span></div>`;
+        });
+        html += '</div><br><small>💡 Cover more categories to improve your score.</small>';
+        this.displaySystemMessage(html);
+    } catch (e) {
+        this.displaySystemMessage('⚠️ Could not load quality score.');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 22: Per-message Read Aloud Button
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._addReadAloudButton = function(msgEl) {
+    if (!msgEl || !msgEl.classList.contains('agent') || msgEl.querySelector('.read-aloud-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'read-aloud-btn';
+    btn.title = 'Read this message aloud';
+    btn.innerHTML = '🔊';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const content = msgEl.querySelector('.message-content');
+        const text = content ? content.textContent : msgEl.textContent;
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const utt = new SpeechSynthesisUtterance(text.substring(0, 500));
+            utt.rate = 0.95;
+            utt.pitch = 1;
+            btn.classList.add('speaking');
+            utt.onend = () => btn.classList.remove('speaking');
+            utt.onerror = () => btn.classList.remove('speaking');
+            window.speechSynthesis.speak(utt);
+        }
+    });
+    const actions = msgEl.querySelector('.message-actions');
+    if (actions) {
+        actions.appendChild(btn);
+    } else {
+        msgEl.appendChild(btn);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 23: Sentiment Timeline (/sentiment)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showSentimentTimeline = async function() {
+    if (!this.sessionId) {
+        this.displaySystemMessage('⚠️ No active session.');
+        return;
+    }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/sentiment-timeline`);
+        const data = await resp.json();
+        if (!data.points || data.points.length === 0) {
+            this.displaySystemMessage('📈 <b>No witness messages to analyze yet.</b><br>Continue the interview to build a sentiment timeline.');
+            return;
+        }
+        let html = `📈 <b>Sentiment Timeline</b> (${data.total_statements} witness statements)<br>` +
+            '<div class="sentiment-timeline">';
+        data.points.forEach((pt, i) => {
+            const cls = pt.sentiment === 'positive' ? 'pos' : pt.sentiment === 'negative' ? 'neg' : 'neu';
+            html += `<div class="st-point ${cls}" title="${this._escapeHtml(pt.snippet)}">` +
+                `<span class="st-dot"></span>` +
+                `<span class="st-emoji">${pt.emoji}</span>` +
+                `<span class="st-num">#${i + 1}</span>` +
+                `</div>`;
+            if (i < data.points.length - 1) html += '<span class="st-connector"></span>';
+        });
+        html += '</div>';
+
+        const posCount = data.points.filter(p => p.sentiment === 'positive').length;
+        const negCount = data.points.filter(p => p.sentiment === 'negative').length;
+        const neuCount = data.points.filter(p => p.sentiment === 'neutral').length;
+        html += `<div class="st-summary">` +
+            `<span class="st-stat">😊 Positive: ${posCount}</span>` +
+            `<span class="st-stat">😐 Neutral: ${neuCount}</span>` +
+            `<span class="st-stat">😰 Negative: ${negCount}</span>` +
+            `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) {
+        this.displaySystemMessage('⚠️ Could not load sentiment data.');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 24: Interview Info Checklist
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initInfoChecklist = function() {
+    const container = document.querySelector('.container');
+    if (!container || document.getElementById('info-checklist')) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'info-checklist';
+    panel.className = 'info-checklist collapsed';
+    panel.innerHTML = '<div class="ic-header" id="ic-toggle">' +
+        '<span class="ic-title">📋 Info Gathered</span>' +
+        '<span class="ic-count">0/7</span>' +
+        '<span class="ic-arrow">▶</span></div>' +
+        '<div class="ic-body">' +
+        ['who|👤 People/Suspects', 'what|📌 What Happened', 'when|🕐 Time/Date',
+         'where|📍 Location', 'why|💡 Motive/Reason', 'how|⚙️ Method/Weapon',
+         'description|🔎 Physical Description'].map(item => {
+            const [key, label] = item.split('|');
+            return `<div class="ic-item" data-cat="${key}"><span class="ic-check">⬜</span><span>${label}</span></div>`;
+        }).join('') + '</div>';
+
+    container.appendChild(panel);
+
+    document.getElementById('ic-toggle').addEventListener('click', () => {
+        panel.classList.toggle('collapsed');
+        const arrow = panel.querySelector('.ic-arrow');
+        if (arrow) arrow.textContent = panel.classList.contains('collapsed') ? '▶' : '▼';
+    });
+};
+
+WitnessReplayApp.prototype._updateInfoChecklist = function(qualityData) {
+    if (!qualityData || !qualityData.categories) return;
+    let covered = 0;
+    qualityData.categories.forEach(cat => {
+        const item = document.querySelector(`.ic-item[data-cat="${cat.category}"]`);
+        if (item) {
+            const check = item.querySelector('.ic-check');
+            if (cat.covered) {
+                if (check) check.textContent = '✅';
+                item.classList.add('checked');
+                covered++;
+            }
+        }
+    });
+    const countEl = document.querySelector('.ic-count');
+    if (countEl) countEl.textContent = `${covered}/7`;
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 25: Session Tags (/tag)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._handleTagCommand = async function(args) {
+    if (!this.sessionId) {
+        this.displaySystemMessage('⚠️ No active session.');
+        return;
+    }
+    const tagName = args.trim();
+    if (!tagName) {
+        try {
+            const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/tags`);
+            const data = await resp.json();
+            const tags = data.tags || [];
+            if (tags.length === 0) {
+                this.displaySystemMessage('🏷️ <b>No tags.</b> Use <code>/tag robbery</code> to add one.');
+            } else {
+                let html = '🏷️ <b>Session Tags</b><br><div class="tag-list">';
+                tags.forEach(t => {
+                    html += `<span class="session-tag">${this._escapeHtml(t)} <button class="tag-remove" data-tag="${this._escapeHtml(t)}">×</button></span>`;
+                });
+                html += '</div>';
+                this.displaySystemMessage(html);
+                document.querySelectorAll('.tag-remove').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const tag = e.target.dataset.tag;
+                        try {
+                            await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/tags/${encodeURIComponent(tag)}`, { method: 'DELETE' });
+                            e.target.closest('.session-tag')?.remove();
+                        } catch (err) { /* silent */ }
+                    });
+                });
+            }
+        } catch (e) {
+            this.displaySystemMessage('⚠️ Could not load tags.');
+        }
+        return;
+    }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: tagName }),
+        });
+        const data = await resp.json();
+        this.displaySystemMessage(`🏷️ Tag added: <b>${this._escapeHtml(tagName)}</b> (${data.tags.length} total)`);
+    } catch (e) {
+        this.displaySystemMessage('⚠️ Could not add tag.');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 26: Scroll Navigation Buttons
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initScrollNav = function() {
+    const transcript = document.getElementById('chat-transcript');
+    if (!transcript || document.getElementById('scroll-nav')) return;
+
+    const nav = document.createElement('div');
+    nav.id = 'scroll-nav';
+    nav.className = 'scroll-nav';
+    nav.innerHTML = '<button class="scroll-btn scroll-top" title="Scroll to top">⬆</button>' +
+        '<button class="scroll-btn scroll-bottom" title="Scroll to bottom">⬇</button>';
+    transcript.parentElement.appendChild(nav);
+
+    nav.querySelector('.scroll-top').addEventListener('click', () => {
+        transcript.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    nav.querySelector('.scroll-bottom').addEventListener('click', () => {
+        transcript.scrollTo({ top: transcript.scrollHeight, behavior: 'smooth' });
+    });
+
+    let scrollTimeout;
+    transcript.addEventListener('scroll', () => {
+        clearTimeout(scrollTimeout);
+        const show = transcript.scrollHeight > transcript.clientHeight + 200;
+        nav.classList.toggle('visible', show);
+        scrollTimeout = setTimeout(() => {
+            if (!transcript.matches(':hover')) nav.classList.remove('visible');
+        }, 2000);
+    });
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 27: Admin Data Retention Panel
+// (Implemented in admin.js)
+// ═══════════════════════════════════════════════════════════════════

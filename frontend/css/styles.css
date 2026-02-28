@@ -11951,3 +11951,119 @@ textarea:disabled {
     .evidence-grid { grid-template-columns: 1fr; }
     .session-timer { padding: 2px 6px; font-size: 0.7rem; }
 }
+
+/* ═══ IMPROVEMENT 21: Interview Quality Score Widget ═══ */
+.quality-score-widget {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+    background: rgba(99,102,241,0.1); border-radius: 8px; padding: 3px 8px;
+    transition: background 0.2s;
+}
+.quality-score-widget:hover { background: rgba(99,102,241,0.2); }
+.qs-icon { font-size: 0.85rem; }
+.qs-label { font-size: 0.65rem; color: var(--text-muted, #888); text-transform: uppercase; letter-spacing: 0.5px; }
+.qs-ring { position: relative; width: 28px; height: 28px; }
+.qs-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.qs-bg { fill: none; stroke: rgba(99,102,241,0.15); stroke-width: 3; }
+.qs-fill { fill: none; stroke: #6366f1; stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray 0.5s ease; }
+.qs-value { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: #6366f1; }
+.quality-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-top: 8px; }
+.quality-cat { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; background: rgba(255,255,255,0.05); }
+.quality-cat.covered { background: rgba(34,197,94,0.1); }
+.quality-cat.missing { opacity: 0.6; }
+.qc-icon { font-size: 1rem; }
+
+/* ═══ IMPROVEMENT 22: Per-message Read Aloud ═══ */
+.read-aloud-btn {
+    background: none; border: none; cursor: pointer; font-size: 0.75rem; opacity: 0;
+    transition: opacity 0.2s, transform 0.15s; padding: 2px 4px; border-radius: 4px;
+}
+.message.agent:hover .read-aloud-btn, .read-aloud-btn:focus { opacity: 0.7; }
+.read-aloud-btn:hover { opacity: 1; transform: scale(1.15); }
+.read-aloud-btn.speaking { opacity: 1; animation: pulse-speak 0.6s infinite alternate; }
+@keyframes pulse-speak { from { transform: scale(1); } to { transform: scale(1.2); } }
+
+/* ═══ IMPROVEMENT 23: Sentiment Timeline ═══ */
+.sentiment-timeline {
+    display: flex; align-items: center; gap: 2px; padding: 10px 0; overflow-x: auto;
+    flex-wrap: nowrap;
+}
+.st-point {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 4px 6px; border-radius: 8px; min-width: 40px;
+    transition: transform 0.15s;
+}
+.st-point:hover { transform: scale(1.1); }
+.st-point.pos { background: rgba(34,197,94,0.12); }
+.st-point.neg { background: rgba(239,68,68,0.12); }
+.st-point.neu { background: rgba(148,163,184,0.1); }
+.st-dot { width: 8px; height: 8px; border-radius: 50%; }
+.st-point.pos .st-dot { background: #22c55e; }
+.st-point.neg .st-dot { background: #ef4444; }
+.st-point.neu .st-dot { background: #94a3b8; }
+.st-emoji { font-size: 1rem; }
+.st-num { font-size: 0.6rem; color: var(--text-muted, #888); }
+.st-connector { width: 16px; height: 2px; background: rgba(148,163,184,0.3); flex-shrink: 0; }
+.st-summary {
+    display: flex; gap: 16px; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid rgba(148,163,184,0.15); font-size: 0.8rem;
+}
+.st-stat { display: flex; align-items: center; gap: 4px; }
+
+/* ═══ IMPROVEMENT 24: Interview Info Checklist ═══ */
+.info-checklist {
+    position: fixed; bottom: 80px; right: 16px; z-index: 200;
+    background: var(--surface-card, #1a1a2e); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 12px; width: 220px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    transition: all 0.25s ease;
+}
+.info-checklist.collapsed .ic-body { display: none; }
+.ic-header {
+    display: flex; align-items: center; gap: 6px; padding: 10px 12px; cursor: pointer;
+    border-radius: 12px; user-select: none;
+}
+.ic-header:hover { background: rgba(99,102,241,0.08); }
+.ic-title { font-size: 0.8rem; font-weight: 600; flex: 1; }
+.ic-count { font-size: 0.7rem; color: #6366f1; font-weight: 700; background: rgba(99,102,241,0.15); padding: 1px 6px; border-radius: 8px; }
+.ic-arrow { font-size: 0.65rem; color: var(--text-muted, #888); transition: transform 0.2s; }
+.ic-body { padding: 0 8px 8px; }
+.ic-item {
+    display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 0.78rem;
+    border-radius: 6px; transition: background 0.15s;
+}
+.ic-item:hover { background: rgba(99,102,241,0.06); }
+.ic-item.checked { opacity: 1; }
+.ic-check { font-size: 0.85rem; }
+
+/* ═══ IMPROVEMENT 25: Session Tags ═══ */
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.session-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(99,102,241,0.15); color: #818cf8; border-radius: 12px;
+    padding: 3px 10px; font-size: 0.78rem; font-weight: 500;
+}
+.tag-remove {
+    background: none; border: none; color: #818cf8; cursor: pointer; font-size: 0.9rem;
+    padding: 0 2px; opacity: 0.6; transition: opacity 0.15s;
+}
+.tag-remove:hover { opacity: 1; }
+
+/* ═══ IMPROVEMENT 26: Scroll Navigation ═══ */
+.scroll-nav {
+    position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column;
+    gap: 4px; opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 50;
+}
+.scroll-nav.visible { opacity: 1; pointer-events: auto; }
+.scroll-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(99,102,241,0.3);
+    background: var(--surface-card, #1a1a2e); cursor: pointer; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: all 0.15s;
+}
+.scroll-btn:hover { background: rgba(99,102,241,0.15); border-color: #6366f1; transform: scale(1.1); }
+
+@media (max-width: 768px) {
+    .quality-score-widget { padding: 2px 5px; }
+    .qs-label { display: none; }
+    .info-checklist { right: 8px; bottom: 70px; width: 190px; }
+    .sentiment-timeline { flex-wrap: wrap; }
+}

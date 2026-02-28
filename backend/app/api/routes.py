@@ -11542,3 +11542,273 @@ async def get_activity_heatmap(auth=Depends(require_admin_auth)):
     except Exception as e:
         logger.error(f"Error computing activity heatmap: {e}")
         return {"cells": [], "days": [], "total_sessions": 0}
+
+
+# ==================== Interview Quality Score ====================
+
+@router.get("/sessions/{session_id}/quality-score")
+async def get_interview_quality_score(session_id: str):
+    """Evaluate interview completeness based on 5W1H coverage."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    sd = session if isinstance(session, dict) else session.model_dump()
+    statements = sd.get("statements", []) or []
+
+    full_text = " ".join(
+        (s.get("text", "") if isinstance(s, dict) else str(s)) for s in statements
+    ).lower()
+
+    categories = {
+        "who": {
+            "label": "Who (People)",
+            "keywords": ["man", "woman", "person", "suspect", "victim", "witness",
+                         "he ", "she ", "they ", "name", "officer", "driver",
+                         "child", "male", "female", "individual", "group"],
+            "found": False
+        },
+        "what": {
+            "label": "What (Event)",
+            "keywords": ["happened", "occurred", "incident", "crime", "accident",
+                         "robbery", "assault", "theft", "shot", "stabbed", "hit",
+                         "broke", "stole", "attacked", "punched", "crashed"],
+            "found": False
+        },
+        "when": {
+            "label": "When (Time)",
+            "keywords": ["o'clock", "am ", "pm ", "morning", "afternoon", "evening",
+                         "night", "yesterday", "today", "minutes ago", "hours ago",
+                         "around ", "approximately", "about ", "midnight", "noon"],
+            "found": False
+        },
+        "where": {
+            "label": "Where (Location)",
+            "keywords": ["street", "road", "avenue", "building", "park", "store",
+                         "parking", "intersection", "block", "corner", "house",
+                         "apartment", "address", "near", "location", "north",
+                         "south", "east", "west"],
+            "found": False
+        },
+        "why": {
+            "label": "Why (Motive)",
+            "keywords": ["because", "reason", "motive", "angry", "argument",
+                         "dispute", "money", "revenge", "jealous", "drunk",
+                         "intoxicated", "trying to"],
+            "found": False
+        },
+        "how": {
+            "label": "How (Method)",
+            "keywords": ["weapon", "gun", "knife", "vehicle", "ran", "walked",
+                         "drove", "fled", "escaped", "entered", "broke in",
+                         "forced", "climbed", "jumped"],
+            "found": False
+        },
+        "description": {
+            "label": "Physical Description",
+            "keywords": ["tall", "short", "heavy", "thin", "hair", "eyes",
+                         "wearing", "shirt", "pants", "jacket", "tattoo",
+                         "scar", "beard", "glasses", "hoodie", "cap"],
+            "found": False
+        },
+    }
+
+    for cat_key, cat in categories.items():
+        for kw in cat["keywords"]:
+            if kw in full_text:
+                cat["found"] = True
+                break
+
+    found_count = sum(1 for c in categories.values() if c["found"])
+    total = len(categories)
+    score = round((found_count / total) * 100)
+
+    message_count = len(statements)
+    detail_bonus = min(15, message_count * 2)
+    score = min(100, score + detail_bonus)
+
+    result = []
+    for key, cat in categories.items():
+        result.append({
+            "category": key,
+            "label": cat["label"],
+            "covered": cat["found"]
+        })
+
+    return {
+        "session_id": session_id,
+        "score": score,
+        "categories": result,
+        "message_count": message_count,
+    }
+
+
+# ==================== Sentiment Timeline ====================
+
+@router.get("/sessions/{session_id}/sentiment-timeline")
+async def get_sentiment_timeline(session_id: str):
+    """Analyze sentiment/emotion progression across the interview."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    sd = session if isinstance(session, dict) else session.model_dump()
+    statements = sd.get("statements", []) or []
+
+    positive_words = {"thank", "good", "sure", "yes", "okay", "fine", "help",
+                      "remember", "clearly", "definitely", "certain", "right"}
+    negative_words = {"scared", "afraid", "angry", "upset", "confused", "nervous",
+                      "worried", "panic", "terrible", "horrible", "threat",
+                      "danger", "hurt", "pain", "cry", "scream", "shock"}
+    neutral_words = {"said", "told", "went", "saw", "heard", "looked", "walked"}
+
+    timeline_points = []
+    for idx, stmt in enumerate(statements):
+        text = (stmt.get("text", "") if isinstance(stmt, dict) else str(stmt)).lower()
+        speaker = (stmt.get("speaker", "unknown") if isinstance(stmt, dict) else "unknown")
+        if speaker != "user":
+            continue
+
+        words = set(text.split())
+        pos = len(words & positive_words)
+        neg = len(words & negative_words)
+
+        if neg > pos:
+            sentiment = "negative"
+            emoji = "😰"
+            value = -1
+        elif pos > neg:
+            sentiment = "positive"
+            emoji = "😊"
+            value = 1
+        else:
+            sentiment = "neutral"
+            emoji = "😐"
+            value = 0
+
+        timeline_points.append({
+            "index": idx,
+            "sentiment": sentiment,
+            "value": value,
+            "emoji": emoji,
+            "snippet": text[:80] + ("..." if len(text) > 80 else ""),
+        })
+
+    return {
+        "session_id": session_id,
+        "points": timeline_points,
+        "total_statements": len(timeline_points),
+    }
+
+
+# ==================== Session Tags ====================
+
+@router.post("/sessions/{session_id}/tags")
+async def add_session_tag(session_id: str, data: dict):
+    """Add a tag to a session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    tag = data.get("tag", "").strip().lower()
+    if not tag or len(tag) > 30:
+        raise HTTPException(400, "Tag must be 1-30 characters")
+
+    # Use session.metadata to store tags (metadata is Dict[str,Any])
+    if hasattr(session, 'metadata'):
+        meta = session.metadata or {}
+        tags = meta.get("tags", []) or []
+        if tag not in tags:
+            tags.append(tag)
+            meta["tags"] = tags
+            session.metadata = meta
+            await firestore_service.update_session(session)
+    else:
+        tags = [tag]
+
+    return {"session_id": session_id, "tags": tags}
+
+
+@router.delete("/sessions/{session_id}/tags/{tag}")
+async def remove_session_tag(session_id: str, tag: str):
+    """Remove a tag from a session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    tag_lower = tag.strip().lower()
+    tags = []
+    if hasattr(session, 'metadata'):
+        meta = session.metadata or {}
+        tags = meta.get("tags", []) or []
+        if tag_lower in tags:
+            tags.remove(tag_lower)
+            meta["tags"] = tags
+            session.metadata = meta
+            await firestore_service.update_session(session)
+
+    return {"session_id": session_id, "tags": tags}
+
+
+@router.get("/sessions/{session_id}/tags")
+async def get_session_tags(session_id: str):
+    """Get all tags for a session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    if hasattr(session, 'metadata'):
+        meta = session.metadata or {}
+        tags = meta.get("tags", []) or []
+    else:
+        tags = []
+
+    return {"session_id": session_id, "tags": tags}
+
+
+# ==================== Admin Data Retention ====================
+
+@router.get("/admin/data-retention")
+async def get_data_retention(auth=Depends(require_admin_auth)):
+    """Get current data retention settings."""
+    return {
+        "retention_days": 90,
+        "auto_purge": False,
+        "archive_before_delete": True,
+        "exempt_flagged": True,
+        "last_purge": None,
+    }
+
+
+@router.post("/admin/data-retention/purge")
+async def purge_old_sessions(data: dict, auth=Depends(require_admin_auth)):
+    """Purge sessions older than specified days."""
+    days = data.get("days", 90)
+    if days < 7:
+        raise HTTPException(400, "Minimum retention is 7 days")
+
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    sessions = await firestore_service.list_sessions(limit=1000)
+
+    purged = 0
+    for s in sessions:
+        sd = s if isinstance(s, dict) else s.model_dump()
+        created = sd.get("created_at", "")
+        if not created:
+            continue
+        try:
+            if isinstance(created, str):
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            elif hasattr(created, "isoformat"):
+                dt = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+            else:
+                continue
+            if dt < cutoff:
+                purged += 1
+        except (ValueError, AttributeError):
+            continue
+
+    return {
+        "purged_count": purged,
+        "cutoff_date": cutoff.isoformat(),
+        "message": f"Found {purged} sessions older than {days} days (dry run — no actual deletion)",
+    }

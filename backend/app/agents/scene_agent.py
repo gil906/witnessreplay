@@ -139,7 +139,7 @@ class SceneReconstructionAgent:
         template_name = self.template.get("name", "incident")
         first_question = self.template.get("initial_questions", [INITIAL_GREETING])[0]
         
-        greeting = f"""Hi, I'm Detective Ray. I'll help you report a **{template_name}**. Just speak naturally — {first_question}"""
+        greeting = f"""Hi, I'm Detective Ray. I understand you'd like to report a **{template_name}**. Go ahead and tell me what happened — {first_question}"""
         
         return greeting
     
@@ -251,7 +251,7 @@ class SceneReconstructionAgent:
                     model=chat_model,
                     config={
                         "system_instruction": selected_prompt,
-                        "temperature": 0.7,
+                        "temperature": 0.4,
                     }
                 )
                 self._log_structured("chat_initialized", 
@@ -352,7 +352,7 @@ class SceneReconstructionAgent:
                                 model=new_model,
                                 config={
                                     "system_instruction": new_prompt,
-                                    "temperature": 0.7,
+                                    "temperature": 0.4,
                                 }
                             )
                             continue
@@ -479,7 +479,7 @@ class SceneReconstructionAgent:
                     model=chat_model,
                     config={
                         "system_instruction": selected_prompt,
-                        "temperature": 0.7,
+                        "temperature": 0.4,
                     }
                 )
                 self._log_structured("chat_initialized", 
@@ -573,7 +573,7 @@ class SceneReconstructionAgent:
                                 model=new_model,
                                 config={
                                     "system_instruction": SYSTEM_PROMPT,
-                                    "temperature": 0.7,
+                                    "temperature": 0.4,
                                 }
                             )
                             continue
