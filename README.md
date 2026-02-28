@@ -23,6 +23,7 @@
 - [API Endpoints](#-api-endpoints)
 - [Project Structure](#-project-structure)
 - [Security Features](#-security-features)
+- [Recent Improvements](#-recent-improvements)
 - [Demo](#-demo)
 - [Future Roadmap](#-future-roadmap)
 - [License](#-license)
@@ -121,10 +122,11 @@ Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
 | 🎨 **Scene Reconstruction** | AI-generated visual scene diagrams from testimony |
 | 📁 **Automatic Case Grouping** | Gemini AI matches reports to cases by content, time, and location |
 | 📊 **Admin Dashboard** | Case management, timeline, report comparison, analytics, evidence export |
-| 🔒 **Security** | Bcrypt auth, rate limiting, security headers, request size limits, input validation |
+| 🔒 **Security** | Bcrypt auth, rate limiting, CSP headers, path traversal protection, SQL injection hardening |
 | 🌐 **Multi-language** | Auto-detects and responds in witness's language |
-| 📱 **Responsive** | Works on desktop, tablet, and mobile |
-| ⚡ **Real-time** | WebSocket communication with live scene updates |
+| 📱 **Mobile-First** | Optimized for iPhone/Android with responsive breakpoints down to 375px |
+| ♿ **Accessible** | Focus traps, keyboard navigation, skip-to-content, ARIA attributes, reduced-motion support |
+| ⚡ **Real-time** | WebSocket communication with heartbeat, auto-reconnection, and live scene updates |
 | 💾 **Dual Storage** | SQLite (local fallback) + Firestore (cloud) — always available |
 | 🔄 **Iterative Refinement** | Natural language corrections instantly update the scene |
 | 📄 **Evidence Export** | PDF reports, JSON export, bulk CSV, law enforcement evidence format |
@@ -148,7 +150,7 @@ Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
 | **Deployment** | Docker + Google Cloud Run |
 | **CI/CD** | Google Cloud Build |
 | **IaC** | Terraform |
-| **Security** | bcrypt, CORS, rate limiting, security headers, request timeouts |
+| **Security** | bcrypt, CORS, CSP (no unsafe-eval), rate limiting, path traversal protection, prompt injection defense, request timeouts |
 
 ---
 
@@ -389,8 +391,10 @@ project/
 │   └── js/
 │       ├── app.js                   # Main application logic
 │       ├── admin.js                 # Admin portal logic
-│       ├── audio.js                 # Audio recording & visualization
-│       └── ui.js                    # UI manager (modals, toasts, etc.)
+│       ├── audio.js                 # Audio recording & TTS playback
+│       ├── ui.js                    # UI manager (modals, focus traps, toasts)
+│       └── vad.js                   # Voice Activity Detection
+│   ├── sw.js                        # Service worker (offline, cache eviction)
 ├── deploy/
 │   ├── deploy.sh                    # Cloud Run deployment script
 │   ├── cloudbuild.yaml              # Cloud Build CI/CD pipeline
@@ -413,17 +417,20 @@ project/
 |---------|---------------|
 | **Authentication** | Bcrypt password hashing for admin portal |
 | **Rate Limiting** | Per-minute request limits with `429 Retry-After` headers |
+| **Content Security Policy** | Strict CSP without `unsafe-eval`; script-src, style-src, connect-src locked down |
 | **Security Headers** | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy` |
-| **CORS** | Configurable allowed origins (not wildcard in production) |
+| **CORS** | Configurable allowed origins with production wildcard warning |
+| **Path Traversal Protection** | `os.path.realpath()` + prefix validation on all file-serving endpoints |
+| **SQL Injection Hardening** | Explicit column allowlist for dynamic SQL queries |
+| **Prompt Injection Defense** | User input wrapped in `<witness_statement>` XML boundaries before AI processing |
 | **Request Size Limits** | 10MB max request body |
-| **Request Timeouts** | 60-second timeout on all requests |
+| **Endpoint-Specific Timeouts** | 180s for AI/streaming, 60s for standard API, 10s for health checks |
 | **GZip Compression** | Responses compressed above 500 bytes |
 | **Input Validation** | Pydantic models for all API inputs |
-| **Debug Mode** | Disabled by default in production |
 | **Request IDs** | Unique UUID per request for tracing (`X-Request-ID` header) |
 | **Cache Control** | Proper cache headers (static assets cached, API responses not) |
 | **Audit Logging** | Full audit trail for all case/session modifications |
-| **Microphone Permissions** | Browser permissions scoped to `self` only |
+| **Microphone Permissions** | Browser permissions scoped to `self` only; gesture-gated on iOS Safari |
 
 ---
 
@@ -441,6 +448,42 @@ project/
 ### Demo Video
 
 🎥 [Watch the demo on YouTube →](#) *(link to be added)*
+
+---
+
+## 🆕 Recent Improvements
+
+### Mobile & Layout (v2.1)
+- **iPhone-optimized layout** — Compact header (44px), collapsible voice dock, hidden power-user controls on small screens
+- **375px breakpoint** — Dedicated tiny-phone layout for iPhone SE and small Android devices
+- **Light theme polish** — Extended coverage to chat panel, voice dock, quick phrases, mobile menu, toasts, and connection popup
+- **Mic button loading state** — Visual "Starting mic..." feedback with pulsing animation during initialization
+
+### Accessibility
+- **Modal focus traps** — Tab/Shift+Tab cycles through focusable elements; focus restores on close
+- **Keyboard navigation** — `:focus-visible` outlines, Enter/Space on interactive elements, `aria-hidden`/`aria-busy` attributes
+- **Prefers-reduced-motion** — Respects system animation preferences
+
+### iOS Safari Compatibility
+- **Microphone permission fix** — `getUserMedia` gated behind user gesture via `_micPermissionGranted` flag; prevents misleading "access denied" toast when auto-listen fires without a tap
+- **VAD (Voice Activity Detection)** — Restart gated behind the same permission flag
+
+### Performance & Reliability
+- **Chat scroll performance** — `will-change` + CSS `contain` on transcript and message elements
+- **AudioContext resilience** — Double-close guard, resume retry with backoff (3 attempts), auto-recreate if closed
+- **Memory leak fixes** — `durationTimer`, `_autoSaveInterval`, `_autoListenTimer` cleared on page close
+- **Service worker improvements** — Cache size eviction (100 max), skip API/WS caching, only cache 2xx, "Update available" banner on new SW activation
+
+### Security Hardening
+- **CSP** — Removed `unsafe-eval` from Content-Security-Policy
+- **Path traversal** — `os.path.realpath()` + prefix check on image-serving endpoint
+- **SQL injection** — Explicit column allowlist dict in user profile updates
+- **Prompt injection** — User input wrapped in `<witness_statement>` XML tags before AI processing
+- **CORS** — Production wildcard warning logged at startup
+
+### Backend
+- **Endpoint-specific timeouts** — 180s for AI/streaming/image generation, 60s for standard API, 10s for health checks
+- **Docker** — Added health check, resource limits (2 CPU / 2G RAM), log rotation to docker-compose.yml
 
 ---
 
