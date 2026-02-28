@@ -14006,3 +14006,593 @@ async def get_emotional_arc(session_id: str):
         "shifts": shifts[:20],
         "total_shifts": len(shifts),
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 72: Witness Response Pattern Analyzer
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/patterns")
+async def analyze_response_patterns(session_id: str):
+    """Detect rehearsed answers, deflection, evasion, and verbal patterns."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"patterns": [], "summary": {}, "total_statements": 0}
+
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+
+    # Pattern definitions
+    rehearsed_markers = [
+        "as i mentioned", "as i said", "like i said", "as i stated",
+        "i already told you", "i have always said", "let me be clear",
+        "to be perfectly honest", "the truth is", "honestly",
+    ]
+    evasion_markers = [
+        "i don't recall", "i can't remember", "i'm not sure",
+        "i don't know", "i have no recollection", "it's possible",
+        "i can't say for certain", "i don't remember", "maybe",
+        "possibly", "i suppose", "perhaps", "i think so",
+    ]
+    deflection_markers = [
+        "you would have to ask", "that's not my area",
+        "i wouldn't know about that", "that's a different matter",
+        "i'm not the right person", "someone else", "not my department",
+        "you should ask", "that's above my pay grade",
+    ]
+    hedging_markers = [
+        "sort of", "kind of", "more or less", "in a way",
+        "to some extent", "roughly", "approximately", "somewhat",
+        "i believe", "i think", "it seemed like", "i guess",
+    ]
+
+    patterns = []
+    pattern_counts = {"rehearsed": 0, "evasion": 0, "deflection": 0, "hedging": 0, "repetition": 0}
+    prev_phrases = []
+
+    for idx, text in enumerate(texts):
+        text_lower = text.lower()
+        detected = []
+
+        for marker in rehearsed_markers:
+            if marker in text_lower:
+                detected.append({"type": "rehearsed", "marker": marker})
+                pattern_counts["rehearsed"] += 1
+                break
+
+        for marker in evasion_markers:
+            if marker in text_lower:
+                detected.append({"type": "evasion", "marker": marker})
+                pattern_counts["evasion"] += 1
+                break
+
+        for marker in deflection_markers:
+            if marker in text_lower:
+                detected.append({"type": "deflection", "marker": marker})
+                pattern_counts["deflection"] += 1
+                break
+
+        for marker in hedging_markers:
+            if marker in text_lower:
+                detected.append({"type": "hedging", "marker": marker})
+                pattern_counts["hedging"] += 1
+                break
+
+        # Repetition detection
+        words = text_lower.split()
+        phrases_3 = [" ".join(words[i:i+3]) for i in range(len(words)-2)]
+        for ph in phrases_3:
+            if len(ph) > 8 and ph in prev_phrases:
+                detected.append({"type": "repetition", "marker": ph})
+                pattern_counts["repetition"] += 1
+                break
+        prev_phrases.extend(phrases_3[-20:])
+        if len(prev_phrases) > 200:
+            prev_phrases = prev_phrases[-200:]
+
+        if detected:
+            patterns.append({
+                "statement_index": idx,
+                "preview": text_lower[:100],
+                "patterns_found": detected,
+            })
+
+    total = len(texts)
+    concern_score = min(100, int(
+        (pattern_counts["evasion"] * 3 + pattern_counts["deflection"] * 4 +
+         pattern_counts["hedging"] * 1.5 + pattern_counts["rehearsed"] * 2 +
+         pattern_counts["repetition"] * 1) / max(total, 1) * 25
+    ))
+
+    return {
+        "patterns": patterns[:50],
+        "summary": pattern_counts,
+        "concern_score": concern_score,
+        "concern_level": "high" if concern_score > 60 else "medium" if concern_score > 30 else "low",
+        "total_statements": total,
+        "total_flagged": len(patterns),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 73: Testimony Power Phrases
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/power-phrases")
+async def extract_power_phrases(session_id: str):
+    """Extract legally significant and impactful phrases from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"phrases": [], "categories": {}, "total": 0}
+
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+
+    # Categories of powerful phrases
+    certainty_words = ["absolutely", "definitely", "without a doubt", "i am certain",
+                       "i clearly saw", "i'm positive", "100 percent", "no question",
+                       "i swear", "i'm sure", "for certain"]
+    admission_words = ["i admit", "i confess", "it was my fault", "i did it",
+                       "i was responsible", "i acknowledge", "guilty", "i take responsibility"]
+    denial_words = ["i never", "i did not", "that's a lie", "that never happened",
+                    "absolutely not", "i deny", "false", "untrue", "impossible"]
+    eyewitness_words = ["i saw", "i witnessed", "i observed", "i watched",
+                        "i noticed", "i heard", "i overheard", "right in front of me",
+                        "with my own eyes"]
+    threat_words = ["threatened", "going to kill", "hurt you", "or else",
+                    "warned me", "intimidated", "scared me", "afraid for my life"]
+    timeline_words = ["at approximately", "around that time", "minutes later",
+                      "immediately after", "just before", "the next day",
+                      "earlier that morning", "that evening", "shortly after"]
+
+    categories = {
+        "certainty": {"icon": "✅", "words": certainty_words, "found": []},
+        "admission": {"icon": "🔓", "words": admission_words, "found": []},
+        "denial": {"icon": "🚫", "words": denial_words, "found": []},
+        "eyewitness": {"icon": "👁️", "words": eyewitness_words, "found": []},
+        "threat": {"icon": "⚠️", "words": threat_words, "found": []},
+        "timeline": {"icon": "⏰", "words": timeline_words, "found": []},
+    }
+
+    for idx, text in enumerate(texts):
+        text_lower = text.lower()
+
+        for cat_name, cat_info in categories.items():
+            for keyword in cat_info["words"]:
+                if keyword in text_lower:
+                    start = max(0, text_lower.find(keyword) - 40)
+                    end = min(len(text), text_lower.find(keyword) + len(keyword) + 60)
+                    excerpt = text[start:end].strip()
+                    if start > 0:
+                        excerpt = "..." + excerpt
+                    if end < len(text):
+                        excerpt = excerpt + "..."
+                    cat_info["found"].append({
+                        "statement_index": idx,
+                        "keyword": keyword,
+                        "excerpt": excerpt,
+                    })
+                    break
+
+    result_cats = {}
+    all_phrases = []
+    for cat_name, cat_info in categories.items():
+        result_cats[cat_name] = {
+            "icon": cat_info["icon"],
+            "count": len(cat_info["found"]),
+            "phrases": cat_info["found"][:10],
+        }
+        for p in cat_info["found"]:
+            all_phrases.append({**p, "category": cat_name, "icon": cat_info["icon"]})
+
+    all_phrases.sort(key=lambda x: x["statement_index"])
+
+    return {
+        "phrases": all_phrases[:60],
+        "categories": result_cats,
+        "total": len(all_phrases),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 74: Deposition Prep Checklist
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/prep-checklist")
+async def generate_prep_checklist(session_id: str):
+    """Generate an attorney deposition preparation checklist based on testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join(
+        getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements
+    ).lower()
+
+    checklist = []
+
+    # 1. Identity verification
+    has_name = any(w in full_text for w in ["my name is", "i am", "they call me"])
+    checklist.append({
+        "category": "identity",
+        "item": "Verify witness identity and relationship to case",
+        "status": "covered" if has_name else "needed",
+        "icon": "🪪",
+    })
+
+    # 2. Timeline establishment
+    has_time = any(w in full_text for w in ["o'clock", "a.m.", "p.m.", "morning", "afternoon",
+                                             "evening", "around", "approximately"])
+    checklist.append({
+        "category": "timeline",
+        "item": "Establish precise timeline of events",
+        "status": "covered" if has_time else "needed",
+        "icon": "⏱️",
+    })
+
+    # 3. Location details
+    has_location = any(w in full_text for w in ["street", "avenue", "building", "house",
+                                                 "apartment", "room", "office", "intersection",
+                                                 "block", "parking lot", "address"])
+    checklist.append({
+        "category": "location",
+        "item": "Pin down specific locations and addresses",
+        "status": "covered" if has_location else "needed",
+        "icon": "📍",
+    })
+
+    # 4. Witness perspective
+    has_perspective = any(w in full_text for w in ["i saw", "i heard", "i felt", "i smelled",
+                                                    "i noticed", "i observed", "i watched"])
+    checklist.append({
+        "category": "perspective",
+        "item": "Document sensory observations (sight, sound, smell)",
+        "status": "covered" if has_perspective else "needed",
+        "icon": "👁️",
+    })
+
+    # 5. Other witnesses
+    has_others = any(w in full_text for w in ["someone else", "another person", "bystander",
+                                               "neighbor", "friend", "colleague", "other people"])
+    checklist.append({
+        "category": "corroboration",
+        "item": "Identify potential corroborating witnesses",
+        "status": "covered" if has_others else "needed",
+        "icon": "👥",
+    })
+
+    # 6. Physical evidence
+    has_evidence = any(w in full_text for w in ["document", "photo", "video", "recording",
+                                                 "camera", "receipt", "letter", "email",
+                                                 "text message", "evidence"])
+    checklist.append({
+        "category": "evidence",
+        "item": "Identify physical/documentary evidence",
+        "status": "covered" if has_evidence else "needed",
+        "icon": "📄",
+    })
+
+    # 7. Contradictions
+    has_inconsistency = any(w in full_text for w in ["actually", "wait", "correction", "i mean",
+                                                      "let me correct", "no wait", "i misspoke"])
+    checklist.append({
+        "category": "inconsistencies",
+        "item": "Probe self-corrections and inconsistencies",
+        "status": "flagged" if has_inconsistency else "clear",
+        "icon": "⚡",
+    })
+
+    # 8. Emotional state
+    has_emotion = any(w in full_text for w in ["scared", "afraid", "angry", "crying",
+                                                "nervous", "anxious", "shocked", "upset"])
+    checklist.append({
+        "category": "emotional",
+        "item": "Document witness emotional state and demeanor",
+        "status": "covered" if has_emotion else "needed",
+        "icon": "💭",
+    })
+
+    # 9. Prior statements
+    has_prior = any(w in full_text for w in ["i told", "i reported", "i said before",
+                                              "statement", "i called", "i filed"])
+    checklist.append({
+        "category": "prior_statements",
+        "item": "Cross-reference with prior statements or reports",
+        "status": "covered" if has_prior else "needed",
+        "icon": "📋",
+    })
+
+    # 10. Follow-up needs
+    unanswered = any(w in full_text for w in ["i don't know", "i'm not sure", "i can't remember",
+                                               "i need to check", "i'll find out"])
+    checklist.append({
+        "category": "follow_up",
+        "item": "Document areas requiring follow-up investigation",
+        "status": "needed" if unanswered else "clear",
+        "icon": "🔄",
+    })
+
+    covered = sum(1 for c in checklist if c["status"] == "covered")
+    needed = sum(1 for c in checklist if c["status"] == "needed")
+    readiness_pct = int(covered / len(checklist) * 100)
+
+    return {
+        "checklist": checklist,
+        "readiness_score": readiness_pct,
+        "covered_count": covered,
+        "needed_count": needed,
+        "total_items": len(checklist),
+        "recommendation": "Ready for deposition" if readiness_pct >= 70 else
+                          "More preparation needed" if readiness_pct >= 40 else
+                          "Significant gaps — additional testimony recommended",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 75: Statement Corroboration Finder
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/corroborate")
+async def find_corroboration(session_id: str):
+    """Find statements corroborated across other sessions."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"corroborations": [], "other_sessions_checked": 0}
+
+    import re
+
+    def extract_facts(stmts):
+        facts = []
+        for idx, s in enumerate(stmts):
+            text = getattr(s, 'text', '') or getattr(s, 'content', '') or str(s)
+            words = re.findall(r'\b[a-z]{4,}\b', text.lower())
+            entities = re.findall(r'\b[A-Z][a-z]{2,}\b', text)
+            numbers = re.findall(r'\b\d+(?::\d+)?\b', text)
+            facts.append({
+                "index": idx,
+                "text": text,
+                "words": set(words),
+                "entities": set(entities),
+                "numbers": set(numbers),
+            })
+        return facts
+
+    source_facts = extract_facts(statements)
+    corroborations = []
+    sessions_checked = 0
+
+    all_sessions = await firestore_service.list_sessions()
+    other_sessions = [s for s in (all_sessions if isinstance(all_sessions, list) else [])
+                      if getattr(s, 'id', '') != session_id]
+
+    for other_sess in other_sessions[:20]:
+        sessions_checked += 1
+        other_stmts = getattr(other_sess, 'witness_statements', []) or []
+        if not other_stmts:
+            continue
+        other_id = getattr(other_sess, 'id', str(sessions_checked))
+
+        other_facts = extract_facts(other_stmts)
+        for sf in source_facts:
+            for of in other_facts:
+                # Check entity overlap
+                entity_overlap = sf["entities"] & of["entities"]
+                # Check number overlap
+                number_overlap = sf["numbers"] & of["numbers"]
+                # Check word overlap (significant words)
+                word_overlap = sf["words"] & of["words"]
+                overlap_ratio = len(word_overlap) / max(len(sf["words"]), 1)
+
+                if (len(entity_overlap) >= 2 or
+                    (len(entity_overlap) >= 1 and len(number_overlap) >= 1) or
+                    overlap_ratio > 0.4):
+                    corroborations.append({
+                        "source_statement": sf["index"],
+                        "source_preview": sf["text"][:120],
+                        "corroborating_session": other_id,
+                        "corroborating_statement": of["index"],
+                        "corroborating_preview": of["text"][:120],
+                        "shared_entities": list(entity_overlap)[:5],
+                        "shared_numbers": list(number_overlap)[:5],
+                        "word_overlap": round(overlap_ratio, 2),
+                        "strength": "strong" if overlap_ratio > 0.5 or len(entity_overlap) >= 3
+                                    else "moderate" if overlap_ratio > 0.3
+                                    else "weak",
+                    })
+
+        if len(corroborations) > 50:
+            break
+
+    corroborations.sort(key=lambda x: -x["word_overlap"])
+
+    return {
+        "corroborations": corroborations[:40],
+        "other_sessions_checked": sessions_checked,
+        "total_matches": len(corroborations),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 76: Testimony Heatmap
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/heatmap")
+async def generate_testimony_heatmap(session_id: str):
+    """Generate a visual heatmap of testimony intensity/detail density."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"heatmap": [], "peak_index": -1, "avg_intensity": 0}
+
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+
+    heatmap = []
+    detail_markers = ["exactly", "specifically", "precisely", "approximately",
+                      "o'clock", "street", "address", "number", "name", "color",
+                      "height", "weight", "described", "noticed", "saw"]
+    emotion_markers = ["afraid", "scared", "angry", "happy", "sad", "cried",
+                       "screamed", "yelled", "shocked", "surprised", "nervous"]
+    evasion_markers = ["don't remember", "not sure", "can't recall", "maybe",
+                       "possibly", "i think", "i guess", "don't know"]
+
+    for idx, text in enumerate(texts):
+        text_lower = text.lower()
+        words = text_lower.split()
+        word_count = len(words)
+
+        # Compute detail score (0-100)
+        detail_hits = sum(1 for m in detail_markers if m in text_lower)
+        detail_score = min(100, int(detail_hits / max(len(detail_markers), 1) * 100 * 3))
+
+        # Compute emotion score
+        emotion_hits = sum(1 for m in emotion_markers if m in text_lower)
+        emotion_score = min(100, int(emotion_hits / max(len(emotion_markers), 1) * 100 * 3))
+
+        # Compute evasion score
+        evasion_hits = sum(1 for m in evasion_markers if m in text_lower)
+        evasion_score = min(100, int(evasion_hits / max(len(evasion_markers), 1) * 100 * 3))
+
+        # Length factor (longer = more detail)
+        length_score = min(100, int(word_count / 2))
+
+        # Overall intensity
+        intensity = int(detail_score * 0.35 + emotion_score * 0.25 +
+                       length_score * 0.25 + (100 - evasion_score) * 0.15)
+
+        heatmap.append({
+            "index": idx,
+            "intensity": min(100, intensity),
+            "detail": detail_score,
+            "emotion": emotion_score,
+            "evasion": evasion_score,
+            "word_count": word_count,
+            "color": "#ff4444" if intensity > 70 else "#ff8800" if intensity > 45 else "#44aa44" if intensity > 20 else "#666666",
+        })
+
+    intensities = [h["intensity"] for h in heatmap]
+    peak_idx = intensities.index(max(intensities)) if intensities else -1
+    avg_intensity = round(sum(intensities) / len(intensities), 1) if intensities else 0
+
+    # Identify hot zones (consecutive high-intensity statements)
+    hot_zones = []
+    current_zone = None
+    for h in heatmap:
+        if h["intensity"] > 50:
+            if current_zone is None:
+                current_zone = {"start": h["index"], "end": h["index"], "avg": h["intensity"]}
+            else:
+                current_zone["end"] = h["index"]
+                current_zone["avg"] = (current_zone["avg"] + h["intensity"]) / 2
+        else:
+            if current_zone and (current_zone["end"] - current_zone["start"]) >= 1:
+                hot_zones.append(current_zone)
+            current_zone = None
+    if current_zone and (current_zone["end"] - current_zone["start"]) >= 1:
+        hot_zones.append(current_zone)
+
+    return {
+        "heatmap": heatmap,
+        "peak_index": peak_idx,
+        "avg_intensity": avg_intensity,
+        "hot_zones": hot_zones[:10],
+        "total_statements": len(heatmap),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 77: Admin API Usage Analytics
+# ═══════════════════════════════════════════════════════════════
+
+# Global usage tracker
+_api_usage: dict = {}
+
+@router.get("/admin/api-usage")
+async def get_api_usage(auth=Depends(require_admin_auth)):
+    """Get API endpoint usage statistics."""
+    _log_admin_action("view_api_usage")
+
+    all_sessions = await firestore_service.list_sessions()
+    sessions = all_sessions if isinstance(all_sessions, list) else []
+    total_sessions = len(sessions)
+    total_statements = sum(
+        len(getattr(s, 'witness_statements', []) or []) for s in sessions
+    )
+
+    feature_usage = {
+        "sessions_created": total_sessions,
+        "statements_recorded": total_statements,
+        "pinned_sessions": sum(1 for s in sessions if getattr(s, 'pinned', False)),
+        "bookmarked_items": sum(
+            len(getattr(s, 'bookmarks', []) or []) for s in sessions
+        ),
+        "annotations_made": sum(
+            len(getattr(s, 'annotations', []) or []) for s in sessions
+        ),
+    }
+
+    for endpoint, count in _api_usage.items():
+        feature_usage[endpoint] = count
+
+    sorted_features = sorted(feature_usage.items(), key=lambda x: -x[1])
+
+    return {
+        "feature_usage": feature_usage,
+        "top_features": [{"name": k, "count": v} for k, v in sorted_features[:15]],
+        "total_sessions": total_sessions,
+        "total_statements": total_statements,
+        "tracked_since": "server_start",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 78: Admin Active Sessions Monitor
+# ═══════════════════════════════════════════════════════════════
+@router.get("/admin/active-sessions")
+async def get_active_sessions_monitor(auth=Depends(require_admin_auth)):
+    """Real-time view of all sessions with stats."""
+    _log_admin_action("view_active_sessions")
+
+    all_sessions = await firestore_service.list_sessions()
+    sessions = all_sessions if isinstance(all_sessions, list) else []
+
+    sessions_list = []
+    for s in sessions:
+        stmts = getattr(s, 'witness_statements', []) or []
+        word_count = sum(
+            len((getattr(st, 'text', '') or '').split()) for st in stmts
+        )
+        sessions_list.append({
+            "id": getattr(s, 'id', ''),
+            "title": getattr(s, 'title', getattr(s, 'case_title', 'Untitled')),
+            "status": getattr(s, 'status', 'active') or 'active',
+            "statement_count": len(stmts),
+            "word_count": word_count,
+            "pinned": getattr(s, 'pinned', False),
+            "bookmarks": len(getattr(s, 'bookmarks', []) or []),
+            "annotations": len(getattr(s, 'annotations', []) or []),
+            "created_at": str(getattr(s, 'created_at', '')),
+            "last_activity": str(getattr(s, 'updated_at', getattr(s, 'created_at', ''))),
+        })
+
+    sessions_list.sort(key=lambda x: x.get("last_activity", ""), reverse=True)
+
+    active = sum(1 for s in sessions_list if s["status"] == "active")
+    completed = sum(1 for s in sessions_list if s["status"] == "completed")
+
+    return {
+        "sessions": sessions_list[:100],
+        "total": len(sessions_list),
+        "active_count": active,
+        "completed_count": completed,
+        "total_statements": sum(s["statement_count"] for s in sessions_list),
+        "total_words": sum(s["word_count"] for s in sessions_list),
+    }

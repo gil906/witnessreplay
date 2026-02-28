@@ -12695,3 +12695,67 @@ textarea:disabled {
 .arc-shifts { font-size: 0.85rem; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; }
 .arc-shift { font-size: 0.82rem; margin: 2px 0; }
 .arc-meta { font-size: 0.78rem; opacity: 0.5; text-align: right; }
+
+/* ═══ IMPROVEMENT 72: Response Patterns ═══ */
+.patterns-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.patterns-header { font-size: 1.05rem; margin-bottom: 12px; color: var(--text-primary, #e0e0e0); }
+.patterns-score { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: rgba(255,255,255,0.04); border-radius: 8px; margin-bottom: 12px; }
+.patterns-num { font-size: 2rem; font-weight: 700; line-height: 1; }
+.patterns-level { font-size: 0.95rem; text-transform: uppercase; font-weight: 600; }
+.patterns-meta { font-size: 0.82rem; opacity: 0.5; margin-left: auto; }
+.patterns-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.pat-tag { padding: 4px 10px; background: rgba(108,99,255,0.15); border-radius: 10px; font-size: 0.85rem; }
+.patterns-list { display: flex; flex-direction: column; gap: 6px; }
+.pat-item { padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.88rem; }
+.pat-preview { font-size: 0.8rem; opacity: 0.55; margin-top: 3px; font-style: italic; }
+
+/* ═══ IMPROVEMENT 73: Power Phrases ═══ */
+.power-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.power-header { font-size: 1.05rem; margin-bottom: 12px; color: var(--text-primary, #e0e0e0); }
+.power-cats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.power-cat-tag { padding: 4px 10px; background: rgba(255,200,0,0.12); border-radius: 10px; font-size: 0.85rem; }
+.power-list { display: flex; flex-direction: column; gap: 6px; }
+.power-item { padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.88rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.power-icon { font-size: 1.1rem; }
+.power-cat { font-size: 0.78rem; text-transform: uppercase; color: #6C63FF; font-weight: 600; }
+.power-excerpt { font-style: italic; opacity: 0.85; flex: 1; min-width: 150px; }
+.power-stmt { font-size: 0.75rem; opacity: 0.45; }
+.power-empty { padding: 12px; text-align: center; opacity: 0.5; }
+
+/* ═══ IMPROVEMENT 74: Prep Checklist ═══ */
+.prep-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.prep-header { font-size: 1.05rem; margin-bottom: 12px; color: var(--text-primary, #e0e0e0); }
+.prep-score { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.prep-num { font-size: 2.2rem; font-weight: 700; color: #6C63FF; line-height: 1; }
+.prep-label { font-size: 0.9rem; opacity: 0.6; }
+.prep-rec { font-size: 0.85rem; margin-left: auto; padding: 3px 10px; background: rgba(108,99,255,0.15); border-radius: 8px; }
+.prep-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-bottom: 14px; overflow: hidden; }
+.prep-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.prep-items { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.prep-item { padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.88rem; display: flex; align-items: center; gap: 8px; }
+.prep-icon { font-size: 1.1rem; }
+.prep-status { margin-left: auto; font-size: 0.8rem; font-weight: 600; }
+.prep-counts { font-size: 0.78rem; opacity: 0.5; text-align: right; }
+
+/* ═══ IMPROVEMENT 75: Corroboration ═══ */
+.corrob-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.corrob-header { font-size: 1.05rem; margin-bottom: 8px; color: var(--text-primary, #e0e0e0); }
+.corrob-meta { font-size: 0.82rem; opacity: 0.5; margin-bottom: 12px; }
+.corrob-list { display: flex; flex-direction: column; gap: 8px; }
+.corrob-item { padding: 10px 12px; background: rgba(255,255,255,0.04); border-radius: 8px; border-left: 3px solid #6C63FF; }
+.corrob-strength { font-size: 0.9rem; font-weight: 600; margin-bottom: 4px; }
+.corrob-source { font-size: 0.85rem; opacity: 0.8; }
+.corrob-match { font-size: 0.82rem; opacity: 0.6; margin-top: 2px; }
+.corrob-entities { font-size: 0.78rem; color: #6C63FF; margin-top: 3px; }
+.corrob-empty { padding: 12px; text-align: center; opacity: 0.5; }
+
+/* ═══ IMPROVEMENT 76: Heatmap ═══ */
+.heatmap-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.heatmap-header { font-size: 1.05rem; margin-bottom: 8px; color: var(--text-primary, #e0e0e0); }
+.heatmap-meta { font-size: 0.82rem; opacity: 0.55; margin-bottom: 10px; }
+.heatmap-visual { display: flex; align-items: flex-end; gap: 2px; height: 80px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; }
+.heatmap-bar { min-width: 10px; flex: 1; border-radius: 3px 3px 0 0; transition: height 0.3s; cursor: pointer; }
+.heatmap-bar:hover { opacity: 0.75; }
+.heatmap-legend { display: flex; gap: 12px; font-size: 0.8rem; opacity: 0.6; margin-bottom: 10px; }
+.heatmap-zones { font-size: 0.85rem; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.heatmap-zone { display: inline-block; padding: 2px 8px; margin: 2px; background: rgba(255,68,68,0.15); border-radius: 6px; font-size: 0.82rem; }

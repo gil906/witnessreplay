@@ -5726,3 +5726,76 @@ async function loadSystemAlerts() {
         container.innerHTML = html;
     } catch (e) { /* silent */ }
 }
+
+// ── IMPROVEMENT 77: API Usage Analytics ──
+async function loadApiUsage() {
+    try {
+        const resp = await adminFetch('/api/admin/api-usage');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const container = document.getElementById('api-usage-content');
+        if (!container) return;
+        let html = `<div class="apu-stats">`;
+        html += `<div class="apu-stat"><span class="apu-num">${data.total_sessions}</span><span class="apu-label">Sessions</span></div>`;
+        html += `<div class="apu-stat"><span class="apu-num">${data.total_statements}</span><span class="apu-label">Statements</span></div>`;
+        html += `</div>`;
+        if (data.top_features && data.top_features.length > 0) {
+            html += `<div class="apu-features">`;
+            data.top_features.forEach(f => {
+                const maxCount = data.top_features[0].count || 1;
+                const width = Math.max(8, (f.count / maxCount) * 100);
+                html += `<div class="apu-feature">`;
+                html += `<span class="apu-fname">${f.name.replace(/_/g, ' ')}</span>`;
+                html += `<div class="apu-bar-bg"><div class="apu-bar-fill" style="width:${width}%"></div></div>`;
+                html += `<span class="apu-fcount">${f.count}</span>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) { /* silent */ }
+}
+
+// ── IMPROVEMENT 78: Active Sessions Monitor ──
+async function loadActiveSessions() {
+    try {
+        const resp = await adminFetch('/api/admin/active-sessions');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const summary = document.getElementById('as-summary');
+        const list = document.getElementById('active-sessions-list');
+        if (!summary || !list) return;
+        summary.innerHTML = `<span class="as-stat">📁 ${data.total} total</span>` +
+            `<span class="as-stat">🟢 ${data.active_count} active</span>` +
+            `<span class="as-stat">✅ ${data.completed_count} completed</span>` +
+            `<span class="as-stat">💬 ${data.total_statements} stmts</span>` +
+            `<span class="as-stat">📝 ${data.total_words} words</span>`;
+        let html = '';
+        if (data.sessions && data.sessions.length > 0) {
+            data.sessions.slice(0, 25).forEach(s => {
+                const statusIcon = s.status === 'active' ? '🟢' : s.status === 'completed' ? '✅' : '⏸️';
+                html += `<div class="as-item">`;
+                html += `<span class="as-status">${statusIcon}</span>`;
+                html += `<span class="as-title">${s.title || s.id.substring(0, 8)}</span>`;
+                html += `<span class="as-detail">${s.statement_count} stmts · ${s.word_count} words</span>`;
+                html += `<span class="as-badges">`;
+                if (s.pinned) html += `<span class="as-badge">📌</span>`;
+                if (s.bookmarks > 0) html += `<span class="as-badge">🔖${s.bookmarks}</span>`;
+                if (s.annotations > 0) html += `<span class="as-badge">📝${s.annotations}</span>`;
+                html += `</span></div>`;
+            });
+        } else {
+            html = '<div class="as-empty">No sessions found.</div>';
+        }
+        list.innerHTML = html;
+    } catch (e) { /* silent */ }
+}
+
+// Wire up the new panels on load
+document.addEventListener('DOMContentLoaded', function() {
+    const apiRefreshBtn = document.getElementById('api-usage-refresh');
+    if (apiRefreshBtn) apiRefreshBtn.addEventListener('click', loadApiUsage);
+    const asRefreshBtn = document.getElementById('active-sessions-refresh');
+    if (asRefreshBtn) asRefreshBtn.addEventListener('click', loadActiveSessions);
+    setTimeout(() => { loadApiUsage(); loadActiveSessions(); }, 1500);
+});

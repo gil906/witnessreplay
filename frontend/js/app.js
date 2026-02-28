@@ -7790,6 +7790,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/arc': () => {
             this._showEmotionalArc();
+        },
+        '/patterns': () => {
+            this._showResponsePatterns();
+        },
+        '/power': () => {
+            this._showPowerPhrases();
+        },
+        '/prep': () => {
+            this._showPrepChecklist();
+        },
+        '/corroborate': () => {
+            this._showCorroboration();
+        },
+        '/heatmap': () => {
+            this._showTestimonyHeatmap();
         }
     };
     
@@ -7900,7 +7915,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/matrix', desc: 'Comparison matrix' },
         { cmd: '/glossary', desc: 'Legal term glossary' },
         { cmd: '/complexity', desc: 'Complexity score' },
-        { cmd: '/arc', desc: 'Emotional arc' }
+        { cmd: '/arc', desc: 'Emotional arc' },
+        { cmd: '/patterns', desc: 'Response pattern analysis' },
+        { cmd: '/power', desc: 'Power phrases' },
+        { cmd: '/prep', desc: 'Deposition prep checklist' },
+        { cmd: '/corroborate', desc: 'Cross-session corroboration' },
+        { cmd: '/heatmap', desc: 'Testimony intensity heatmap' }
     ];
     
     const filter = val.toLowerCase();
@@ -10609,4 +10629,155 @@ WitnessReplayApp.prototype._showEmotionalArc = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not trace emotional arc.'); }
+};
+
+// ── IMPROVEMENT 72: Response Pattern Analyzer ──
+WitnessReplayApp.prototype._showResponsePatterns = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔍 Analyzing response patterns...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/patterns`);
+        const data = await resp.json();
+        const icons = { rehearsed: '🎭', evasion: '🙈', deflection: '↩️', hedging: '🌫️', repetition: '🔁' };
+        const levelColors = { high: '#ff4444', medium: '#ff8800', low: '#44aa44' };
+        let html = `<div class="patterns-panel">`;
+        html += `<div class="patterns-header">🔍 Response Pattern Analysis</div>`;
+        html += `<div class="patterns-score" style="border-left:4px solid ${levelColors[data.concern_level]||'#666'}">`;
+        html += `<span class="patterns-num">${data.concern_score}</span>`;
+        html += `<span class="patterns-level">${data.concern_level} concern</span>`;
+        html += `<span class="patterns-meta">${data.total_flagged}/${data.total_statements} flagged</span></div>`;
+        html += `<div class="patterns-summary">`;
+        Object.entries(data.summary || {}).forEach(([k, v]) => {
+            if (v > 0) html += `<span class="pat-tag">${icons[k]||''} ${k}: ${v}</span>`;
+        });
+        html += `</div>`;
+        if (data.patterns && data.patterns.length > 0) {
+            html += `<div class="patterns-list">`;
+            data.patterns.slice(0, 15).forEach(p => {
+                const pats = p.patterns_found.map(f => `${icons[f.type]||''} ${f.type}`).join(', ');
+                html += `<div class="pat-item"><b>Stmt ${p.statement_index+1}:</b> ${pats}<div class="pat-preview">${p.preview}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze patterns.'); }
+};
+
+// ── IMPROVEMENT 73: Power Phrases ──
+WitnessReplayApp.prototype._showPowerPhrases = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('⚡ Extracting power phrases...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/power-phrases`);
+        const data = await resp.json();
+        let html = `<div class="power-panel">`;
+        html += `<div class="power-header">⚡ Power Phrases (${data.total})</div>`;
+        html += `<div class="power-cats">`;
+        Object.entries(data.categories || {}).forEach(([name, cat]) => {
+            if (cat.count > 0) html += `<span class="power-cat-tag">${cat.icon} ${name}: ${cat.count}</span>`;
+        });
+        html += `</div>`;
+        if (data.phrases && data.phrases.length > 0) {
+            html += `<div class="power-list">`;
+            data.phrases.slice(0, 20).forEach(p => {
+                html += `<div class="power-item"><span class="power-icon">${p.icon}</span>`;
+                html += `<span class="power-cat">${p.category}</span> `;
+                html += `<span class="power-excerpt">"${p.excerpt}"</span>`;
+                html += `<span class="power-stmt">Stmt ${p.statement_index+1}</span></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="power-empty">No significant phrases found.</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract power phrases.'); }
+};
+
+// ── IMPROVEMENT 74: Deposition Prep Checklist ──
+WitnessReplayApp.prototype._showPrepChecklist = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📋 Generating prep checklist...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/prep-checklist`);
+        const data = await resp.json();
+        const statusIcons = { covered: '✅', needed: '❌', flagged: '⚠️', clear: '✔️' };
+        const statusColors = { covered: '#44aa44', needed: '#ff4444', flagged: '#ff8800', clear: '#6C63FF' };
+        let html = `<div class="prep-panel">`;
+        html += `<div class="prep-header">📋 Deposition Prep Checklist</div>`;
+        html += `<div class="prep-score"><span class="prep-num">${data.readiness_score}%</span>`;
+        html += `<span class="prep-label">Readiness</span>`;
+        html += `<span class="prep-rec">${data.recommendation}</span></div>`;
+        html += `<div class="prep-bar"><div class="prep-fill" style="width:${data.readiness_score}%;background:${data.readiness_score>=70?'#44aa44':data.readiness_score>=40?'#ff8800':'#ff4444'}"></div></div>`;
+        html += `<div class="prep-items">`;
+        (data.checklist || []).forEach(c => {
+            html += `<div class="prep-item" style="border-left:3px solid ${statusColors[c.status]||'#666'}">`;
+            html += `<span class="prep-icon">${c.icon}</span> ${c.item} `;
+            html += `<span class="prep-status">${statusIcons[c.status]||''} ${c.status}</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="prep-counts">${data.covered_count} covered · ${data.needed_count} needed · ${data.total_items} total</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate checklist.'); }
+};
+
+// ── IMPROVEMENT 75: Corroboration Finder ──
+WitnessReplayApp.prototype._showCorroboration = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔗 Searching for corroboration...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/corroborate`);
+        const data = await resp.json();
+        const strengthIcons = { strong: '💪', moderate: '🤝', weak: '🔍' };
+        let html = `<div class="corrob-panel">`;
+        html += `<div class="corrob-header">🔗 Corroboration Finder</div>`;
+        html += `<div class="corrob-meta">Checked ${data.other_sessions_checked} other sessions · ${data.total_matches} matches found</div>`;
+        if (data.corroborations && data.corroborations.length > 0) {
+            html += `<div class="corrob-list">`;
+            data.corroborations.slice(0, 12).forEach(c => {
+                html += `<div class="corrob-item">`;
+                html += `<div class="corrob-strength">${strengthIcons[c.strength]||''} ${c.strength} (${Math.round(c.word_overlap*100)}% overlap)</div>`;
+                html += `<div class="corrob-source">📝 Stmt ${c.source_statement+1}: ${c.source_preview.substring(0,80)}...</div>`;
+                html += `<div class="corrob-match">🔗 Session ${c.corroborating_session.substring(0,8)}… Stmt ${c.corroborating_statement+1}</div>`;
+                if (c.shared_entities.length > 0) html += `<div class="corrob-entities">Shared: ${c.shared_entities.join(', ')}</div>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="corrob-empty">No corroborating statements found in other sessions.</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not find corroboration.'); }
+};
+
+// ── IMPROVEMENT 76: Testimony Heatmap ──
+WitnessReplayApp.prototype._showTestimonyHeatmap = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🌡️ Generating testimony heatmap...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/heatmap`);
+        const data = await resp.json();
+        let html = `<div class="heatmap-panel">`;
+        html += `<div class="heatmap-header">🌡️ Testimony Intensity Heatmap</div>`;
+        html += `<div class="heatmap-meta">Avg intensity: <b>${data.avg_intensity}</b> | Peak: Stmt ${data.peak_index+1} | ${data.total_statements} statements</div>`;
+        html += `<div class="heatmap-visual">`;
+        (data.heatmap || []).forEach(h => {
+            const height = Math.max(8, h.intensity * 0.8);
+            html += `<div class="heatmap-bar" style="height:${height}px;background:${h.color}" title="Stmt ${h.index+1}: ${h.intensity}% intensity"></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="heatmap-legend"><span style="color:#ff4444">■ High</span> <span style="color:#ff8800">■ Medium</span> <span style="color:#44aa44">■ Low</span> <span style="color:#666">■ Minimal</span></div>`;
+        if (data.hot_zones && data.hot_zones.length > 0) {
+            html += `<div class="heatmap-zones"><b>🔥 Hot Zones:</b><br>`;
+            data.hot_zones.forEach(z => {
+                html += `<span class="heatmap-zone">Stmts ${z.start+1}–${z.end+1} (avg ${Math.round(z.avg)}%)</span> `;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate heatmap.'); }
 };

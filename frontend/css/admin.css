@@ -6148,3 +6148,29 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .sa-alert-icon { font-size: 1.1rem; }
 .sa-alert-title { font-weight: 600; font-size: 0.92rem; }
 .sa-alert-detail { flex: 1; text-align: right; font-size: 0.82rem; opacity: 0.65; }
+
+/* ═══ IMPROVEMENT 77: API Usage Analytics ═══ */
+.api-usage-content { padding: 8px 0; }
+.api-usage-loading { text-align: center; opacity: 0.5; padding: 12px; }
+.apu-stats { display: flex; gap: 16px; margin-bottom: 14px; }
+.apu-stat { display: flex; flex-direction: column; align-items: center; padding: 10px 18px; background: rgba(108,99,255,0.1); border-radius: 10px; flex: 1; }
+.apu-num { font-size: 1.6rem; font-weight: 700; color: #6C63FF; }
+.apu-label { font-size: 0.78rem; opacity: 0.6; text-transform: uppercase; }
+.apu-features { display: flex; flex-direction: column; gap: 5px; }
+.apu-feature { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.apu-fname { width: 130px; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apu-bar-bg { flex: 1; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.apu-bar-fill { height: 100%; background: linear-gradient(90deg, #6C63FF, #a78bfa); border-radius: 4px; transition: width 0.4s; }
+.apu-fcount { font-size: 0.82rem; font-weight: 600; min-width: 30px; text-align: right; }
+
+/* ═══ IMPROVEMENT 78: Active Sessions Monitor ═══ */
+.as-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.as-stat { padding: 4px 10px; background: rgba(255,255,255,0.06); border-radius: 8px; font-size: 0.82rem; }
+.as-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+.as-loading, .as-empty { text-align: center; opacity: 0.5; padding: 12px; }
+.as-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 0.85rem; }
+.as-status { font-size: 0.9rem; }
+.as-title { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-detail { font-size: 0.78rem; opacity: 0.55; }
+.as-badges { display: flex; gap: 4px; }
+.as-badge { font-size: 0.75rem; padding: 1px 4px; background: rgba(108,99,255,0.12); border-radius: 5px; }
