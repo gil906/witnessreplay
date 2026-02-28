@@ -8614,7 +8614,7 @@ WitnessReplayApp.prototype._showEvidence = async function() {
         return;
     }
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/evidence`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/extract-evidence`);
         const data = await resp.json();
         if (!data.items || data.items.length === 0) {
             this.displaySystemMessage('🔍 <b>No evidence items detected yet.</b><br>Mention physical items, vehicles, weapons, or other objects to see them listed here.');

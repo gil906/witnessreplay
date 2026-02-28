@@ -11445,8 +11445,8 @@ async def get_session_keywords(session_id: str):
 
 # ==================== Evidence Extraction ====================
 
-@router.get("/sessions/{session_id}/evidence")
-async def get_session_evidence(session_id: str):
+@router.get("/sessions/{session_id}/extract-evidence")
+async def extract_session_evidence_items(session_id: str):
     """Extract evidence items mentioned in a session's conversation."""
     session = await firestore_service.get_session(session_id)
     if not session:
