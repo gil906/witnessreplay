@@ -15623,8 +15623,576 @@ async def get_system_config(auth=Depends(require_admin_auth)):
             "retention_settings": _retention_settings,
         },
         "features": {
-            "total_endpoints": 50,
-            "admin_endpoints": 14,
-            "analysis_features": 30,
+            "total_endpoints": 57,
+            "admin_endpoints": 16,
+            "analysis_features": 35,
         },
+    }
+
+
+# ── Witness Credibility Scorecard ───────────────────
+@router.get("/sessions/{session_id}/credibility-report")
+async def credibility_report(session_id: str):
+    """Comprehensive credibility assessment combining multiple factors."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 20:
+                statements.append(content)
+
+    text = " ".join(statements).lower()
+    words = text.split()
+    total_words = len(words)
+
+    # Certainty language
+    certain_words = ["definitely", "certainly", "absolutely", "clearly", "obviously", "sure", "positive", "exactly"]
+    uncertain_words = ["maybe", "perhaps", "possibly", "might", "could", "think", "believe", "guess", "not sure", "i don't know"]
+    hedge_words = ["sort of", "kind of", "somewhat", "probably", "likely", "apparently"]
+    certain_count = sum(1 for w in words if w in certain_words)
+    uncertain_count = sum(text.count(p) for p in uncertain_words)
+    hedge_count = sum(text.count(p) for p in hedge_words)
+
+    # Detail level
+    specific_markers = ["on", "at", "exactly", "approximately", "around", "between"]
+    detail_score = min(100, int((sum(1 for w in words if w in specific_markers) / max(total_words, 1)) * 1000))
+
+    # Consistency (self-contradiction signals)
+    contradict_signals = ["actually", "i mean", "well actually", "no wait", "i meant", "correction"]
+    contradict_count = sum(text.count(p) for p in contradict_signals)
+
+    # Emotional control
+    exclamations = text.count("!") + text.count("?!")
+    caps_words = sum(1 for w in " ".join(statements).split() if w.isupper() and len(w) > 2)
+
+    # Calculate scores (0-100)
+    certainty_score = min(100, max(0, 50 + certain_count * 5 - uncertain_count * 8 - hedge_count * 4))
+    consistency_score = max(0, 100 - contradict_count * 15)
+    composure_score = max(0, 100 - exclamations * 5 - caps_words * 3)
+    detail_final = min(100, detail_score)
+
+    # Overall credibility
+    overall = int(certainty_score * 0.25 + consistency_score * 0.30 + composure_score * 0.20 + detail_final * 0.25)
+
+    # Assessment
+    if overall >= 80:
+        assessment = "High credibility — witness demonstrates strong consistency, certainty, and detailed recall"
+    elif overall >= 60:
+        assessment = "Moderate credibility — some areas of uncertainty but generally coherent testimony"
+    elif overall >= 40:
+        assessment = "Mixed credibility — notable inconsistencies or uncertainty patterns detected"
+    else:
+        assessment = "Low credibility — significant concerns with consistency, certainty, or detail level"
+
+    # Red flags
+    red_flags = []
+    if uncertain_count > 5:
+        red_flags.append(f"High uncertainty language ({uncertain_count} instances)")
+    if contradict_count > 3:
+        red_flags.append(f"Self-corrections detected ({contradict_count} instances)")
+    if hedge_count > 4:
+        red_flags.append(f"Excessive hedging ({hedge_count} instances)")
+    if exclamations > 5:
+        red_flags.append(f"Emotional outbursts ({exclamations} instances)")
+
+    # Strengths
+    strengths = []
+    if certain_count > 3:
+        strengths.append(f"Strong certainty language ({certain_count} instances)")
+    if consistency_score > 80:
+        strengths.append("High internal consistency")
+    if detail_final > 60:
+        strengths.append("Good level of specific detail")
+    if composure_score > 80:
+        strengths.append("Maintains emotional composure")
+
+    return {
+        "overall_score": overall,
+        "assessment": assessment,
+        "scores": {
+            "certainty": certainty_score,
+            "consistency": consistency_score,
+            "composure": composure_score,
+            "detail_level": detail_final,
+        },
+        "red_flags": red_flags,
+        "strengths": strengths,
+        "language_stats": {
+            "certain_words": certain_count,
+            "uncertain_words": uncertain_count,
+            "hedge_words": hedge_count,
+            "self_corrections": contradict_count,
+            "total_words_analyzed": total_words,
+        },
+        "statement_count": len(statements),
+    }
+
+
+# ── Testimony Word Cloud Data ───────────────────
+@router.get("/sessions/{session_id}/wordcloud-data")
+async def wordcloud_data(session_id: str):
+    """Generate word frequency data for word cloud visualization."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    text = " ".join(statements).lower()
+    # Remove punctuation
+    clean = re.sub(r'[^\w\s]', '', text)
+    words = clean.split()
+
+    # Stop words
+    stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+                  "of", "with", "by", "from", "is", "was", "were", "are", "been", "be",
+                  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+                  "should", "may", "might", "shall", "can", "it", "its", "this", "that",
+                  "these", "those", "i", "me", "my", "we", "our", "you", "your", "he",
+                  "she", "him", "her", "his", "they", "them", "their", "not", "no", "yes",
+                  "so", "if", "then", "than", "just", "very", "also", "about", "up", "out",
+                  "there", "here", "when", "where", "what", "which", "who", "how", "all",
+                  "each", "every", "some", "any", "as", "into", "through", "during", "before",
+                  "after", "above", "below", "between", "same", "other", "such", "only", "own",
+                  "too", "more", "most", "much", "many", "well", "back", "over", "like", "dont",
+                  "didnt", "im", "ive", "thats", "its", "was", "going", "know", "think", "said"}
+
+    freq = {}
+    for w in words:
+        if len(w) > 2 and w not in stop_words:
+            freq[w] = freq.get(w, 0) + 1
+
+    sorted_words = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+    top_words = [{"word": w, "count": c, "size": min(100, max(12, c * 8))} for w, c in sorted_words[:80]]
+
+    # Categorize top words
+    legal_terms = {"testimony", "witness", "evidence", "statement", "deposition", "court",
+                   "attorney", "counsel", "objection", "sustained", "overruled", "plaintiff",
+                   "defendant", "sworn", "oath", "exhibit", "prosecution", "defense", "verdict",
+                   "judge", "jury", "trial", "hearing", "motion", "stipulate"}
+    time_words = {"morning", "afternoon", "evening", "night", "day", "week", "month", "year",
+                  "today", "yesterday", "tomorrow", "monday", "tuesday", "wednesday", "thursday",
+                  "friday", "saturday", "sunday", "january", "february", "march"}
+    people_words = {"mr", "mrs", "ms", "dr", "sir", "maam"}
+
+    categories = {"legal": 0, "temporal": 0, "people": 0, "general": 0}
+    for w, c in sorted_words[:50]:
+        if w in legal_terms:
+            categories["legal"] += c
+        elif w in time_words:
+            categories["temporal"] += c
+        elif w in people_words:
+            categories["people"] += c
+        else:
+            categories["general"] += c
+
+    return {
+        "words": top_words,
+        "total_unique_words": len(freq),
+        "total_words": len(words),
+        "categories": categories,
+        "top_bigrams": _extract_bigrams(words, stop_words)[:20],
+    }
+
+
+def _extract_bigrams(words, stop_words):
+    bigrams = {}
+    for i in range(len(words) - 1):
+        if words[i] not in stop_words and words[i+1] not in stop_words and len(words[i]) > 2 and len(words[i+1]) > 2:
+            bg = f"{words[i]} {words[i+1]}"
+            bigrams[bg] = bigrams.get(bg, 0) + 1
+    return [{"phrase": p, "count": c} for p, c in sorted(bigrams.items(), key=lambda x: x[1], reverse=True)]
+
+
+# ── Deposition Cost Calculator ───────────────────
+@router.get("/sessions/{session_id}/depo-cost")
+async def deposition_cost_estimate(session_id: str):
+    """Estimate deposition costs based on testimony content."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if len(content) > 10:
+                statements.append(content)
+
+    full_text = " ".join(statements)
+    words = full_text.split()
+    total_words = len(words)
+    pages = max(1, total_words // 250)
+    hours = max(0.5, total_words / 9000)  # ~150 words/min speaking rate
+
+    # Cost estimates (typical US rates)
+    court_reporter_per_page = 6.50
+    court_reporter_appearance = 350
+    videographer_per_hour = 150
+    videographer_appearance = 250
+    transcript_per_page = 4.50
+    exhibit_per_page = 1.50
+
+    # Estimate exhibits
+    exhibit_count = full_text.lower().count("exhibit") + full_text.lower().count("document") // 2
+    exhibit_pages = exhibit_count * 3
+
+    costs = {
+        "court_reporter": {
+            "appearance_fee": court_reporter_appearance,
+            "per_page_fee": round(pages * court_reporter_per_page, 2),
+            "subtotal": round(court_reporter_appearance + pages * court_reporter_per_page, 2),
+        },
+        "videographer": {
+            "appearance_fee": videographer_appearance,
+            "hourly_fee": round(hours * videographer_per_hour, 2),
+            "subtotal": round(videographer_appearance + hours * videographer_per_hour, 2),
+        },
+        "transcript": {
+            "original_per_page": round(pages * transcript_per_page, 2),
+            "copy_per_page": round(pages * 1.50, 2),
+            "expedited_surcharge": round(pages * 2.00, 2) if pages > 100 else 0,
+            "subtotal": round(pages * transcript_per_page + pages * 1.50, 2),
+        },
+        "exhibits": {
+            "estimated_exhibits": exhibit_count,
+            "exhibit_pages": exhibit_pages,
+            "exhibit_cost": round(exhibit_pages * exhibit_per_page, 2),
+        },
+    }
+
+    total = round(
+        costs["court_reporter"]["subtotal"]
+        + costs["videographer"]["subtotal"]
+        + costs["transcript"]["subtotal"]
+        + costs["exhibits"]["exhibit_cost"],
+        2,
+    )
+
+    return {
+        "estimated_total": total,
+        "breakdown": costs,
+        "deposition_stats": {
+            "estimated_pages": pages,
+            "estimated_hours": round(hours, 1),
+            "total_words": total_words,
+            "estimated_exhibits": exhibit_count,
+        },
+        "notes": [
+            "Estimates based on average US metropolitan rates",
+            "Actual costs vary by jurisdiction and provider",
+            "Does not include attorney fees or travel expenses",
+            "Expedited transcript surcharges apply for 100+ pages",
+        ],
+    }
+
+
+# ── Testimony Readability Score ───────────────────
+@router.get("/sessions/{session_id}/readability")
+async def testimony_readability(session_id: str):
+    """Calculate readability metrics for testimony text."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    text = " ".join(statements)
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 3]
+    words = text.split()
+    total_words = len(words)
+    total_sentences = max(1, len(sentences))
+
+    def count_syllables(word):
+        word = word.lower().strip(".,!?;:")
+        if len(word) <= 2:
+            return 1
+        count = 0
+        vowels = "aeiouy"
+        prev_vowel = False
+        for ch in word:
+            if ch in vowels:
+                if not prev_vowel:
+                    count += 1
+                prev_vowel = True
+            else:
+                prev_vowel = False
+        if word.endswith("e") and count > 1:
+            count -= 1
+        return max(1, count)
+
+    total_syllables = sum(count_syllables(w) for w in words)
+    complex_words = sum(1 for w in words if count_syllables(w) >= 3)
+    avg_word_len = sum(len(w) for w in words) / max(total_words, 1)
+    avg_sentence_len = total_words / total_sentences
+
+    # Flesch Reading Ease
+    flesch = 206.835 - 1.015 * avg_sentence_len - 84.6 * (total_syllables / max(total_words, 1))
+    flesch = max(0, min(100, round(flesch, 1)))
+
+    # Flesch-Kincaid Grade Level
+    fk_grade = 0.39 * avg_sentence_len + 11.8 * (total_syllables / max(total_words, 1)) - 15.59
+    fk_grade = max(0, round(fk_grade, 1))
+
+    # Gunning Fog Index
+    fog = 0.4 * (avg_sentence_len + 100 * (complex_words / max(total_words, 1)))
+    fog = max(0, round(fog, 1))
+
+    # Coleman-Liau Index
+    L = (avg_word_len * 100) / max(total_words, 1) * total_words
+    S = (total_sentences / max(total_words, 1)) * 100
+    cli = 0.0588 * (sum(len(w) for w in words) / max(total_words, 1) * 100) - 0.296 * S - 15.8
+    cli = max(0, round(cli, 1))
+
+    # Interpretation
+    if flesch >= 80:
+        reading_level = "Very Easy"
+        audience = "Elementary school level — simple, clear testimony"
+    elif flesch >= 60:
+        reading_level = "Standard"
+        audience = "8th-9th grade level — typical conversational testimony"
+    elif flesch >= 40:
+        reading_level = "Somewhat Difficult"
+        audience = "College level — uses technical or legal language"
+    elif flesch >= 20:
+        reading_level = "Difficult"
+        audience = "Graduate level — dense, complex testimony"
+    else:
+        reading_level = "Very Difficult"
+        audience = "Professional level — highly technical/legal content"
+
+    return {
+        "scores": {
+            "flesch_reading_ease": flesch,
+            "flesch_kincaid_grade": fk_grade,
+            "gunning_fog_index": fog,
+            "coleman_liau_index": cli,
+        },
+        "interpretation": {
+            "reading_level": reading_level,
+            "audience": audience,
+            "grade_level": fk_grade,
+        },
+        "text_stats": {
+            "total_words": total_words,
+            "total_sentences": total_sentences,
+            "total_syllables": total_syllables,
+            "complex_words": complex_words,
+            "avg_word_length": round(avg_word_len, 1),
+            "avg_sentence_length": round(avg_sentence_len, 1),
+        },
+        "statement_count": len(statements),
+    }
+
+
+# ── Key Date Extractor ───────────────────
+@router.get("/sessions/{session_id}/keydates")
+async def extract_key_dates(session_id: str):
+    """Extract all dates and temporal references from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    text = " ".join(statements)
+    dates_found = []
+
+    # Pattern: MM/DD/YYYY or MM-DD-YYYY
+    for match in re.finditer(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', text):
+        dates_found.append({"date": match.group(1), "format": "numeric", "context": _get_context(text, match.start())})
+
+    # Pattern: Month DD, YYYY
+    months = "January|February|March|April|May|June|July|August|September|October|November|December"
+    for match in re.finditer(rf'\b({months})\s+(\d{{1,2}}),?\s*(\d{{4}})?\b', text, re.IGNORECASE):
+        date_str = match.group(0)
+        dates_found.append({"date": date_str, "format": "written", "context": _get_context(text, match.start())})
+
+    # Pattern: "last Monday", "next week", relative dates
+    relative_patterns = [
+        (r'\b(last|next|this)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|year)\b', "relative_day"),
+        (r'\b(\d+)\s+(days?|weeks?|months?|years?)\s+(ago|later|before|after)\b', "relative_duration"),
+        (r'\b(yesterday|today|tomorrow|the day before|the day after|that morning|that evening|that night|that afternoon)\b', "relative_reference"),
+    ]
+    for pattern, ptype in relative_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            dates_found.append({"date": match.group(0), "format": ptype, "context": _get_context(text, match.start())})
+
+    # Pattern: time references
+    times_found = []
+    for match in re.finditer(r'\b(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)\b', text):
+        times_found.append({"time": match.group(1), "context": _get_context(text, match.start())})
+    for match in re.finditer(r'\b(\d{1,2}\s*(?:am|pm|AM|PM|a\.m\.|p\.m\.))\b', text):
+        times_found.append({"time": match.group(1), "context": _get_context(text, match.start())})
+
+    # Sequence words
+    sequence_words = []
+    seq_patterns = ["first", "then", "next", "after that", "before that", "later", "earlier",
+                    "subsequently", "previously", "finally", "at that point", "meanwhile"]
+    for pat in seq_patterns:
+        count = text.lower().count(pat)
+        if count > 0:
+            sequence_words.append({"word": pat, "occurrences": count})
+
+    return {
+        "dates": dates_found[:50],
+        "times": times_found[:30],
+        "sequence_markers": sorted(sequence_words, key=lambda x: x["occurrences"], reverse=True),
+        "summary": {
+            "total_dates": len(dates_found),
+            "total_times": len(times_found),
+            "date_formats": {"numeric": sum(1 for d in dates_found if d["format"] == "numeric"),
+                            "written": sum(1 for d in dates_found if d["format"] == "written"),
+                            "relative": sum(1 for d in dates_found if d["format"].startswith("relative"))},
+        },
+        "statement_count": len(statements),
+    }
+
+
+def _get_context(text, pos, window=60):
+    start = max(0, pos - window)
+    end = min(len(text), pos + window)
+    ctx = text[start:end].strip()
+    if start > 0:
+        ctx = "..." + ctx
+    if end < len(text):
+        ctx = ctx + "..."
+    return ctx
+
+
+# ── Admin Endpoint Usage Trends ───────────────────
+_usage_history = deque(maxlen=5000)
+
+def _track_usage_history(endpoint: str):
+    _usage_history.append({
+        "endpoint": endpoint,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+@router.get("/admin/usage-trends")
+async def get_usage_trends(hours: int = 24, auth=Depends(require_admin_auth)):
+    """Track endpoint usage over time with trends."""
+    _log_admin_action("view_usage_trends", "Viewed usage trends")
+    now = datetime.now(timezone.utc)
+    cutoff = now - __import__("datetime").timedelta(hours=hours)
+
+    # Group by hour
+    hourly = {}
+    endpoint_counts = {}
+    for entry in _usage_history:
+        try:
+            ts = datetime.fromisoformat(entry["timestamp"])
+            if ts >= cutoff:
+                hour_key = ts.strftime("%Y-%m-%d %H:00")
+                hourly[hour_key] = hourly.get(hour_key, 0) + 1
+                ep = entry["endpoint"]
+                endpoint_counts[ep] = endpoint_counts.get(ep, 0) + 1
+        except Exception:
+            continue
+
+    # Sort hourly data
+    sorted_hours = sorted(hourly.items())
+    top_endpoints = sorted(endpoint_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+
+    # Calculate trend
+    if len(sorted_hours) >= 2:
+        first_half = sum(v for _, v in sorted_hours[:len(sorted_hours)//2])
+        second_half = sum(v for _, v in sorted_hours[len(sorted_hours)//2:])
+        if first_half > 0:
+            trend_pct = round(((second_half - first_half) / first_half) * 100, 1)
+        else:
+            trend_pct = 0
+        trend = "increasing" if trend_pct > 10 else "decreasing" if trend_pct < -10 else "stable"
+    else:
+        trend_pct = 0
+        trend = "insufficient_data"
+
+    return {
+        "period_hours": hours,
+        "total_requests": len([e for e in _usage_history if True]),
+        "hourly_data": [{"hour": h, "requests": c} for h, c in sorted_hours],
+        "top_endpoints": [{"endpoint": ep, "requests": c} for ep, c in top_endpoints],
+        "trend": {
+            "direction": trend,
+            "change_percent": trend_pct,
+        },
+    }
+
+
+# ── Admin Session Search ───────────────────
+@router.get("/admin/session-search")
+async def admin_session_search(q: str = "", auth=Depends(require_admin_auth)):
+    """Search sessions by content, title, or metadata."""
+    _log_admin_action("session_search", f"Searched sessions: {q}")
+    sessions = await firestore_service.list_sessions(limit=500)
+    query = q.lower().strip()
+
+    results = []
+    for s in sessions:
+        title = getattr(s, "title", "") or ""
+        session_id = getattr(s, "id", "") or ""
+        created = getattr(s, "created_at", "") or ""
+        messages = getattr(s, "messages", []) or []
+
+        # Search in title
+        if query in title.lower():
+            results.append({
+                "id": session_id,
+                "title": title,
+                "created_at": str(created),
+                "match_type": "title",
+                "message_count": len(messages),
+            })
+            continue
+
+        # Search in message content
+        for m in messages:
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if query and query in content.lower():
+                snippet_idx = content.lower().index(query)
+                snippet_start = max(0, snippet_idx - 40)
+                snippet_end = min(len(content), snippet_idx + len(query) + 40)
+                snippet = content[snippet_start:snippet_end]
+                if snippet_start > 0:
+                    snippet = "..." + snippet
+                if snippet_end < len(content):
+                    snippet += "..."
+                results.append({
+                    "id": session_id,
+                    "title": title,
+                    "created_at": str(created),
+                    "match_type": "content",
+                    "snippet": snippet,
+                    "message_count": len(messages),
+                })
+                break
+
+    return {
+        "query": q,
+        "total_results": len(results),
+        "results": results[:50],
     }

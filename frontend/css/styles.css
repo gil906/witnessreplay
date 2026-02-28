@@ -12927,3 +12927,95 @@ textarea:disabled {
 .dur-seg-bar-wrap { flex: 1; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
 .dur-seg-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
 .dur-seg-words { font-size: 0.75rem; opacity: 0.5; width: 40px; text-align: right; }
+
+/* ── Credibility Report ─────────────────── */
+.credibility-panel { padding: 16px; }
+.credibility-panel h4 { margin: 0 0 14px; font-size: 1.1rem; }
+.cred-overall { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding: 14px; background: rgba(108,99,255,0.08); border-radius: 10px; }
+.cred-score-ring { width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; background: conic-gradient(#6c63ff calc(var(--score) * 1%), rgba(255,255,255,0.08) 0); color: #fff; }
+.cred-assessment { flex: 1; font-size: 0.92rem; opacity: 0.85; line-height: 1.4; }
+.cred-meters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.cred-meter { display: flex; align-items: center; gap: 8px; }
+.cred-label { width: 120px; font-size: 0.85rem; }
+.cred-bar-bg { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.cred-bar { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
+.cred-val { width: 30px; text-align: right; font-weight: 600; font-size: 0.85rem; }
+.cred-flags, .cred-strengths { margin-bottom: 10px; }
+.cred-flags h5, .cred-strengths h5 { font-size: 0.9rem; margin: 0 0 6px; }
+.cred-flag { padding: 5px 10px; background: rgba(244,67,54,0.1); border-radius: 6px; margin-bottom: 4px; font-size: 0.85rem; }
+.cred-strength { padding: 5px 10px; background: rgba(76,175,80,0.1); border-radius: 6px; margin-bottom: 4px; font-size: 0.85rem; }
+.cred-stats { text-align: center; opacity: 0.5; font-size: 0.8rem; margin-top: 10px; }
+
+/* ── Word Cloud ─────────────────── */
+.wordcloud-panel { padding: 16px; }
+.wordcloud-panel h4 { margin: 0 0 14px; font-size: 1.1rem; }
+.wc-cloud { padding: 16px; background: rgba(255,255,255,0.03); border-radius: 10px; text-align: center; line-height: 2.2; margin-bottom: 14px; min-height: 100px; }
+.wc-word { display: inline-block; padding: 2px 6px; cursor: default; transition: transform 0.2s; }
+.wc-word:hover { transform: scale(1.15); }
+.wc-categories { margin-bottom: 12px; }
+.wc-categories h5 { font-size: 0.9rem; margin: 0 0 8px; }
+.wc-cat { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.wc-cat-name { width: 80px; font-size: 0.82rem; text-transform: capitalize; }
+.wc-cat-bar-bg { flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+.wc-cat-bar { height: 100%; background: #6c63ff; border-radius: 4px; }
+.wc-cat-pct { width: 35px; text-align: right; font-size: 0.82rem; opacity: 0.7; }
+.wc-bigrams { margin-bottom: 10px; }
+.wc-bigrams h5 { font-size: 0.9rem; margin: 0 0 6px; }
+.wc-bigram { display: inline-block; padding: 3px 10px; background: rgba(108,99,255,0.12); border-radius: 12px; margin: 2px 4px; font-size: 0.82rem; }
+.wc-stats { text-align: center; opacity: 0.5; font-size: 0.8rem; margin-top: 8px; }
+
+/* ── Deposition Cost Calculator ─────────────────── */
+.depocost-panel { padding: 16px; }
+.depocost-panel h4 { margin: 0 0 14px; font-size: 1.1rem; }
+.dc-total { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: linear-gradient(135deg, rgba(76,175,80,0.15), rgba(108,99,255,0.1)); border-radius: 10px; margin-bottom: 14px; }
+.dc-total-label { font-size: 1rem; opacity: 0.8; }
+.dc-total-val { font-size: 1.6rem; font-weight: 700; color: #4caf50; }
+.dc-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.dc-stat { padding: 6px 12px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.85rem; }
+.dc-breakdown { margin-bottom: 14px; }
+.dc-breakdown h5 { font-size: 0.9rem; margin: 0 0 8px; }
+.dc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dc-row-label { width: 130px; font-size: 0.85rem; }
+.dc-row-bar-bg { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.dc-row-bar { height: 100%; background: #4caf50; border-radius: 5px; transition: width 0.4s; }
+.dc-row-val { width: 80px; text-align: right; font-weight: 600; font-size: 0.85rem; }
+.dc-notes { margin-top: 10px; }
+.dc-notes h5 { font-size: 0.9rem; margin: 0 0 6px; }
+.dc-note { font-size: 0.82rem; opacity: 0.6; margin-bottom: 3px; }
+
+/* ── Readability Score ─────────────────── */
+.readability-panel { padding: 16px; }
+.readability-panel h4 { margin: 0 0 14px; font-size: 1.1rem; }
+.read-summary { text-align: center; padding: 14px; background: rgba(108,99,255,0.08); border-radius: 10px; margin-bottom: 14px; }
+.read-level { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
+.read-audience { font-size: 0.88rem; opacity: 0.75; margin-bottom: 4px; }
+.read-grade { font-size: 0.85rem; opacity: 0.6; }
+.read-scores { margin-bottom: 14px; }
+.read-scores h5 { font-size: 0.9rem; margin: 0 0 8px; }
+.read-score-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.read-score-label { width: 160px; font-size: 0.82rem; }
+.read-score-bar-bg { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.read-score-bar { height: 100%; border-radius: 5px; transition: width 0.4s; }
+.read-score-val { min-width: 90px; text-align: right; font-size: 0.82rem; }
+.read-score-val small { opacity: 0.5; }
+.read-text-stats { margin-bottom: 10px; }
+.read-text-stats h5 { font-size: 0.9rem; margin: 0 0 8px; }
+.read-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.read-stat { text-align: center; padding: 10px 6px; background: rgba(255,255,255,0.04); border-radius: 8px; }
+.read-stat .rs-val { display: block; font-size: 1.2rem; font-weight: 700; color: #6c63ff; }
+.read-stat .rs-label { display: block; font-size: 0.75rem; opacity: 0.5; margin-top: 2px; }
+
+/* ── Key Dates ─────────────────── */
+.keydates-panel { padding: 16px; }
+.keydates-panel h4 { margin: 0 0 14px; font-size: 1.1rem; }
+.kd-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.kd-badge { padding: 5px 12px; background: rgba(108,99,255,0.12); border-radius: 12px; font-size: 0.82rem; }
+.kd-dates, .kd-times { margin-bottom: 12px; }
+.kd-dates h5, .kd-times h5, .kd-seq h5 { font-size: 0.9rem; margin: 0 0 8px; }
+.kd-date, .kd-time { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; margin-bottom: 4px; }
+.kd-icon { font-size: 1rem; }
+.kd-val { font-weight: 600; font-size: 0.88rem; white-space: nowrap; }
+.kd-ctx { font-size: 0.78rem; opacity: 0.5; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.kd-seq { margin-bottom: 10px; }
+.kd-seq-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.kd-seq-tag { padding: 4px 10px; background: rgba(67,170,139,0.12); border-radius: 10px; font-size: 0.82rem; }

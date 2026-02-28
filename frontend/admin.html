@@ -458,6 +458,22 @@
                 </div>
             </section>
 
+            <section class="admin-panel usage-trends-panel" id="usage-trends-section">
+                <h3>📈 Usage Trends <button id="trends-refresh" class="admin-btn-sm">🔄</button></h3>
+                <div id="usage-trends-content">
+                    <div class="config-loading">Loading trends...</div>
+                </div>
+            </section>
+
+            <section class="admin-panel session-search-panel" id="session-search-section">
+                <h3>🔍 Session Search</h3>
+                <div class="search-input-wrap">
+                    <input type="text" id="admin-search-input" class="search-input" placeholder="Search sessions by title or content...">
+                    <button id="admin-search-btn" class="search-btn">Search</button>
+                </div>
+                <div id="session-search-results"></div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

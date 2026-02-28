@@ -7840,6 +7840,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/duration': () => {
             this._showDuration();
+        },
+        '/credreport': () => {
+            this._showCredibilityReport();
+        },
+        '/wordcloud': () => {
+            this._showWordCloudData();
+        },
+        '/depocost': () => {
+            this._showDepoCost();
+        },
+        '/readability': () => {
+            this._showReadability();
+        },
+        '/keydates': () => {
+            this._showKeyDates();
         }
     };
     
@@ -7965,7 +7980,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/crossex', desc: 'Cross-exam planner' },
         { cmd: '/consistency', desc: 'Consistency score' },
         { cmd: '/admissions', desc: 'Admission tracker' },
-        { cmd: '/duration', desc: 'Duration estimator' }
+        { cmd: '/duration', desc: 'Duration estimator' },
+        { cmd: '/credreport', desc: 'Credibility scorecard' },
+        { cmd: '/wordcloud', desc: 'Word cloud data' },
+        { cmd: '/depocost', desc: 'Deposition cost estimate' },
+        { cmd: '/readability', desc: 'Readability scores' },
+        { cmd: '/keydates', desc: 'Key date extractor' }
     ];
     
     const filter = val.toLowerCase();
@@ -11136,4 +11156,187 @@ WitnessReplayApp.prototype._showDuration = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not estimate duration.'); }
+};
+
+// ── Credibility Report ───────────────────
+WitnessReplayApp.prototype._showCredibilityReport = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔍 Building credibility scorecard...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/credibility-report`);
+        const data = await resp.json();
+        let html = `<div class="credibility-panel"><h4>🛡️ Witness Credibility Scorecard</h4>`;
+        html += `<div class="cred-overall"><div class="cred-score-ring" style="--score:${data.overall_score}">${data.overall_score}/100</div>`;
+        html += `<div class="cred-assessment">${data.assessment}</div></div>`;
+        html += `<div class="cred-meters">`;
+        const scoreLabels = {certainty: '🎯 Certainty', consistency: '🔗 Consistency', composure: '😌 Composure', detail_level: '🔬 Detail'};
+        Object.entries(data.scores).forEach(([k, v]) => {
+            const color = v >= 70 ? '#4caf50' : v >= 40 ? '#ff9800' : '#f44336';
+            html += `<div class="cred-meter"><span class="cred-label">${scoreLabels[k] || k}</span><div class="cred-bar-bg"><div class="cred-bar" style="width:${v}%;background:${color}"></div></div><span class="cred-val">${v}</span></div>`;
+        });
+        html += `</div>`;
+        if (data.red_flags.length) {
+            html += `<div class="cred-flags"><h5>🚩 Red Flags</h5>`;
+            data.red_flags.forEach(f => html += `<div class="cred-flag">⚠️ ${f}</div>`);
+            html += `</div>`;
+        }
+        if (data.strengths.length) {
+            html += `<div class="cred-strengths"><h5>💪 Strengths</h5>`;
+            data.strengths.forEach(s => html += `<div class="cred-strength">✅ ${s}</div>`);
+            html += `</div>`;
+        }
+        html += `<div class="cred-stats">📊 Analyzed ${data.language_stats.total_words_analyzed} words across ${data.statement_count} statements</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate credibility report.'); }
+};
+
+// ── Word Cloud Data ───────────────────
+WitnessReplayApp.prototype._showWordCloudData = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('☁️ Generating word cloud...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/wordcloud-data`);
+        const data = await resp.json();
+        let html = `<div class="wordcloud-panel"><h4>☁️ Testimony Word Cloud</h4>`;
+        html += `<div class="wc-cloud">`;
+        const colors = ['#6c63ff', '#ff6584', '#43aa8b', '#f8961e', '#577590', '#90be6d', '#f94144', '#277da1'];
+        data.words.slice(0, 50).forEach((w, i) => {
+            const fontSize = Math.max(12, Math.min(42, w.size));
+            const color = colors[i % colors.length];
+            const rotate = (i % 3 === 0) ? `transform:rotate(-${5 + (i % 15)}deg)` : '';
+            html += `<span class="wc-word" style="font-size:${fontSize}px;color:${color};${rotate}" title="${w.count} occurrences">${w.word}</span> `;
+        });
+        html += `</div>`;
+        html += `<div class="wc-categories"><h5>📊 Word Categories</h5>`;
+        Object.entries(data.categories).forEach(([cat, count]) => {
+            const total = Object.values(data.categories).reduce((a, b) => a + b, 0) || 1;
+            const pct = Math.round((count / total) * 100);
+            html += `<div class="wc-cat"><span class="wc-cat-name">${cat}</span><div class="wc-cat-bar-bg"><div class="wc-cat-bar" style="width:${pct}%"></div></div><span class="wc-cat-pct">${pct}%</span></div>`;
+        });
+        html += `</div>`;
+        if (data.top_bigrams && data.top_bigrams.length) {
+            html += `<div class="wc-bigrams"><h5>🔗 Common Phrases</h5>`;
+            data.top_bigrams.slice(0, 10).forEach(b => {
+                html += `<span class="wc-bigram">"${b.phrase}" (${b.count})</span>`;
+            });
+            html += `</div>`;
+        }
+        html += `<div class="wc-stats">📊 ${data.total_unique_words} unique words from ${data.total_words} total</div></div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate word cloud.'); }
+};
+
+// ── Deposition Cost Calculator ───────────────────
+WitnessReplayApp.prototype._showDepoCost = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('💰 Calculating deposition costs...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/depo-cost`);
+        const data = await resp.json();
+        let html = `<div class="depocost-panel"><h4>💰 Deposition Cost Estimator</h4>`;
+        html += `<div class="dc-total"><span class="dc-total-label">Estimated Total</span><span class="dc-total-val">$${data.estimated_total.toLocaleString()}</span></div>`;
+        html += `<div class="dc-stats">`;
+        html += `<span class="dc-stat">📄 ${data.deposition_stats.estimated_pages} pages</span>`;
+        html += `<span class="dc-stat">⏱️ ${data.deposition_stats.estimated_hours} hours</span>`;
+        html += `<span class="dc-stat">📝 ${data.deposition_stats.total_words.toLocaleString()} words</span>`;
+        html += `<span class="dc-stat">📎 ${data.deposition_stats.estimated_exhibits} exhibits</span>`;
+        html += `</div>`;
+        html += `<div class="dc-breakdown"><h5>📋 Cost Breakdown</h5>`;
+        const sections = [
+            { label: '📝 Court Reporter', data: data.breakdown.court_reporter, key: 'subtotal' },
+            { label: '📹 Videographer', data: data.breakdown.videographer, key: 'subtotal' },
+            { label: '📄 Transcript', data: data.breakdown.transcript, key: 'subtotal' },
+            { label: '📎 Exhibits', data: data.breakdown.exhibits, key: 'exhibit_cost' },
+        ];
+        const maxCost = Math.max(...sections.map(s => s.data[s.key])) || 1;
+        sections.forEach(s => {
+            const pct = Math.round((s.data[s.key] / maxCost) * 100);
+            html += `<div class="dc-row"><span class="dc-row-label">${s.label}</span><div class="dc-row-bar-bg"><div class="dc-row-bar" style="width:${pct}%"></div></div><span class="dc-row-val">$${s.data[s.key].toLocaleString()}</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="dc-notes"><h5>📌 Notes</h5>`;
+        data.notes.forEach(n => html += `<div class="dc-note">• ${n}</div>`);
+        html += `</div></div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not estimate costs.'); }
+};
+
+// ── Readability Score ───────────────────
+WitnessReplayApp.prototype._showReadability = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📖 Analyzing readability...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/readability`);
+        const data = await resp.json();
+        let html = `<div class="readability-panel"><h4>📖 Testimony Readability Analysis</h4>`;
+        html += `<div class="read-summary"><div class="read-level">${data.interpretation.reading_level}</div>`;
+        html += `<div class="read-audience">${data.interpretation.audience}</div>`;
+        html += `<div class="read-grade">Grade Level: ${data.interpretation.grade_level}</div></div>`;
+        html += `<div class="read-scores"><h5>📊 Readability Scores</h5>`;
+        const scoreInfo = [
+            { label: 'Flesch Reading Ease', val: data.scores.flesch_reading_ease, max: 100, desc: 'Higher = easier' },
+            { label: 'Flesch-Kincaid Grade', val: data.scores.flesch_kincaid_grade, max: 20, desc: 'US grade level' },
+            { label: 'Gunning Fog Index', val: data.scores.gunning_fog_index, max: 20, desc: 'Years of education' },
+            { label: 'Coleman-Liau Index', val: data.scores.coleman_liau_index, max: 20, desc: 'US grade level' },
+        ];
+        scoreInfo.forEach(s => {
+            const pct = Math.min(100, Math.round((s.val / s.max) * 100));
+            const color = s.label.includes('Ease') ? (s.val >= 60 ? '#4caf50' : s.val >= 40 ? '#ff9800' : '#f44336') : (s.val <= 8 ? '#4caf50' : s.val <= 12 ? '#ff9800' : '#f44336');
+            html += `<div class="read-score-row"><span class="read-score-label">${s.label}</span><div class="read-score-bar-bg"><div class="read-score-bar" style="width:${pct}%;background:${color}"></div></div><span class="read-score-val">${s.val} <small>${s.desc}</small></span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="read-text-stats"><h5>📝 Text Statistics</h5>`;
+        html += `<div class="read-stat-grid">`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.total_words.toLocaleString()}</span><span class="rs-label">Words</span></div>`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.total_sentences}</span><span class="rs-label">Sentences</span></div>`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.avg_word_length}</span><span class="rs-label">Avg Word Len</span></div>`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.avg_sentence_length}</span><span class="rs-label">Avg Sent Len</span></div>`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.complex_words}</span><span class="rs-label">Complex Words</span></div>`;
+        html += `<div class="read-stat"><span class="rs-val">${data.text_stats.total_syllables.toLocaleString()}</span><span class="rs-label">Syllables</span></div>`;
+        html += `</div></div></div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze readability.'); }
+};
+
+// ── Key Dates Extractor ───────────────────
+WitnessReplayApp.prototype._showKeyDates = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📅 Extracting key dates...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/keydates`);
+        const data = await resp.json();
+        let html = `<div class="keydates-panel"><h4>📅 Key Date Extractor</h4>`;
+        html += `<div class="kd-summary">`;
+        html += `<span class="kd-badge">📆 ${data.summary.total_dates} dates</span>`;
+        html += `<span class="kd-badge">⏰ ${data.summary.total_times} times</span>`;
+        html += `<span class="kd-badge">📝 ${data.summary.date_formats.numeric} numeric</span>`;
+        html += `<span class="kd-badge">✍️ ${data.summary.date_formats.written} written</span>`;
+        html += `<span class="kd-badge">🔄 ${data.summary.date_formats.relative} relative</span>`;
+        html += `</div>`;
+        if (data.dates.length) {
+            html += `<div class="kd-dates"><h5>📆 Dates Found</h5>`;
+            data.dates.slice(0, 20).forEach(d => {
+                const icon = d.format === 'numeric' ? '📆' : d.format === 'written' ? '✍️' : '🔄';
+                html += `<div class="kd-date"><span class="kd-icon">${icon}</span><span class="kd-val">${d.date}</span><span class="kd-ctx">${d.context || ''}</span></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.times.length) {
+            html += `<div class="kd-times"><h5>⏰ Times Found</h5>`;
+            data.times.slice(0, 15).forEach(t => {
+                html += `<div class="kd-time"><span class="kd-icon">⏰</span><span class="kd-val">${t.time}</span><span class="kd-ctx">${t.context || ''}</span></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.sequence_markers.length) {
+            html += `<div class="kd-seq"><h5>🔗 Sequence Markers</h5><div class="kd-seq-list">`;
+            data.sequence_markers.slice(0, 10).forEach(s => {
+                html += `<span class="kd-seq-tag">${s.word} (${s.occurrences})</span>`;
+            });
+            html += `</div></div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract key dates.'); }
 };

@@ -5920,4 +5920,75 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const configRefreshBtn = document.getElementById('config-refresh');
     if (configRefreshBtn) configRefreshBtn.addEventListener('click', loadSystemConfig);
+
+    // ── Usage Trends ───────────────────
+    async function loadUsageTrends() {
+        const contentDiv = document.getElementById('usage-trends-content');
+        if (!contentDiv) return;
+        try {
+            const resp = await fetch('/api/admin/usage-trends?hours=24', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') } });
+            if (resp.ok) {
+                const data = await resp.json();
+                let html = `<div class="trend-header"><span>Last ${data.period_hours}h — ${data.total_requests} requests</span>`;
+                const tCls = data.trend.direction === 'increasing' ? 'up' : data.trend.direction === 'decreasing' ? 'down' : 'stable';
+                const tIcon = tCls === 'up' ? '📈' : tCls === 'down' ? '📉' : '➡️';
+                html += `<span class="trend-direction ${tCls}">${tIcon} ${data.trend.direction} (${data.trend.change_percent > 0 ? '+' : ''}${data.trend.change_percent}%)</span></div>`;
+                if (data.hourly_data.length) {
+                    const maxReq = Math.max(...data.hourly_data.map(h => h.requests)) || 1;
+                    html += `<div class="trend-chart">`;
+                    data.hourly_data.forEach(h => {
+                        const hPct = Math.max(2, Math.round((h.requests / maxReq) * 100));
+                        html += `<div class="trend-bar" style="height:${hPct}%" title="${h.hour}: ${h.requests} req"></div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (data.top_endpoints.length) {
+                    html += `<div class="trend-endpoints"><strong>Top Endpoints</strong>`;
+                    data.top_endpoints.slice(0, 10).forEach(ep => {
+                        html += `<div class="trend-ep-row"><span class="trend-ep-name">${ep.endpoint}</span><span class="trend-ep-count">${ep.requests}</span></div>`;
+                    });
+                    html += `</div>`;
+                } else {
+                    html += `<div style="text-align:center;opacity:0.4;padding:16px;">No usage data yet</div>`;
+                }
+                contentDiv.innerHTML = html;
+            }
+        } catch (e) { console.error('Trends load failed:', e); }
+    }
+    loadUsageTrends();
+    const trendsRefreshBtn = document.getElementById('trends-refresh');
+    if (trendsRefreshBtn) trendsRefreshBtn.addEventListener('click', loadUsageTrends);
+
+    // ── Session Search ───────────────────
+    async function searchSessions() {
+        const input = document.getElementById('admin-search-input');
+        const resultsDiv = document.getElementById('session-search-results');
+        if (!input || !resultsDiv) return;
+        const q = input.value.trim();
+        if (!q) { resultsDiv.innerHTML = '<div style="opacity:0.4;text-align:center;">Enter a search term</div>'; return; }
+        resultsDiv.innerHTML = '<div class="config-loading">Searching...</div>';
+        try {
+            const resp = await fetch(`/api/admin/session-search?q=${encodeURIComponent(q)}`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') } });
+            if (resp.ok) {
+                const data = await resp.json();
+                let html = `<div class="search-results-count">${data.total_results} result${data.total_results !== 1 ? 's' : ''} for "${data.query}"</div>`;
+                if (data.results.length === 0) {
+                    html += `<div style="text-align:center;opacity:0.4;padding:16px;">No sessions found</div>`;
+                } else {
+                    data.results.forEach(r => {
+                        html += `<div class="search-result">`;
+                        html += `<div class="search-result-title">${r.title || r.id}<span class="search-match-badge ${r.match_type}">${r.match_type}</span></div>`;
+                        html += `<div class="search-result-meta">${r.message_count} messages • ${r.created_at || 'unknown date'}</div>`;
+                        if (r.snippet) html += `<div class="search-result-snippet">${r.snippet}</div>`;
+                        html += `</div>`;
+                    });
+                }
+                resultsDiv.innerHTML = html;
+            }
+        } catch (e) { console.error('Search failed:', e); resultsDiv.innerHTML = '<div style="color:#f44336;">Search failed</div>'; }
+    }
+    const searchBtn = document.getElementById('admin-search-btn');
+    if (searchBtn) searchBtn.addEventListener('click', searchSessions);
+    const searchInput = document.getElementById('admin-search-input');
+    if (searchInput) searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchSessions(); });
 });
