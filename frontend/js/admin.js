@@ -5797,5 +5797,63 @@ document.addEventListener('DOMContentLoaded', function() {
     if (apiRefreshBtn) apiRefreshBtn.addEventListener('click', loadApiUsage);
     const asRefreshBtn = document.getElementById('active-sessions-refresh');
     if (asRefreshBtn) asRefreshBtn.addEventListener('click', loadActiveSessions);
-    setTimeout(() => { loadApiUsage(); loadActiveSessions(); }, 1500);
+
+    // Error Log
+    async function loadErrorLog() {
+        try {
+            const resp = await fetch('/api/admin/error-log?limit=50', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('adminToken') } });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const summary = document.getElementById('error-log-summary');
+            const list = document.getElementById('error-log-list');
+            if (summary) {
+                const tc = data.type_counts || {};
+                summary.innerHTML = `<span class="el-badge error">❌ ${tc.error || 0} Errors</span> <span class="el-badge warning">⚠️ ${tc.warning || 0} Warnings</span> <span class="el-badge info">ℹ️ ${tc.info || 0} Info</span> <span class="el-total">${data.total_errors} total</span>`;
+            }
+            if (list) {
+                if (!data.errors || data.errors.length === 0) {
+                    list.innerHTML = '<div class="el-empty">✅ No errors logged.</div>';
+                } else {
+                    list.innerHTML = data.errors.slice(0, 30).map(e => {
+                        const colors = { error: '#ff4444', warning: '#ff8800', info: '#4488ff' };
+                        const time = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '';
+                        return `<div class="el-item" style="border-left:3px solid ${colors[e.type] || '#666'}"><span class="el-time">${time}</span> <span class="el-type">${e.type}</span> ${e.endpoint ? `<span class="el-ep">${e.endpoint}</span>` : ''} <span class="el-msg">${e.message}</span></div>`;
+                    }).join('');
+                }
+            }
+        } catch (e) { console.error('Error log load failed:', e); }
+    }
+    const elRefreshBtn = document.getElementById('error-log-refresh');
+    if (elRefreshBtn) elRefreshBtn.addEventListener('click', loadErrorLog);
+
+    // Performance Metrics
+    async function loadPerfMetrics() {
+        try {
+            const resp = await fetch('/api/admin/performance', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('adminToken') } });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const sysDiv = document.getElementById('perf-system');
+            const listDiv = document.getElementById('perf-endpoints');
+            if (sysDiv) {
+                const sys = data.system || {};
+                sysDiv.innerHTML = `<div class="perf-sys-grid"><div class="perf-sys-item"><span class="perf-sys-val">${sys.cpu_percent || 0}%</span><span class="perf-sys-label">CPU</span></div><div class="perf-sys-item"><span class="perf-sys-val">${sys.memory_percent || 0}%</span><span class="perf-sys-label">Memory</span></div><div class="perf-sys-item"><span class="perf-sys-val">${sys.this_request_ms || 0}ms</span><span class="perf-sys-label">This Request</span></div><div class="perf-sys-item"><span class="perf-sys-val">${data.total_requests_tracked || 0}</span><span class="perf-sys-label">Tracked</span></div></div>`;
+            }
+            if (listDiv) {
+                const eps = data.slowest_endpoints || [];
+                if (eps.length === 0) {
+                    listDiv.innerHTML = '<div class="perf-empty">No performance data yet. Use the app to generate metrics.</div>';
+                } else {
+                    listDiv.innerHTML = '<div class="perf-header"><span>Endpoint</span><span>Avg (ms)</span><span>Calls</span></div>' + eps.map(e => {
+                        const barW = Math.min(100, e.avg_ms / 5);
+                        const color = e.avg_ms > 500 ? '#ff4444' : (e.avg_ms > 200 ? '#ff8800' : '#44aa44');
+                        return `<div class="perf-row"><span class="perf-ep">${e.endpoint}</span><div class="perf-bar-bg"><div class="perf-bar" style="width:${barW}%;background:${color}"></div></div><span class="perf-ms">${e.avg_ms}ms</span><span class="perf-cnt">${e.count}</span></div>`;
+                    }).join('');
+                }
+            }
+        } catch (e) { console.error('Perf metrics load failed:', e); }
+    }
+    const perfRefreshBtn = document.getElementById('perf-refresh');
+    if (perfRefreshBtn) perfRefreshBtn.addEventListener('click', loadPerfMetrics);
+
+    setTimeout(() => { loadApiUsage(); loadActiveSessions(); loadErrorLog(); loadPerfMetrics(); }, 1500);
 });

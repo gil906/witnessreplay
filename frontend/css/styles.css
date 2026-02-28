@@ -12759,3 +12759,78 @@ textarea:disabled {
 .heatmap-legend { display: flex; gap: 12px; font-size: 0.8rem; opacity: 0.6; margin-bottom: 10px; }
 .heatmap-zones { font-size: 0.85rem; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
 .heatmap-zone { display: inline-block; padding: 2px 8px; margin: 2px; background: rgba(255,68,68,0.15); border-radius: 6px; font-size: 0.82rem; }
+
+/* ── Facts Panel ── */
+.facts-panel { padding: 12px; }
+.facts-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.fact-badge { display: inline-block; padding: 4px 10px; background: rgba(108,99,255,0.12); border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+.facts-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.fact-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.88rem; }
+.fact-icon { font-size: 1rem; }
+.fact-type { text-transform: uppercase; font-size: 0.7rem; opacity: 0.5; min-width: 60px; }
+.facts-events { padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.fact-event { font-size: 0.85rem; padding: 2px 0; opacity: 0.8; }
+
+/* ── Profile Panel ── */
+.profile-panel { padding: 12px; }
+.profile-summary { font-size: 0.92rem; padding: 8px 12px; background: rgba(108,99,255,0.08); border-radius: 8px; margin-bottom: 12px; line-height: 1.5; }
+.profile-meters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.profile-meter { display: flex; align-items: center; gap: 8px; }
+.pm-label { font-size: 0.82rem; min-width: 120px; opacity: 0.7; }
+.pm-bar-bg { flex: 1; height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden; }
+.pm-bar { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+.pm-value { font-size: 0.82rem; font-weight: 700; min-width: 40px; text-align: right; }
+.profile-traits { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.profile-trait { padding: 3px 10px; background: rgba(255,255,255,0.06); border-radius: 12px; font-size: 0.82rem; }
+.profile-markers { font-size: 0.82rem; opacity: 0.6; padding: 6px; }
+
+/* ── Question Score Panel ── */
+.qscore-panel { padding: 12px; }
+.qscore-overall { text-align: center; padding: 16px; border: 2px solid; border-radius: 12px; margin-bottom: 12px; }
+.qscore-number { font-size: 2.2rem; font-weight: 800; display: block; }
+.qscore-label { font-size: 0.82rem; opacity: 0.5; }
+.qscore-dist { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.qscore-type { font-size: 0.85rem; }
+.qscore-section { margin-bottom: 10px; }
+.qscore-item { padding: 6px 10px; margin: 4px 0; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.85rem; }
+.qscore-item.good { border-left: 3px solid #44aa44; }
+.qscore-item.weak { border-left: 3px solid #ff4444; }
+.qscore-badge { float: right; font-weight: 700; font-size: 0.82rem; }
+.qscore-tip { font-size: 0.82rem; padding: 4px 8px; opacity: 0.7; }
+
+/* ── Contradiction Map ── */
+.contradmap-panel { padding: 12px; }
+.contradmap-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+.cm-badge { padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+.cm-badge.high { background: rgba(255,68,68,0.15); }
+.cm-badge.medium { background: rgba(255,136,0,0.15); }
+.cm-badge.low { background: rgba(68,170,68,0.15); }
+.cm-total { font-size: 0.82rem; opacity: 0.5; }
+.contradmap-item { padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.cm-pair { font-size: 0.88rem; margin-bottom: 4px; }
+.cm-sev { float: right; font-weight: 700; font-size: 0.82rem; }
+.cm-text { font-size: 0.82rem; opacity: 0.7; padding: 2px 0; font-style: italic; }
+.cm-vs { text-align: center; font-size: 0.75rem; opacity: 0.4; }
+.cm-conflicts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cm-conflict { padding: 2px 8px; background: rgba(255,68,68,0.1); border-radius: 6px; font-size: 0.78rem; }
+.contradmap-empty { text-align: center; padding: 20px; opacity: 0.5; }
+
+/* ── Entity Network ── */
+.entities-panel { padding: 12px; }
+.entities-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.ent-badge { padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+.ent-badge.person { background: rgba(108,99,255,0.12); }
+.ent-badge.location { background: rgba(68,170,68,0.12); }
+.ent-badge.org { background: rgba(255,136,0,0.12); }
+.ent-badge.date { background: rgba(68,136,255,0.12); }
+.entities-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.entity-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.88rem; }
+.entity-item.person { border-left: 3px solid #6c63ff; }
+.entity-item.location { border-left: 3px solid #44aa44; }
+.entity-item.organization { border-left: 3px solid #ff8800; }
+.entity-item.date { border-left: 3px solid #4488ff; }
+.ent-icon { font-size: 1rem; }
+.ent-type { font-size: 0.7rem; text-transform: uppercase; opacity: 0.4; }
+.ent-count { font-size: 0.78rem; opacity: 0.5; }
+.entities-connections { padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.ent-connection { font-size: 0.85rem; padding: 2px 0; }

@@ -6174,3 +6174,33 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .as-detail { font-size: 0.78rem; opacity: 0.55; }
 .as-badges { display: flex; gap: 4px; }
 .as-badge { font-size: 0.75rem; padding: 1px 4px; background: rgba(108,99,255,0.12); border-radius: 5px; }
+
+/* ── Error Log ── */
+.error-log-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+.el-badge { padding: 3px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+.el-badge.error { background: rgba(255,68,68,0.15); }
+.el-badge.warning { background: rgba(255,136,0,0.15); }
+.el-badge.info { background: rgba(68,136,255,0.15); }
+.el-total { font-size: 0.82rem; opacity: 0.5; }
+.error-log-list { max-height: 300px; overflow-y: auto; }
+.el-item { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; margin: 3px 0; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.82rem; flex-wrap: wrap; }
+.el-time { opacity: 0.4; font-size: 0.75rem; min-width: 60px; }
+.el-type { font-weight: 700; text-transform: uppercase; font-size: 0.72rem; min-width: 50px; }
+.el-ep { opacity: 0.5; font-size: 0.75rem; }
+.el-msg { flex: 1; word-break: break-word; }
+.el-empty { text-align: center; padding: 20px; opacity: 0.5; }
+
+/* ── Performance Metrics ── */
+.perf-sys-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.perf-sys-item { text-align: center; padding: 10px; background: rgba(108,99,255,0.08); border-radius: 8px; }
+.perf-sys-val { display: block; font-size: 1.3rem; font-weight: 800; color: #6c63ff; }
+.perf-sys-label { font-size: 0.75rem; opacity: 0.5; }
+.perf-list { max-height: 300px; overflow-y: auto; }
+.perf-header { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; padding: 4px 8px; opacity: 0.5; font-size: 0.75rem; font-weight: 600; }
+.perf-row { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; padding: 6px 8px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; }
+.perf-ep { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perf-bar-bg { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+.perf-bar { height: 100%; border-radius: 4px; }
+.perf-ms { font-weight: 700; text-align: right; }
+.perf-cnt { opacity: 0.5; text-align: right; }
+.perf-empty { text-align: center; padding: 20px; opacity: 0.5; }

@@ -423,6 +423,24 @@
                 </div>
             </section>
 
+            <!-- IMPROVEMENT 84: Error Log Viewer -->
+            <section class="admin-panel" id="error-log-section">
+                <h3>🚨 Error Log <button id="error-log-refresh" class="admin-btn-sm">🔄</button></h3>
+                <div class="error-log-summary" id="error-log-summary"></div>
+                <div id="error-log-list" class="error-log-list">
+                    <div class="el-loading">Loading errors...</div>
+                </div>
+            </section>
+
+            <!-- IMPROVEMENT 85: Performance Metrics -->
+            <section class="admin-panel" id="perf-metrics-section">
+                <h3>⚡ Performance Metrics <button id="perf-refresh" class="admin-btn-sm">🔄</button></h3>
+                <div class="perf-system" id="perf-system"></div>
+                <div id="perf-endpoints" class="perf-list">
+                    <div class="perf-loading">Loading metrics...</div>
+                </div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

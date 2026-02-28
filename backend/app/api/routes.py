@@ -14516,6 +14516,10 @@ async def generate_testimony_heatmap(session_id: str):
 # Global usage tracker
 _api_usage: dict = {}
 
+def _track_usage(endpoint: str):
+    """Increment usage counter for an endpoint."""
+    _api_usage[endpoint] = _api_usage.get(endpoint, 0) + 1
+
 @router.get("/admin/api-usage")
 async def get_api_usage(auth=Depends(require_admin_auth)):
     """Get API endpoint usage statistics."""
@@ -14596,4 +14600,528 @@ async def get_active_sessions_monitor(auth=Depends(require_admin_auth)):
         "completed_count": completed,
         "total_statements": sum(s["statement_count"] for s in sessions_list),
         "total_words": sum(s["word_count"] for s in sessions_list),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 79: Testimony Fact Extractor
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/facts")
+async def extract_testimony_facts(session_id: str):
+    """Extract factual claims from testimony: dates, places, amounts, names, events."""
+    _track_usage("facts")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join((getattr(s, 'text', '') or '') for s in statements)
+    words = full_text.split()
+
+    import re as _re79
+
+    date_patterns = [
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+        r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?\b',
+        r'\b\d{4}\b',
+    ]
+    dates_found = []
+    for pat in date_patterns:
+        dates_found.extend(_re79.findall(pat, full_text, _re79.IGNORECASE))
+    dates_found = list(dict.fromkeys(dates_found))[:30]
+
+    money_pattern = r'\$[\d,]+(?:\.\d{2})?|\b\d+(?:,\d{3})*\s*(?:dollars|euros|pounds)\b'
+    amounts = list(dict.fromkeys(_re79.findall(money_pattern, full_text, _re79.IGNORECASE)))[:20]
+
+    time_pattern = r'\b\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?\b|\b(?:morning|afternoon|evening|night|noon|midnight)\b'
+    times = list(dict.fromkeys(_re79.findall(time_pattern, full_text, _re79.IGNORECASE)))[:20]
+
+    location_indicators = ['at', 'in', 'near', 'on', 'street', 'avenue', 'road', 'building', 'office', 'house', 'room', 'floor', 'city', 'town', 'county', 'state']
+    locations = []
+    for i, w in enumerate(words):
+        if w.lower() in location_indicators and i + 1 < len(words) and words[i + 1][0:1].isupper():
+            loc = words[i + 1]
+            if i + 2 < len(words) and words[i + 2][0:1].isupper():
+                loc += " " + words[i + 2]
+            locations.append(loc)
+    locations = list(dict.fromkeys(locations))[:20]
+
+    proper_nouns = []
+    for i, w in enumerate(words):
+        if len(w) > 1 and w[0].isupper() and w.isalpha() and i > 0:
+            prev = words[i - 1].lower().rstrip('.,;:')
+            if prev not in ['i', 'the', 'a', 'an', '.', 'and', 'but', 'or', 'if', 'then']:
+                proper_nouns.append(w)
+    name_counts = {}
+    for n in proper_nouns:
+        name_counts[n] = name_counts.get(n, 0) + 1
+    top_names = sorted(name_counts.items(), key=lambda x: -x[1])[:20]
+
+    action_verbs = ['saw', 'heard', 'went', 'said', 'told', 'called', 'drove', 'hit', 'took', 'gave',
+                    'left', 'arrived', 'entered', 'opened', 'closed', 'signed', 'paid', 'received', 'sent']
+    events = []
+    for i, w in enumerate(words):
+        if w.lower() in action_verbs:
+            start = max(0, i - 3)
+            end = min(len(words), i + 5)
+            context = " ".join(words[start:end])
+            events.append({"verb": w.lower(), "context": context})
+    events = events[:25]
+
+    facts = []
+    for d in dates_found[:10]:
+        facts.append({"type": "date", "value": d, "category": "temporal"})
+    for a in amounts[:5]:
+        facts.append({"type": "amount", "value": a, "category": "financial"})
+    for t in times[:10]:
+        facts.append({"type": "time", "value": t, "category": "temporal"})
+    for l in locations[:10]:
+        facts.append({"type": "location", "value": l, "category": "spatial"})
+    for n, c in top_names[:10]:
+        facts.append({"type": "name", "value": n, "mentions": c, "category": "person"})
+
+    return {
+        "session_id": session_id,
+        "facts": facts,
+        "dates": dates_found[:15],
+        "amounts": amounts[:10],
+        "times": times[:10],
+        "locations": locations[:15],
+        "names": [{"name": n, "count": c} for n, c in top_names],
+        "events": events,
+        "total_facts": len(facts),
+        "statement_count": len(statements),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 80: Witness Profile Builder
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/witness-profile")
+async def build_witness_profile(session_id: str):
+    """Build behavioral/communication profile from testimony patterns."""
+    _track_usage("witness_profile")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    texts = [(getattr(s, 'text', '') or '') for s in statements]
+    full_text = " ".join(texts)
+    words = full_text.split()
+    total_words = len(words)
+
+    avg_sentence_len = 0
+    sentences = [s for t in texts for s in t.split('.') if s.strip()]
+    if sentences:
+        avg_sentence_len = round(sum(len(s.split()) for s in sentences) / len(sentences), 1)
+
+    hedging_words = ['maybe', 'perhaps', 'possibly', 'might', 'could', 'think', 'believe', 'seem', 'appear',
+                     'somewhat', 'fairly', 'rather', 'kind of', 'sort of', 'approximately', 'roughly']
+    certainty_words = ['definitely', 'absolutely', 'certainly', 'clearly', 'obviously', 'exactly',
+                       'precisely', 'without doubt', 'for sure', 'positive', 'sure', 'know']
+    emotional_words = ['afraid', 'scared', 'angry', 'upset', 'happy', 'sad', 'worried', 'anxious',
+                       'nervous', 'frustrated', 'shocked', 'surprised', 'confused', 'hurt']
+    detail_words = ['specifically', 'exactly', 'precisely', 'in particular', 'detail', 'describe',
+                    'remember', 'recall', 'noticed', 'observed', 'saw', 'heard']
+
+    lower_text = full_text.lower()
+    hedge_count = sum(lower_text.count(w) for w in hedging_words)
+    certainty_count = sum(lower_text.count(w) for w in certainty_words)
+    emotional_count = sum(lower_text.count(w) for w in emotional_words)
+    detail_count = sum(lower_text.count(w) for w in detail_words)
+
+    first_person = sum(1 for w in words if w.lower() in ['i', 'me', 'my', 'mine', 'myself'])
+    questions = sum(1 for t in texts if '?' in t)
+
+    confidence = min(100, max(0, int(50 + certainty_count * 5 - hedge_count * 3)))
+    detail_level = min(100, int(detail_count / max(1, total_words) * 500))
+    emotional_intensity = min(100, int(emotional_count / max(1, total_words) * 400))
+    cooperation = min(100, max(0, 70 + len(statements) * 2 - questions * 3))
+
+    if avg_sentence_len < 8:
+        verbosity = "Terse"
+    elif avg_sentence_len < 15:
+        verbosity = "Moderate"
+    elif avg_sentence_len < 25:
+        verbosity = "Detailed"
+    else:
+        verbosity = "Verbose"
+
+    communication_style = "Direct" if hedge_count < 3 else ("Cautious" if hedge_count < 8 else "Evasive")
+    emotional_state = "Composed" if emotional_count < 3 else ("Emotional" if emotional_count < 8 else "Distressed")
+
+    return {
+        "session_id": session_id,
+        "profile": {
+            "communication_style": communication_style,
+            "verbosity": verbosity,
+            "emotional_state": emotional_state,
+            "avg_sentence_length": avg_sentence_len,
+            "confidence_score": confidence,
+            "detail_level": detail_level,
+            "emotional_intensity": emotional_intensity,
+            "cooperation_score": cooperation,
+        },
+        "language_markers": {
+            "hedging_words": hedge_count,
+            "certainty_words": certainty_count,
+            "emotional_words": emotional_count,
+            "detail_words": detail_count,
+            "first_person_refs": first_person,
+            "questions_asked": questions,
+        },
+        "summary": f"{communication_style} communicator, {verbosity.lower()} responses, {emotional_state.lower()} demeanor. "
+                   f"Confidence: {confidence}%, Detail: {detail_level}%, Cooperation: {cooperation}%.",
+        "statement_count": len(statements),
+        "total_words": total_words,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 81: Question Effectiveness Scorer
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/question-score")
+async def score_question_effectiveness(session_id: str):
+    """Rate how effective the interview questions were at eliciting information."""
+    _track_usage("question_score")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    texts = [(getattr(s, 'text', '') or '') for s in statements]
+
+    question_stmts = []
+    answer_stmts = []
+    for i, t in enumerate(texts):
+        if '?' in t:
+            question_stmts.append({"index": i, "text": t})
+        else:
+            answer_stmts.append({"index": i, "text": t, "words": len(t.split())})
+
+    scored_questions = []
+    for q in question_stmts:
+        q_text = q["text"].lower()
+        following_answers = [a for a in answer_stmts if a["index"] > q["index"] and a["index"] <= q["index"] + 3]
+        avg_response_len = round(sum(a["words"] for a in following_answers) / max(1, len(following_answers)), 1) if following_answers else 0
+
+        is_open = any(q_text.startswith(w) for w in ['what', 'how', 'why', 'describe', 'explain', 'tell', 'can you'])
+        is_leading = any(p in q_text for p in ["isn't it", "don't you", "wouldn't you", "right?", "correct?", "did you not"])
+        is_yes_no = any(q_text.startswith(w) for w in ['did', 'was', 'were', 'is', 'are', 'do', 'have', 'had', 'could', 'would', 'should'])
+
+        q_type = "leading" if is_leading else ("open" if is_open else ("yes/no" if is_yes_no else "other"))
+
+        score = 50
+        if is_open:
+            score += 20
+        if is_leading:
+            score -= 15
+        if avg_response_len > 20:
+            score += 15
+        elif avg_response_len > 10:
+            score += 8
+        elif avg_response_len < 3:
+            score -= 10
+        if len(following_answers) > 0:
+            score += 10
+        score = min(100, max(0, score))
+
+        scored_questions.append({
+            "text": q["text"][:200],
+            "type": q_type,
+            "score": score,
+            "response_length": avg_response_len,
+            "responses_triggered": len(following_answers),
+        })
+
+    overall_score = round(sum(q["score"] for q in scored_questions) / max(1, len(scored_questions)), 1)
+    type_dist = {}
+    for q in scored_questions:
+        type_dist[q["type"]] = type_dist.get(q["type"], 0) + 1
+
+    top_questions = sorted(scored_questions, key=lambda x: -x["score"])[:5]
+    weak_questions = sorted(scored_questions, key=lambda x: x["score"])[:5]
+
+    return {
+        "session_id": session_id,
+        "overall_score": overall_score,
+        "total_questions": len(scored_questions),
+        "type_distribution": type_dist,
+        "top_questions": top_questions,
+        "weak_questions": weak_questions,
+        "all_questions": scored_questions[:50],
+        "tips": [
+            "Use more open-ended questions to elicit detailed responses" if type_dist.get("yes/no", 0) > type_dist.get("open", 0) else "Good balance of open questions",
+            "Avoid leading questions" if type_dist.get("leading", 0) > 2 else "Low leading question count — good technique",
+            f"Average response length: {round(sum(q['response_length'] for q in scored_questions) / max(1, len(scored_questions)), 1)} words",
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 82: Testimony Contradiction Map
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/contradiction-map")
+async def build_contradiction_map(session_id: str):
+    """Build a visual map of contradictions between statements."""
+    _track_usage("contradiction_map")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    texts = [(getattr(s, 'text', '') or '') for s in statements]
+
+    negation_pairs = [
+        ('did', 'did not'), ('was', 'was not'), ('were', 'were not'),
+        ('could', 'could not'), ('would', 'would not'), ('had', 'had not'),
+        ('saw', 'did not see'), ('heard', 'did not hear'),
+        ('yes', 'no'), ('true', 'false'), ('before', 'after'),
+        ('left', 'right'), ('inside', 'outside'), ('open', 'closed'),
+        ('remember', 'don\'t remember'), ('sure', 'not sure'),
+    ]
+
+    contradictions = []
+    for i in range(len(texts)):
+        for j in range(i + 1, len(texts)):
+            t1_lower = texts[i].lower()
+            t2_lower = texts[j].lower()
+            conflicts = []
+            for pos, neg in negation_pairs:
+                if (pos in t1_lower and neg in t2_lower) or (neg in t1_lower and pos in t2_lower):
+                    conflicts.append({"positive": pos, "negative": neg})
+            if conflicts:
+                severity = min(10, len(conflicts) * 2 + abs(j - i))
+                contradictions.append({
+                    "statement_a": i + 1,
+                    "statement_b": j + 1,
+                    "text_a": texts[i][:150],
+                    "text_b": texts[j][:150],
+                    "conflicts": conflicts[:5],
+                    "severity": severity,
+                    "distance": j - i,
+                })
+
+    contradictions.sort(key=lambda x: -x["severity"])
+
+    nodes = []
+    for i, t in enumerate(texts):
+        involved = sum(1 for c in contradictions if c["statement_a"] == i + 1 or c["statement_b"] == i + 1)
+        nodes.append({"id": i + 1, "preview": t[:80], "contradiction_count": involved})
+
+    return {
+        "session_id": session_id,
+        "contradictions": contradictions[:30],
+        "total_contradictions": len(contradictions),
+        "nodes": [n for n in nodes if n["contradiction_count"] > 0],
+        "severity_summary": {
+            "high": sum(1 for c in contradictions if c["severity"] >= 7),
+            "medium": sum(1 for c in contradictions if 4 <= c["severity"] < 7),
+            "low": sum(1 for c in contradictions if c["severity"] < 4),
+        },
+        "statement_count": len(statements),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 83: Key Entity Network
+# ═══════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/entities")
+async def extract_entities(session_id: str):
+    """Extract and categorize named entities: people, places, organizations, dates."""
+    _track_usage("entities")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    import re as _re83
+    statements = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join((getattr(s, 'text', '') or '') for s in statements)
+    words = full_text.split()
+
+    date_pat = r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?)\b'
+    dates = list(dict.fromkeys(_re83.findall(date_pat, full_text, _re83.IGNORECASE)))
+
+    org_indicators = ['company', 'corporation', 'inc', 'llc', 'ltd', 'department', 'office', 'agency',
+                      'firm', 'bank', 'hospital', 'university', 'school', 'police', 'court']
+    organizations = []
+    lower_text = full_text.lower()
+    for ind in org_indicators:
+        if ind in lower_text:
+            idx = lower_text.index(ind)
+            start = max(0, idx - 40)
+            snippet = full_text[start:idx + len(ind) + 20].strip()
+            cap_words = _re83.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+' + ind, snippet, _re83.IGNORECASE)
+            organizations.extend(cap_words)
+    organizations = list(dict.fromkeys(organizations))[:15]
+
+    location_prepositions = {'at', 'in', 'near', 'on', 'from', 'to'}
+    locations = []
+    for i, w in enumerate(words):
+        if w.lower() in location_prepositions and i + 1 < len(words):
+            nxt = words[i + 1]
+            if nxt[0:1].isupper() and nxt.isalpha() and len(nxt) > 1:
+                loc = nxt
+                if i + 2 < len(words) and words[i + 2][0:1].isupper() and words[i + 2].isalpha():
+                    loc += " " + words[i + 2]
+                locations.append(loc)
+    loc_counts = {}
+    for l in locations:
+        loc_counts[l] = loc_counts.get(l, 0) + 1
+    top_locations = sorted(loc_counts.items(), key=lambda x: -x[1])[:15]
+
+    people = []
+    honorifics = {'mr', 'mrs', 'ms', 'dr', 'officer', 'detective', 'judge', 'attorney', 'agent'}
+    for i, w in enumerate(words):
+        if w.lower().rstrip('.') in honorifics and i + 1 < len(words) and words[i + 1][0:1].isupper():
+            name = w + " " + words[i + 1]
+            if i + 2 < len(words) and words[i + 2][0:1].isupper() and words[i + 2].isalpha():
+                name += " " + words[i + 2]
+            people.append(name)
+    for i in range(len(words) - 1):
+        if (words[i][0:1].isupper() and words[i].isalpha() and len(words[i]) > 1 and
+            words[i + 1][0:1].isupper() and words[i + 1].isalpha() and len(words[i + 1]) > 1):
+            if i == 0 or not words[i - 1][-1:] == '.':
+                people.append(words[i] + " " + words[i + 1])
+    people_counts = {}
+    for p in people:
+        people_counts[p] = people_counts.get(p, 0) + 1
+    top_people = sorted(people_counts.items(), key=lambda x: -x[1])[:15]
+
+    entities = []
+    for p, c in top_people:
+        entities.append({"name": p, "type": "person", "mentions": c})
+    for l, c in top_locations:
+        entities.append({"name": l, "type": "location", "mentions": c})
+    for o in organizations:
+        entities.append({"name": o, "type": "organization", "mentions": 1})
+    for d in dates[:10]:
+        entities.append({"name": d, "type": "date", "mentions": 1})
+
+    connections = []
+    for i, e1 in enumerate(entities):
+        for j, e2 in enumerate(entities):
+            if i < j and e1["type"] != e2["type"]:
+                for t in [gt for gt in [(getattr(s, 'text', '') or '') for s in statements]]:
+                    if e1["name"].split()[-1] in t and e2["name"].split()[-1] in t:
+                        connections.append({"source": e1["name"], "target": e2["name"],
+                                            "source_type": e1["type"], "target_type": e2["type"]})
+                        break
+
+    return {
+        "session_id": session_id,
+        "entities": entities,
+        "connections": connections[:30],
+        "summary": {
+            "people": len(top_people),
+            "locations": len(top_locations),
+            "organizations": len(organizations),
+            "dates": len(dates),
+            "total": len(entities),
+        },
+        "statement_count": len(statements),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 84: Admin Error Log Viewer
+# ═══════════════════════════════════════════════════════════════
+_error_log: list = []
+
+def _log_error(error_type: str, message: str, endpoint: str = ""):
+    """Log an error for admin viewing."""
+    _error_log.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": error_type,
+        "message": str(message)[:500],
+        "endpoint": endpoint,
+    })
+    if len(_error_log) > 500:
+        _error_log.pop(0)
+
+
+@router.get("/admin/error-log")
+async def get_error_log(limit: int = 100, severity: str = "", auth=Depends(require_admin_auth)):
+    """View recent application errors and warnings."""
+    _log_admin_action("view_error_log")
+
+    errors = list(reversed(_error_log[-limit:]))
+    if severity:
+        errors = [e for e in errors if e["type"] == severity]
+
+    type_counts = {}
+    for e in _error_log:
+        type_counts[e["type"]] = type_counts.get(e["type"], 0) + 1
+
+    return {
+        "errors": errors[:limit],
+        "total_errors": len(_error_log),
+        "type_counts": type_counts,
+        "severity_types": ["error", "warning", "info"],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# IMPROVEMENT 85: Admin Performance Metrics
+# ═══════════════════════════════════════════════════════════════
+_perf_metrics: list = []
+
+def _track_perf(endpoint: str, duration_ms: float):
+    """Track endpoint performance."""
+    _perf_metrics.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "endpoint": endpoint,
+        "duration_ms": round(duration_ms, 2),
+    })
+    if len(_perf_metrics) > 1000:
+        _perf_metrics.pop(0)
+
+
+@router.get("/admin/performance")
+async def get_performance_metrics(auth=Depends(require_admin_auth)):
+    """Get API performance metrics and response times."""
+    _log_admin_action("view_performance")
+
+    import time
+    start = time.time()
+
+    endpoint_stats = {}
+    for m in _perf_metrics:
+        ep = m["endpoint"]
+        if ep not in endpoint_stats:
+            endpoint_stats[ep] = {"count": 0, "total_ms": 0, "max_ms": 0, "min_ms": float('inf')}
+        endpoint_stats[ep]["count"] += 1
+        endpoint_stats[ep]["total_ms"] += m["duration_ms"]
+        endpoint_stats[ep]["max_ms"] = max(endpoint_stats[ep]["max_ms"], m["duration_ms"])
+        endpoint_stats[ep]["min_ms"] = min(endpoint_stats[ep]["min_ms"], m["duration_ms"])
+
+    for ep in endpoint_stats:
+        s = endpoint_stats[ep]
+        s["avg_ms"] = round(s["total_ms"] / max(1, s["count"]), 2)
+        if s["min_ms"] == float('inf'):
+            s["min_ms"] = 0
+
+    sorted_eps = sorted(endpoint_stats.items(), key=lambda x: -x[1]["avg_ms"])
+
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        mem_pct = mem.percent
+    except Exception:
+        cpu = 0
+        mem_pct = 0
+
+    elapsed = round((time.time() - start) * 1000, 2)
+
+    return {
+        "endpoints": {k: v for k, v in sorted_eps[:20]},
+        "total_requests_tracked": len(_perf_metrics),
+        "system": {
+            "cpu_percent": cpu,
+            "memory_percent": mem_pct,
+            "this_request_ms": elapsed,
+        },
+        "slowest_endpoints": [{"endpoint": k, "avg_ms": v["avg_ms"], "count": v["count"]} for k, v in sorted_eps[:10]],
     }

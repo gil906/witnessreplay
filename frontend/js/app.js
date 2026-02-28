@@ -7600,6 +7600,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/glossary</code> — Legal term glossary<br>' +
                 '<code>/complexity</code> — Complexity score<br>' +
                 '<code>/arc</code> — Emotional arc<br>' +
+                '<code>/facts</code> — Extract factual claims<br>' +
+                '<code>/profile</code> — Witness profile<br>' +
+                '<code>/qscore</code> — Question effectiveness<br>' +
+                '<code>/contradmap</code> — Contradiction map<br>' +
+                '<code>/entities</code> — Entity network<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7805,6 +7810,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/heatmap': () => {
             this._showTestimonyHeatmap();
+        },
+        '/facts': () => {
+            this._showFactExtractor();
+        },
+        '/profile': () => {
+            this._showWitnessProfile();
+        },
+        '/qscore': () => {
+            this._showQuestionScore();
+        },
+        '/contradmap': () => {
+            this._showContradictionMap();
+        },
+        '/entities': () => {
+            this._showEntityNetwork();
         }
     };
     
@@ -7920,7 +7940,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/power', desc: 'Power phrases' },
         { cmd: '/prep', desc: 'Deposition prep checklist' },
         { cmd: '/corroborate', desc: 'Cross-session corroboration' },
-        { cmd: '/heatmap', desc: 'Testimony intensity heatmap' }
+        { cmd: '/heatmap', desc: 'Testimony intensity heatmap' },
+        { cmd: '/facts', desc: 'Extract factual claims' },
+        { cmd: '/profile', desc: 'Witness profile' },
+        { cmd: '/qscore', desc: 'Question effectiveness' },
+        { cmd: '/contradmap', desc: 'Contradiction map' },
+        { cmd: '/entities', desc: 'Entity network' }
     ];
     
     const filter = val.toLowerCase();
@@ -10780,4 +10805,162 @@ WitnessReplayApp.prototype._showTestimonyHeatmap = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not generate heatmap.'); }
+};
+
+// ── Fact Extractor (/facts) ─────────────────
+WitnessReplayApp.prototype._showFactExtractor = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔍 Extracting factual claims...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/facts`);
+        const data = await resp.json();
+        let html = `<div class="facts-panel"><h4>📋 Testimony Facts</h4>`;
+        html += `<div class="facts-summary"><span class="fact-badge">📊 ${data.total_facts} facts</span> <span class="fact-badge">📅 ${data.dates.length} dates</span> <span class="fact-badge">💰 ${data.amounts.length} amounts</span> <span class="fact-badge">📍 ${data.locations.length} locations</span> <span class="fact-badge">👤 ${data.names.length} names</span></div>`;
+        if (data.facts.length > 0) {
+            html += `<div class="facts-list">`;
+            data.facts.forEach(f => {
+                const icons = {date:'📅', time:'⏰', amount:'💰', location:'📍', name:'👤'};
+                html += `<div class="fact-item"><span class="fact-icon">${icons[f.type]||'📌'}</span> <span class="fact-type">${f.type}</span>: <b>${f.value}</b>${f.mentions ? ` (×${f.mentions})` : ''}</div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.events.length > 0) {
+            html += `<div class="facts-events"><b>⚡ Key Events:</b>`;
+            data.events.slice(0, 10).forEach(e => {
+                html += `<div class="fact-event">• <i>${e.verb}</i>: "${e.context}"</div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract facts.'); }
+};
+
+// ── Witness Profile (/profile) ─────────────────
+WitnessReplayApp.prototype._showWitnessProfile = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🧠 Building witness profile...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/witness-profile`);
+        const data = await resp.json();
+        const p = data.profile;
+        let html = `<div class="profile-panel"><h4>🧠 Witness Profile</h4>`;
+        html += `<div class="profile-summary">${data.summary}</div>`;
+        html += `<div class="profile-meters">`;
+        const meters = [
+            {label: 'Confidence', value: p.confidence_score, color: '#6c63ff'},
+            {label: 'Detail Level', value: p.detail_level, color: '#44aa44'},
+            {label: 'Emotional Intensity', value: p.emotional_intensity, color: '#ff6644'},
+            {label: 'Cooperation', value: p.cooperation_score, color: '#4488ff'},
+        ];
+        meters.forEach(m => {
+            html += `<div class="profile-meter"><span class="pm-label">${m.label}</span><div class="pm-bar-bg"><div class="pm-bar" style="width:${m.value}%;background:${m.color}"></div></div><span class="pm-value">${m.value}%</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="profile-traits">`;
+        html += `<span class="profile-trait">💬 ${p.communication_style}</span>`;
+        html += `<span class="profile-trait">📝 ${p.verbosity}</span>`;
+        html += `<span class="profile-trait">😐 ${p.emotional_state}</span>`;
+        html += `<span class="profile-trait">📏 Avg ${p.avg_sentence_length} words/sentence</span>`;
+        html += `</div>`;
+        const lm = data.language_markers;
+        html += `<div class="profile-markers"><b>Language Markers:</b> ${lm.hedging_words} hedges, ${lm.certainty_words} certainties, ${lm.emotional_words} emotional, ${lm.first_person_refs} first-person refs</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not build witness profile.'); }
+};
+
+// ── Question Effectiveness (/qscore) ─────────────────
+WitnessReplayApp.prototype._showQuestionScore = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📊 Scoring question effectiveness...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/question-score`);
+        const data = await resp.json();
+        const scoreColor = data.overall_score >= 70 ? '#44aa44' : (data.overall_score >= 40 ? '#ff8800' : '#ff4444');
+        let html = `<div class="qscore-panel"><h4>📊 Question Effectiveness</h4>`;
+        html += `<div class="qscore-overall" style="border-color:${scoreColor}"><span class="qscore-number" style="color:${scoreColor}">${data.overall_score}</span><span class="qscore-label">Overall Score</span></div>`;
+        html += `<div class="qscore-dist">`;
+        Object.entries(data.type_distribution).forEach(([type, count]) => {
+            const icons = {open:'🟢', 'yes/no':'🟡', leading:'🔴', other:'⚪'};
+            html += `<span class="qscore-type">${icons[type]||'⚪'} ${type}: ${count}</span>`;
+        });
+        html += `</div>`;
+        if (data.top_questions.length > 0) {
+            html += `<div class="qscore-section"><b>✅ Best Questions:</b>`;
+            data.top_questions.slice(0, 3).forEach(q => {
+                html += `<div class="qscore-item good">"${q.text.substring(0, 100)}..." <span class="qscore-badge">${q.score}pts</span></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.weak_questions.length > 0) {
+            html += `<div class="qscore-section"><b>⚠️ Weakest Questions:</b>`;
+            data.weak_questions.slice(0, 3).forEach(q => {
+                html += `<div class="qscore-item weak">"${q.text.substring(0, 100)}..." <span class="qscore-badge">${q.score}pts</span></div>`;
+            });
+            html += `</div>`;
+        }
+        data.tips.forEach(t => { html += `<div class="qscore-tip">💡 ${t}</div>`; });
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not score questions.'); }
+};
+
+// ── Contradiction Map (/contradmap) ─────────────────
+WitnessReplayApp.prototype._showContradictionMap = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🗺️ Building contradiction map...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/contradiction-map`);
+        const data = await resp.json();
+        let html = `<div class="contradmap-panel"><h4>🗺️ Contradiction Map</h4>`;
+        const sev = data.severity_summary;
+        html += `<div class="contradmap-summary"><span class="cm-badge high">🔴 ${sev.high} High</span> <span class="cm-badge medium">🟡 ${sev.medium} Medium</span> <span class="cm-badge low">🟢 ${sev.low} Low</span> <span class="cm-total">${data.total_contradictions} total</span></div>`;
+        if (data.contradictions.length > 0) {
+            data.contradictions.slice(0, 8).forEach(c => {
+                const sevColor = c.severity >= 7 ? '#ff4444' : (c.severity >= 4 ? '#ff8800' : '#44aa44');
+                html += `<div class="contradmap-item" style="border-left:3px solid ${sevColor}">`;
+                html += `<div class="cm-pair"><b>Statement ${c.statement_a}</b> vs <b>Statement ${c.statement_b}</b> <span class="cm-sev" style="color:${sevColor}">Severity: ${c.severity}/10</span></div>`;
+                html += `<div class="cm-text">"${c.text_a.substring(0, 100)}..."</div>`;
+                html += `<div class="cm-vs">⚡ vs ⚡</div>`;
+                html += `<div class="cm-text">"${c.text_b.substring(0, 100)}..."</div>`;
+                html += `<div class="cm-conflicts">${c.conflicts.map(f => `<span class="cm-conflict">${f.positive} ↔ ${f.negative}</span>`).join(' ')}</div>`;
+                html += `</div>`;
+            });
+        } else {
+            html += `<div class="contradmap-empty">✅ No contradictions detected.</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not build contradiction map.'); }
+};
+
+// ── Entity Network (/entities) ─────────────────
+WitnessReplayApp.prototype._showEntityNetwork = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🌐 Extracting entity network...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/entities`);
+        const data = await resp.json();
+        const s = data.summary;
+        let html = `<div class="entities-panel"><h4>🌐 Entity Network</h4>`;
+        html += `<div class="entities-summary"><span class="ent-badge person">👤 ${s.people} People</span> <span class="ent-badge location">📍 ${s.locations} Locations</span> <span class="ent-badge org">🏢 ${s.organizations} Organizations</span> <span class="ent-badge date">📅 ${s.dates} Dates</span></div>`;
+        const typeIcons = {person:'👤', location:'📍', organization:'🏢', date:'📅'};
+        if (data.entities.length > 0) {
+            html += `<div class="entities-list">`;
+            data.entities.slice(0, 20).forEach(e => {
+                html += `<div class="entity-item ${e.type}"><span class="ent-icon">${typeIcons[e.type]||'📌'}</span> <b>${e.name}</b> <span class="ent-type">${e.type}</span>${e.mentions > 1 ? ` <span class="ent-count">×${e.mentions}</span>` : ''}</div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.connections.length > 0) {
+            html += `<div class="entities-connections"><b>🔗 Connections:</b>`;
+            data.connections.slice(0, 10).forEach(c => {
+                html += `<div class="ent-connection">${typeIcons[c.source_type]||''} ${c.source} ↔ ${typeIcons[c.target_type]||''} ${c.target}</div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract entities.'); }
 };
