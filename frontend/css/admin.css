@@ -6095,3 +6095,19 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .ca-dist-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
 .ca-dist-val { font-size: 0.72rem; color: #94a3b8; min-width: 65px; text-align: right; }
 @media (max-width: 600px) { .ca-stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* ═══ IMPROVEMENT 54: Health Dashboard ═══ */
+#health-dashboard-section h3 { color: #e2e8f0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+.hd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+.hd-card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.hd-icon { font-size: 1.3rem; }
+.hd-val { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; }
+.hd-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ═══ IMPROVEMENT 55: Bulk Export ═══ */
+#bulk-export-section h3 { color: #e2e8f0; font-size: 1rem; }
+.be-controls { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.be-select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; }
+.be-input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; width: 70px; }
+.be-result { margin-top: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.82rem; color: #94a3b8; }
+@media (max-width: 600px) { .hd-grid { grid-template-columns: repeat(2, 1fr); } }

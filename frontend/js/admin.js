@@ -5549,3 +5549,69 @@ WitnessReplayAdmin.prototype._loadCaseAnalytics = async function() {
         }
     } catch (e) { /* silent */ }
 };
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 54: Admin Health Dashboard
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    const btn = document.getElementById('hd-refresh-btn');
+    if (btn) btn.addEventListener('click', loadHealthDashboard);
+    setTimeout(loadHealthDashboard, 1200);
+})();
+
+async function loadHealthDashboard() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    try {
+        const resp = await fetch('/api/admin/health-dashboard', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const s = data.sessions || {};
+        const sys = data.system || {};
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        set('hd-uptime', sys.uptime || '--');
+        set('hd-memory', (sys.memory_mb || 0) + ' MB');
+        set('hd-cpu', (sys.cpu_percent || 0) + '%');
+        set('hd-sessions', s.total || 0);
+        set('hd-statements', s.total_statements || 0);
+        set('hd-recent', s.recent_24h || 0);
+    } catch (e) { /* silent */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 55: Admin Bulk Export
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    const btn = document.getElementById('be-export-btn');
+    if (btn) btn.addEventListener('click', doBulkExport);
+})();
+
+async function doBulkExport() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    const fmt = document.getElementById('be-format')?.value || 'json';
+    const limit = parseInt(document.getElementById('be-limit')?.value) || 50;
+    const resultDiv = document.getElementById('be-result');
+    if (resultDiv) { resultDiv.style.display = 'block'; resultDiv.innerHTML = '⏳ Exporting...'; }
+    try {
+        const resp = await fetch('/api/admin/bulk-export', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ format: fmt, limit: limit })
+        });
+        const data = await resp.json();
+        if (fmt === 'csv') {
+            const blob = new Blob([data.content], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'sessions_export.csv'; a.click();
+            URL.revokeObjectURL(url);
+            if (resultDiv) resultDiv.innerHTML = `✅ Exported ${data.total} sessions as CSV (downloaded)`;
+        } else {
+            const blob = new Blob([JSON.stringify(data.sessions, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'sessions_export.json'; a.click();
+            URL.revokeObjectURL(url);
+            if (resultDiv) resultDiv.innerHTML = `✅ Exported ${data.total} sessions as JSON (downloaded)`;
+        }
+    } catch (e) { if (resultDiv) resultDiv.innerHTML = '❌ Export failed.'; }
+}

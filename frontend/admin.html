@@ -346,6 +346,28 @@
                 <div id="ca-status-dist" class="ca-status-dist"></div>
             </section>
 
+            <section class="admin-panel" id="health-dashboard-section">
+                <h3>💓 System Health <button id="hd-refresh-btn" class="admin-btn-sm" title="Refresh">🔄</button></h3>
+                <div class="hd-grid" id="hd-grid">
+                    <div class="hd-card"><span class="hd-icon">⏱️</span><span class="hd-val" id="hd-uptime">--</span><span class="hd-label">Uptime</span></div>
+                    <div class="hd-card"><span class="hd-icon">💾</span><span class="hd-val" id="hd-memory">--</span><span class="hd-label">Memory</span></div>
+                    <div class="hd-card"><span class="hd-icon">⚡</span><span class="hd-val" id="hd-cpu">--</span><span class="hd-label">CPU</span></div>
+                    <div class="hd-card"><span class="hd-icon">📊</span><span class="hd-val" id="hd-sessions">--</span><span class="hd-label">Sessions</span></div>
+                    <div class="hd-card"><span class="hd-icon">📝</span><span class="hd-val" id="hd-statements">--</span><span class="hd-label">Statements</span></div>
+                    <div class="hd-card"><span class="hd-icon">🕐</span><span class="hd-val" id="hd-recent">--</span><span class="hd-label">Last 24h</span></div>
+                </div>
+            </section>
+
+            <section class="admin-panel" id="bulk-export-section">
+                <h3>📦 Bulk Export</h3>
+                <div class="be-controls">
+                    <select id="be-format" class="be-select"><option value="json">JSON</option><option value="csv">CSV</option></select>
+                    <input type="number" id="be-limit" class="be-input" value="50" min="1" max="500" placeholder="Limit">
+                    <button id="be-export-btn" class="admin-btn-sm">📥 Export All</button>
+                </div>
+                <div id="be-result" class="be-result" style="display:none"></div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

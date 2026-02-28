@@ -7582,6 +7582,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/evidence-links</code> — Find evidence references<br>' +
                 '<code>/diff [a b]</code> — Compare two statements<br>' +
                 '<code>/completeness</code> — Interview coverage check<br>' +
+                '<code>/quotes</code> — Extract key quotes<br>' +
+                '<code>/cooperation</code> — Witness cooperation score<br>' +
+                '<code>/annotate [text]</code> — Add annotation<br>' +
+                '<code>/annotations</code> — View annotations<br>' +
+                '<code>/search-all [term]</code> — Search all sessions<br>' +
+                '<code>/highlights</code> — Testimony highlight reel<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7716,6 +7722,26 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/completeness': () => {
             this._checkCompleteness();
+        },
+        '/quotes': () => {
+            this._showKeyQuotes();
+        },
+        '/cooperation': () => {
+            this._showCooperationScore();
+        },
+        '/annotate': () => {
+            const note = text.slice(9).trim();
+            this._addAnnotation(note);
+        },
+        '/annotations': () => {
+            this._showAnnotations();
+        },
+        '/search-all': () => {
+            const term = text.slice(11).trim();
+            this._searchAllSessions(term);
+        },
+        '/highlights': () => {
+            this._showHighlights();
         }
     };
     
@@ -7808,7 +7834,13 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/markdown', desc: 'Export as markdown' },
         { cmd: '/evidence-links', desc: 'Evidence references' },
         { cmd: '/diff', desc: 'Compare statements' },
-        { cmd: '/completeness', desc: 'Coverage check' }
+        { cmd: '/completeness', desc: 'Coverage check' },
+        { cmd: '/quotes', desc: 'Key quotes' },
+        { cmd: '/cooperation', desc: 'Cooperation score' },
+        { cmd: '/annotate', desc: 'Add annotation' },
+        { cmd: '/annotations', desc: 'View annotations' },
+        { cmd: '/search-all', desc: 'Search all sessions' },
+        { cmd: '/highlights', desc: 'Highlight reel' }
     ];
     
     const filter = val.toLowerCase();
@@ -9959,4 +9991,162 @@ WitnessReplayApp.prototype._checkCompleteness = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not check completeness.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 49: Key Quote Extraction (/quotes command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showKeyQuotes = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📝 Extracting key quotes...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/key-quotes`);
+        const data = await resp.json();
+        if (!data.quotes || data.quotes.length === 0) {
+            this.displaySystemMessage('📝 No notable quotes found yet. Add more testimony statements.');
+            return;
+        }
+        let html = `<div class="key-quotes-panel">`;
+        html += `<h4>📝 Key Quotes (${data.total} found)</h4>`;
+        for (const q of data.quotes) {
+            const cats = q.categories.map(c => `<span class="kq-tag">${c.icon} ${c.type.replace(/_/g,' ')}</span>`).join('');
+            const stars = '⭐'.repeat(Math.min(q.importance, 5));
+            html += `<div class="kq-item">`;
+            html += `<div class="kq-text">"${q.text}"</div>`;
+            html += `<div class="kq-meta">${cats} <span class="kq-importance">${stars}</span></div>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract quotes.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 50: Witness Cooperation Score (/cooperation command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showCooperationScore = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🤝 Assessing witness cooperation...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/cooperation`);
+        const data = await resp.json();
+        const scoreColor = data.score >= 70 ? '#22c55e' : data.score >= 40 ? '#eab308' : '#ef4444';
+        const levelEmoji = {highly_cooperative:'😊',cooperative:'🙂',moderately_cooperative:'😐',reluctant:'😟',uncooperative:'😠'}[data.level]||'❓';
+        let html = `<div class="cooperation-panel">`;
+        html += `<h4>🤝 Witness Cooperation Assessment</h4>`;
+        html += `<div class="coop-score-row">`;
+        html += `<div class="coop-gauge"><div class="coop-fill" style="width:${data.score}%;background:${scoreColor}"></div></div>`;
+        html += `<span class="coop-val" style="color:${scoreColor}">${data.score}/100</span>`;
+        html += `</div>`;
+        html += `<div class="coop-level">${levelEmoji} ${data.level.replace(/_/g,' ').toUpperCase()}</div>`;
+        html += `<div class="coop-assessment">${data.assessment}</div>`;
+        const ind = data.indicators || {};
+        html += `<div class="coop-indicators">`;
+        html += `<div class="coop-ind"><span>📏 Avg response</span><b>${ind.avg_response_length || 0} words</b></div>`;
+        html += `<div class="coop-ind"><span>🔍 Detailed</span><b>${ind.detailed_responses || 0}</b></div>`;
+        html += `<div class="coop-ind"><span>🙈 Evasive</span><b>${ind.evasive_responses || 0}</b></div>`;
+        html += `<div class="coop-ind"><span>🚫 Refusals</span><b>${ind.refusals || 0}</b></div>`;
+        html += `<div class="coop-ind"><span>🔄 Corrections</span><b>${ind.corrections_offered || 0}</b></div>`;
+        html += `<div class="coop-ind"><span>💭 Emotional</span><b>${ind.emotional_appeals || 0}</b></div>`;
+        html += `</div></div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not assess cooperation.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 51: Testimony Annotation (/annotate, /annotations)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._addAnnotation = async function(text) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!text) { this.displaySystemMessage('💡 Usage: <code>/annotate [your note]</code>'); return; }
+    try {
+        const resp = await fetch(`/api/sessions/${this.sessionId}/annotations`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ text: text, message_index: this.statementCount || 0, category: 'note' })
+        });
+        const data = await resp.json();
+        this.displaySystemMessage(`📌 Annotation added! (${data.total} total) — "${text}"`);
+    } catch (e) { this.displaySystemMessage('❌ Could not add annotation.'); }
+};
+
+WitnessReplayApp.prototype._showAnnotations = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/annotations`);
+        const data = await resp.json();
+        if (!data.annotations || data.annotations.length === 0) {
+            this.displaySystemMessage('📌 No annotations yet. Use <code>/annotate [text]</code> to add one.');
+            return;
+        }
+        let html = `<div class="annotations-panel">`;
+        html += `<h4>📌 Session Annotations (${data.total})</h4>`;
+        for (const a of data.annotations) {
+            const time = new Date(a.created_at).toLocaleTimeString();
+            html += `<div class="ann-item">`;
+            html += `<div class="ann-text">${a.text}</div>`;
+            html += `<div class="ann-meta"><span>🕐 ${time}</span><span>📍 Stmt #${a.message_index}</span></div>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not load annotations.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 52: Cross-Session Search (/search-all command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._searchAllSessions = async function(term) {
+    if (!term) { this.displaySystemMessage('💡 Usage: <code>/search-all [search term]</code>'); return; }
+    this.displaySystemMessage(`🔍 Searching all sessions for "${term}"...`);
+    try {
+        const resp = await this.fetchWithTimeout(`/api/search-sessions?q=${encodeURIComponent(term)}`);
+        const data = await resp.json();
+        if (!data.results || data.results.length === 0) {
+            this.displaySystemMessage(`🔍 No matches found for "${term}" across sessions.`);
+            return;
+        }
+        let html = `<div class="search-all-panel">`;
+        html += `<h4>🔍 Search Results: "${data.query}" (${data.total} sessions)</h4>`;
+        for (const r of data.results) {
+            html += `<div class="sa-result">`;
+            html += `<div class="sa-header"><b>${r.case_title || r.session_id}</b> <span class="sa-count">${r.match_count} match${r.match_count>1?'es':''}</span></div>`;
+            for (const m of r.matches) {
+                const highlighted = m.snippet.replace(new RegExp(`(${term})`, 'gi'), '<mark>$1</mark>');
+                html += `<div class="sa-snippet">${highlighted}</div>`;
+            }
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not search sessions.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 53: Testimony Highlight Reel (/highlights command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showHighlights = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🌟 Extracting testimony highlights...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/highlights`);
+        const data = await resp.json();
+        if (!data.highlights || data.highlights.length === 0) {
+            this.displaySystemMessage('🌟 No significant highlights found yet. Add more testimony.');
+            return;
+        }
+        let html = `<div class="highlights-panel">`;
+        html += `<h4>🌟 Testimony Highlights (Top ${data.highlights.length} of ${data.total})</h4>`;
+        for (const h of data.highlights) {
+            const tags = h.tags.map(t => `<span class="hl-tag">${t.icon} ${t.type.replace(/_/g,' ')}</span>`).join('');
+            const barW = Math.min(100, h.score * 10);
+            html += `<div class="hl-item">`;
+            html += `<div class="hl-bar"><div class="hl-fill" style="width:${barW}%"></div></div>`;
+            html += `<div class="hl-text">"${h.text}"</div>`;
+            html += `<div class="hl-meta">${tags} <span class="hl-words">${h.word_count} words</span></div>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract highlights.'); }
 };

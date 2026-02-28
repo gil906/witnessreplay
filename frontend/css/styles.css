@@ -12510,3 +12510,53 @@ textarea:disabled {
 .cc-suggestions { margin-top: 10px; padding: 8px 10px; background: rgba(59, 130, 246, 0.08); border-radius: 6px; }
 .cc-suggestions b { color: #60a5fa; font-size: 0.82rem; }
 .cc-sug { font-size: 0.78rem; color: #94a3b8; padding: 3px 0; }
+
+/* ═══ IMPROVEMENT 49: Key Quotes ═══ */
+.key-quotes-panel { background: rgba(15,23,42,0.6); border-radius: 10px; padding: 14px; }
+.key-quotes-panel h4 { margin: 0 0 10px; color: #e2e8f0; font-size: 0.95rem; }
+.kq-item { padding: 10px 12px; background: rgba(255,255,255,0.04); border-left: 3px solid #a78bfa; border-radius: 6px; margin-bottom: 8px; }
+.kq-text { color: #cbd5e1; font-style: italic; font-size: 0.88rem; line-height: 1.5; margin-bottom: 6px; }
+.kq-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kq-tag { font-size: 0.7rem; padding: 2px 7px; background: rgba(167,139,250,0.15); color: #c4b5fd; border-radius: 10px; }
+.kq-importance { font-size: 0.75rem; margin-left: auto; }
+
+/* ═══ IMPROVEMENT 50: Cooperation Score ═══ */
+.cooperation-panel { background: rgba(15,23,42,0.6); border-radius: 10px; padding: 14px; }
+.cooperation-panel h4 { margin: 0 0 10px; color: #e2e8f0; font-size: 0.95rem; }
+.coop-score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.coop-gauge { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.coop-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+.coop-val { font-weight: 700; font-size: 1.1rem; min-width: 60px; text-align: right; }
+.coop-level { text-align: center; font-weight: 600; font-size: 0.9rem; color: #e2e8f0; margin-bottom: 6px; letter-spacing: 0.5px; }
+.coop-assessment { color: #94a3b8; font-size: 0.82rem; text-align: center; margin-bottom: 10px; }
+.coop-indicators { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.coop-ind { display: flex; justify-content: space-between; padding: 5px 8px; background: rgba(255,255,255,0.03); border-radius: 5px; font-size: 0.78rem; }
+.coop-ind span { color: #94a3b8; }
+.coop-ind b { color: #e2e8f0; }
+
+/* ═══ IMPROVEMENT 51: Annotations ═══ */
+.annotations-panel { background: rgba(15,23,42,0.6); border-radius: 10px; padding: 14px; }
+.annotations-panel h4 { margin: 0 0 10px; color: #e2e8f0; font-size: 0.95rem; }
+.ann-item { padding: 8px 10px; background: rgba(251,191,36,0.06); border-left: 3px solid #fbbf24; border-radius: 6px; margin-bottom: 6px; }
+.ann-text { color: #cbd5e1; font-size: 0.85rem; margin-bottom: 4px; }
+.ann-meta { display: flex; gap: 12px; font-size: 0.72rem; color: #64748b; }
+
+/* ═══ IMPROVEMENT 52: Cross-Session Search ═══ */
+.search-all-panel { background: rgba(15,23,42,0.6); border-radius: 10px; padding: 14px; }
+.search-all-panel h4 { margin: 0 0 10px; color: #e2e8f0; font-size: 0.95rem; }
+.sa-result { padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; margin-bottom: 8px; }
+.sa-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; color: #e2e8f0; font-size: 0.88rem; }
+.sa-count { font-size: 0.72rem; padding: 2px 8px; background: rgba(59,130,246,0.15); color: #60a5fa; border-radius: 10px; }
+.sa-snippet { font-size: 0.82rem; color: #94a3b8; padding: 4px 8px; margin-top: 4px; background: rgba(255,255,255,0.02); border-radius: 4px; line-height: 1.4; }
+.sa-snippet mark { background: rgba(250,204,21,0.3); color: #fef08a; border-radius: 2px; padding: 0 2px; }
+
+/* ═══ IMPROVEMENT 53: Highlights ═══ */
+.highlights-panel { background: rgba(15,23,42,0.6); border-radius: 10px; padding: 14px; }
+.highlights-panel h4 { margin: 0 0 10px; color: #e2e8f0; font-size: 0.95rem; }
+.hl-item { padding: 10px 12px; background: rgba(255,255,255,0.04); border-radius: 8px; margin-bottom: 8px; position: relative; }
+.hl-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+.hl-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #ef4444); border-radius: 2px; transition: width 0.5s ease; }
+.hl-text { color: #cbd5e1; font-style: italic; font-size: 0.85rem; line-height: 1.5; margin-bottom: 6px; }
+.hl-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hl-tag { font-size: 0.7rem; padding: 2px 7px; background: rgba(245,158,11,0.12); color: #fbbf24; border-radius: 10px; }
+.hl-words { font-size: 0.7rem; color: #64748b; margin-left: auto; }

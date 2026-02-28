@@ -12798,3 +12798,414 @@ async def check_interview_completeness(session_id: str):
         "missing_areas": [{"label": m["label"], "icon": m["icon"]} for m in missing],
         "suggestions": suggestions,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 49: Key Quote Extraction
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/key-quotes")
+async def extract_key_quotes(session_id: str):
+    """Extract the most notable and important quotes from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if not statements:
+        return {"quotes": [], "total": 0}
+
+    quote_patterns = [
+        (r'\b(I saw|I heard|I noticed|I observed|I remember|I recall|I witnessed)\b', "eyewitness", "👁️"),
+        (r'\b(he said|she said|they said|told me|yelled|screamed|whispered)\b', "direct_speech", "💬"),
+        (r'\b(I\'m sure|I\'m certain|definitely|absolutely|no doubt|100 percent|positive)\b', "high_confidence", "✅"),
+        (r'\b(I think|I believe|maybe|possibly|not sure|might have|could have|I guess)\b', "uncertainty", "❓"),
+        (r'\b(threatened|attacked|hit|shot|stabbed|pushed|grabbed|choked|punched)\b', "violence", "⚠️"),
+        (r'\b(afraid|scared|terrified|panicked|shocked|horrified|traumatized)\b', "emotional", "💭"),
+        (r'\b(first|then|after that|next|before|finally|suddenly|immediately)\b', "sequence", "📊"),
+        (r'\b(approximately|about \d|around \d|\d+ feet|\d+ minutes|\d+ hours)\b', "measurement", "📏"),
+    ]
+
+    quotes = []
+    for stmt in statements:
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        if len(text) < 10:
+            continue
+        importance = 0
+        categories = []
+        for pattern, cat, icon in quote_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                importance += 1
+                if cat not in [c["type"] for c in categories]:
+                    categories.append({"type": cat, "icon": icon})
+
+        if importance >= 1:
+            # Extract a clean quote snippet (first 200 chars of matching sentence)
+            sentences = re.split(r'[.!?]+', text)
+            best_sentence = text[:200]
+            for s in sentences:
+                s = s.strip()
+                if len(s) > 15:
+                    for pattern, _, _ in quote_patterns:
+                        if re.search(pattern, s, re.IGNORECASE):
+                            best_sentence = s[:200]
+                            break
+            quotes.append({
+                "text": best_sentence.strip(),
+                "importance": importance,
+                "categories": categories,
+                "statement_index": statements.index(stmt),
+            })
+
+    quotes.sort(key=lambda q: q["importance"], reverse=True)
+    return {"quotes": quotes[:15], "total": len(quotes)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 50: Witness Cooperation Assessment
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/cooperation")
+async def assess_cooperation(session_id: str):
+    """Assess witness cooperation and responsiveness level."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if not statements:
+        return {"score": 0, "level": "unknown", "indicators": {}}
+
+    total = len(statements)
+    total_words = 0
+    evasive_count = 0
+    detailed_count = 0
+    correction_count = 0
+    refusal_count = 0
+    emotional_count = 0
+
+    evasive_patterns = re.compile(r'\b(I don.t know|can.t remember|I forget|no comment|I.m not sure|I refuse|I plead|none of your)\b', re.IGNORECASE)
+    detailed_patterns = re.compile(r'\b(specifically|exactly|precisely|in detail|for example|such as|including)\b', re.IGNORECASE)
+    refusal_patterns = re.compile(r'\b(I won.t|I refuse|I decline|no comment|lawyer|attorney|fifth amendment|I plead)\b', re.IGNORECASE)
+    emotional_patterns = re.compile(r'\b(sorry|please|I swear|honestly|trust me|believe me|I promise)\b', re.IGNORECASE)
+
+    for stmt in statements:
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        words = len(text.split())
+        total_words += words
+        if getattr(stmt, 'is_correction', False):
+            correction_count += 1
+        if evasive_patterns.search(text):
+            evasive_count += 1
+        if detailed_patterns.search(text):
+            detailed_count += 1
+        if refusal_patterns.search(text):
+            refusal_count += 1
+        if emotional_patterns.search(text):
+            emotional_count += 1
+
+    avg_words = total_words / total if total > 0 else 0
+    detail_ratio = detailed_count / total if total > 0 else 0
+    evasive_ratio = evasive_count / total if total > 0 else 0
+    refusal_ratio = refusal_count / total if total > 0 else 0
+
+    # Score 0-100
+    score = 50
+    score += min(20, int(avg_words / 5))  # Longer answers = more cooperative
+    score += int(detail_ratio * 20)
+    score -= int(evasive_ratio * 25)
+    score -= int(refusal_ratio * 30)
+    score += int(correction_count * 3)  # Willing to correct = cooperative
+    score = max(0, min(100, score))
+
+    if score >= 80:
+        level = "highly_cooperative"
+    elif score >= 60:
+        level = "cooperative"
+    elif score >= 40:
+        level = "moderately_cooperative"
+    elif score >= 20:
+        level = "reluctant"
+    else:
+        level = "uncooperative"
+
+    return {
+        "score": score,
+        "level": level,
+        "indicators": {
+            "avg_response_length": round(avg_words, 1),
+            "detailed_responses": detailed_count,
+            "evasive_responses": evasive_count,
+            "refusals": refusal_count,
+            "corrections_offered": correction_count,
+            "emotional_appeals": emotional_count,
+            "total_statements": total,
+        },
+        "assessment": {
+            "highly_cooperative": "Witness is very cooperative, providing detailed and helpful responses",
+            "cooperative": "Witness is generally cooperative with good detail level",
+            "moderately_cooperative": "Witness shows mixed cooperation, some evasiveness noted",
+            "reluctant": "Witness appears reluctant, with frequent vague or short responses",
+            "uncooperative": "Witness is largely uncooperative, refusing or evading questions",
+        }.get(level, "Unknown"),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 51: Testimony Annotation System
+# ═══════════════════════════════════════════════════════════════════
+_session_annotations: Dict[str, list] = {}
+
+@router.post("/sessions/{session_id}/annotations")
+async def add_annotation(session_id: str, data: dict):
+    """Add an annotation to a session."""
+    text = data.get("text", "").strip()
+    msg_index = data.get("message_index")
+    category = data.get("category", "note")
+    if not text:
+        raise HTTPException(400, "Annotation text required")
+
+    if session_id not in _session_annotations:
+        _session_annotations[session_id] = []
+
+    annotation = {
+        "id": f"ann-{len(_session_annotations[session_id])}-{datetime.now(timezone.utc).strftime('%H%M%S')}",
+        "text": text,
+        "message_index": msg_index,
+        "category": category,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _session_annotations[session_id].append(annotation)
+    return {"annotation": annotation, "total": len(_session_annotations[session_id])}
+
+@router.get("/sessions/{session_id}/annotations")
+async def list_annotations(session_id: str):
+    """List all annotations for a session."""
+    anns = _session_annotations.get(session_id, [])
+    return {"session_id": session_id, "annotations": anns, "total": len(anns)}
+
+@router.delete("/sessions/{session_id}/annotations/{annotation_id}")
+async def delete_annotation(session_id: str, annotation_id: str):
+    """Delete an annotation."""
+    anns = _session_annotations.get(session_id, [])
+    _session_annotations[session_id] = [a for a in anns if a["id"] != annotation_id]
+    return {"deleted": annotation_id}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 52: Cross-Session Search
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/search-sessions")
+async def search_all_sessions(q: str = "", limit: int = 20):
+    """Search across all sessions for a keyword or phrase."""
+    if not q.strip():
+        return {"results": [], "query": q, "total": 0}
+
+    query_lower = q.strip().lower()
+    sessions = await firestore_service.list_sessions(limit=500)
+    results = []
+
+    for session in sessions:
+        matches = []
+        statements = getattr(session, 'witness_statements', []) or []
+        for i, stmt in enumerate(statements):
+            text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+            if query_lower in text.lower():
+                # Extract context around match
+                idx = text.lower().index(query_lower)
+                start = max(0, idx - 40)
+                end = min(len(text), idx + len(query_lower) + 40)
+                snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
+                matches.append({"statement_index": i, "snippet": snippet})
+
+        case_title = getattr(session, 'case_title', '') or ''
+        if query_lower in case_title.lower():
+            matches.append({"statement_index": -1, "snippet": f"Case title: {case_title}"})
+
+        if matches:
+            results.append({
+                "session_id": getattr(session, 'session_id', '') or getattr(session, 'id', ''),
+                "case_title": case_title,
+                "statement_count": len(statements),
+                "matches": matches[:5],
+                "match_count": len(matches),
+            })
+
+    results.sort(key=lambda r: r["match_count"], reverse=True)
+    return {"results": results[:limit], "query": q, "total": len(results)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 53: Testimony Highlight Reel
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/highlights")
+async def get_testimony_highlights(session_id: str):
+    """Auto-extract the most important testimony moments."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if not statements:
+        return {"highlights": [], "total": 0}
+
+    highlight_signals = [
+        (r'\b(I saw|I witnessed|I observed)\b', "direct_observation", "👁️", 3),
+        (r'\b(he said|she said|they told me)\b', "reported_speech", "💬", 2),
+        (r'\b(suddenly|immediately|all of a sudden|out of nowhere)\b', "sudden_event", "⚡", 3),
+        (r'\b(weapon|gun|knife|blood|injury|wound|dead|killed)\b', "critical_detail", "🔴", 4),
+        (r'\b(I remember clearly|I will never forget|distinctly|vivid)\b', "vivid_memory", "🧠", 3),
+        (r'\b(wait|actually|correction|let me clarify|I was wrong)\b', "correction", "🔄", 2),
+        (r'\b(license plate|registration|serial number|badge|ID)\b', "identifying_info", "🏷️", 4),
+        (r'\b(I heard a|loud|bang|scream|crash|explosion)\b', "auditory", "👂", 2),
+        (r'\b(ran|fled|escaped|chased|drove away|sped off)\b', "flight", "🏃", 3),
+        (r'\b(approximately|about \d|around \d|o.clock|a\.m\.|p\.m\.)\b', "time_reference", "🕐", 2),
+    ]
+
+    highlights = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        if len(text) < 10:
+            continue
+
+        score = 0
+        tags = []
+        for pattern, tag, icon, weight in highlight_signals:
+            if re.search(pattern, text, re.IGNORECASE):
+                score += weight
+                if tag not in [t["type"] for t in tags]:
+                    tags.append({"type": tag, "icon": icon})
+
+        # Bonus for longer, more detailed responses
+        word_count = len(text.split())
+        if word_count > 30:
+            score += 1
+        if word_count > 60:
+            score += 1
+
+        if score >= 3:
+            highlights.append({
+                "text": text[:300] + ("..." if len(text) > 300 else ""),
+                "score": score,
+                "tags": tags,
+                "statement_index": i,
+                "word_count": word_count,
+            })
+
+    highlights.sort(key=lambda h: h["score"], reverse=True)
+    return {"highlights": highlights[:10], "total": len(highlights)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 54: Admin System Health Dashboard (enhanced)
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/admin/health-dashboard")
+async def get_health_dashboard(auth=Depends(require_admin_auth)):
+    """Get a comprehensive health dashboard with session stats, trends, and system info."""
+    import time as _time
+    try:
+        sessions = await firestore_service.list_sessions(limit=500)
+        total_sessions = len(sessions)
+        total_statements = sum(len(getattr(s, 'witness_statements', []) or []) for s in sessions)
+
+        # Status breakdown
+        status_counts = {}
+        for s in sessions:
+            st = getattr(s, 'status', 'unknown') or 'unknown'
+            status_counts[st] = status_counts.get(st, 0) + 1
+
+        # Recent activity (last 24h)
+        now = datetime.now(timezone.utc)
+        recent = 0
+        for s in sessions:
+            created = getattr(s, 'created_at', None)
+            if created:
+                try:
+                    if isinstance(created, str):
+                        created = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    if hasattr(created, 'tzinfo') and created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    if (now - created).total_seconds() < 86400:
+                        recent += 1
+                except Exception:
+                    pass
+
+        # Avg statements per session
+        avg_stmts = round(total_statements / total_sessions, 1) if total_sessions > 0 else 0
+
+        # System uptime
+        import psutil
+        proc = psutil.Process()
+        uptime_sec = (now - datetime.fromtimestamp(proc.create_time(), tz=timezone.utc)).total_seconds()
+        hours = int(uptime_sec // 3600)
+        mins = int((uptime_sec % 3600) // 60)
+
+        return {
+            "sessions": {
+                "total": total_sessions,
+                "recent_24h": recent,
+                "avg_statements": avg_stmts,
+                "total_statements": total_statements,
+                "status_breakdown": status_counts,
+            },
+            "system": {
+                "uptime": f"{hours}h {mins}m",
+                "uptime_seconds": int(uptime_sec),
+                "memory_mb": round(proc.memory_info().rss / 1048576, 1),
+                "cpu_percent": psutil.cpu_percent(interval=0.3),
+                "timestamp": now.isoformat(),
+            },
+            "storage": {
+                "annotations": sum(len(v) for v in _session_annotations.values()),
+                "bookmarks": sum(len(v) for v in _session_bookmarks.values()),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Health dashboard error: {e}")
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 55: Admin Bulk Export
+# ═══════════════════════════════════════════════════════════════════
+@router.post("/admin/bulk-export")
+async def bulk_export_sessions(data: dict, auth=Depends(require_admin_auth)):
+    """Export multiple sessions in JSON or CSV format."""
+    session_ids = data.get("session_ids", [])
+    fmt = data.get("format", "json")
+    limit = data.get("limit", 50)
+
+    if not session_ids:
+        all_sessions = await firestore_service.list_sessions(limit=limit)
+        session_ids = [getattr(s, 'session_id', '') or getattr(s, 'id', '') for s in all_sessions]
+
+    exported = []
+    for sid in session_ids[:100]:
+        try:
+            session = await firestore_service.get_session(sid)
+            if not session:
+                continue
+            statements = getattr(session, 'witness_statements', []) or []
+            exported.append({
+                "session_id": sid,
+                "case_title": getattr(session, 'case_title', '') or '',
+                "status": getattr(session, 'status', '') or '',
+                "statement_count": len(statements),
+                "statements": [
+                    {
+                        "index": i,
+                        "text": getattr(s, 'text', '') or getattr(s, 'content', '') or str(s),
+                        "is_correction": getattr(s, 'is_correction', False),
+                    }
+                    for i, s in enumerate(statements)
+                ],
+                "created_at": str(getattr(session, 'created_at', '')),
+            })
+        except Exception:
+            continue
+
+    if fmt == "csv":
+        lines = ["session_id,case_title,status,statement_count,created_at"]
+        for e in exported:
+            lines.append(f'"{e["session_id"]}","{e["case_title"]}","{e["status"]}",{e["statement_count"]},"{e["created_at"]}"')
+        return {"format": "csv", "content": "\n".join(lines), "total": len(exported)}
+
+    return {"format": "json", "sessions": exported, "total": len(exported)}
