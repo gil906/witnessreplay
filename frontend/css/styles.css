@@ -11789,3 +11789,165 @@ textarea:disabled {
     .followup-actions { padding: 6px 8px; }
     .followup-btn { padding: 4px 10px; font-size: 0.74rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   IMPROVEMENT 14: Interview Phase Progress Bar
+   ═══════════════════════════════════════════════════════════════ */
+.phase-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 6px 16px;
+    background: rgba(15, 23, 42, 0.6);
+    border-bottom: 1px solid rgba(96, 165, 250, 0.1);
+    backdrop-filter: blur(8px);
+    overflow-x: auto;
+}
+.phase-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.5);
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+.phase-step.active {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+    font-weight: 600;
+}
+.phase-step.completed {
+    color: #34d399;
+}
+.phase-step.completed .phase-icon::after {
+    content: '✓';
+    font-size: 0.6rem;
+    position: absolute;
+    top: -2px;
+    right: -4px;
+}
+.phase-icon {
+    font-size: 1rem;
+    position: relative;
+}
+.phase-label {
+    font-size: 0.7rem;
+}
+.phase-connector {
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: rgba(148, 163, 184, 0.2);
+    margin: 0 4px;
+}
+.phase-step.completed + .phase-step .phase-connector,
+.phase-step.completed ~ .phase-connector {
+    background: rgba(52, 211, 153, 0.4);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMPROVEMENT 16: Evidence Extraction
+   ═══════════════════════════════════════════════════════════════ */
+.evidence-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+.evidence-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(96, 165, 250, 0.06);
+    border: 1px solid rgba(96, 165, 250, 0.15);
+    border-radius: 10px;
+    transition: border-color 0.2s;
+}
+.evidence-card:hover {
+    border-color: rgba(96, 165, 250, 0.35);
+}
+.evidence-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+.evidence-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.evidence-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+}
+.evidence-context {
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.evidence-speaker {
+    font-size: 0.68rem;
+    color: rgba(96, 165, 250, 0.6);
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMPROVEMENT 17: Session Duration Live Timer
+   ═══════════════════════════════════════════════════════════════ */
+.session-timer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.15);
+    border-radius: 16px;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+}
+.timer-icon {
+    font-size: 0.85rem;
+}
+.timer-value {
+    min-width: 42px;
+    text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMPROVEMENT 18: Message Timestamps
+   ═══════════════════════════════════════════════════════════════ */
+.msg-timestamp {
+    display: inline-block;
+    font-size: 0.65rem;
+    color: rgba(148, 163, 184, 0.35);
+    margin-left: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: default;
+    vertical-align: middle;
+    transition: color 0.2s;
+}
+.message:hover .msg-timestamp {
+    color: rgba(148, 163, 184, 0.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Mobile Responsive for new features
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .phase-progress { padding: 4px 8px; gap: 0; }
+    .phase-label { display: none; }
+    .phase-step { padding: 4px 8px; }
+    .phase-connector { width: 12px; }
+    .evidence-grid { grid-template-columns: 1fr; }
+    .session-timer { padding: 2px 6px; font-size: 0.7rem; }
+}

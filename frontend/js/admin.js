@@ -339,6 +339,7 @@ class AdminPortal {
         this.initInterviewAnalytics();
         this._initNotificationCenter();
         this._initQuickActions();
+        this._initActivityHeatmap();
     }
     
     _initModalKeyboardNav() {
@@ -5222,6 +5223,66 @@ class AdminPortal {
             const healthTab = document.querySelector('[data-tab="health"]') || document.getElementById('health-tab');
             if (healthTab) healthTab.click();
         });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Admin Activity Heatmap
+    // ═══════════════════════════════════════════════════════════════
+    _initActivityHeatmap() {
+        const container = document.getElementById('activity-heatmap');
+        if (!container) return;
+        this._loadActivityHeatmap(container);
+    }
+
+    async _loadActivityHeatmap(container) {
+        try {
+            const resp = await fetch('/api/admin/activity-heatmap', {
+                headers: this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}
+            });
+            if (!resp.ok) {
+                container.innerHTML = '<p class="heatmap-placeholder">🔒 Login required for activity data</p>';
+                return;
+            }
+            const data = await resp.json();
+            this._renderHeatmap(container, data);
+        } catch (e) {
+            container.innerHTML = '<p class="heatmap-placeholder">📊 Activity heatmap unavailable</p>';
+        }
+    }
+
+    _renderHeatmap(container, data) {
+        const days = data.days || ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const cells = data.cells || [];
+        const maxCount = Math.max(1, ...cells.map(c => c.count));
+
+        let html = '<div class="heatmap-title">📊 Session Activity Heatmap</div>';
+        html += '<div class="heatmap-grid">';
+        // Header row (hours)
+        html += '<div class="heatmap-label"></div>';
+        for (let h = 0; h < 24; h += 3) {
+            html += `<div class="heatmap-hour">${String(h).padStart(2,'0')}</div>`;
+        }
+        html += '';
+
+        for (const day of days) {
+            html += `<div class="heatmap-label">${day}</div>`;
+            for (let h = 0; h < 24; h += 3) {
+                // Sum 3-hour blocks
+                let total = 0;
+                for (let dh = 0; dh < 3; dh++) {
+                    const cell = cells.find(c => c.day === day && c.hour === (h + dh));
+                    if (cell) total += cell.count;
+                }
+                const intensity = total / maxCount;
+                const bg = total === 0
+                    ? 'rgba(148,163,184,0.06)'
+                    : `rgba(96,165,250,${0.15 + intensity * 0.65})`;
+                html += `<div class="heatmap-cell" style="background:${bg}" title="${day} ${h}:00-${h+3}:00 — ${total} sessions">${total || ''}</div>`;
+            }
+        }
+        html += '</div>';
+        html += `<div class="heatmap-footer">Total: ${data.total_sessions} sessions</div>`;
+        container.innerHTML = html;
     }
 }
 

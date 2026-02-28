@@ -11441,3 +11441,104 @@ async def get_session_keywords(session_id: str):
         "total_statements": len(statements),
         "top_keywords": [{"word": w, "count": c} for w, c in top_keywords]
     }
+
+
+# ==================== Evidence Extraction ====================
+
+@router.get("/sessions/{session_id}/evidence")
+async def get_session_evidence(session_id: str):
+    """Extract evidence items mentioned in a session's conversation."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    sd = session if isinstance(session, dict) else session.model_dump()
+
+    statements = sd.get("statements", []) or []
+    evidence_items = []
+    evidence_keywords = {
+        "weapon": "🔫", "knife": "🔪", "gun": "🔫", "blood": "🩸",
+        "car": "🚗", "vehicle": "🚗", "truck": "🚛", "camera": "📷",
+        "phone": "📱", "document": "📄", "footage": "🎥", "video": "🎥",
+        "photo": "📸", "fingerprint": "🖐️", "dna": "🧬", "drug": "💊",
+        "money": "💰", "cash": "💰", "bag": "👜", "clothing": "👕",
+        "shoe": "👟", "hat": "🧢", "mask": "🎭", "glasses": "👓",
+        "tattoo": "🖊️", "scar": "📍", "injury": "🩹", "wound": "🩹",
+        "door": "🚪", "window": "🪟", "key": "🔑", "lock": "🔒",
+        "bottle": "🍾", "glass": "🥃", "ring": "💍", "watch": "⌚",
+        "wallet": "👛", "license": "🪪", "plate": "🔢", "cctv": "📹",
+    }
+
+    seen = set()
+    for idx, stmt in enumerate(statements):
+        text = stmt.get("text", "") if isinstance(stmt, dict) else str(stmt)
+        speaker = stmt.get("speaker", "unknown") if isinstance(stmt, dict) else "unknown"
+        lower = text.lower()
+        for kw, icon in evidence_keywords.items():
+            if kw in lower and kw not in seen:
+                seen.add(kw)
+                # Extract surrounding context (±30 chars)
+                pos = lower.index(kw)
+                start = max(0, pos - 30)
+                end = min(len(text), pos + len(kw) + 30)
+                context = text[start:end].strip()
+                if start > 0:
+                    context = "..." + context
+                if end < len(text):
+                    context = context + "..."
+                evidence_items.append({
+                    "item": kw.title(),
+                    "icon": icon,
+                    "speaker": speaker,
+                    "statement_index": idx,
+                    "context": context,
+                })
+
+    return {
+        "session_id": session_id,
+        "evidence_count": len(evidence_items),
+        "items": evidence_items,
+    }
+
+
+# ==================== Admin Activity Heatmap ====================
+
+@router.get("/admin/activity-heatmap")
+async def get_activity_heatmap(auth=Depends(require_admin_auth)):
+    """Return session activity counts by hour and day-of-week for a heatmap."""
+    try:
+        sessions = await firestore_service.list_sessions(limit=500)
+        heatmap = {}  # key: "day-hour" → count
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+        for s in sessions:
+            sd = s if isinstance(s, dict) else s.model_dump()
+            created = sd.get("created_at", "")
+            if not created:
+                continue
+            try:
+                from datetime import datetime as _dt
+                if isinstance(created, str):
+                    dt = _dt.fromisoformat(created.replace("Z", "+00:00"))
+                elif hasattr(created, 'isoformat'):
+                    dt = created
+                else:
+                    continue
+                day = day_names[dt.weekday()]
+                hour = dt.hour
+                key = f"{day}-{hour}"
+                heatmap[key] = heatmap.get(key, 0) + 1
+            except (ValueError, AttributeError):
+                continue
+
+        # Build structured response
+        cells = []
+        for d_idx, day in enumerate(day_names):
+            for hour in range(24):
+                key = f"{day}-{hour}"
+                count = heatmap.get(key, 0)
+                cells.append({"day": day, "day_index": d_idx, "hour": hour, "count": count})
+
+        return {"cells": cells, "days": day_names, "total_sessions": len(sessions)}
+    except Exception as e:
+        logger.error(f"Error computing activity heatmap: {e}")
+        return {"cells": [], "days": [], "total_sessions": 0}

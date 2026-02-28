@@ -126,6 +126,9 @@ class WitnessReplayApp {
         this._initMessagePinning(); // Pin/bookmark important messages
         this._initAutoSaveIndicator(); // Save state indicator
         this._initMessageDoubleClickCopy(); // Double-click to copy messages
+        this._initPhaseProgressBar(); // Interview phase progress bar
+        this._initSmartPlaceholder(); // Smart dynamic input placeholder
+        this._initSessionTimer(); // Session duration live timer
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -3371,6 +3374,10 @@ class WitnessReplayApp {
         }
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
+        
+        // Add timestamp & update phase progress
+        this._addMessageTimestamp?.(messageDiv);
+        if (speaker === 'user') this._updatePhaseProgress?.();
         
         // Show quick reply suggestions after agent messages
         if (speaker === 'agent') {
@@ -7538,6 +7545,8 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/search</code> — Search chat messages<br>' +
                 '<code>/pins</code> — View pinned messages<br>' +
                 '<code>/stats</code> — Interview word stats<br>' +
+                '<code>/evidence</code> — Extract evidence items<br>' +
+                '<code>/undo</code> — Remove last message<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7614,6 +7623,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/stats': () => {
             this._showInterviewWordStats();
+        },
+        '/evidence': () => {
+            this._showEvidence();
+        },
+        '/undo': () => {
+            this._undoLastMessage();
         }
     };
     
@@ -8496,4 +8511,189 @@ WitnessReplayApp.prototype._showContextualFollowUps = function(commandType) {
     
     this.chatTranscript.appendChild(container);
     this._scrollChatToBottom();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 14: Interview Phase Progress Bar
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initPhaseProgressBar = function() {
+    const header = document.querySelector('.header-content');
+    if (!header || document.getElementById('phase-progress')) return;
+
+    const bar = document.createElement('div');
+    bar.id = 'phase-progress';
+    bar.className = 'phase-progress';
+    const phases = [
+        { id: 'intro', label: 'Introduction', icon: '👋' },
+        { id: 'details', label: 'Detail Collection', icon: '📝' },
+        { id: 'clarify', label: 'Clarification', icon: '🔍' },
+        { id: 'closing', label: 'Summary & Closing', icon: '✅' }
+    ];
+    bar.innerHTML = phases.map((p, i) =>
+        `<div class="phase-step ${i === 0 ? 'active' : ''}" data-phase="${p.id}">` +
+        `<span class="phase-icon">${p.icon}</span>` +
+        `<span class="phase-label">${p.label}</span>` +
+        `${i < phases.length - 1 ? '<span class="phase-connector"></span>' : ''}` +
+        `</div>`
+    ).join('');
+    header.after(bar);
+
+    this._currentPhase = 'intro';
+    this._phaseMessageCount = 0;
+};
+
+WitnessReplayApp.prototype._updatePhaseProgress = function() {
+    this._phaseMessageCount = (this._phaseMessageCount || 0) + 1;
+    const count = this._phaseMessageCount;
+    let newPhase = 'intro';
+    if (count >= 20) newPhase = 'closing';
+    else if (count >= 12) newPhase = 'clarify';
+    else if (count >= 4) newPhase = 'details';
+
+    if (newPhase === this._currentPhase) return;
+    this._currentPhase = newPhase;
+
+    const steps = document.querySelectorAll('.phase-step');
+    const order = ['intro', 'details', 'clarify', 'closing'];
+    const idx = order.indexOf(newPhase);
+    steps.forEach((step, i) => {
+        step.classList.toggle('active', i === idx);
+        step.classList.toggle('completed', i < idx);
+    });
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 15: Smart Dynamic Input Placeholder
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initSmartPlaceholder = function() {
+    this._placeholderHints = [
+        { phase: 'intro', hints: [
+            'Describe what happened...',
+            'Tell me about the incident...',
+            'Where and when did this occur?'
+        ]},
+        { phase: 'details', hints: [
+            'Can you describe the person(s) involved?',
+            'What did you see or hear next?',
+            'Were there any distinguishing features?',
+            'What direction did they go?'
+        ]},
+        { phase: 'clarify', hints: [
+            'Can you clarify that last point?',
+            'How certain are you about the timing?',
+            'Was there anything else you noticed?',
+            'Any additional details about the vehicle?'
+        ]},
+        { phase: 'closing', hints: [
+            'Anything else you want to add?',
+            'Type /summary for a full summary',
+            'Type /timeline to see the timeline',
+            'Type /export to save transcript'
+        ]}
+    ];
+    this._rotatePlaceholder();
+    this._placeholderInterval = setInterval(() => this._rotatePlaceholder(), 12000);
+};
+
+WitnessReplayApp.prototype._rotatePlaceholder = function() {
+    const input = document.getElementById('user-input');
+    if (!input || document.activeElement === input) return;
+    const phase = this._currentPhase || 'intro';
+    const group = this._placeholderHints?.find(g => g.phase === phase);
+    if (!group) return;
+    const hint = group.hints[Math.floor(Math.random() * group.hints.length)];
+    input.setAttribute('placeholder', hint);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 16: Evidence Extraction (/evidence command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showEvidence = async function() {
+    if (!this.sessionId) {
+        this.displaySystemMessage('⚠️ No active session. Start a conversation first.');
+        return;
+    }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/evidence`);
+        const data = await resp.json();
+        if (!data.items || data.items.length === 0) {
+            this.displaySystemMessage('🔍 <b>No evidence items detected yet.</b><br>Mention physical items, vehicles, weapons, or other objects to see them listed here.');
+            return;
+        }
+        let html = `🗂️ <b>Evidence Items Found (${data.evidence_count})</b><br><div class="evidence-grid">`;
+        data.items.forEach(item => {
+            html += `<div class="evidence-card">` +
+                `<span class="evidence-icon">${item.icon}</span>` +
+                `<div class="evidence-info">` +
+                `<span class="evidence-name">${item.item}</span>` +
+                `<span class="evidence-context">${this._escapeHtml(item.context)}</span>` +
+                `<span class="evidence-speaker">Mentioned by: ${item.speaker}</span>` +
+                `</div></div>`;
+        });
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch (e) {
+        this.displaySystemMessage('⚠️ Could not load evidence items.');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 17: Session Duration Live Timer
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initSessionTimer = function() {
+    const sessionInfo = document.querySelector('.session-info');
+    if (!sessionInfo || document.getElementById('session-timer')) return;
+
+    const timer = document.createElement('div');
+    timer.id = 'session-timer';
+    timer.className = 'session-timer';
+    timer.innerHTML = '<span class="timer-icon">⏱️</span><span class="timer-value">00:00</span>';
+    sessionInfo.insertBefore(timer, sessionInfo.firstChild);
+
+    this._sessionStartTime = Date.now();
+    this._sessionTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - this._sessionStartTime) / 1000);
+        const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const secs = String(elapsed % 60).padStart(2, '0');
+        const val = timer.querySelector('.timer-value');
+        if (val) val.textContent = `${mins}:${secs}`;
+    }, 1000);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 18: Message Timestamps
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._addMessageTimestamp = function(msgEl) {
+    if (!msgEl || msgEl.querySelector('.msg-timestamp')) return;
+    const now = new Date();
+    const ts = document.createElement('span');
+    ts.className = 'msg-timestamp';
+    ts.title = now.toLocaleString();
+    ts.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    ts.dataset.time = now.toISOString();
+
+    const content = msgEl.querySelector('.message-content') || msgEl;
+    content.appendChild(ts);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 19: Admin Activity Heatmap
+// (Implemented in admin.js below)
+// ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 20: Undo Last Message (/undo command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._undoLastMessage = function() {
+    const transcript = document.getElementById('chat-transcript');
+    if (!transcript) return;
+    const messages = transcript.querySelectorAll('.message.user');
+    if (messages.length === 0) {
+        this.displaySystemMessage('⚠️ No user messages to undo.');
+        return;
+    }
+    const last = messages[messages.length - 1];
+    const text = last.textContent.substring(0, 50).trim();
+    last.remove();
+    this.displaySystemMessage(`↩️ Removed last message: "<i>${this._escapeHtml(text)}...</i>"`);
 };
