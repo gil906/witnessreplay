@@ -11812,3 +11812,133 @@ async def purge_old_sessions(data: dict, auth=Depends(require_admin_auth)):
         "cutoff_date": cutoff.isoformat(),
         "message": f"Found {purged} sessions older than {days} days (dry run — no actual deletion)",
     }
+
+
+# ==================== Admin Session Transcript Viewer ====================
+
+@router.get("/admin/sessions/{session_id}/transcript")
+async def admin_get_session_transcript(session_id: str, auth=Depends(require_admin_auth)):
+    """Get full transcript for admin session viewer."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    from app.agents.scene_agent import get_agent
+    agent = get_agent(session_id)
+
+    statements = []
+    for s in session.witness_statements:
+        statements.append({
+            "id": s.id,
+            "text": s.text,
+            "is_correction": getattr(s, "is_correction", False),
+            "confidence": getattr(s, "confidence", 0.5),
+            "timestamp": s.timestamp.isoformat() if hasattr(s, "timestamp") and s.timestamp else None,
+        })
+
+    history = agent.conversation_history if hasattr(agent, "conversation_history") else []
+
+    return {
+        "session_id": session_id,
+        "title": session.title,
+        "status": session.status,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "statement_count": len(statements),
+        "statements": statements,
+        "conversation_history": history,
+        "metadata": getattr(session, "metadata", {}) or {},
+    }
+
+
+# ==================== AI Follow-up Question Suggestions ====================
+
+@router.get("/sessions/{session_id}/suggest-questions")
+async def suggest_follow_up_questions(session_id: str):
+    """Suggest contextual follow-up questions based on interview progress."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = [s.text for s in session.witness_statements[-5:]]
+    context = " ".join(statements) if statements else ""
+
+    # Rule-based question suggestions based on missing info
+    suggestions = []
+    text_lower = context.lower()
+
+    if not any(w in text_lower for w in ["when", "time", "o'clock", "morning", "evening", "night", "afternoon"]):
+        suggestions.append("When exactly did this happen? Can you estimate the time?")
+    if not any(w in text_lower for w in ["where", "location", "street", "address", "building", "room"]):
+        suggestions.append("Where did this take place? Can you describe the location?")
+    if not any(w in text_lower for w in ["looked like", "wearing", "tall", "short", "hair", "face", "description"]):
+        suggestions.append("Can you describe the appearance of the person(s) involved?")
+    if not any(w in text_lower for w in ["weapon", "gun", "knife", "tool", "object"]):
+        suggestions.append("Were any weapons or objects involved?")
+    if not any(w in text_lower for w in ["witness", "anyone else", "other people", "saw", "bystander"]):
+        suggestions.append("Were there any other witnesses or bystanders?")
+    if not any(w in text_lower for w in ["vehicle", "car", "truck", "license", "plate"]):
+        suggestions.append("Were any vehicles involved? Can you describe them?")
+    if not any(w in text_lower for w in ["direction", "ran", "fled", "left", "drove away"]):
+        suggestions.append("Which direction did the suspect(s) go afterward?")
+    if not any(w in text_lower for w in ["camera", "cctv", "security", "footage", "recording"]):
+        suggestions.append("Are there any security cameras or recordings in the area?")
+
+    # Limit to 3 most relevant
+    return {"session_id": session_id, "suggestions": suggestions[:3]}
+
+
+# ==================== Investigation Report Generator ====================
+
+@router.get("/sessions/{session_id}/investigation-report")
+async def generate_investigation_report(session_id: str):
+    """Generate a structured investigation report from interview data."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    from app.agents.scene_agent import get_agent
+    agent = get_agent(session_id)
+
+    statements = session.witness_statements
+    meta = getattr(session, "metadata", {}) or {}
+
+    # Extract key facts from statements
+    all_text = " ".join(s.text for s in statements)
+    word_count = len(all_text.split())
+
+    # Build report sections
+    report = {
+        "session_id": session_id,
+        "report_title": f"Investigation Report — {session.title}",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "case_info": {
+            "case_id": getattr(session, "case_id", None),
+            "title": session.title,
+            "status": session.status,
+            "created": session.created_at.isoformat() if session.created_at else None,
+            "incident_type": meta.get("incident_type", "Unknown"),
+            "report_number": getattr(session, "report_number", ""),
+        },
+        "interview_summary": {
+            "total_statements": len(statements),
+            "total_words": word_count,
+            "corrections_made": sum(1 for s in statements if getattr(s, "is_correction", False)),
+            "avg_confidence": round(
+                sum(getattr(s, "confidence", 0.5) for s in statements) / max(len(statements), 1), 2
+            ),
+            "duration_estimate": f"{max(1, word_count // 150)} min",
+        },
+        "witness_statements": [
+            {
+                "sequence": i + 1,
+                "text": s.text,
+                "timestamp": s.timestamp.isoformat() if hasattr(s, "timestamp") and s.timestamp else None,
+                "is_correction": getattr(s, "is_correction", False),
+            }
+            for i, s in enumerate(statements)
+        ],
+        "tags": meta.get("tags", []),
+        "notes": "Auto-generated by WitnessReplay AI system. Review and verify all details before official filing.",
+    }
+
+    return report

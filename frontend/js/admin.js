@@ -342,6 +342,7 @@ class AdminPortal {
         this._initActivityHeatmap();
         this._initDataRetention();
         this._loadDataRetention();
+        this._initSessionViewer();
     }
     
     _initModalKeyboardNav() {
@@ -5356,4 +5357,87 @@ AdminPortal.prototype._loadDataRetention = async function() {
         const archiveCheckbox = document.getElementById('retention-archive');
         if (archiveCheckbox) archiveCheckbox.checked = data.archive_before_delete !== false;
     } catch (e) { /* silent */ }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Session Transcript Viewer
+// ═══════════════════════════════════════════════════════════════════
+AdminPortal.prototype._initSessionViewer = function() {
+    const loadBtn = document.getElementById('sv-load-btn');
+    if (!loadBtn) return;
+
+    loadBtn.addEventListener('click', () => {
+        const sid = document.getElementById('sv-session-id')?.value?.trim();
+        if (sid) this._loadSessionTranscript(sid);
+    });
+
+    // Also allow clicking session IDs from the reports table
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('sv-view-link')) {
+            const sid = e.target.dataset.sessionId;
+            if (sid) {
+                document.getElementById('sv-session-id').value = sid;
+                this._loadSessionTranscript(sid);
+                document.getElementById('session-viewer-section')?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+};
+
+AdminPortal.prototype._loadSessionTranscript = async function(sessionId) {
+    const container = document.getElementById('sv-transcript');
+    if (!container) return;
+    container.innerHTML = '<div class="loading">Loading transcript...</div>';
+
+    try {
+        const resp = await this.fetchWithTimeout(`/api/admin/sessions/${sessionId}/transcript`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        let html = `<div class="sv-header">`;
+        html += `<h4>${this._escapeHtml(data.title || 'Untitled Session')}</h4>`;
+        html += `<div class="sv-meta">`;
+        html += `<span>📋 ${data.statement_count} statements</span>`;
+        html += `<span>📅 ${data.created_at ? new Date(data.created_at).toLocaleString() : 'Unknown'}</span>`;
+        html += `<span class="sv-status sv-status-${data.status}">${data.status}</span>`;
+        html += `</div></div>`;
+
+        html += `<div class="sv-messages">`;
+        const history = data.conversation_history || [];
+        if (history.length > 0) {
+            history.forEach(msg => {
+                const role = msg.role === 'user' ? 'user' : 'agent';
+                const icon = role === 'user' ? '👤' : '🔍';
+                const label = role === 'user' ? 'Witness' : 'Detective Ray';
+                const text = (msg.parts ? msg.parts.map(p => p.text || '').join('') : (msg.content || msg.text || '')).substring(0, 500);
+                html += `<div class="sv-msg sv-msg-${role}">`;
+                html += `<span class="sv-msg-icon">${icon}</span>`;
+                html += `<span class="sv-msg-label">${label}</span>`;
+                html += `<div class="sv-msg-text">${this._escapeHtml(text)}</div>`;
+                html += `</div>`;
+            });
+        } else if (data.statements && data.statements.length > 0) {
+            data.statements.forEach(s => {
+                html += `<div class="sv-msg sv-msg-user">`;
+                html += `<span class="sv-msg-icon">👤</span>`;
+                html += `<span class="sv-msg-label">Witness</span>`;
+                html += `<div class="sv-msg-text">${this._escapeHtml(s.text)}</div>`;
+                html += `</div>`;
+            });
+        } else {
+            html += `<div class="sv-empty">No messages in this session.</div>`;
+        }
+        html += `</div>`;
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="error">❌ Could not load transcript: ${this._escapeHtml(e.message)}</div>`;
+    }
+};
+
+AdminPortal.prototype._escapeHtml = function(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 };

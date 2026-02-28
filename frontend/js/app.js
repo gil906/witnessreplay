@@ -132,6 +132,9 @@ class WitnessReplayApp {
         this._initQualityScore(); // Interview quality score widget
         this._initInfoChecklist(); // Interview info checklist
         this._initScrollNav(); // Scroll navigation buttons
+        this._initWitnessProfileCard(); // Witness profile card
+        this._initContextMenu(); // Message context menu
+        this._initQuickTemplates(); // Quick incident templates
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -7564,6 +7567,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/quality</code> — Interview quality score<br>' +
                 '<code>/sentiment</code> — Witness sentiment timeline<br>' +
                 '<code>/tag [name]</code> — Add/view session tags<br>' +
+                '<code>/report</code> — Generate investigation report<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7656,6 +7660,9 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/tag': () => {
             const rest = text.slice(4).trim();
             this._handleTagCommand(rest);
+        },
+        '/report': () => {
+            this._generateReport();
         }
     };
     
@@ -7735,7 +7742,8 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/stats', desc: 'Interview word stats' },
         { cmd: '/quality', desc: 'Quality score' },
         { cmd: '/sentiment', desc: 'Sentiment timeline' },
-        { cmd: '/tag', desc: 'Session tags' }
+        { cmd: '/tag', desc: 'Session tags' },
+        { cmd: '/report', desc: 'Investigation report' }
     ];
     
     const filter = val.toLowerCase();
@@ -8994,3 +9002,397 @@ WitnessReplayApp.prototype._initScrollNav = function() {
 // IMPROVEMENT 27: Admin Data Retention Panel
 // (Implemented in admin.js)
 // ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 28: Key Fact Auto-Highlighting
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._highlightKeyFacts = function(text) {
+    if (!text || typeof text !== 'string') return text;
+    let html = this._escapeHtml(text);
+
+    // Time patterns: 3:30 PM, 15:30, around 3pm, etc.
+    html = html.replace(/\b(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?|\d{1,2}\s*(?:AM|PM|am|pm)|(?:around|about|approximately)\s+\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)?)\b/g,
+        '<span class="fact-highlight fact-time" title="Time">⏰ $1</span>');
+
+    // Date patterns: January 5, 02/14/2025, last Monday, etc.
+    html = html.replace(/\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}|(?:last|this|next)\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))\b/gi,
+        '<span class="fact-highlight fact-date" title="Date">📅 $1</span>');
+
+    // Location patterns: street names, intersections
+    html = html.replace(/\b(\d+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Place|Pl|Court|Ct))\b/g,
+        '<span class="fact-highlight fact-location" title="Location">📍 $1</span>');
+
+    // Numbers with units: 6 feet, 200 pounds, etc.
+    html = html.replace(/\b(\d+(?:\.\d+)?\s*(?:feet|foot|ft|inches|inch|in|pounds|lbs|miles|mph|km|meters|yards|yd))\b/gi,
+        '<span class="fact-highlight fact-measure" title="Measurement">📏 $1</span>');
+
+    // Color descriptions for suspects/vehicles
+    html = html.replace(/\b((?:black|white|red|blue|green|gray|grey|silver|brown|yellow|dark|light)\s+(?:car|truck|van|SUV|sedan|jacket|shirt|hoodie|pants|hat|mask|bag|backpack))\b/gi,
+        '<span class="fact-highlight fact-desc" title="Description">🔎 $1</span>');
+
+    return html;
+};
+
+// Override displayMessage to use highlighting for agent messages
+(function() {
+    const origDisplay = WitnessReplayApp.prototype.displayMessage;
+    WitnessReplayApp.prototype.displayMessage = function(text, speaker) {
+        if (speaker === 'user' && text && !text.startsWith('/')) {
+            // Save original for data, show highlighted in DOM
+            const msgDiv = origDisplay.call(this, text, speaker);
+            // Re-highlight after render
+            setTimeout(() => {
+                const msgs = this.chatTranscript?.querySelectorAll('.message-user:last-child');
+                if (msgs && msgs.length > 0) {
+                    const last = msgs[msgs.length - 1];
+                    const content = last.querySelector('.message-content') || last;
+                    // Apply highlighting to the text node portion
+                    const textNodes = Array.from(content.childNodes).filter(n => n.nodeType === 3);
+                    textNodes.forEach(node => {
+                        const highlighted = this._highlightKeyFacts(node.textContent);
+                        if (highlighted !== this._escapeHtml(node.textContent)) {
+                            const span = document.createElement('span');
+                            span.innerHTML = highlighted;
+                            node.replaceWith(span);
+                        }
+                    });
+                }
+            }, 50);
+            return msgDiv;
+        }
+        return origDisplay.call(this, text, speaker);
+    };
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 29: Witness Profile Card
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initWitnessProfileCard = function() {
+    if (document.getElementById('witness-profile-card')) return;
+
+    const card = document.createElement('div');
+    card.id = 'witness-profile-card';
+    card.className = 'witness-profile-card collapsed';
+    card.innerHTML = `
+        <div class="wpc-header" id="wpc-toggle">
+            <span class="wpc-icon">👤</span>
+            <span class="wpc-title">Witness Profile</span>
+            <span class="wpc-expand">▶</span>
+        </div>
+        <div class="wpc-body">
+            <div class="wpc-field"><label>Name</label><span id="wpc-name">Unknown</span></div>
+            <div class="wpc-field"><label>Age/Gender</label><span id="wpc-age">—</span></div>
+            <div class="wpc-field"><label>Role</label><span id="wpc-role">Witness</span></div>
+            <div class="wpc-field"><label>Location</label><span id="wpc-location">—</span></div>
+            <div class="wpc-field"><label>Key Details</label><span id="wpc-details">—</span></div>
+            <div class="wpc-field"><label>Statements</label><span id="wpc-stmts">0</span></div>
+        </div>
+    `;
+
+    const container = document.querySelector('.container') || document.body;
+    container.appendChild(card);
+
+    document.getElementById('wpc-toggle').addEventListener('click', () => {
+        card.classList.toggle('collapsed');
+        card.querySelector('.wpc-expand').textContent = card.classList.contains('collapsed') ? '▶' : '▼';
+    });
+};
+
+WitnessReplayApp.prototype._updateWitnessProfile = function(text) {
+    if (!text) return;
+    const lower = text.toLowerCase();
+
+    // Extract name patterns: "my name is X", "I'm X", "call me X"
+    const nameMatch = text.match(/(?:my name is|i'm|i am|call me|name's)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+    if (nameMatch) {
+        const el = document.getElementById('wpc-name');
+        if (el) el.textContent = nameMatch[1];
+    }
+
+    // Extract age: "I'm 35", "35 years old", "age 35"
+    const ageMatch = text.match(/(?:i'm|i am|age|aged)\s*(\d{1,3})\b|\b(\d{1,3})\s*years?\s*old/i);
+    if (ageMatch) {
+        const el = document.getElementById('wpc-age');
+        if (el) el.textContent = (ageMatch[1] || ageMatch[2]) + ' years old';
+    }
+
+    // Extract role: "I was the victim", "I'm a bystander"
+    const roleMatch = lower.match(/i(?:'m| am| was)\s+(?:a |the )?(victim|witness|bystander|suspect|officer|driver|passenger|neighbor|employee|manager|owner|security guard)/);
+    if (roleMatch) {
+        const el = document.getElementById('wpc-role');
+        if (el) el.textContent = roleMatch[1].charAt(0).toUpperCase() + roleMatch[1].slice(1);
+    }
+
+    // Location extraction
+    const locMatch = text.match(/(?:at|on|near|outside|inside|in front of)\s+(?:the\s+)?([A-Z][a-zA-Z\s]+(?:Street|St|Ave|Avenue|Road|Rd|Park|Mall|Store|Building|Hotel|Restaurant|Bar|Station))/);
+    if (locMatch) {
+        const el = document.getElementById('wpc-location');
+        if (el) el.textContent = locMatch[1].trim();
+    }
+
+    // Update statement count
+    const stmtEl = document.getElementById('wpc-stmts');
+    if (stmtEl) stmtEl.textContent = this.statementCount || 0;
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 30: AI Follow-up Question Suggestions
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._fetchAndShowSuggestions = async function() {
+    if (!this.sessionId) return;
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/suggest-questions`);
+        const data = await resp.json();
+        if (data.suggestions && data.suggestions.length > 0) {
+            this._showAISuggestionChips(data.suggestions);
+        }
+    } catch (e) { /* silent */ }
+};
+
+WitnessReplayApp.prototype._showAISuggestionChips = function(suggestions) {
+    // Remove existing
+    document.querySelectorAll('.ai-suggestion-bar').forEach(el => el.remove());
+
+    const bar = document.createElement('div');
+    bar.className = 'ai-suggestion-bar';
+    bar.innerHTML = '<span class="aisb-label">💡 Suggested questions:</span>';
+
+    suggestions.forEach(q => {
+        const chip = document.createElement('button');
+        chip.className = 'ai-suggestion-chip';
+        chip.textContent = q.length > 60 ? q.substring(0, 57) + '...' : q;
+        chip.title = q;
+        chip.addEventListener('click', () => {
+            if (this.textInput) {
+                this.textInput.value = q;
+                this.textInput.focus();
+            }
+            bar.remove();
+        });
+        bar.appendChild(chip);
+    });
+
+    const dismiss = document.createElement('button');
+    dismiss.className = 'ai-suggestion-dismiss';
+    dismiss.innerHTML = '✕';
+    dismiss.title = 'Dismiss suggestions';
+    dismiss.addEventListener('click', () => bar.remove());
+    bar.appendChild(dismiss);
+
+    const input = document.querySelector('.input-area') || document.querySelector('.chat-input-container');
+    if (input) {
+        input.parentNode.insertBefore(bar, input);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 31: Message Context Menu
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initContextMenu = function() {
+    if (document.getElementById('msg-context-menu')) return;
+
+    const menu = document.createElement('div');
+    menu.id = 'msg-context-menu';
+    menu.className = 'msg-context-menu';
+    menu.style.display = 'none';
+    menu.innerHTML = `
+        <button class="ctx-item" data-action="copy">📋 Copy Text</button>
+        <button class="ctx-item" data-action="pin">📌 Pin Message</button>
+        <button class="ctx-item" data-action="read">🔊 Read Aloud</button>
+        <button class="ctx-item" data-action="highlight">🖍️ Highlight</button>
+        <button class="ctx-item" data-action="delete">🗑️ Remove</button>
+    `;
+    document.body.appendChild(menu);
+
+    this._ctxTarget = null;
+
+    document.addEventListener('click', () => {
+        menu.style.display = 'none';
+    });
+
+    menu.querySelectorAll('.ctx-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = btn.dataset.action;
+            this._handleContextAction(action, this._ctxTarget);
+            menu.style.display = 'none';
+        });
+    });
+
+    const transcript = document.getElementById('chat-transcript');
+    if (transcript) {
+        transcript.addEventListener('contextmenu', (e) => {
+            const msg = e.target.closest('.message');
+            if (!msg) return;
+            e.preventDefault();
+            this._ctxTarget = msg;
+            menu.style.left = Math.min(e.pageX, window.innerWidth - 180) + 'px';
+            menu.style.top = Math.min(e.pageY, window.innerHeight - 200) + 'px';
+            menu.style.display = 'flex';
+        });
+    }
+};
+
+WitnessReplayApp.prototype._handleContextAction = function(action, msgEl) {
+    if (!msgEl) return;
+    const textContent = msgEl.textContent || '';
+
+    switch (action) {
+        case 'copy':
+            navigator.clipboard?.writeText(textContent).then(() => {
+                this.displaySystemMessage('📋 Message copied to clipboard.');
+            });
+            break;
+        case 'pin':
+            this._pinMessage?.(msgEl);
+            break;
+        case 'read':
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utt = new SpeechSynthesisUtterance(textContent.substring(0, 500));
+                utt.rate = 0.95;
+                window.speechSynthesis.speak(utt);
+            }
+            break;
+        case 'highlight':
+            msgEl.classList.toggle('msg-highlighted');
+            break;
+        case 'delete':
+            msgEl.remove();
+            this.displaySystemMessage('🗑️ Message removed from view.');
+            break;
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 32: Investigation Report (/report command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._generateReport = async function() {
+    if (!this.sessionId) {
+        this.displaySystemMessage('⚠️ No active session.');
+        return;
+    }
+    this.displaySystemMessage('📄 Generating investigation report...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/investigation-report`);
+        const report = await resp.json();
+
+        let html = `<div class="investigation-report">`;
+        html += `<h3>📋 ${this._escapeHtml(report.report_title)}</h3>`;
+        html += `<div class="ir-section"><b>Case Info</b>`;
+        html += `<div class="ir-row"><span>Case ID:</span> ${this._escapeHtml(report.case_info.case_id || 'N/A')}</div>`;
+        html += `<div class="ir-row"><span>Status:</span> ${this._escapeHtml(report.case_info.status)}</div>`;
+        html += `<div class="ir-row"><span>Type:</span> ${this._escapeHtml(report.case_info.incident_type)}</div>`;
+        html += `<div class="ir-row"><span>Created:</span> ${report.case_info.created ? new Date(report.case_info.created).toLocaleString() : 'N/A'}</div>`;
+        html += `</div>`;
+
+        html += `<div class="ir-section"><b>Interview Summary</b>`;
+        html += `<div class="ir-row"><span>Statements:</span> ${report.interview_summary.total_statements}</div>`;
+        html += `<div class="ir-row"><span>Words:</span> ${report.interview_summary.total_words}</div>`;
+        html += `<div class="ir-row"><span>Corrections:</span> ${report.interview_summary.corrections_made}</div>`;
+        html += `<div class="ir-row"><span>Avg Confidence:</span> ${(report.interview_summary.avg_confidence * 100).toFixed(0)}%</div>`;
+        html += `<div class="ir-row"><span>Duration:</span> ~${report.interview_summary.duration_estimate}</div>`;
+        html += `</div>`;
+
+        if (report.witness_statements && report.witness_statements.length > 0) {
+            html += `<div class="ir-section"><b>Statements (${report.witness_statements.length})</b>`;
+            report.witness_statements.slice(0, 10).forEach(s => {
+                html += `<div class="ir-stmt">#${s.sequence}: "${this._escapeHtml(s.text.substring(0, 120))}${s.text.length > 120 ? '...' : ''}"${s.is_correction ? ' <em>(correction)</em>' : ''}</div>`;
+            });
+            if (report.witness_statements.length > 10) {
+                html += `<div class="ir-stmt"><em>...and ${report.witness_statements.length - 10} more</em></div>`;
+            }
+            html += `</div>`;
+        }
+
+        if (report.tags && report.tags.length > 0) {
+            html += `<div class="ir-section"><b>Tags:</b> ${report.tags.map(t => `<span class="session-tag">${this._escapeHtml(t)}</span>`).join(' ')}</div>`;
+        }
+
+        html += `<div class="ir-footer">Generated ${new Date(report.generated_at).toLocaleString()} • WitnessReplay AI</div>`;
+        html += `</div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) {
+        this.displaySystemMessage('⚠️ Could not generate report.');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 33: Quick Incident Templates
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initQuickTemplates = function() {
+    // Only show on empty/new sessions
+    const transcript = document.getElementById('chat-transcript');
+    if (!transcript) return;
+
+    const existing = document.getElementById('quick-templates-bar');
+    if (existing) existing.remove();
+
+    const templates = [
+        { icon: '🔫', label: 'Robbery', prompt: 'I want to report a robbery that I witnessed.' },
+        { icon: '🚗', label: 'Traffic Accident', prompt: 'I want to report a traffic accident that I saw.' },
+        { icon: '👊', label: 'Assault', prompt: 'I want to report an assault that I witnessed.' },
+        { icon: '🏠', label: 'Burglary', prompt: 'I want to report a burglary at my property.' },
+        { icon: '🔥', label: 'Arson/Fire', prompt: 'I want to report a suspicious fire I witnessed.' },
+        { icon: '💊', label: 'Drug Activity', prompt: 'I want to report suspicious drug activity in my area.' },
+        { icon: '🚨', label: 'Suspicious Activity', prompt: 'I want to report suspicious activity I observed.' },
+        { icon: '📝', label: 'Other', prompt: 'I want to report an incident.' },
+    ];
+
+    const bar = document.createElement('div');
+    bar.id = 'quick-templates-bar';
+    bar.className = 'quick-templates-bar';
+    bar.innerHTML = '<div class="qt-label">🚀 Quick Start — Select incident type:</div><div class="qt-grid"></div>';
+    const grid = bar.querySelector('.qt-grid');
+
+    templates.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'qt-btn';
+        btn.innerHTML = `<span class="qt-icon">${t.icon}</span><span class="qt-text">${t.label}</span>`;
+        btn.title = t.prompt;
+        btn.addEventListener('click', () => {
+            if (this.textInput) {
+                this.textInput.value = t.prompt;
+                this.textInput.focus();
+            }
+            bar.classList.add('qt-fade');
+            setTimeout(() => bar.remove(), 300);
+        });
+        grid.appendChild(btn);
+    });
+
+    // Insert at top of transcript area
+    transcript.parentNode.insertBefore(bar, transcript);
+};
+
+// Hook: Remove quick templates after first user message
+(function() {
+    const origSend = WitnessReplayApp.prototype.sendMessage;
+    if (origSend) {
+        WitnessReplayApp.prototype.sendMessage = function() {
+            const bar = document.getElementById('quick-templates-bar');
+            if (bar) {
+                bar.classList.add('qt-fade');
+                setTimeout(() => bar.remove(), 300);
+            }
+            return origSend.apply(this, arguments);
+        };
+    }
+})();
+
+// Hook: Show AI suggestion chips after agent messages + update witness profile
+(function() {
+    const origDisplay2 = WitnessReplayApp.prototype.displayMessage;
+    WitnessReplayApp.prototype.displayMessage = function(text, speaker) {
+        const result = origDisplay2.call(this, text, speaker);
+        if (speaker === 'agent' && this.sessionId) {
+            // Fetch follow-up suggestions after a short delay
+            setTimeout(() => this._fetchAndShowSuggestions?.(), 800);
+        }
+        if (speaker === 'user' && text && !text.startsWith('/')) {
+            this._updateWitnessProfile?.(text);
+        }
+        return result;
+    };
+})();
