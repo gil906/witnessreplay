@@ -380,6 +380,32 @@
                 </div>
             </section>
 
+            <!-- IMPROVEMENT 67: Admin Session Report -->
+            <section class="admin-panel" id="session-report-section">
+                <h3>📊 Session Usage Report</h3>
+                <div class="sr-controls">
+                    <button id="sr-refresh-btn" class="admin-btn-sm">🔄 Refresh</button>
+                </div>
+                <div class="sr-stats-grid">
+                    <div class="sr-stat-card"><div class="sr-stat-num" id="sr-total">—</div><div class="sr-stat-label">Total Sessions</div></div>
+                    <div class="sr-stat-card"><div class="sr-stat-num" id="sr-avg-stmts">—</div><div class="sr-stat-label">Avg Statements</div></div>
+                    <div class="sr-stat-card"><div class="sr-stat-num" id="sr-avg-words">—</div><div class="sr-stat-label">Avg Words</div></div>
+                    <div class="sr-stat-card"><div class="sr-stat-num" id="sr-max-stmts">—</div><div class="sr-stat-label">Max Statements</div></div>
+                </div>
+                <div id="sr-status-dist" class="sr-status-dist"></div>
+            </section>
+
+            <!-- IMPROVEMENT 68: Admin System Alerts -->
+            <section class="admin-panel" id="system-alerts-section">
+                <h3>🚨 System Alerts <span id="sa-badge" class="sa-badge sa-badge-ok">🟢 OK</span></h3>
+                <div class="sa-controls">
+                    <button id="sa-refresh-btn" class="admin-btn-sm">🔄 Refresh</button>
+                </div>
+                <div id="sa-alerts" class="sa-alerts">
+                    <div class="sa-alert sa-alert-ok"><span class="sa-alert-icon">🟢</span><span class="sa-alert-title">Checking...</span></div>
+                </div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

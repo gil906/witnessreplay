@@ -12636,3 +12636,62 @@ textarea:disabled {
 .sc-section { color: #94a3b8; font-size: 0.8rem; padding: 4px 0; line-height: 1.5; }
 .sc-section b { color: #e2e8f0; }
 .sc-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); color: #475569; font-size: 0.7rem; text-align: center; }
+
+/* ═══ IMPROVEMENT 63: Statement Gap Detector ═══ */
+.gaps-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.gaps-header { font-size: 1.05rem; margin-bottom: 10px; color: var(--text-primary, #e0e0e0); }
+.gaps-severity { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.gaps-sev-badge { padding: 3px 10px; border-radius: 12px; font-size: 0.82rem; background: rgba(255,255,255,0.07); }
+.gaps-sev-critical { border-left: 3px solid #ff4444; }
+.gaps-sev-high { border-left: 3px solid #ff8800; }
+.gaps-sev-medium { border-left: 3px solid #ffcc00; }
+.gaps-sev-low { border-left: 3px solid #44cc44; }
+.gap-item { padding: 10px 12px; margin: 6px 0; border-radius: 8px; background: rgba(255,255,255,0.04); border-left: 3px solid #666; }
+.gap-item.gap-critical { border-left-color: #ff4444; }
+.gap-item.gap-high { border-left-color: #ff8800; }
+.gap-item.gap-medium { border-left-color: #ffcc00; }
+.gap-item.gap-low { border-left-color: #44cc44; }
+.gap-type { font-size: 0.95rem; margin-bottom: 4px; text-transform: capitalize; }
+.gap-sev { font-size: 0.75rem; opacity: 0.6; margin-left: 6px; }
+.gap-context { font-style: italic; color: var(--text-secondary, #aaa); font-size: 0.88rem; padding: 4px 0; }
+.gap-meta { font-size: 0.78rem; opacity: 0.5; }
+
+/* ═══ IMPROVEMENT 64: Comparison Matrix ═══ */
+.matrix-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.matrix-header { font-size: 1.05rem; margin-bottom: 12px; }
+.matrix-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.matrix-table th, .matrix-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.9rem; }
+.matrix-table th { background: rgba(255,255,255,0.06); font-weight: 600; }
+.matrix-table tr:hover { background: rgba(255,255,255,0.03); }
+.matrix-overlap { margin-top: 12px; padding: 10px; background: rgba(100,149,237,0.1); border-radius: 8px; font-size: 0.9rem; }
+.matrix-tip { margin-top: 8px; font-size: 0.82rem; opacity: 0.6; font-style: italic; }
+
+/* ═══ IMPROVEMENT 65: Legal Glossary ═══ */
+.glossary-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.glossary-header { font-size: 1.05rem; margin-bottom: 12px; color: var(--text-primary, #e0e0e0); }
+.glossary-item { padding: 8px 12px; margin: 5px 0; border-radius: 8px; background: rgba(255,255,255,0.04); border-left: 3px solid #6C63FF; }
+.glossary-term { font-size: 0.95rem; text-transform: capitalize; }
+.glossary-count { font-size: 0.78rem; opacity: 0.55; margin-left: 4px; }
+.glossary-def { font-size: 0.85rem; color: var(--text-secondary, #aaa); margin-top: 3px; }
+
+/* ═══ IMPROVEMENT 66: Complexity Score ═══ */
+.complexity-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.complexity-header { font-size: 1.05rem; margin-bottom: 12px; }
+.complexity-score { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.complexity-num { font-size: 2.2rem; font-weight: 700; color: #6C63FF; line-height: 1; }
+.complexity-level { font-size: 1rem; text-transform: capitalize; opacity: 0.8; }
+.complexity-metrics { display: flex; flex-direction: column; gap: 6px; }
+.cm-row { display: flex; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.04); border-radius: 6px; font-size: 0.88rem; }
+
+/* ═══ IMPROVEMENT 69: Emotional Arc ═══ */
+.arc-panel { background: var(--bg-secondary, #1a1a2e); border-radius: 12px; padding: 16px; margin: 8px 0; }
+.arc-header { font-size: 1.05rem; margin-bottom: 12px; }
+.arc-visual { display: flex; align-items: flex-end; gap: 3px; height: 80px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; }
+.arc-bar { min-width: 14px; background: linear-gradient(to top, #6C63FF, #a78bfa); border-radius: 4px 4px 0 0; display: flex; align-items: flex-start; justify-content: center; transition: height 0.3s; cursor: pointer; }
+.arc-bar:hover { opacity: 0.8; }
+.arc-bar-icon { font-size: 0.7rem; margin-top: 2px; }
+.arc-totals { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.arc-emo-tag { padding: 3px 8px; background: rgba(255,255,255,0.06); border-radius: 10px; font-size: 0.82rem; }
+.arc-shifts { font-size: 0.85rem; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; }
+.arc-shift { font-size: 0.82rem; margin: 2px 0; }
+.arc-meta { font-size: 0.78rem; opacity: 0.5; text-align: right; }

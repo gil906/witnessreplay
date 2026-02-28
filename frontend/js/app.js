@@ -7595,6 +7595,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/pin</code> — Pin/unpin session<br>' +
                 '<code>/pins</code> — View pinned sessions<br>' +
                 '<code>/card</code> — Summary card<br>' +
+                '<code>/gaps</code> — Detect testimony gaps<br>' +
+                '<code>/matrix [id]</code> — Comparison matrix<br>' +
+                '<code>/glossary</code> — Legal term glossary<br>' +
+                '<code>/complexity</code> — Complexity score<br>' +
+                '<code>/arc</code> — Emotional arc<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7770,6 +7775,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/card': () => {
             this._showSummaryCard();
+        },
+        '/gaps': () => {
+            this._showStatementGaps();
+        },
+        '/matrix': () => {
+            this._showComparisonMatrix(arg);
+        },
+        '/glossary': () => {
+            this._showLegalGlossary();
+        },
+        '/complexity': () => {
+            this._showComplexityScore();
+        },
+        '/arc': () => {
+            this._showEmotionalArc();
         }
     };
     
@@ -7875,7 +7895,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/questions', desc: 'Question analysis' },
         { cmd: '/pin', desc: 'Pin/unpin session' },
         { cmd: '/pins', desc: 'View pinned sessions' },
-        { cmd: '/card', desc: 'Summary card' }
+        { cmd: '/card', desc: 'Summary card' },
+        { cmd: '/gaps', desc: 'Detect testimony gaps' },
+        { cmd: '/matrix', desc: 'Comparison matrix' },
+        { cmd: '/glossary', desc: 'Legal term glossary' },
+        { cmd: '/complexity', desc: 'Complexity score' },
+        { cmd: '/arc', desc: 'Emotional arc' }
     ];
     
     const filter = val.toLowerCase();
@@ -10403,4 +10428,185 @@ WitnessReplayApp.prototype._showSummaryCard = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not generate summary card.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 63: Statement Gap Detector
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showStatementGaps = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔍 Scanning for testimony gaps...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/gaps`);
+        const data = await resp.json();
+        if (!data.gaps || data.gaps.length === 0) {
+            this.displaySystemMessage('✅ No significant gaps detected in testimony.');
+            return;
+        }
+        let html = `<div class="gaps-panel">`;
+        html += `<div class="gaps-header"><b>🔍 Statement Gaps Detected</b> — ${data.total} gap(s) found</div>`;
+        if (data.severity_summary) {
+            html += `<div class="gaps-severity">`;
+            const sevIcons = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
+            for (const [sev, count] of Object.entries(data.severity_summary)) {
+                html += `<span class="gaps-sev-badge gaps-sev-${sev}">${sevIcons[sev] || '⚪'} ${sev}: ${count}</span> `;
+            }
+            html += `</div>`;
+        }
+        data.gaps.slice(0, 20).forEach(g => {
+            html += `<div class="gap-item gap-${g.severity}">`;
+            html += `<div class="gap-type">${g.icon} <b>${g.type.replace(/_/g, ' ')}</b> <span class="gap-sev">[${g.severity}]</span></div>`;
+            html += `<div class="gap-context">"...${g.context}..."</div>`;
+            html += `<div class="gap-meta">Statement #${g.statement_index + 1} — matched: "${g.matched}"</div>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not detect gaps.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 64: Comparison Matrix
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showComparisonMatrix = async function(compareId) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📊 Building comparison matrix...');
+    try {
+        let url = `/api/sessions/${this.sessionId}/comparison-matrix`;
+        if (compareId) url += `?compare_id=${encodeURIComponent(compareId)}`;
+        const resp = await this.fetchWithTimeout(url);
+        const data = await resp.json();
+        let html = `<div class="matrix-panel">`;
+        html += `<div class="matrix-header"><b>📊 Testimony Comparison Matrix</b></div>`;
+        html += `<table class="matrix-table"><thead><tr><th>Dimension</th><th>Session A</th>`;
+        if (data.session_b) html += `<th>Session B</th>`;
+        html += `</tr></thead><tbody>`;
+        const dims = ['statement_count','word_count'];
+        dims.forEach(d => {
+            html += `<tr><td><b>${d.replace(/_/g,' ')}</b></td><td>${data.session_a[d]}</td>`;
+            if (data.session_b) html += `<td>${data.session_b[d]}</td>`;
+            html += `</tr>`;
+        });
+        html += `<tr><td><b>People</b></td><td>${(data.session_a.people||[]).join(', ')||'—'}</td>`;
+        if (data.session_b) html += `<td>${(data.session_b.people||[]).join(', ')||'—'}</td>`;
+        html += `</tr>`;
+        html += `<tr><td><b>Locations</b></td><td>${(data.session_a.locations||[]).join(', ')||'—'}</td>`;
+        if (data.session_b) html += `<td>${(data.session_b.locations||[]).join(', ')||'—'}</td>`;
+        html += `</tr>`;
+        html += `<tr><td><b>Times</b></td><td>${(data.session_a.times||[]).join(', ')||'—'}</td>`;
+        if (data.session_b) html += `<td>${(data.session_b.times||[]).join(', ')||'—'}</td>`;
+        html += `</tr>`;
+        html += `</tbody></table>`;
+        if (data.overlap) {
+            html += `<div class="matrix-overlap"><b>🔗 Overlap:</b> `;
+            html += `People: ${data.overlap.people_overlap_pct}%, Locations: ${data.overlap.location_overlap_pct}%`;
+            if (data.overlap.shared_people.length) html += ` | Shared: ${data.overlap.shared_people.join(', ')}`;
+            html += `</div>`;
+        }
+        if (!compareId) html += `<div class="matrix-tip">💡 Use <code>/matrix [session-id]</code> to compare with another session</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not build matrix.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 65: Legal Glossary
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showLegalGlossary = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📖 Scanning for legal terms...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/glossary`);
+        const data = await resp.json();
+        if (!data.terms_found || data.terms_found.length === 0) {
+            this.displaySystemMessage('📖 No legal terms detected in this testimony.');
+            return;
+        }
+        let html = `<div class="glossary-panel">`;
+        html += `<div class="glossary-header"><b>📖 Legal Terms Found</b> — ${data.total_legal_terms} terms, ${data.total_occurrences} total occurrences</div>`;
+        data.terms_found.forEach(t => {
+            html += `<div class="glossary-item">`;
+            html += `<div class="glossary-term"><b>${t.term}</b> <span class="glossary-count">(${t.occurrences}×)</span></div>`;
+            html += `<div class="glossary-def">${t.definition}</div>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not scan for legal terms.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 66: Complexity Score
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showComplexityScore = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📐 Analyzing testimony complexity...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/linguistic-complexity`);
+        const data = await resp.json();
+        const m = data.metrics || {};
+        const levelIcons = { very_simple:'🟢', simple:'🟡', moderate:'🟠', complex:'🔴', very_complex:'⛔' };
+        let html = `<div class="complexity-panel">`;
+        html += `<div class="complexity-header"><b>📐 Testimony Complexity</b></div>`;
+        html += `<div class="complexity-score">`;
+        html += `<div class="complexity-num">${data.complexity_score}</div>`;
+        html += `<div class="complexity-level">${levelIcons[data.level]||'⚪'} ${(data.level||'none').replace(/_/g,' ')}</div>`;
+        html += `</div>`;
+        html += `<div class="complexity-metrics">`;
+        html += `<div class="cm-row"><span>📝 Total Words</span><span>${(m.total_words||0).toLocaleString()}</span></div>`;
+        html += `<div class="cm-row"><span>📏 Avg Sentence Length</span><span>${m.avg_sentence_length||0} words</span></div>`;
+        html += `<div class="cm-row"><span>📚 Vocabulary Diversity</span><span>${m.vocabulary_diversity_pct||0}%</span></div>`;
+        html += `<div class="cm-row"><span>🔤 Avg Syllables/Word</span><span>${m.avg_syllables_per_word||0}</span></div>`;
+        html += `<div class="cm-row"><span>📖 Flesch Reading Ease</span><span>${m.flesch_reading_ease||0}/100</span></div>`;
+        html += `<div class="cm-row"><span>🧩 Complex Words</span><span>${m.complex_word_pct||0}%</span></div>`;
+        html += `<div class="cm-row"><span>📐 Longest Sentence</span><span>${m.longest_sentence_words||0} words</span></div>`;
+        html += `</div></div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not measure complexity.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 69: Emotional Arc
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showEmotionalArc = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🎭 Tracing emotional arc...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/emotional-arc`);
+        const data = await resp.json();
+        if (!data.arc || data.arc.length === 0) {
+            this.displaySystemMessage('🎭 No emotional data found in testimony.');
+            return;
+        }
+        const emoIcons = { fear:'😨', anger:'😠', sadness:'😢', surprise:'😲', confidence:'💪', uncertainty:'🤷', distress:'😰', neutral:'😐' };
+        let html = `<div class="arc-panel">`;
+        html += `<div class="arc-header"><b>🎭 Emotional Arc</b> — Dominant: ${emoIcons[data.dominant_emotion]||'😐'} ${data.dominant_emotion}</div>`;
+        // Visual arc
+        html += `<div class="arc-visual">`;
+        const maxInt = Math.max(...data.arc.map(a => a.intensity), 1);
+        data.arc.forEach((pt, i) => {
+            const height = Math.max(5, Math.round(pt.intensity / maxInt * 60));
+            html += `<div class="arc-bar" style="height:${height}px" title="Stmt ${i+1}: ${pt.dominant} (${pt.intensity})">`;
+            html += `<span class="arc-bar-icon">${emoIcons[pt.dominant]||'😐'}</span>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        // Totals
+        html += `<div class="arc-totals">`;
+        for (const [emo, count] of Object.entries(data.emotion_totals || {})) {
+            if (count > 0) html += `<span class="arc-emo-tag">${emoIcons[emo]||'❓'} ${emo}: ${count}</span> `;
+        }
+        html += `</div>`;
+        // Shifts
+        if (data.shifts && data.shifts.length > 0) {
+            html += `<div class="arc-shifts"><b>⚡ Emotional Shifts (${data.total_shifts}):</b><br>`;
+            data.shifts.slice(0, 8).forEach(s => {
+                html += `<span class="arc-shift">Stmt ${s.from_statement+1}→${s.to_statement+1}: ${emoIcons[s.from_emotion]||''} ${s.from_emotion} → ${emoIcons[s.to_emotion]||''} ${s.to_emotion}</span><br>`;
+            });
+            html += `</div>`;
+        }
+        html += `<div class="arc-meta">Range: ${data.emotional_range} | Statements: ${data.arc.length}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not trace emotional arc.'); }
 };

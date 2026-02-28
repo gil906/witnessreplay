@@ -6122,3 +6122,29 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .at-action { flex: 0 0 140px; color: #e2e8f0; font-weight: 600; }
 .at-detail { flex: 1; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .at-time { flex: 0 0 auto; color: #475569; font-size: 0.72rem; }
+
+/* ═══ IMPROVEMENT 67: Admin Session Report ═══ */
+.sr-controls { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.sr-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.sr-stat-card { background: rgba(108,99,255,0.08); border-radius: 10px; padding: 14px 10px; text-align: center; }
+.sr-stat-num { font-size: 1.6rem; font-weight: 700; color: #6C63FF; }
+.sr-stat-label { font-size: 0.78rem; opacity: 0.65; margin-top: 4px; }
+.sr-status-dist { padding: 4px 0; }
+.sr-status-row { display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.88rem; }
+.sr-status-name { text-transform: capitalize; }
+.sr-status-count { font-weight: 600; color: #6C63FF; }
+
+/* ═══ IMPROVEMENT 68: Admin System Alerts ═══ */
+.sa-controls { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.sa-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: middle; }
+.sa-badge-ok { background: rgba(68,204,68,0.15); color: #44cc44; }
+.sa-badge-warning { background: rgba(255,204,0,0.15); color: #ffcc00; }
+.sa-badge-critical { background: rgba(255,68,68,0.15); color: #ff4444; }
+.sa-alerts { display: flex; flex-direction: column; gap: 6px; }
+.sa-alert { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: rgba(255,255,255,0.03); }
+.sa-alert-ok { border-left: 3px solid #44cc44; }
+.sa-alert-warning { border-left: 3px solid #ffcc00; }
+.sa-alert-critical { border-left: 3px solid #ff4444; }
+.sa-alert-icon { font-size: 1.1rem; }
+.sa-alert-title { font-weight: 600; font-size: 0.92rem; }
+.sa-alert-detail { flex: 1; text-align: right; font-size: 0.82rem; opacity: 0.65; }

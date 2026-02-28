@@ -13545,3 +13545,464 @@ async def generate_summary_card(session_id: str):
         "opener": opener,
         "created_at": str(getattr(session, 'created_at', '')),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 63: Statement Gap Detector
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/gaps")
+async def detect_statement_gaps(session_id: str):
+    """Detect temporal gaps, missing info, and logical jumps in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"gaps": [], "total": 0, "severity_summary": {}}
+
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+
+    gap_signals = {
+        "temporal_jump": {"patterns": [r'\b(?:then later|after that|some time later|the next day|hours later|suddenly)\b'], "icon": "⏭️", "severity": "medium"},
+        "memory_gap": {"patterns": [r"\b(?:I don't remember|I can't recall|it's unclear|I'm not sure what happened|blank|fuzzy)\b"], "icon": "🧠", "severity": "high"},
+        "topic_shift": {"patterns": [r'\b(?:anyway|moving on|different topic|back to|let me go back|changing subject)\b'], "icon": "🔀", "severity": "low"},
+        "missing_detail": {"patterns": [r'\b(?:something happened|things occurred|stuff went on|I think something|not sure exactly)\b'], "icon": "❓", "severity": "high"},
+        "contradiction_hint": {"patterns": [r'\b(?:wait|actually|no,? I mean|let me correct|I misspoke|that\'s wrong)\b'], "icon": "⚡", "severity": "high"},
+        "evasion": {"patterns": [r"\b(?:I'd rather not|can we skip|I don't want to|that's not relevant|next question)\b"], "icon": "🚫", "severity": "critical"},
+        "vague_timing": {"patterns": [r'\b(?:sometime|at some point|around then|about that time|a while)\b'], "icon": "🕐", "severity": "medium"},
+    }
+
+    gaps = []
+    for i, text in enumerate(texts):
+        text_lower = text.lower()
+        for gap_type, info in gap_signals.items():
+            for pat in info["patterns"]:
+                matches = re.finditer(pat, text_lower)
+                for m in matches:
+                    context_start = max(0, m.start() - 40)
+                    context_end = min(len(text), m.end() + 40)
+                    gaps.append({
+                        "type": gap_type,
+                        "icon": info["icon"],
+                        "severity": info["severity"],
+                        "statement_index": i,
+                        "matched": m.group(0),
+                        "context": text[context_start:context_end].strip(),
+                    })
+
+    severity_summary = {}
+    for g in gaps:
+        severity_summary[g["severity"]] = severity_summary.get(g["severity"], 0) + 1
+
+    # Sort by severity
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    gaps.sort(key=lambda g: sev_order.get(g["severity"], 9))
+
+    return {"gaps": gaps[:50], "total": len(gaps), "severity_summary": severity_summary}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 64: Testimony Comparison Matrix
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/comparison-matrix")
+async def build_comparison_matrix(session_id: str, compare_id: str = ""):
+    """Build a comparison matrix between two sessions across key dimensions."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async def _extract_dims(sess):
+        stmts = getattr(sess, 'witness_statements', []) or []
+        texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in stmts]
+        all_text = " ".join(texts)
+        all_lower = all_text.lower()
+
+        times = list(set(re.findall(r'\b\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?\b', all_text)))
+        people = list(set(re.findall(r'\b(?:Mr|Mrs|Ms|Dr|Officer|Detective)\.\s+[A-Z][a-z]+', all_text)))
+        locations = list(set(re.findall(r'\b\d{1,5}\s+[A-Z][a-z]+\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Ct)', all_text)))
+        events = []
+        event_patterns = [r'(?:saw|heard|noticed|witnessed|observed)\s+(.{10,60}?)(?:\.|,|$)']
+        for pat in event_patterns:
+            events.extend(re.findall(pat, all_text, re.IGNORECASE)[:10])
+        emotions = {
+            "fear": len(re.findall(r'\b(?:scared|afraid|frightened|terrified)\b', all_lower)),
+            "anger": len(re.findall(r'\b(?:angry|mad|furious|upset)\b', all_lower)),
+            "sadness": len(re.findall(r'\b(?:sad|crying|cried|tears)\b', all_lower)),
+            "calm": len(re.findall(r'\b(?:calm|clearly|certain|sure)\b', all_lower)),
+        }
+        return {
+            "statement_count": len(stmts),
+            "word_count": len(all_text.split()),
+            "times": times[:10],
+            "people": people[:10],
+            "locations": locations[:5],
+            "key_events": events[:10],
+            "emotions": emotions,
+        }
+
+    dims_a = await _extract_dims(session)
+
+    if compare_id:
+        session_b = await firestore_service.get_session(compare_id)
+        if not session_b:
+            raise HTTPException(status_code=404, detail="Comparison session not found")
+        dims_b = await _extract_dims(session_b)
+    else:
+        dims_b = None
+
+    # Compute overlap if comparing
+    overlap = {}
+    if dims_b:
+        shared_people = set(dims_a["people"]) & set(dims_b["people"])
+        shared_locations = set(dims_a["locations"]) & set(dims_b["locations"])
+        shared_times = set(dims_a["times"]) & set(dims_b["times"])
+        overlap = {
+            "shared_people": list(shared_people),
+            "shared_locations": list(shared_locations),
+            "shared_times": list(shared_times),
+            "people_overlap_pct": round(len(shared_people) / max(len(set(dims_a["people"]) | set(dims_b["people"])), 1) * 100, 1),
+            "location_overlap_pct": round(len(shared_locations) / max(len(set(dims_a["locations"]) | set(dims_b["locations"])), 1) * 100, 1),
+        }
+
+    return {
+        "session_a": {"id": session_id, **dims_a},
+        "session_b": {"id": compare_id, **dims_b} if dims_b else None,
+        "overlap": overlap if overlap else None,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 65: Legal Term Glossary
+# ═══════════════════════════════════════════════════════════════════
+LEGAL_GLOSSARY = {
+    "deposition": "Sworn out-of-court testimony used in discovery phase of litigation",
+    "affidavit": "A written statement confirmed by oath for use as evidence in court",
+    "testimony": "Formal statement made under oath, especially in a court of law",
+    "subpoena": "A legal document ordering someone to attend court or produce documents",
+    "perjury": "The offense of willfully telling a lie under oath in a court of law",
+    "hearsay": "Testimony based on what a witness has heard from another person rather than direct knowledge",
+    "objection": "A formal protest raised during trial to disallow a witness's testimony or evidence",
+    "stipulation": "An agreement between attorneys on both sides about some aspect of the case",
+    "impeach": "To challenge the credibility of a witness's testimony",
+    "corroborate": "To confirm or give support to a statement with additional evidence",
+    "exhibit": "A document or object shown as evidence during a trial or hearing",
+    "plaintiff": "The person who brings a case against another in a court of law",
+    "defendant": "The person accused or sued in a court of law",
+    "Miranda rights": "Constitutional rights that must be read during arrest (right to remain silent, right to an attorney)",
+    "probable cause": "Reasonable grounds for making an arrest or conducting a search",
+    "arraignment": "The formal reading of charges to a defendant, who enters a plea",
+    "bail": "The temporary release of a prisoner in exchange for security",
+    "indictment": "A formal charge or accusation of a serious crime",
+    "statute of limitations": "The maximum time after an event within which legal proceedings may be initiated",
+    "mens rea": "The intention or knowledge of wrongdoing (guilty mind)",
+    "habeas corpus": "A legal action requiring a person under arrest to be brought before a judge",
+    "voir dire": "The process of questioning prospective jurors to determine their suitability",
+    "pro bono": "Legal work done without charge, especially for those who cannot afford it",
+    "due process": "Fair treatment through the normal judicial system guaranteed by law",
+    "felony": "A crime regarded as more serious than a misdemeanor, usually punishable by imprisonment",
+    "misdemeanor": "A minor wrongdoing, less serious than a felony",
+    "acquittal": "A judgment that a person is not guilty of the crime charged",
+    "precedent": "A previous case or legal decision used as an authority for deciding subsequent cases",
+    "jurisdiction": "The authority of a court to hear and decide a case",
+    "plea bargain": "An agreement in which the defendant pleads guilty to a lesser charge in exchange for a more lenient sentence",
+}
+
+
+@router.get("/sessions/{session_id}/glossary")
+async def detect_legal_terms(session_id: str):
+    """Detect and explain legal terms found in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+    all_text = " ".join(texts).lower()
+
+    found_terms = []
+    for term, definition in LEGAL_GLOSSARY.items():
+        count = len(re.findall(r'\b' + re.escape(term.lower()) + r'\b', all_text))
+        if count > 0:
+            found_terms.append({
+                "term": term,
+                "definition": definition,
+                "occurrences": count,
+            })
+
+    found_terms.sort(key=lambda t: t["occurrences"], reverse=True)
+
+    return {
+        "terms_found": found_terms,
+        "total_legal_terms": len(found_terms),
+        "total_occurrences": sum(t["occurrences"] for t in found_terms),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 66: Testimony Complexity Score
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/linguistic-complexity")
+async def measure_testimony_complexity(session_id: str):
+    """Analyze linguistic complexity of testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"complexity_score": 0, "metrics": {}, "level": "none"}
+
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+    all_text = " ".join(texts)
+    words = all_text.split()
+    total_words = len(words)
+    if total_words == 0:
+        return {"complexity_score": 0, "metrics": {}, "level": "none"}
+
+    sentences = re.split(r'[.!?]+', all_text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    total_sentences = max(len(sentences), 1)
+
+    # Avg sentence length
+    avg_sentence_len = round(total_words / total_sentences, 1)
+
+    # Vocabulary diversity (type-token ratio)
+    unique_words = len(set(w.lower() for w in words))
+    vocabulary_diversity = round(unique_words / total_words * 100, 1)
+
+    # Syllable estimation (simple heuristic)
+    def syllable_count(word):
+        word = word.lower()
+        count = len(re.findall(r'[aeiouy]+', word))
+        return max(count, 1)
+
+    total_syllables = sum(syllable_count(w) for w in words)
+    avg_syllables = round(total_syllables / total_words, 2)
+
+    # Flesch reading ease approximation
+    flesch = round(206.835 - 1.015 * (total_words / total_sentences) - 84.6 * (total_syllables / total_words), 1)
+    flesch = max(0, min(100, flesch))
+
+    # Complex words (3+ syllables)
+    complex_words = sum(1 for w in words if syllable_count(w) >= 3)
+    complex_pct = round(complex_words / total_words * 100, 1)
+
+    # Longest sentence
+    longest_sentence = max(sentences, key=lambda s: len(s.split())) if sentences else ""
+    longest_word_count = len(longest_sentence.split())
+
+    # Composite complexity score (0-100)
+    score = min(100, round(
+        (min(avg_sentence_len, 30) / 30 * 25) +
+        ((100 - vocabulary_diversity) / 100 * 15) +
+        (min(avg_syllables, 3) / 3 * 20) +
+        ((100 - flesch) / 100 * 25) +
+        (min(complex_pct, 30) / 30 * 15)
+    ))
+
+    if score < 20:
+        level = "very_simple"
+    elif score < 40:
+        level = "simple"
+    elif score < 60:
+        level = "moderate"
+    elif score < 80:
+        level = "complex"
+    else:
+        level = "very_complex"
+
+    return {
+        "complexity_score": score,
+        "level": level,
+        "metrics": {
+            "total_words": total_words,
+            "total_sentences": total_sentences,
+            "unique_words": unique_words,
+            "avg_sentence_length": avg_sentence_len,
+            "vocabulary_diversity_pct": vocabulary_diversity,
+            "avg_syllables_per_word": avg_syllables,
+            "flesch_reading_ease": flesch,
+            "complex_word_pct": complex_pct,
+            "longest_sentence_words": longest_word_count,
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 67: Admin User Session Report
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/admin/session-report")
+async def get_session_report(auth=Depends(require_admin_auth)):
+    """Generate a report on session usage patterns."""
+    _log_admin_action("view_session_report")
+    all_sessions = await firestore_service.list_sessions()
+    sessions = all_sessions if isinstance(all_sessions, list) else []
+
+    total = len(sessions)
+    now = datetime.datetime.now()
+
+    statuses = {}
+    word_counts = []
+    stmt_counts = []
+    for s in sessions:
+        st = getattr(s, 'status', 'unknown') or 'unknown'
+        statuses[st] = statuses.get(st, 0) + 1
+        stmts = getattr(s, 'witness_statements', []) or []
+        stmt_counts.append(len(stmts))
+        total_w = sum(len((getattr(st2, 'text', '') or '').split()) for st2 in stmts)
+        word_counts.append(total_w)
+
+    avg_statements = round(sum(stmt_counts) / max(total, 1), 1)
+    avg_words = round(sum(word_counts) / max(total, 1), 1)
+    max_statements = max(stmt_counts) if stmt_counts else 0
+    max_words = max(word_counts) if word_counts else 0
+
+    return {
+        "total_sessions": total,
+        "status_distribution": statuses,
+        "avg_statements_per_session": avg_statements,
+        "avg_words_per_session": avg_words,
+        "max_statements": max_statements,
+        "max_words": max_words,
+        "generated_at": now.isoformat(),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 68: Admin System Alerts
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/admin/system-alerts")
+async def get_system_alerts(auth=Depends(require_admin_auth)):
+    """Check system health and generate alerts for concerning conditions."""
+    import psutil
+    _log_admin_action("view_system_alerts")
+    alerts = []
+
+    # Memory check
+    try:
+        mem = psutil.virtual_memory()
+        if mem.percent > 90:
+            alerts.append({"level": "critical", "icon": "🔴", "title": "Memory Critical", "detail": f"Memory usage at {mem.percent}%"})
+        elif mem.percent > 75:
+            alerts.append({"level": "warning", "icon": "🟡", "title": "Memory High", "detail": f"Memory usage at {mem.percent}%"})
+    except Exception:
+        pass
+
+    # CPU check
+    try:
+        cpu = psutil.cpu_percent(interval=0.5)
+        if cpu > 90:
+            alerts.append({"level": "critical", "icon": "🔴", "title": "CPU Critical", "detail": f"CPU usage at {cpu}%"})
+        elif cpu > 70:
+            alerts.append({"level": "warning", "icon": "🟡", "title": "CPU High", "detail": f"CPU usage at {cpu}%"})
+    except Exception:
+        pass
+
+    # Disk check
+    try:
+        disk = psutil.disk_usage('/')
+        if disk.percent > 90:
+            alerts.append({"level": "critical", "icon": "🔴", "title": "Disk Full", "detail": f"Disk usage at {disk.percent}%"})
+        elif disk.percent > 80:
+            alerts.append({"level": "warning", "icon": "🟡", "title": "Disk High", "detail": f"Disk usage at {disk.percent}%"})
+    except Exception:
+        pass
+
+    # Session count check
+    try:
+        all_sessions = await firestore_service.list_sessions()
+        count = len(all_sessions) if isinstance(all_sessions, list) else 0
+        if count > 100:
+            alerts.append({"level": "warning", "icon": "🟡", "title": "Many Sessions", "detail": f"{count} active sessions"})
+    except Exception:
+        pass
+
+    # Check if no alerts
+    if not alerts:
+        alerts.append({"level": "ok", "icon": "🟢", "title": "All Clear", "detail": "No issues detected"})
+
+    return {
+        "alerts": alerts,
+        "total": len(alerts),
+        "has_critical": any(a["level"] == "critical" for a in alerts),
+        "has_warning": any(a["level"] == "warning" for a in alerts),
+        "checked_at": datetime.datetime.now().isoformat(),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 69: Witness Emotional Arc
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/emotional-arc")
+async def get_emotional_arc(session_id: str):
+    """Track emotional trajectory across testimony statements."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"arc": [], "dominant_emotion": "neutral", "emotional_range": 0}
+
+    emotion_lexicon = {
+        "fear": [r'\b(?:scared|afraid|frightened|terrified|fear|anxious|panic|dread|horror|worried|nervous)\b'],
+        "anger": [r'\b(?:angry|mad|furious|rage|upset|livid|irate|hostile|aggressive|infuriated)\b'],
+        "sadness": [r'\b(?:sad|crying|cried|tears|devastated|heartbroken|grief|mourning|depressed|sorrowful)\b'],
+        "surprise": [r'\b(?:shocked|surprised|stunned|amazed|astonished|startled|unexpected|disbelief)\b'],
+        "confidence": [r'\b(?:sure|certain|definitely|absolutely|clearly|without doubt|positive|convinced)\b'],
+        "uncertainty": [r'\b(?:maybe|perhaps|not sure|I think|possibly|might have|could have|uncertain)\b'],
+        "distress": [r'\b(?:screaming|yelling|shaking|trembling|couldn\'t breathe|hyperventilat|sobbing)\b'],
+    }
+
+    arc = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        text_lower = text.lower()
+        scores = {}
+        for emotion, patterns in emotion_lexicon.items():
+            total = 0
+            for pat in patterns:
+                total += len(re.findall(pat, text_lower))
+            scores[emotion] = total
+
+        dominant = max(scores, key=scores.get) if any(scores.values()) else "neutral"
+        intensity = sum(scores.values())
+
+        arc.append({
+            "statement_index": i,
+            "scores": scores,
+            "dominant": dominant,
+            "intensity": intensity,
+            "preview": text[:80].strip(),
+        })
+
+    # Overall analysis
+    totals = {}
+    for point in arc:
+        for emo, count in point["scores"].items():
+            totals[emo] = totals.get(emo, 0) + count
+
+    overall_dominant = max(totals, key=totals.get) if any(totals.values()) else "neutral"
+    intensities = [p["intensity"] for p in arc]
+    emotional_range = max(intensities) - min(intensities) if intensities else 0
+
+    # Detect emotional shifts
+    shifts = []
+    for i in range(1, len(arc)):
+        if arc[i]["dominant"] != arc[i-1]["dominant"] and arc[i]["dominant"] != "neutral":
+            shifts.append({
+                "from_statement": i - 1,
+                "to_statement": i,
+                "from_emotion": arc[i-1]["dominant"],
+                "to_emotion": arc[i]["dominant"],
+            })
+
+    return {
+        "arc": arc,
+        "dominant_emotion": overall_dominant,
+        "emotion_totals": totals,
+        "emotional_range": emotional_range,
+        "shifts": shifts[:20],
+        "total_shifts": len(shifts),
+    }

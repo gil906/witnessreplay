@@ -5658,3 +5658,71 @@ async function loadAuditTrail() {
         container.innerHTML = html;
     } catch (e) { /* silent */ }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 67: Admin Session Report
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    const btn = document.getElementById('sr-refresh-btn');
+    if (btn) btn.addEventListener('click', loadSessionReport);
+    setTimeout(loadSessionReport, 2200);
+})();
+
+async function loadSessionReport() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    try {
+        const resp = await fetch('/api/admin/session-report', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const el = (id) => document.getElementById(id);
+        if (el('sr-total')) el('sr-total').textContent = data.total_sessions || 0;
+        if (el('sr-avg-stmts')) el('sr-avg-stmts').textContent = data.avg_statements_per_session || 0;
+        if (el('sr-avg-words')) el('sr-avg-words').textContent = data.avg_words_per_session || 0;
+        if (el('sr-max-stmts')) el('sr-max-stmts').textContent = data.max_statements || 0;
+        const container = el('sr-status-dist');
+        if (container && data.status_distribution) {
+            let html = '';
+            for (const [status, count] of Object.entries(data.status_distribution)) {
+                html += `<div class="sr-status-row"><span class="sr-status-name">${status}</span><span class="sr-status-count">${count}</span></div>`;
+            }
+            container.innerHTML = html;
+        }
+    } catch (e) { /* silent */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 68: Admin System Alerts
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    const btn = document.getElementById('sa-refresh-btn');
+    if (btn) btn.addEventListener('click', loadSystemAlerts);
+    setTimeout(loadSystemAlerts, 2500);
+})();
+
+async function loadSystemAlerts() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    try {
+        const resp = await fetch('/api/admin/system-alerts', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const container = document.getElementById('sa-alerts');
+        const badge = document.getElementById('sa-badge');
+        if (badge) {
+            if (data.has_critical) { badge.textContent = '🔴 Critical'; badge.className = 'sa-badge sa-badge-critical'; }
+            else if (data.has_warning) { badge.textContent = '🟡 Warning'; badge.className = 'sa-badge sa-badge-warning'; }
+            else { badge.textContent = '🟢 OK'; badge.className = 'sa-badge sa-badge-ok'; }
+        }
+        if (!container) return;
+        let html = '';
+        for (const alert of data.alerts) {
+            html += `<div class="sa-alert sa-alert-${alert.level}">`;
+            html += `<span class="sa-alert-icon">${alert.icon}</span>`;
+            html += `<span class="sa-alert-title">${alert.title}</span>`;
+            html += `<span class="sa-alert-detail">${alert.detail}</span>`;
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) { /* silent */ }
+}
