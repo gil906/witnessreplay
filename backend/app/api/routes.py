@@ -1279,9 +1279,8 @@ async def export_session(session_id: str):
             metadata={"endpoint": "export_session"}
         )
         
-        # Output PDF (fpdf2 returns bytearray, no need to encode)
-        pdf_bytes = pdf.output()
-        pdf_bytes = pdf.output()
+        # Output PDF (fpdf2 returns bytearray, convert to bytes for Response)
+        pdf_bytes = bytes(pdf.output())
         
         from fastapi.responses import Response
         return Response(
@@ -5083,8 +5082,8 @@ async def get_next_question(session_id: str):
         from app.services.contradiction_detector import contradiction_detector
         
         # Get scene elements and conversation history
-        scene_elements = session.get('scene_elements', [])
-        conversation = session.get('conversation_history', [])
+        scene_elements = getattr(session, 'scene_elements', []) or []
+        conversation = getattr(session, 'conversation_history', []) or []
         
         # Get unresolved contradictions
         contradictions = contradiction_detector.get_contradictions(
@@ -5134,9 +5133,9 @@ async def get_scene_complexity(session_id: str):
         from app.services.contradiction_detector import contradiction_detector
         
         # Get scene data
-        scene_elements = session.get('scene_elements', [])
-        conversation = session.get('conversation_history', [])
-        conversation_turns = len([m for m in conversation if m.get('role') == 'user'])
+        scene_elements = getattr(session, 'scene_elements', []) or []
+        conversation = getattr(session, 'conversation_history', []) or []
+        conversation_turns = len([m for m in conversation if (m.get('role') if isinstance(m, dict) else getattr(m, 'role', '')) == 'user'])
         
         # Get unresolved contradictions count
         contradictions = contradiction_detector.get_contradictions(

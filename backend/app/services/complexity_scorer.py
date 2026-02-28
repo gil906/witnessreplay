@@ -1,7 +1,7 @@
 """Scene complexity scoring to determine when to generate images."""
 
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
