@@ -1,4 +1,4 @@
-const CACHE_VERSION = '20260228';
+const CACHE_VERSION = '20260228b';
 const CACHE_NAME = `wr-${CACHE_VERSION}`;
 const MAX_CACHE_SIZE = 100;
 const STATIC_ASSETS = ['/', '/static/css/styles.css', '/static/js/app.js', '/static/js/audio.js', '/static/js/ui.js'];
