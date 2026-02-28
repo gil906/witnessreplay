@@ -12,6 +12,8 @@ class UIManager {
             notification: null
         };
         this.soundEnabled = true;
+        this._suppressToasts = true; // suppress toasts during initial app load
+        setTimeout(() => { this._suppressToasts = false; }, 4000);
         this.initSounds();
         this.initKeyboardShortcuts();
         this.checkOnboarding();
@@ -19,6 +21,9 @@ class UIManager {
     
     // ==================== TOAST NOTIFICATIONS ====================
     showToast(message, type = 'info', duration = 3000) {
+        // Suppress toasts during initial app load to avoid notification spam
+        if (this._suppressToasts && type !== 'error') return null;
+
         let container = document.getElementById('toast-container');
         if (!container) {
             container = document.createElement('div');

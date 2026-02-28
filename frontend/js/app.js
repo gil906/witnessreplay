@@ -7554,14 +7554,6 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
             }
         },
-        '/export': () => {
-            if (this.sessionId) {
-                window.open(`/api/sessions/${this.sessionId}/export/evidence?format=pdf`, '_blank');
-                this.displaySystemMessage('📄 Exporting session...');
-            } else {
-                this.displaySystemMessage('⚠️ No active session to export.');
-            }
-        },
         '/new': () => {
             this.createNewSession();
         },
@@ -7661,7 +7653,7 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/summary', desc: 'Interview summary' },
         { cmd: '/timeline', desc: 'Reconstruct timeline' },
         { cmd: '/scene', desc: 'Generate scene image' },
-        { cmd: '/export', desc: 'Export session' },
+        { cmd: '/export', desc: 'Export transcript' },
         { cmd: '/new', desc: 'New report' },
         { cmd: '/clear', desc: 'Clear chat display' },
         { cmd: '/status', desc: 'Connection info' },
