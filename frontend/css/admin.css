@@ -6339,3 +6339,36 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .act-action { font-weight: 600; color: #5e35b1; min-width: 120px; }
 .act-desc { flex: 1; margin: 0 8px; }
 .act-time { font-size: 0.8em; color: #888; min-width: 80px; text-align: right; }
+
+/* ── Audit Trail ─────────────────────── */
+.audit-trail-panel { border-left: 3px solid #4527a0; }
+.audit-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.audit-cat-badge { padding: 4px 10px; background: rgba(69,39,160,0.08); border-radius: 10px; font-size: 0.82em; color: #4527a0; }
+.audit-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
+.audit-entry { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(0,0,0,0.02); border-radius: 6px; font-size: 0.88em; border-left: 3px solid transparent; }
+.audit-entry.sev-info { border-left-color: #1565c0; }
+.audit-entry.sev-warning { border-left-color: #ff6f00; }
+.audit-entry.sev-error { border-left-color: #c62828; }
+.audit-action { font-weight: 600; color: #4527a0; min-width: 120px; }
+.audit-desc { flex: 1; }
+.audit-user { font-size: 0.82em; color: #666; min-width: 60px; }
+.audit-time { font-size: 0.8em; color: #888; min-width: 80px; text-align: right; }
+.audit-total { font-size: 0.82em; color: #888; margin-top: 8px; }
+
+/* ── System Health ─────────────────────── */
+.sys-health-panel { border-left: 3px solid #00838f; }
+.sys-health-status { display: inline-block; padding: 4px 12px; border-radius: 8px; font-weight: 700; font-size: 0.95em; margin-bottom: 12px; }
+.sys-health-status.healthy { background: rgba(76,175,80,0.12); color: #2e7d32; }
+.sys-health-status.warning { background: rgba(255,152,0,0.12); color: #e65100; }
+.sys-health-status.critical { background: rgba(198,40,40,0.12); color: #c62828; }
+.sys-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.sys-metric-card { padding: 12px; background: rgba(0,131,143,0.04); border-radius: 8px; text-align: center; }
+.sys-metric-val { font-size: 1.5em; font-weight: 800; color: #00838f; display: block; }
+.sys-metric-label { font-size: 0.78em; color: #888; }
+.sys-metric-bar { height: 8px; background: rgba(0,0,0,0.06); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.sys-metric-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.sys-metric-fill.good { background: #4caf50; }
+.sys-metric-fill.warn { background: #ff9800; }
+.sys-metric-fill.crit { background: #c62828; }
+.sys-uptime { font-size: 0.88em; color: #555; margin-top: 8px; }
+.sys-timestamp { font-size: 0.78em; color: #aaa; margin-top: 4px; }

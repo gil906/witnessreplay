@@ -17655,3 +17655,501 @@ async def log_activity(data: dict, auth=Depends(require_admin_auth)):
     }
     _activity_log.append(entry)
     return {"status": "logged", "activity": entry}
+
+
+# ── Witness Oath & Sworn Statement Analyzer ──────────────────────
+@router.get("/sessions/{session_id}/oath-analysis")
+async def oath_analysis(session_id: str):
+    """Analyze oath-related statements and sworn testimony markers."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    oath_markers = {"i swear", "i do", "so help me", "under oath", "sworn", "affirm",
+                    "do you swear", "the whole truth", "nothing but the truth",
+                    "penalty of perjury", "solemnly", "state your name",
+                    "raise your right hand", "duly sworn", "deponent"}
+    qualification_markers = {"to the best of my knowledge", "to the best of my recollection",
+                             "as far as i know", "i believe", "to my knowledge",
+                             "as i recall", "if i recall correctly", "to my understanding",
+                             "i think", "as far as i remember", "i'm not certain"}
+    certainty_markers = {"i am certain", "i am sure", "absolutely", "without a doubt",
+                         "i know for a fact", "definitely", "precisely", "exactly",
+                         "i clearly remember", "i can state", "positively"}
+
+    oath_refs = []
+    qualifications = []
+    certainties = []
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for marker in oath_markers:
+            if marker in lower:
+                oath_refs.append({"segment": idx + 1, "marker": marker, "snippet": stmt[:100]})
+        for marker in qualification_markers:
+            if marker in lower:
+                qualifications.append({"segment": idx + 1, "marker": marker, "snippet": stmt[:100]})
+        for marker in certainty_markers:
+            if marker in lower:
+                certainties.append({"segment": idx + 1, "marker": marker, "snippet": stmt[:100]})
+
+    has_oath = len(oath_refs) > 0
+    qual_ratio = len(qualifications) / max(len(statements), 1)
+    cert_ratio = len(certainties) / max(len(statements), 1)
+    confidence_level = "high" if cert_ratio > 0.3 and qual_ratio < 0.15 else \
+                       "low" if qual_ratio > 0.3 else "moderate"
+    perjury_risk = "elevated" if qual_ratio > 0.4 and cert_ratio < 0.1 else \
+                   "low" if cert_ratio > qual_ratio else "moderate"
+
+    return {
+        "session_id": session_id,
+        "oath_detected": has_oath,
+        "oath_references": oath_refs,
+        "qualifications": qualifications,
+        "certainties": certainties,
+        "totals": {
+            "oath_refs": len(oath_refs),
+            "qualifications": len(qualifications),
+            "certainties": len(certainties)
+        },
+        "confidence_level": confidence_level,
+        "qualification_ratio": round(qual_ratio, 3),
+        "certainty_ratio": round(cert_ratio, 3),
+        "perjury_risk": perjury_risk,
+        "segments_analyzed": len(statements)
+    }
+
+
+# ── Deposition Exhibit Tracker ──────────────────────
+@router.get("/sessions/{session_id}/exhibits")
+async def exhibit_tracker(session_id: str):
+    """Track exhibit references in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    import re
+    exhibit_pattern = re.compile(
+        r'(?:exhibit|exh\.?|ex\.?)\s*(?:number\s*)?([A-Z0-9]+(?:-[A-Z0-9]+)?)',
+        re.IGNORECASE
+    )
+    doc_patterns = {
+        "photograph": re.compile(r'\b(?:photo(?:graph)?s?|picture|image|snapshot)\b', re.IGNORECASE),
+        "document": re.compile(r'\b(?:document|letter|email|memo|report|contract|agreement|record)\b', re.IGNORECASE),
+        "video": re.compile(r'\b(?:video|footage|recording|tape|surveillance)\b', re.IGNORECASE),
+        "physical": re.compile(r'\b(?:weapon|knife|gun|tool|item|object|evidence bag)\b', re.IGNORECASE),
+    }
+
+    exhibits = {}
+    doc_refs = {"photograph": 0, "document": 0, "video": 0, "physical": 0}
+    timeline = []
+
+    for idx, stmt in enumerate(statements):
+        matches = exhibit_pattern.findall(stmt)
+        for match in matches:
+            ex_id = match.upper()
+            if ex_id not in exhibits:
+                exhibits[ex_id] = {"id": ex_id, "first_mention": idx + 1, "mentions": 0, "segments": [], "context": stmt[:120]}
+            exhibits[ex_id]["mentions"] += 1
+            exhibits[ex_id]["segments"].append(idx + 1)
+            timeline.append({"segment": idx + 1, "exhibit": ex_id, "snippet": stmt[:80]})
+
+        for dtype, pattern in doc_patterns.items():
+            if pattern.search(stmt):
+                doc_refs[dtype] += 1
+
+    exhibit_list = sorted(exhibits.values(), key=lambda x: x["mentions"], reverse=True)
+    return {
+        "session_id": session_id,
+        "exhibits": exhibit_list,
+        "total_exhibits": len(exhibit_list),
+        "total_references": sum(e["mentions"] for e in exhibit_list),
+        "document_types": doc_refs,
+        "timeline": timeline[:30],
+        "most_referenced": exhibit_list[0]["id"] if exhibit_list else None,
+        "segments_analyzed": len(statements)
+    }
+
+
+# ── Witness Memory Quality Assessment ──────────────────────
+@router.get("/sessions/{session_id}/memory-quality")
+async def memory_quality(session_id: str):
+    """Assess quality of witness memory based on linguistic indicators."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    vividness_markers = {"i saw", "i could see", "i noticed", "i watched", "looking at",
+                         "i observed", "it looked", "appeared to be", "visible", "clearly"}
+    sensory_markers = {"i heard", "sounded like", "it smelled", "i felt", "i touched",
+                       "it was hot", "it was cold", "loud", "quiet", "bright", "dark",
+                       "tasted", "rough", "smooth", "sharp", "heavy", "light"}
+    temporal_markers = {"at about", "around", "approximately", "o'clock", "a.m.", "p.m.",
+                        "minutes", "hours", "seconds", "before", "after", "then",
+                        "next", "meanwhile", "at that point", "shortly", "immediately"}
+    spatial_markers = {"to the left", "to the right", "in front of", "behind", "above",
+                       "below", "near", "next to", "across from", "feet away", "meters",
+                       "inches", "inside", "outside", "corner", "between"}
+    uncertainty_markers = {"i think", "maybe", "possibly", "i'm not sure", "i don't remember",
+                           "it could have been", "i can't recall", "vaguely", "unclear",
+                           "might have", "seems like", "i guess"}
+
+    scores = {"vividness": 0, "sensory_detail": 0, "temporal_precision": 0,
+              "spatial_awareness": 0, "uncertainty": 0}
+    total = max(len(statements), 1)
+
+    for stmt in statements:
+        lower = stmt.lower()
+        for m in vividness_markers:
+            if m in lower: scores["vividness"] += 1
+        for m in sensory_markers:
+            if m in lower: scores["sensory_detail"] += 1
+        for m in temporal_markers:
+            if m in lower: scores["temporal_precision"] += 1
+        for m in spatial_markers:
+            if m in lower: scores["spatial_awareness"] += 1
+        for m in uncertainty_markers:
+            if m in lower: scores["uncertainty"] += 1
+
+    # Normalize to 0-10 scale
+    normalized = {}
+    for k, v in scores.items():
+        raw = min(v / total * 10, 10)
+        normalized[k] = round(raw, 1)
+
+    # Invert uncertainty for overall quality
+    quality_score = round((normalized["vividness"] + normalized["sensory_detail"] +
+                          normalized["temporal_precision"] + normalized["spatial_awareness"] +
+                          (10 - normalized["uncertainty"])) / 5, 1)
+
+    grade = "A" if quality_score >= 8 else "B" if quality_score >= 6 else \
+            "C" if quality_score >= 4 else "D" if quality_score >= 2 else "F"
+
+    strengths = []
+    weaknesses = []
+    for k, v in normalized.items():
+        if k == "uncertainty":
+            if v > 4: weaknesses.append(f"High uncertainty ({v}/10)")
+            elif v < 2: strengths.append(f"Low uncertainty ({v}/10)")
+        else:
+            if v >= 6: strengths.append(f"Strong {k.replace('_', ' ')} ({v}/10)")
+            elif v < 3: weaknesses.append(f"Weak {k.replace('_', ' ')} ({v}/10)")
+
+    return {
+        "session_id": session_id,
+        "scores": normalized,
+        "quality_score": quality_score,
+        "grade": grade,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "raw_counts": scores,
+        "segments_analyzed": len(statements),
+        "recommendation": "Memory appears reliable with strong detail" if quality_score >= 6 else
+                         "Memory shows moderate reliability" if quality_score >= 4 else
+                         "Memory quality is low — may need corroboration"
+    }
+
+
+# ── Legal Issue Spotter ──────────────────────
+@router.get("/sessions/{session_id}/legal-issues")
+async def legal_issues(session_id: str):
+    """Identify potential legal issues and causes of action in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    issue_categories = {
+        "negligence": {"negligent", "careless", "reckless", "failed to", "should have",
+                       "duty", "breach", "reasonable care", "foreseeable", "proximate cause"},
+        "fraud": {"lied", "deceived", "misrepresented", "false statement", "fraudulent",
+                  "concealed", "omitted", "material fact", "relied on", "inducement"},
+        "breach_of_contract": {"contract", "agreement", "breached", "violated", "terms",
+                               "promised", "warranty", "performance", "obligation", "signed"},
+        "assault_battery": {"hit", "struck", "pushed", "grabbed", "threatened", "attacked",
+                            "punched", "kicked", "slapped", "shoved", "force", "violent"},
+        "employment": {"fired", "terminated", "discriminated", "harassed", "hostile work",
+                       "retaliation", "wrongful termination", "overtime", "wage", "benefits"},
+        "property": {"trespassed", "damaged property", "stolen", "vandalized", "destroyed",
+                     "taken without", "property damage", "real estate", "land", "boundary"},
+        "defamation": {"defamed", "slandered", "libeled", "reputation", "false accusation",
+                       "published", "spread rumors", "character assassination", "public statement"},
+        "personal_injury": {"injured", "hurt", "pain", "suffering", "medical bills",
+                            "hospital", "doctor", "surgery", "disability", "treatment"}
+    }
+
+    found_issues = {}
+    issue_segments = {}
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for category, keywords in issue_categories.items():
+            for kw in keywords:
+                if kw in lower:
+                    if category not in found_issues:
+                        found_issues[category] = {"category": category, "keywords_matched": set(), "count": 0, "first_segment": idx + 1}
+                        issue_segments[category] = []
+                    found_issues[category]["keywords_matched"].add(kw)
+                    found_issues[category]["count"] += 1
+                    if len(issue_segments[category]) < 3:
+                        issue_segments[category].append({"segment": idx + 1, "snippet": stmt[:100]})
+
+    issues_list = []
+    for cat, info in sorted(found_issues.items(), key=lambda x: x[1]["count"], reverse=True):
+        severity = "high" if info["count"] >= 5 else "medium" if info["count"] >= 2 else "low"
+        issues_list.append({
+            "category": cat,
+            "display_name": cat.replace("_", " ").title(),
+            "keywords_matched": list(info["keywords_matched"]),
+            "occurrences": info["count"],
+            "severity": severity,
+            "first_segment": info["first_segment"],
+            "supporting_segments": issue_segments.get(cat, [])
+        })
+
+    return {
+        "session_id": session_id,
+        "issues": issues_list,
+        "total_issues": len(issues_list),
+        "high_severity": sum(1 for i in issues_list if i["severity"] == "high"),
+        "primary_issue": issues_list[0]["display_name"] if issues_list else "None identified",
+        "segments_analyzed": len(statements),
+        "recommendation": f"Focus on {issues_list[0]['display_name']} — strongest evidence" if issues_list else "No clear legal issues identified"
+    }
+
+
+# ── Testimony Redline (Self-Contradiction Finder) ──────────────────────
+@router.get("/sessions/{session_id}/redline")
+async def testimony_redline(session_id: str):
+    """Detect internal contradictions and story changes within testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    # Find contradictory pairs using opposition markers
+    negation_pairs = [
+        ("yes", "no"), ("was", "wasn't"), ("did", "didn't"), ("could", "couldn't"),
+        ("would", "wouldn't"), ("saw", "didn't see"), ("heard", "didn't hear"),
+        ("remember", "don't remember"), ("was there", "wasn't there"),
+        ("before", "after"), ("left", "right"), ("inside", "outside"),
+        ("open", "closed"), ("true", "false"), ("agreed", "disagreed")
+    ]
+
+    # Build topic clusters by extracting key nouns/phrases per statement
+    import re
+    def extract_topics(text):
+        words = set(re.findall(r'\b[a-z]{4,}\b', text.lower()))
+        stop = {"this", "that", "there", "their", "these", "those", "about", "would",
+                "could", "should", "have", "been", "were", "with", "from", "just",
+                "like", "they", "what", "when", "where", "which", "some", "very"}
+        return words - stop
+
+    contradictions = []
+    for i in range(len(statements)):
+        topics_i = extract_topics(statements[i])
+        lower_i = statements[i].lower()
+        for j in range(i + 1, min(i + 15, len(statements))):
+            topics_j = extract_topics(statements[j])
+            overlap = topics_i & topics_j
+            if len(overlap) < 2:
+                continue
+            lower_j = statements[j].lower()
+            conflict_markers = []
+            for pos, neg in negation_pairs:
+                if (pos in lower_i and neg in lower_j) or (neg in lower_i and pos in lower_j):
+                    conflict_markers.append(f"{pos}/{neg}")
+            if conflict_markers:
+                contradictions.append({
+                    "segment_a": i + 1,
+                    "segment_b": j + 1,
+                    "text_a": statements[i][:120],
+                    "text_b": statements[j][:120],
+                    "shared_topics": list(overlap)[:5],
+                    "conflict_markers": conflict_markers[:3],
+                    "distance": j - i
+                })
+
+    # Severity
+    severity = "high" if len(contradictions) >= 5 else \
+               "moderate" if len(contradictions) >= 2 else \
+               "low" if len(contradictions) >= 1 else "none"
+    consistency = round(max(0, 10 - len(contradictions) * 1.5), 1)
+
+    return {
+        "session_id": session_id,
+        "contradictions": contradictions[:15],
+        "total_found": len(contradictions),
+        "severity": severity,
+        "consistency_score": consistency,
+        "segments_analyzed": len(statements),
+        "recommendation": "No contradictions found — testimony is internally consistent" if not contradictions else
+                         f"Found {len(contradictions)} potential contradiction(s) — review flagged segments"
+    }
+
+
+# ── Admin Audit Trail ──────────────────────
+_audit_trail = deque(maxlen=1000)
+
+
+@router.get("/admin/audit-trail")
+async def get_audit_trail(auth=Depends(require_admin_auth)):
+    """Get admin audit trail with all logged actions."""
+    from datetime import datetime
+    entries = list(_audit_trail)
+    # Categorize
+    categories = {}
+    for entry in entries:
+        cat = entry.get("category", "general")
+        categories[cat] = categories.get(cat, 0) + 1
+
+    return {
+        "entries": entries[-50:],
+        "total": len(entries),
+        "categories": categories,
+        "oldest": entries[0]["timestamp"] if entries else None,
+        "newest": entries[-1]["timestamp"] if entries else None
+    }
+
+
+@router.post("/admin/audit-trail")
+async def add_audit_entry(data: dict, auth=Depends(require_admin_auth)):
+    """Add entry to admin audit trail."""
+    from datetime import datetime
+    entry = {
+        "id": f"audit-{len(_audit_trail)+1}-{int(datetime.utcnow().timestamp())}",
+        "action": data.get("action", "admin_action"),
+        "category": data.get("category", "general"),
+        "description": data.get("description", ""),
+        "user": data.get("user", "admin"),
+        "ip": data.get("ip", "admin-panel"),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "severity": data.get("severity", "info")
+    }
+    _audit_trail.append(entry)
+    return {"status": "logged", "entry": entry}
+
+
+# ── Admin System Health Dashboard ──────────────────────
+@router.get("/admin/system-health")
+async def system_health(auth=Depends(require_admin_auth)):
+    """Get comprehensive system health metrics."""
+    import os
+    import time
+    from datetime import datetime
+
+    # Memory info
+    try:
+        with open("/proc/meminfo", "r") as f:
+            meminfo = f.read()
+        mem_total = int([l for l in meminfo.split('\n') if 'MemTotal' in l][0].split()[1]) // 1024
+        mem_avail = int([l for l in meminfo.split('\n') if 'MemAvailable' in l][0].split()[1]) // 1024
+        mem_used = mem_total - mem_avail
+        mem_pct = round(mem_used / mem_total * 100, 1) if mem_total else 0
+    except Exception:
+        mem_total = mem_used = mem_avail = 0
+        mem_pct = 0
+
+    # CPU load
+    try:
+        with open("/proc/loadavg", "r") as f:
+            loads = f.read().split()
+        load_1m, load_5m, load_15m = float(loads[0]), float(loads[1]), float(loads[2])
+    except Exception:
+        load_1m = load_5m = load_15m = 0.0
+
+    # Uptime
+    try:
+        with open("/proc/uptime", "r") as f:
+            uptime_seconds = float(f.read().split()[0])
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        mins = int((uptime_seconds % 3600) // 60)
+        uptime_str = f"{days}d {hours}h {mins}m"
+    except Exception:
+        uptime_seconds = 0
+        uptime_str = "unknown"
+
+    # Disk
+    try:
+        stat = os.statvfs("/")
+        disk_total = stat.f_blocks * stat.f_frsize // (1024 * 1024)
+        disk_free = stat.f_bfree * stat.f_frsize // (1024 * 1024)
+        disk_used = disk_total - disk_free
+        disk_pct = round(disk_used / disk_total * 100, 1) if disk_total else 0
+    except Exception:
+        disk_total = disk_free = disk_used = 0
+        disk_pct = 0
+
+    # Process count
+    try:
+        proc_count = len([d for d in os.listdir("/proc") if d.isdigit()])
+    except Exception:
+        proc_count = 0
+
+    health_status = "healthy" if mem_pct < 80 and disk_pct < 85 and load_1m < 4 else \
+                    "warning" if mem_pct < 90 and disk_pct < 95 and load_1m < 8 else "critical"
+
+    return {
+        "status": health_status,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "memory": {
+            "total_mb": mem_total,
+            "used_mb": mem_used,
+            "available_mb": mem_avail,
+            "usage_pct": mem_pct
+        },
+        "cpu": {
+            "load_1m": load_1m,
+            "load_5m": load_5m,
+            "load_15m": load_15m
+        },
+        "uptime": {
+            "seconds": uptime_seconds,
+            "display": uptime_str
+        },
+        "disk": {
+            "total_mb": disk_total,
+            "used_mb": disk_used,
+            "free_mb": disk_free,
+            "usage_pct": disk_pct
+        },
+        "processes": proc_count,
+        "python_version": __import__("sys").version.split()[0]
+    }

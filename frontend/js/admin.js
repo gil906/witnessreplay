@@ -6217,3 +6217,85 @@ document.getElementById('activity-log-refresh')?.addEventListener('click', loadA
 // Auto-load new panels
 if (document.getElementById('backup-manager-content')) loadBackupManager();
 if (document.getElementById('activity-log-content')) loadActivityLog();
+
+// ── Audit Trail ──────────────────────
+async function loadAuditTrail() {
+    const div = document.getElementById('audit-trail-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/audit-trail', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_admin_token') || sessionStorage.getItem('wr_admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = '';
+        if (data.categories && Object.keys(data.categories).length) {
+            html += `<div class="audit-stats">`;
+            Object.entries(data.categories).forEach(([cat, count]) => {
+                html += `<span class="audit-cat-badge">${cat}: ${count}</span>`;
+            });
+            html += `</div>`;
+        }
+        html += `<p class="audit-total">Total: ${data.total} entries</p>`;
+        if (data.entries && data.entries.length) {
+            html += `<div class="audit-list">`;
+            data.entries.slice().reverse().slice(0, 25).forEach(e => {
+                const time = e.timestamp ? new Date(e.timestamp).toLocaleString() : '';
+                const sev = e.severity || 'info';
+                html += `<div class="audit-entry sev-${sev}">`;
+                html += `<span class="audit-action">${e.action}</span>`;
+                html += `<span class="audit-desc">${e.description || ''}</span>`;
+                html += `<span class="audit-user">${e.user || 'system'}</span>`;
+                html += `<span class="audit-time">${time}</span>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p style="font-size:0.88em;color:#888;">No audit trail entries.</p>`;
+        }
+        div.innerHTML = html;
+    } catch(e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load audit trail</p>';
+    }
+}
+
+document.getElementById('audit-trail-refresh')?.addEventListener('click', loadAuditTrail);
+
+// ── System Health ──────────────────────
+async function loadSystemHealth() {
+    const div = document.getElementById('system-health-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/system-health', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_admin_token') || sessionStorage.getItem('wr_admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const statusClass = data.status === 'healthy' ? 'healthy' : data.status === 'warning' ? 'warning' : 'critical';
+        let html = `<div class="sys-health-status ${statusClass}">${data.status.toUpperCase()}</div>`;
+        html += `<div class="sys-metrics">`;
+        // Memory
+        const memClass = data.memory.usage_pct < 70 ? 'good' : data.memory.usage_pct < 85 ? 'warn' : 'crit';
+        html += `<div class="sys-metric-card"><span class="sys-metric-val">${data.memory.usage_pct}%</span><span class="sys-metric-label">Memory Usage</span><div class="sys-metric-bar"><div class="sys-metric-fill ${memClass}" style="width:${data.memory.usage_pct}%"></div></div><span class="sys-metric-label">${data.memory.used_mb}/${data.memory.total_mb} MB</span></div>`;
+        // CPU Load
+        const cpuClass = data.cpu.load_1m < 2 ? 'good' : data.cpu.load_1m < 5 ? 'warn' : 'crit';
+        const cpuPct = Math.min(data.cpu.load_1m * 25, 100);
+        html += `<div class="sys-metric-card"><span class="sys-metric-val">${data.cpu.load_1m}</span><span class="sys-metric-label">CPU Load (1m)</span><div class="sys-metric-bar"><div class="sys-metric-fill ${cpuClass}" style="width:${cpuPct}%"></div></div><span class="sys-metric-label">5m: ${data.cpu.load_5m} | 15m: ${data.cpu.load_15m}</span></div>`;
+        // Disk
+        const diskClass = data.disk.usage_pct < 70 ? 'good' : data.disk.usage_pct < 85 ? 'warn' : 'crit';
+        html += `<div class="sys-metric-card"><span class="sys-metric-val">${data.disk.usage_pct}%</span><span class="sys-metric-label">Disk Usage</span><div class="sys-metric-bar"><div class="sys-metric-fill ${diskClass}" style="width:${data.disk.usage_pct}%"></div></div><span class="sys-metric-label">${Math.round(data.disk.free_mb/1024)}GB free</span></div>`;
+        // Processes
+        html += `<div class="sys-metric-card"><span class="sys-metric-val">${data.processes}</span><span class="sys-metric-label">Processes</span></div>`;
+        // Uptime
+        html += `<div class="sys-metric-card"><span class="sys-metric-val">${data.uptime.display}</span><span class="sys-metric-label">Uptime</span></div>`;
+        // Python
+        html += `<div class="sys-metric-card"><span class="sys-metric-val" style="font-size:1em">${data.python_version}</span><span class="sys-metric-label">Python</span></div>`;
+        html += `</div>`;
+        html += `<div class="sys-timestamp">Last check: ${new Date(data.timestamp).toLocaleString()}</div>`;
+        div.innerHTML = html;
+    } catch(e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load system health</p>';
+    }
+}
+
+document.getElementById('system-health-refresh')?.addEventListener('click', loadSystemHealth);
+
+// Auto-load new panels
+if (document.getElementById('audit-trail-content')) loadAuditTrail();
+if (document.getElementById('system-health-content')) loadSystemHealth();

@@ -7610,6 +7610,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/impeach</code> — Impeachment finder<br>' +
                 '<code>/citations</code> — Legal citation extractor<br>' +
                 '<code>/compareto [id]</code> — Compare testimonies<br>' +
+                '<code>/oath</code> — Oath & sworn statement analysis<br>' +
+                '<code>/exhibits</code> — Deposition exhibit tracker<br>' +
+                '<code>/memory</code> — Witness memory quality<br>' +
+                '<code>/issues</code> — Legal issue spotter<br>' +
+                '<code>/redline</code> — Testimony self-contradiction finder<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7896,7 +7901,22 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 return;
             }
             this._showCompareTo(otherId);
-        }
+        },
+        '/behavior': async () => { await this._showBehavioralCuesCmd(); },
+        '/brief': async () => { await this._showCaseBriefCmd(); },
+        '/pacing': async () => { await this._showPacingCmd(); },
+        '/narrative': async () => { await this._showNarrativeCmd(); },
+        '/credcompare': async () => {
+            const parts = this.textInput.value.trim().split(/\s+/);
+            const otherId = parts[1] || '';
+            if (!otherId) { this.displaySystemMessage('⚠️ Usage: <code>/credcompare [session_id]</code>'); return; }
+            await this._showCredCompareCmd(otherId);
+        },
+        '/oath': async () => { await this._showOathAnalysis(); },
+        '/exhibits': async () => { await this._showExhibitTracker(); },
+        '/memory': async () => { await this._showMemoryQuality(); },
+        '/issues': async () => { await this._showLegalIssues(); },
+        '/redline': async () => { await this._showRedline(); }
     };
     
     const handler = commands[cmd];
@@ -8041,7 +8061,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/brief', desc: 'Case brief generator' },
         { cmd: '/pacing', desc: 'Testimony pacing analysis' },
         { cmd: '/narrative', desc: 'Narrative arc detector' },
-        { cmd: '/credcompare', desc: 'Credibility comparison' }
+        { cmd: '/credcompare', desc: 'Credibility comparison' },
+        { cmd: '/oath', desc: 'Oath & sworn statement analysis' },
+        { cmd: '/exhibits', desc: 'Deposition exhibit tracker' },
+        { cmd: '/memory', desc: 'Witness memory quality' },
+        { cmd: '/issues', desc: 'Legal issue spotter' },
+        { cmd: '/redline', desc: 'Self-contradiction finder' }
     ];
     
     const filter = val.toLowerCase();
@@ -11940,4 +11965,335 @@ commands['/credcompare'] = async function(args) {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not compare credibility. Check session ID.'); }
+};
+
+// ── Behavioral Cues (re-wired to prototype) ──────────────────────
+WitnessReplayApp.prototype._showBehavioralCuesCmd = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/behavioral-cues`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="behavior-container">`;
+        html += `<div class="behavior-header"><span class="behavior-icon">🧠</span> Witness Behavioral Cues</div>`;
+        html += `<div class="behavior-summary">`;
+        html += `<span class="behavior-stat"><strong>${data.total_cues_found}</strong> cues found</span>`;
+        html += `<span class="behavior-stat">Dominant: <strong>${data.dominant_behavior}</strong></span>`;
+        html += `<span class="behavior-stat impact-${data.credibility_impact}">Impact: ${data.credibility_impact}</span>`;
+        html += `</div>`;
+        html += `<div class="behavior-totals">`;
+        const typeIcons = {hesitation:'😰',evasion:'🙈',confidence:'💪',deception_indicator:'🚩'};
+        const typeColors = {hesitation:'#ff9800',evasion:'#e53935',confidence:'#4caf50',deception_indicator:'#c62828'};
+        Object.entries(data.totals).forEach(([type, count]) => {
+            const pct = data.total_cues_found ? Math.round(count / data.total_cues_found * 100) : 0;
+            html += `<div class="behavior-type-bar"><span>${typeIcons[type]||'•'} ${type.replace('_',' ')}</span><div class="beh-bar-track"><div class="beh-bar-fill" style="width:${pct}%;background:${typeColors[type]||'#666'}"></div></div><span class="beh-count">${count}</span></div>`;
+        });
+        html += `</div>`;
+        if (data.cues.length) {
+            html += `<div class="behavior-details">`;
+            data.cues.slice(0,12).forEach(c => {
+                html += `<div class="behavior-cue-item"><span class="beh-seg">Seg ${c.segment}</span>`;
+                c.cues.forEach(cu => { html += `<span class="beh-tag beh-${cu.type}">${cu.marker}</span>`; });
+                html += `<div class="beh-preview">${c.text_preview}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze behavioral cues.'); }
+};
+
+// ── Case Brief (re-wired) ──────────────────────
+WitnessReplayApp.prototype._showCaseBriefCmd = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/case-brief`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="brief-container">`;
+        html += `<div class="brief-header"><span class="brief-icon">📋</span> ${data.title}</div>`;
+        html += `<div class="brief-meta"><span>Words: ${data.word_count}</span><span class="brief-complexity brief-${data.complexity}">${data.complexity}</span></div>`;
+        html += `<div class="brief-section"><h4>📝 Overview</h4><p>${data.sections.overview}</p></div>`;
+        if (data.sections.key_facts.length) {
+            html += `<div class="brief-section"><h4>📌 Key Facts</h4>`;
+            data.sections.key_facts.forEach((f,i) => { html += `<div class="brief-fact"><span class="brief-num">${i+1}</span>${f}</div>`; });
+            html += `</div>`;
+        }
+        if (data.sections.parties_mentioned.length) {
+            html += `<div class="brief-section"><h4>👥 Parties</h4><div class="brief-tags">`;
+            data.sections.parties_mentioned.forEach(p => { html += `<span class="brief-party">${p}</span>`; });
+            html += `</div></div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate case brief.'); }
+};
+
+// ── Pacing (re-wired) ──────────────────────
+WitnessReplayApp.prototype._showPacingCmd = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/pacing`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const s = data.summary;
+        let html = `<div class="pacing-container">`;
+        html += `<div class="pacing-header"><span class="pacing-icon">⏱️</span> Testimony Pacing Analysis</div>`;
+        html += `<div class="pacing-summary">`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.average_word_count}</span><span class="pacing-label">Avg Words</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.pace_shifts}</span><span class="pacing-label">Shifts</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val pace-${s.overall_pace}">${s.overall_pace}</span><span class="pacing-label">Overall</span></div>`;
+        html += `</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze pacing.'); }
+};
+
+// ── Narrative Arc (re-wired) ──────────────────────
+WitnessReplayApp.prototype._showNarrativeCmd = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/narrative-arc`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="narrative-container">`;
+        html += `<div class="narrative-header"><span class="narrative-icon">📖</span> Narrative Arc</div>`;
+        html += `<div class="narrative-meta"><span>Climax: Seg ${data.climax_segment}</span><span>Peak: ${data.peak_intensity}</span><span>Completeness: ${Math.round(data.narrative_completeness)}%</span></div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze narrative arc.'); }
+};
+
+// ── Credibility Comparison (re-wired) ──────────────────────
+WitnessReplayApp.prototype._showCredCompareCmd = async function(otherId) {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/cred-compare/${otherId}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const c = data.comparison;
+        const winner = c.more_credible === 'session_a' ? 'Witness A' : c.more_credible === 'session_b' ? 'Witness B' : 'Similar';
+        let html = `<div class="credcomp-container">`;
+        html += `<div class="credcomp-header"><span class="credcomp-icon">⚖️</span> Credibility Comparison</div>`;
+        html += `<div class="credcomp-verdict"><strong>Verdict:</strong> ${winner} ${c.more_credible !== 'similar' ? `(+${c.overall_difference})` : '— roughly equal'}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not compare credibility.'); }
+};
+
+// ── Oath Analysis Handler ──────────────────────
+WitnessReplayApp.prototype._showOathAnalysis = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/oath-analysis`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="oath-container">`;
+        html += `<div class="oath-header"><span class="oath-icon">📜</span> Oath & Sworn Statement Analysis</div>`;
+        html += `<div class="oath-status ${data.oath_detected ? 'oath-found' : 'oath-missing'}">`;
+        html += data.oath_detected ? '✅ Oath/Affirmation Detected' : '⚠️ No Oath Reference Found';
+        html += `</div>`;
+        html += `<div class="oath-metrics">`;
+        html += `<div class="oath-metric"><span class="oath-val">${data.totals.qualifications}</span><span class="oath-label">Qualifications</span></div>`;
+        html += `<div class="oath-metric"><span class="oath-val">${data.totals.certainties}</span><span class="oath-label">Certainties</span></div>`;
+        html += `<div class="oath-metric"><span class="oath-val oath-conf-${data.confidence_level}">${data.confidence_level}</span><span class="oath-label">Confidence</span></div>`;
+        html += `<div class="oath-metric"><span class="oath-val oath-risk-${data.perjury_risk}">${data.perjury_risk}</span><span class="oath-label">Perjury Risk</span></div>`;
+        html += `</div>`;
+        // Qualification ratio bar
+        html += `<div class="oath-ratio-section">`;
+        html += `<div class="oath-ratio-row"><span>Qualification Ratio</span><div class="oath-ratio-track"><div class="oath-ratio-fill" style="width:${Math.min(data.qualification_ratio*100,100)}%;background:#ff9800"></div></div><span>${(data.qualification_ratio*100).toFixed(1)}%</span></div>`;
+        html += `<div class="oath-ratio-row"><span>Certainty Ratio</span><div class="oath-ratio-track"><div class="oath-ratio-fill" style="width:${Math.min(data.certainty_ratio*100,100)}%;background:#4caf50"></div></div><span>${(data.certainty_ratio*100).toFixed(1)}%</span></div>`;
+        html += `</div>`;
+        // Qualifications list
+        if (data.qualifications.length) {
+            html += `<div class="oath-detail-section"><h4>⚠️ Qualifying Statements</h4>`;
+            data.qualifications.slice(0,8).forEach(q => {
+                html += `<div class="oath-item qual"><span class="oath-seg">Seg ${q.segment}</span><span class="oath-marker">${q.marker}</span><div class="oath-snippet">${q.snippet}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.certainties.length) {
+            html += `<div class="oath-detail-section"><h4>✅ Certainty Statements</h4>`;
+            data.certainties.slice(0,8).forEach(c => {
+                html += `<div class="oath-item cert"><span class="oath-seg">Seg ${c.segment}</span><span class="oath-marker">${c.marker}</span><div class="oath-snippet">${c.snippet}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `<div class="oath-footer">${data.segments_analyzed} segments analyzed</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze oath statements.'); }
+};
+
+// ── Exhibit Tracker Handler ──────────────────────
+WitnessReplayApp.prototype._showExhibitTracker = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/exhibits`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="exhibits-container">`;
+        html += `<div class="exhibits-header"><span class="exhibits-icon">📎</span> Deposition Exhibit Tracker</div>`;
+        html += `<div class="exhibits-summary">`;
+        html += `<div class="exh-stat"><strong>${data.total_exhibits}</strong><span>Exhibits</span></div>`;
+        html += `<div class="exh-stat"><strong>${data.total_references}</strong><span>References</span></div>`;
+        html += `<div class="exh-stat"><strong>${data.most_referenced || 'N/A'}</strong><span>Most Cited</span></div>`;
+        html += `</div>`;
+        // Document types
+        html += `<div class="exh-types">`;
+        const typeIcons = {photograph:'📷',document:'📄',video:'🎥',physical:'🔍'};
+        Object.entries(data.document_types).forEach(([t,c]) => {
+            html += `<span class="exh-type-badge">${typeIcons[t]||'📁'} ${t}: ${c}</span>`;
+        });
+        html += `</div>`;
+        // Exhibits list
+        if (data.exhibits.length) {
+            html += `<div class="exh-list">`;
+            data.exhibits.slice(0,15).forEach(ex => {
+                const bar = Math.min(ex.mentions * 20, 100);
+                html += `<div class="exh-item"><span class="exh-id">Ex. ${ex.id}</span><div class="exh-bar-track"><div class="exh-bar-fill" style="width:${bar}%"></div></div><span class="exh-mentions">${ex.mentions}×</span><div class="exh-context">${ex.context}</div></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="exh-empty">No exhibit references detected</div>`;
+        }
+        html += `<div class="exh-footer">${data.segments_analyzed} segments analyzed</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not track exhibits.'); }
+};
+
+// ── Memory Quality Handler ──────────────────────
+WitnessReplayApp.prototype._showMemoryQuality = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/memory-quality`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="memory-container">`;
+        html += `<div class="memory-header"><span class="memory-icon">��</span> Witness Memory Quality Assessment</div>`;
+        html += `<div class="memory-top">`;
+        html += `<div class="memory-grade grade-${data.grade}">${data.grade}</div>`;
+        html += `<div class="memory-score">${data.quality_score}<span>/10</span></div>`;
+        html += `</div>`;
+        // Dimension scores
+        html += `<div class="memory-scores">`;
+        const dimIcons = {vividness:'👁️',sensory_detail:'🎯',temporal_precision:'⏰',spatial_awareness:'📍',uncertainty:'❓'};
+        const dimColors = {vividness:'#1565c0',sensory_detail:'#00897b',temporal_precision:'#ff6f00',spatial_awareness:'#6a1b9a',uncertainty:'#c62828'};
+        Object.entries(data.scores).forEach(([dim,val]) => {
+            const pct = val * 10;
+            const isUncertainty = dim === 'uncertainty';
+            const color = isUncertainty ? (val > 4 ? '#c62828' : '#4caf50') : (val >= 6 ? '#4caf50' : val >= 3 ? '#ff9800' : '#e53935');
+            html += `<div class="mem-dim"><span class="mem-dim-icon">${dimIcons[dim]||'•'}</span><span class="mem-dim-name">${dim.replace('_',' ')}</span><div class="mem-bar-track"><div class="mem-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="mem-dim-val">${val}</span></div>`;
+        });
+        html += `</div>`;
+        // Strengths and weaknesses
+        if (data.strengths.length) {
+            html += `<div class="mem-section"><strong>✅ Strengths:</strong>`;
+            data.strengths.forEach(s => { html += `<div class="mem-item good">${s}</div>`; });
+            html += `</div>`;
+        }
+        if (data.weaknesses.length) {
+            html += `<div class="mem-section"><strong>⚠️ Weaknesses:</strong>`;
+            data.weaknesses.forEach(w => { html += `<div class="mem-item warn">${w}</div>`; });
+            html += `</div>`;
+        }
+        html += `<div class="mem-rec">${data.recommendation}</div>`;
+        html += `<div class="mem-footer">${data.segments_analyzed} segments analyzed</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess memory quality.'); }
+};
+
+// ── Legal Issues Handler ──────────────────────
+WitnessReplayApp.prototype._showLegalIssues = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/legal-issues`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="issues-container">`;
+        html += `<div class="issues-header"><span class="issues-icon">⚖️</span> Legal Issue Spotter</div>`;
+        html += `<div class="issues-summary">`;
+        html += `<div class="iss-stat"><strong>${data.total_issues}</strong><span>Issues Found</span></div>`;
+        html += `<div class="iss-stat"><strong>${data.high_severity}</strong><span>High Severity</span></div>`;
+        html += `<div class="iss-stat primary"><strong>${data.primary_issue}</strong><span>Primary Issue</span></div>`;
+        html += `</div>`;
+        if (data.issues.length) {
+            html += `<div class="iss-list">`;
+            data.issues.forEach(iss => {
+                const sevColor = iss.severity === 'high' ? '#c62828' : iss.severity === 'medium' ? '#ff6f00' : '#4caf50';
+                html += `<div class="iss-item sev-${iss.severity}">`;
+                html += `<div class="iss-item-header"><span class="iss-name">${iss.display_name}</span><span class="iss-sev" style="color:${sevColor}">${iss.severity.toUpperCase()}</span><span class="iss-count">${iss.occurrences}×</span></div>`;
+                html += `<div class="iss-keywords">`;
+                iss.keywords_matched.slice(0,5).forEach(kw => { html += `<span class="iss-kw">${kw}</span>`; });
+                html += `</div>`;
+                if (iss.supporting_segments.length) {
+                    iss.supporting_segments.slice(0,2).forEach(seg => {
+                        html += `<div class="iss-segment"><span class="iss-seg-num">Seg ${seg.segment}</span>${seg.snippet}</div>`;
+                    });
+                }
+                html += `</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="iss-empty">No clear legal issues identified in testimony</div>`;
+        }
+        html += `<div class="iss-rec">${data.recommendation}</div>`;
+        html += `<div class="iss-footer">${data.segments_analyzed} segments analyzed</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not spot legal issues.'); }
+};
+
+// ── Testimony Redline Handler ──────────────────────
+WitnessReplayApp.prototype._showRedline = async function() {
+    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.currentSessionId || this.sessionId;
+    try {
+        const res = await fetch(`/api/sessions/${sid}/redline`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="redline-container">`;
+        html += `<div class="redline-header"><span class="redline-icon">🔴</span> Testimony Redline — Self-Contradiction Finder</div>`;
+        html += `<div class="redline-summary">`;
+        html += `<div class="rl-stat"><strong>${data.total_found}</strong><span>Contradictions</span></div>`;
+        html += `<div class="rl-stat"><span class="rl-sev sev-${data.severity}">${data.severity.toUpperCase()}</span><span>Severity</span></div>`;
+        html += `<div class="rl-stat"><strong>${data.consistency_score}</strong><span>/10 Consistency</span></div>`;
+        html += `</div>`;
+        if (data.contradictions.length) {
+            html += `<div class="rl-list">`;
+            data.contradictions.slice(0,10).forEach((c,i) => {
+                html += `<div class="rl-item">`;
+                html += `<div class="rl-item-header"><span class="rl-num">#${i+1}</span><span class="rl-distance">${c.distance} segs apart</span></div>`;
+                html += `<div class="rl-conflicts">`;
+                c.conflict_markers.forEach(cm => { html += `<span class="rl-conflict-tag">${cm}</span>`; });
+                html += `</div>`;
+                html += `<div class="rl-pair">`;
+                html += `<div class="rl-stmt rl-a"><span class="rl-seg">Seg ${c.segment_a}</span><p>${c.text_a}</p></div>`;
+                html += `<div class="rl-vs">↔</div>`;
+                html += `<div class="rl-stmt rl-b"><span class="rl-seg">Seg ${c.segment_b}</span><p>${c.text_b}</p></div>`;
+                html += `</div>`;
+                if (c.shared_topics.length) {
+                    html += `<div class="rl-topics">Topics: ${c.shared_topics.join(', ')}</div>`;
+                }
+                html += `</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="rl-empty">✅ No internal contradictions detected — testimony appears consistent</div>`;
+        }
+        html += `<div class="rl-rec">${data.recommendation}</div>`;
+        html += `<div class="rl-footer">${data.segments_analyzed} segments analyzed</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not perform redline analysis.'); }
 };
