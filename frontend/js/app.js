@@ -1157,10 +1157,10 @@ class WitnessReplayApp {
             wrap.id = 'text-tools-dropdown';
             wrap.className = 'modern-dropdown modern-dropdown-inline text-tools-dropdown';
             wrap.innerHTML = `
-                <button id="text-tools-btn" type="button" class="btn btn-secondary modern-dropdown-trigger text-tools-trigger" aria-haspopup="menu" aria-expanded="false">
-                    ⋯ Tools
+                <button id="text-tools-btn" type="button" class="btn btn-secondary modern-dropdown-trigger text-tools-trigger" aria-haspopup="menu" aria-expanded="false" title="Tools & Settings">
+                    ⋯
                 </button>
-                <div id="text-tools-menu" class="modern-dropdown-menu modern-dropdown-menu-right" role="menu" aria-label="Message tools"></div>
+                <div id="text-tools-menu" class="modern-dropdown-menu modern-dropdown-menu-right" role="menu" aria-label="Tools and settings"></div>
             `;
             const sendBtn = document.getElementById('send-btn');
             if (sendBtn && sendBtn.parentNode === textBar) {
@@ -1186,15 +1186,20 @@ class WitnessReplayApp {
         if (!menu) return;
 
         const items = [
-            { id: 'upload-evidence-btn', label: '📎 Attach evidence photo' },
+            { id: 'upload-evidence-btn', label: '📎 Attach evidence' },
             { id: 'upload-sketch-btn', label: '✏️ Upload sketch' },
-            { id: 'camera-btn', label: '📸 Take photo now' },
+            { id: 'camera-btn', label: '📸 Take photo' },
             { id: 'retry-last-btn', label: '↻ Retry last message' },
             { type: 'separator' },
             { type: 'label', text: 'Quick Actions' },
             { id: '__suggest_correct', label: '✏️ Correct something', action: 'correct' },
             { id: '__suggest_generate', label: '🎬 Generate scene', action: 'generate' },
             { id: '__suggest_details', label: '➕ Add more details', action: 'details' },
+            { type: 'separator' },
+            { type: 'label', text: 'Interview' },
+            { id: 'comfort-pause-btn', label: '⏸️ Pause interview' },
+            { id: 'comfort-break-btn', label: '☕ Take a break' },
+            { id: 'comfort-support-btn', label: '💚 Get support' },
             { type: 'separator' },
             { type: 'label', text: 'Settings' },
             { id: 'auto-scroll-toggle', label: this.autoScrollEnabled ? '⇣ Auto-scroll: On' : '⏸ Auto-scroll: Off' },
@@ -6425,6 +6430,12 @@ Corrections: ${reliability.correction_count || 0}`;
         });
 
         fill.style.width = Math.round(pct) + '%';
+
+        // Reveal interview progress bar on desktop once past intro
+        const progressEl = document.getElementById('interview-progress');
+        if (progressEl && currentPhase !== 'intro') {
+            progressEl.classList.add('has-progress');
+        }
 
         // Show review testimony button once in details or review phase
         const reviewBtn = document.getElementById('review-testimony-btn');

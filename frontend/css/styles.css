@@ -10181,9 +10181,16 @@ img.loaded,
 }
 
 .text-tools-trigger {
-    width: auto !important;
-    min-width: 96px;
-    padding: 0 14px;
+    width: 36px !important;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 1px;
 }
 
 .modern-dropdown-menu {
@@ -10191,9 +10198,11 @@ img.loaded,
     bottom: calc(100% + 10px);
     left: 0;
     min-width: 220px;
+    max-height: 60vh;
+    overflow-y: auto;
     display: none;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     padding: 8px;
     border-radius: 14px;
     border: 1px solid var(--glass-border);
@@ -10251,22 +10260,109 @@ img.loaded,
     pointer-events: none;
 }
 
-/* On desktop: hide raw suggested-actions and mode-toggles — they're in Tools dropdown */
+/* =========================================================
+   DESKTOP CLEAN LAYOUT — hide clutter, let chat be the hero
+   ========================================================= */
 @media (min-width: 769px) {
     .menu-hidden-source {
         display: none !important;
     }
-    body.modern-simplified-ui .mode-toggles {
-        display: none !important;
-    }
-    .suggested-actions {
-        display: none !important;
-    }
-    .mode-toggles {
-        display: none !important;
-    }
+
+    /* These are all in the Tools dropdown now */
+    .suggested-actions,
+    .mode-toggles,
     .quick-phrase-rail {
         display: none !important;
+    }
+
+    /* Step indicators — redundant with interview progress */
+    .reporting-steps {
+        display: none !important;
+    }
+
+    /* Interview progress — collapsed by default, revealed via JS */
+    .interview-progress {
+        display: none !important;
+    }
+    .interview-progress.has-progress {
+        display: block !important;
+    }
+
+    /* Comfort panel — available in Tools dropdown */
+    .interview-comfort-panel {
+        display: none !important;
+    }
+
+    /* VAD controls — collapsed behind a toggle */
+    .vad-controls {
+        display: none !important;
+    }
+
+    /* Keyboard hint — power users know these */
+    .keyboard-hint {
+        display: none !important;
+    }
+
+    /* Voice-first label — not needed on desktop */
+    .voice-first-label {
+        display: none !important;
+    }
+
+    /* Sub-tagline & badge — keep header minimal */
+    .tagline-sub,
+    .challenge-badge {
+        display: none !important;
+    }
+
+    /* Audio quality container — hide until actually relevant */
+    .audio-quality-container:empty {
+        display: none !important;
+    }
+
+    /* Text input: hide redundant inline buttons (in Tools dropdown) */
+    #retry-last-btn,
+    #auto-scroll-toggle,
+    #compact-mode-toggle,
+    .text-char-counter,
+    .evidence-upload-btn,
+    #camera-btn,
+    .language-selector,
+    .text-input-expand-btn {
+        display: none !important;
+    }
+
+    /* Make text input bar cleaner — floating pill style */
+    .text-input {
+        border-radius: 16px;
+        margin: 0 var(--spacing-md) var(--spacing-sm);
+        border: 1px solid var(--glass-border);
+        border-top: 1px solid var(--glass-border);
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    /* Always show text input on desktop */
+    .text-input-collapsed #text-input,
+    .text-input-collapsed #send-btn {
+        display: flex !important;
+    }
+
+    /* Text input fills space */
+    .text-input #text-input {
+        flex: 1;
+    }
+
+    /* Mic controls area — tighter on desktop */
+    .controls {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    /* Status indicator — smaller on desktop */
+    .status-indicator {
+        padding: 2px 0;
+        font-size: 0.78rem;
     }
 }
 
