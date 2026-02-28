@@ -5615,3 +5615,46 @@ async function doBulkExport() {
         }
     } catch (e) { if (resultDiv) resultDiv.innerHTML = '❌ Export failed.'; }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 61: Admin Audit Trail
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    const btn = document.getElementById('at-refresh-btn');
+    if (btn) btn.addEventListener('click', loadAuditTrail);
+    setTimeout(loadAuditTrail, 1800);
+})();
+
+async function loadAuditTrail() {
+    const token = localStorage.getItem('wr_admin_token');
+    if (!token) return;
+    try {
+        const resp = await fetch('/api/admin/audit-trail', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const countEl = document.getElementById('at-count');
+        if (countEl) countEl.textContent = (data.total || 0) + ' entries';
+        const container = document.getElementById('at-entries');
+        if (!container) return;
+        if (!data.entries || data.entries.length === 0) {
+            container.innerHTML = '<div class="at-empty">No audit entries yet</div>';
+            return;
+        }
+        const actionIcons = {
+            'view_audit_trail': '👁️', 'login': '🔐', 'export': '📥',
+            'delete': '🗑️', 'update': '✏️', 'create': '➕', 'view': '👁️'
+        };
+        let html = '';
+        for (const entry of data.entries.slice(0, 50)) {
+            const icon = actionIcons[entry.action] || '📝';
+            const time = new Date(entry.timestamp).toLocaleString();
+            html += `<div class="at-entry">`;
+            html += `<span class="at-icon">${icon}</span>`;
+            html += `<span class="at-action">${entry.action}</span>`;
+            html += `<span class="at-detail">${entry.details || ''}</span>`;
+            html += `<span class="at-time">${time}</span>`;
+            html += `</div>`;
+        }
+        container.innerHTML = html;
+    } catch (e) { /* silent */ }
+}

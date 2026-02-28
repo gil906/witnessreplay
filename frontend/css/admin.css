@@ -6111,3 +6111,14 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .be-input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; width: 70px; }
 .be-result { margin-top: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 0.82rem; color: #94a3b8; }
 @media (max-width: 600px) { .hd-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ═══ IMPROVEMENT 61: Audit Trail ═══ */
+.at-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.at-count { font-size: 0.78rem; color: #64748b; }
+.at-entries { max-height: 300px; overflow-y: auto; }
+.at-empty { color: #64748b; font-size: 0.82rem; text-align: center; padding: 20px; }
+.at-entry { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: 6px; margin-bottom: 4px; font-size: 0.8rem; }
+.at-icon { flex: 0 0 20px; text-align: center; }
+.at-action { flex: 0 0 140px; color: #e2e8f0; font-weight: 600; }
+.at-detail { flex: 1; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-time { flex: 0 0 auto; color: #475569; font-size: 0.72rem; }

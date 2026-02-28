@@ -13209,3 +13209,339 @@ async def bulk_export_sessions(data: dict, auth=Depends(require_admin_auth)):
         return {"format": "csv", "content": "\n".join(lines), "total": len(exported)}
 
     return {"format": "json", "sessions": exported, "total": len(exported)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 56: Testimony Outline Generator
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/outline")
+async def generate_testimony_outline(session_id: str):
+    """Auto-generate a structured outline/TOC of testimony by detected topics."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"outline": [], "total_sections": 0}
+
+    topic_patterns = {
+        "identification": {"patterns": [r"\bname\b", r"\bidentif", r"\bwho (?:are|were) you"], "icon": "🪪"},
+        "location": {"patterns": [r"\bwhere\b", r"\blocation\b", r"\baddress\b", r"\bscene\b", r"\bstreet\b"], "icon": "📍"},
+        "timeline": {"patterns": [r"\bwhen\b", r"\btime\b", r"\bclock\b", r"\bo'clock\b", r"\bdate\b", r"\bmorning\b", r"\bevening\b", r"\bnight\b"], "icon": "🕐"},
+        "observations": {"patterns": [r"\bsaw\b", r"\bheard\b", r"\bnoticed\b", r"\bobserved\b", r"\bwitnessed\b", r"\blooked\b"], "icon": "👁️"},
+        "actions": {"patterns": [r"\bran\b", r"\bdrove\b", r"\bhit\b", r"\bpushed\b", r"\bgrabbed\b", r"\bfled\b", r"\bchased\b"], "icon": "🏃"},
+        "description": {"patterns": [r"\btall\b", r"\bwearing\b", r"\bhair\b", r"\bcloth", r"\bappearance\b", r"\bbuilt\b"], "icon": "📝"},
+        "vehicle": {"patterns": [r"\bcar\b", r"\bvehicle\b", r"\btruck\b", r"\bvan\b", r"\blicense\b", r"\bplate\b"], "icon": "🚗"},
+        "emotional": {"patterns": [r"\bscared\b", r"\bafraid\b", r"\bangry\b", r"\bshock", r"\bcried\b", r"\bupset\b", r"\bfrightened\b"], "icon": "😨"},
+        "evidence": {"patterns": [r"\bweapon\b", r"\bknife\b", r"\bgun\b", r"\bblood\b", r"\bfootprint\b", r"\bdna\b", r"\bfingerprint"], "icon": "🔍"},
+        "aftermath": {"patterns": [r"\bpolice\b", r"\bambulance\b", r"\bhospital\b", r"\b911\b", r"\bcalled\b", r"\breported\b"], "icon": "🚨"},
+    }
+
+    sections = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        text_lower = text.lower()
+        topics_found = []
+        for topic, info in topic_patterns.items():
+            for pat in info["patterns"]:
+                if re.search(pat, text_lower):
+                    topics_found.append({"topic": topic, "icon": info["icon"]})
+                    break
+        if not topics_found:
+            topics_found = [{"topic": "general", "icon": "💬"}]
+        preview = text[:120].strip() + ("..." if len(text) > 120 else "")
+        sections.append({
+            "index": i,
+            "topics": topics_found,
+            "preview": preview,
+            "word_count": len(text.split()),
+        })
+
+    topic_summary = {}
+    for sec in sections:
+        for t in sec["topics"]:
+            topic_summary[t["topic"]] = topic_summary.get(t["topic"], 0) + 1
+
+    return {
+        "outline": sections,
+        "total_sections": len(sections),
+        "topic_summary": topic_summary,
+        "case_title": getattr(session, 'case_title', '') or '',
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 57: Witness Reliability Timeline
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/reliability")
+async def get_reliability_timeline(session_id: str):
+    """Track answer quality/detail over interview progression."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"timeline": [], "avg_reliability": 0, "trend": "neutral"}
+
+    hedging_words = [r"\bmaybe\b", r"\bperhaps\b", r"\bpossibly\b", r"\bi think\b", r"\bi guess\b", r"\bnot sure\b", r"\bprobably\b", r"\bmight\b"]
+    precise_words = [r"\bexactly\b", r"\bprecisely\b", r"\bdefinitely\b", r"\bclearly\b", r"\bcertain\b", r"\bi remember\b", r"\bspecifically\b"]
+    detail_markers = [r"\d{1,2}:\d{2}", r"\d+ (?:feet|meters|yards|inches)", r"\b(?:red|blue|green|black|white|yellow)\b", r"\b(?:left|right|north|south|east|west)\b"]
+
+    timeline = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        text_lower = text.lower()
+        words = len(text.split())
+
+        hedge_count = sum(1 for p in hedging_words if re.search(p, text_lower))
+        precise_count = sum(1 for p in precise_words if re.search(p, text_lower))
+        detail_count = sum(1 for p in detail_markers if re.search(p, text_lower))
+
+        # Reliability score: detail & precision boost, hedging penalizes
+        base = min(40, words * 0.5)  # longer = more base
+        score = base + (precise_count * 12) + (detail_count * 8) - (hedge_count * 10)
+        score = max(0, min(100, score))
+
+        timeline.append({
+            "index": i,
+            "score": round(score, 1),
+            "word_count": words,
+            "hedging": hedge_count,
+            "precision": precise_count,
+            "details": detail_count,
+            "label": "high" if score >= 70 else "medium" if score >= 40 else "low",
+        })
+
+    scores = [t["score"] for t in timeline]
+    avg = round(sum(scores) / len(scores), 1) if scores else 0
+
+    # Trend: compare first half vs second half
+    mid = len(scores) // 2
+    if mid > 0 and len(scores) > 1:
+        first_half = sum(scores[:mid]) / mid
+        second_half = sum(scores[mid:]) / (len(scores) - mid)
+        trend = "improving" if second_half > first_half + 5 else "declining" if second_half < first_half - 5 else "stable"
+    else:
+        trend = "neutral"
+
+    return {"timeline": timeline, "avg_reliability": avg, "trend": trend, "total": len(timeline)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 58: PII Redaction Tool
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/redact")
+async def detect_pii(session_id: str):
+    """Detect PII in testimony (SSN, phone, email, addresses)."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"findings": [], "total_pii": 0}
+
+    pii_patterns = {
+        "ssn": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b", "icon": "🔒", "severity": "critical"},
+        "phone": {"pattern": r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "icon": "📱", "severity": "high"},
+        "email": {"pattern": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "icon": "📧", "severity": "high"},
+        "date_of_birth": {"pattern": r"\b(?:born|dob|date of birth)[:\s]+\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}\b", "icon": "🎂", "severity": "medium"},
+        "address": {"pattern": r"\b\d{1,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Ct|Court)\b", "icon": "🏠", "severity": "medium"},
+        "license_plate": {"pattern": r"\b[A-Z]{2,3}[-\s]?\d{3,4}[-\s]?[A-Z]{0,3}\b", "icon": "🚗", "severity": "medium"},
+        "credit_card": {"pattern": r"\b(?:\d{4}[-\s]?){3}\d{4}\b", "icon": "💳", "severity": "critical"},
+    }
+
+    findings = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        stmt_findings = []
+        for pii_type, info in pii_patterns.items():
+            matches = re.finditer(info["pattern"], text, re.IGNORECASE)
+            for m in matches:
+                masked = m.group(0)[:2] + "•" * (len(m.group(0)) - 4) + m.group(0)[-2:] if len(m.group(0)) > 4 else "••••"
+                stmt_findings.append({
+                    "type": pii_type,
+                    "icon": info["icon"],
+                    "severity": info["severity"],
+                    "masked": masked,
+                    "position": m.start(),
+                })
+        if stmt_findings:
+            findings.append({
+                "statement_index": i,
+                "pii_items": stmt_findings,
+                "count": len(stmt_findings),
+            })
+
+    total = sum(f["count"] for f in findings)
+    severity_dist = {}
+    for f in findings:
+        for p in f["pii_items"]:
+            severity_dist[p["severity"]] = severity_dist.get(p["severity"], 0) + 1
+
+    return {"findings": findings, "total_pii": total, "severity_distribution": severity_dist}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 59: Question Analyzer
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/questions")
+async def analyze_questions(session_id: str):
+    """Extract and categorize all questions from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    if not statements:
+        return {"questions": [], "total": 0}
+
+    question_types = {
+        "open_ended": [r"^(?:what|how|why|describe|explain|tell)\b"],
+        "closed": [r"^(?:did|do|does|is|are|was|were|can|could|would|will|has|have|had)\b"],
+        "leading": [r"^(?:isn't it true|wouldn't you|don't you|didn't you|you (?:did|saw|were|said))\b"],
+        "clarifying": [r"^(?:you mean|so you're saying|to clarify|let me understand)\b"],
+        "temporal": [r"^(?:when|what time|how long|how (?:many|much) time)\b"],
+        "spatial": [r"^(?:where|which direction|how far|how close)\b"],
+    }
+
+    questions = []
+    for i, stmt in enumerate(statements):
+        text = getattr(stmt, 'text', '') or getattr(stmt, 'content', '') or str(stmt)
+        # Extract sentences ending with ?
+        q_sentences = re.findall(r'[^.!?]*\?', text)
+        for q in q_sentences:
+            q_clean = q.strip()
+            if len(q_clean) < 5:
+                continue
+            q_lower = q_clean.lower().strip()
+            q_type = "other"
+            for typ, patterns in question_types.items():
+                for pat in patterns:
+                    if re.search(pat, q_lower):
+                        q_type = typ
+                        break
+                if q_type != "other":
+                    break
+            questions.append({
+                "text": q_clean,
+                "type": q_type,
+                "statement_index": i,
+                "word_count": len(q_clean.split()),
+            })
+
+    type_dist = {}
+    for q in questions:
+        type_dist[q["type"]] = type_dist.get(q["type"], 0) + 1
+
+    type_icons = {
+        "open_ended": "🔓", "closed": "🔒", "leading": "⚠️",
+        "clarifying": "🔍", "temporal": "🕐", "spatial": "📍", "other": "❓",
+    }
+
+    return {
+        "questions": questions[:50],
+        "total": len(questions),
+        "type_distribution": type_dist,
+        "type_icons": type_icons,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 60: Session Pinning/Favorites
+# ═══════════════════════════════════════════════════════════════════
+_pinned_sessions: Dict[str, Dict[str, Any]] = {}
+
+@router.post("/sessions/{session_id}/pin")
+async def pin_session(session_id: str, data: dict = {}):
+    """Pin/unpin a session for quick access."""
+    if session_id in _pinned_sessions:
+        del _pinned_sessions[session_id]
+        return {"pinned": False, "session_id": session_id, "total_pinned": len(_pinned_sessions)}
+
+    session = await firestore_service.get_session(session_id)
+    _pinned_sessions[session_id] = {
+        "session_id": session_id,
+        "case_title": getattr(session, 'case_title', '') or '' if session else '',
+        "pinned_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return {"pinned": True, "session_id": session_id, "total_pinned": len(_pinned_sessions)}
+
+
+@router.get("/pinned-sessions")
+async def list_pinned_sessions():
+    """List all pinned sessions."""
+    pins = sorted(_pinned_sessions.values(), key=lambda x: x.get("pinned_at", ""), reverse=True)
+    return {"pinned": pins, "total": len(pins)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 61: Admin Audit Trail
+# ═══════════════════════════════════════════════════════════════════
+_admin_audit_trail: deque = deque(maxlen=500)
+
+def _log_admin_action(action: str, details: str = "", user: str = "admin"):
+    _admin_audit_trail.appendleft({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "details": details,
+        "user": user,
+    })
+
+@router.get("/admin/audit-trail")
+async def get_audit_trail(limit: int = 100, auth=Depends(require_admin_auth)):
+    """Get admin audit trail."""
+    _log_admin_action("view_audit_trail", "Viewed audit trail")
+    entries = list(_admin_audit_trail)[:limit]
+    return {"entries": entries, "total": len(_admin_audit_trail)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 62: Summary Card Generator
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/summary-card")
+async def generate_summary_card(session_id: str):
+    """Generate a compact summary card for a session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = getattr(session, 'witness_statements', []) or []
+    texts = [getattr(s, 'text', '') or getattr(s, 'content', '') or str(s) for s in statements]
+    all_text = " ".join(texts).lower()
+    total_words = len(all_text.split())
+
+    # Key stats
+    people_mentioned = set(re.findall(r'\b(?:Mr|Mrs|Ms|Dr|Officer|Detective|Judge)\.\s+[A-Z][a-z]+', " ".join(texts)))
+    locations = set(re.findall(r'\b\d{1,5}\s+[A-Z][a-z]+\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Ct)', " ".join(texts)))
+    times = set(re.findall(r'\b\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?\b', " ".join(texts)))
+
+    # Dominant emotion
+    emotions = {
+        "fearful": len(re.findall(r'\b(?:scared|afraid|frightened|terrified|fear)\b', all_text)),
+        "angry": len(re.findall(r'\b(?:angry|mad|furious|rage|upset)\b', all_text)),
+        "sad": len(re.findall(r'\b(?:sad|crying|cried|tears|devastated)\b', all_text)),
+        "calm": len(re.findall(r'\b(?:calm|clearly|remember|confident|certain)\b', all_text)),
+        "confused": len(re.findall(r'\b(?:confused|unsure|maybe|perhaps|not sure)\b', all_text)),
+    }
+    dominant_emotion = max(emotions, key=emotions.get) if any(emotions.values()) else "neutral"
+
+    # First sentence as opener
+    opener = texts[0][:150].strip() + "..." if texts else "No statements yet"
+
+    return {
+        "session_id": session_id,
+        "case_title": getattr(session, 'case_title', '') or 'Untitled',
+        "status": getattr(session, 'status', '') or 'unknown',
+        "statement_count": len(statements),
+        "total_words": total_words,
+        "people_mentioned": list(people_mentioned)[:10],
+        "locations": list(locations)[:5],
+        "times_referenced": list(times)[:10],
+        "dominant_emotion": dominant_emotion,
+        "emotion_scores": emotions,
+        "opener": opener,
+        "created_at": str(getattr(session, 'created_at', '')),
+    }

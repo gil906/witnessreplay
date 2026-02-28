@@ -7588,6 +7588,13 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/annotations</code> — View annotations<br>' +
                 '<code>/search-all [term]</code> — Search all sessions<br>' +
                 '<code>/highlights</code> — Testimony highlight reel<br>' +
+                '<code>/outline</code> — Testimony outline/TOC<br>' +
+                '<code>/reliability</code> — Reliability timeline<br>' +
+                '<code>/redact</code> — PII redaction scan<br>' +
+                '<code>/questions</code> — Question analysis<br>' +
+                '<code>/pin</code> — Pin/unpin session<br>' +
+                '<code>/pins</code> — View pinned sessions<br>' +
+                '<code>/card</code> — Summary card<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7742,6 +7749,27 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/highlights': () => {
             this._showHighlights();
+        },
+        '/outline': () => {
+            this._showOutline();
+        },
+        '/reliability': () => {
+            this._showReliabilityTimeline();
+        },
+        '/redact': () => {
+            this._showRedactionScan();
+        },
+        '/questions': () => {
+            this._showQuestionAnalysis();
+        },
+        '/pin': () => {
+            this._togglePinSession();
+        },
+        '/pins': () => {
+            this._showPinnedSessions();
+        },
+        '/card': () => {
+            this._showSummaryCard();
         }
     };
     
@@ -7840,7 +7868,14 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/annotate', desc: 'Add annotation' },
         { cmd: '/annotations', desc: 'View annotations' },
         { cmd: '/search-all', desc: 'Search all sessions' },
-        { cmd: '/highlights', desc: 'Highlight reel' }
+        { cmd: '/highlights', desc: 'Highlight reel' },
+        { cmd: '/outline', desc: 'Testimony outline' },
+        { cmd: '/reliability', desc: 'Reliability timeline' },
+        { cmd: '/redact', desc: 'PII redaction scan' },
+        { cmd: '/questions', desc: 'Question analysis' },
+        { cmd: '/pin', desc: 'Pin/unpin session' },
+        { cmd: '/pins', desc: 'View pinned sessions' },
+        { cmd: '/card', desc: 'Summary card' }
     ];
     
     const filter = val.toLowerCase();
@@ -10149,4 +10184,223 @@ WitnessReplayApp.prototype._showHighlights = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not extract highlights.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 56: Testimony Outline Generator (/outline command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showOutline = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📑 Generating testimony outline...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/outline`);
+        const data = await resp.json();
+        if (!data.outline || data.outline.length === 0) {
+            this.displaySystemMessage('📑 No outline available yet. Add testimony statements first.');
+            return;
+        }
+        let html = `<div class="outline-panel">`;
+        html += `<h4>📑 Testimony Outline — ${data.case_title || 'Session'} (${data.total_sections} sections)</h4>`;
+        if (data.topic_summary) {
+            html += `<div class="outline-topics">`;
+            for (const [topic, count] of Object.entries(data.topic_summary)) {
+                html += `<span class="ol-topic-badge">${topic.replace(/_/g,' ')} (${count})</span>`;
+            }
+            html += `</div>`;
+        }
+        for (const sec of data.outline) {
+            const icons = sec.topics.map(t => t.icon).join(' ');
+            const topicLabels = sec.topics.map(t => t.topic.replace(/_/g,' ')).join(', ');
+            html += `<div class="ol-section">`;
+            html += `<div class="ol-num">${sec.index + 1}</div>`;
+            html += `<div class="ol-body">`;
+            html += `<div class="ol-header">${icons} <span class="ol-topics-text">${topicLabels}</span> <span class="ol-wc">${sec.word_count}w</span></div>`;
+            html += `<div class="ol-preview">${sec.preview}</div>`;
+            html += `</div></div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate outline.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 57: Witness Reliability Timeline (/reliability command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showReliabilityTimeline = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📈 Analyzing witness reliability...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/reliability`);
+        const data = await resp.json();
+        if (!data.timeline || data.timeline.length === 0) {
+            this.displaySystemMessage('📈 No reliability data yet. Add testimony statements first.');
+            return;
+        }
+        const trendIcon = data.trend === 'improving' ? '📈' : data.trend === 'declining' ? '📉' : '➡️';
+        let html = `<div class="reliability-panel">`;
+        html += `<h4>📈 Reliability Timeline (Avg: ${data.avg_reliability}/100 — ${trendIcon} ${data.trend})</h4>`;
+        html += `<div class="rel-chart">`;
+        for (const t of data.timeline) {
+            const color = t.score >= 70 ? '#22c55e' : t.score >= 40 ? '#f59e0b' : '#ef4444';
+            const h = Math.max(8, t.score * 0.6);
+            html += `<div class="rel-bar-wrap" title="Statement ${t.index+1}: ${t.score}/100">`;
+            html += `<div class="rel-bar" style="height:${h}px;background:${color}"></div>`;
+            html += `<div class="rel-label">${t.index+1}</div>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+        html += `<div class="rel-legend">`;
+        html += `<span class="rel-leg-item"><span class="rel-dot" style="background:#22c55e"></span>High (70+)</span>`;
+        html += `<span class="rel-leg-item"><span class="rel-dot" style="background:#f59e0b"></span>Medium (40-69)</span>`;
+        html += `<span class="rel-leg-item"><span class="rel-dot" style="background:#ef4444"></span>Low (&lt;40)</span>`;
+        html += `</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze reliability.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 58: PII Redaction Tool (/redact command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showRedactionScan = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔒 Scanning testimony for PII...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/redact`);
+        const data = await resp.json();
+        if (data.total_pii === 0) {
+            this.displaySystemMessage('🔒 No PII detected in this testimony. All clear!');
+            return;
+        }
+        let html = `<div class="redact-panel">`;
+        html += `<h4>🔒 PII Scan Results — ${data.total_pii} item(s) found</h4>`;
+        if (data.severity_distribution) {
+            html += `<div class="redact-severity">`;
+            for (const [sev, count] of Object.entries(data.severity_distribution)) {
+                const cls = sev === 'critical' ? 'redact-crit' : sev === 'high' ? 'redact-high' : 'redact-med';
+                html += `<span class="redact-sev-badge ${cls}">${sev.toUpperCase()}: ${count}</span>`;
+            }
+            html += `</div>`;
+        }
+        for (const f of data.findings) {
+            html += `<div class="redact-stmt">`;
+            html += `<div class="redact-stmt-header">Statement #${f.statement_index + 1} — ${f.count} PII item(s)</div>`;
+            for (const p of f.pii_items) {
+                const cls = p.severity === 'critical' ? 'redact-crit' : p.severity === 'high' ? 'redact-high' : 'redact-med';
+                html += `<div class="redact-item ${cls}">${p.icon} <b>${p.type.replace(/_/g,' ')}</b>: <code>${p.masked}</code></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not scan for PII.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 59: Question Analyzer (/questions command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showQuestionAnalysis = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('❓ Analyzing questions in testimony...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/questions`);
+        const data = await resp.json();
+        if (!data.questions || data.questions.length === 0) {
+            this.displaySystemMessage('❓ No questions detected in this testimony.');
+            return;
+        }
+        const icons = data.type_icons || {};
+        let html = `<div class="questions-panel">`;
+        html += `<h4>❓ Question Analysis — ${data.total} question(s)</h4>`;
+        if (data.type_distribution) {
+            html += `<div class="qa-types">`;
+            for (const [typ, count] of Object.entries(data.type_distribution)) {
+                html += `<span class="qa-type-badge">${icons[typ] || '❓'} ${typ.replace(/_/g,' ')}: ${count}</span>`;
+            }
+            html += `</div>`;
+        }
+        for (const q of data.questions.slice(0, 20)) {
+            html += `<div class="qa-item">`;
+            html += `<span class="qa-icon">${icons[q.type] || '❓'}</span>`;
+            html += `<span class="qa-text">${q.text}</span>`;
+            html += `<span class="qa-meta">${q.type.replace(/_/g,' ')}</span>`;
+            html += `</div>`;
+        }
+        if (data.total > 20) html += `<div class="qa-more">...and ${data.total - 20} more</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze questions.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 60: Session Pinning (/pin, /pins commands)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._togglePinSession = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session to pin.'); return; }
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/pin`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        const data = await resp.json();
+        if (data.pinned) {
+            this.displaySystemMessage(`📌 Session pinned! (${data.total_pinned} total pinned)`);
+        } else {
+            this.displaySystemMessage(`📌 Session unpinned. (${data.total_pinned} remaining)`);
+        }
+    } catch (e) { this.displaySystemMessage('❌ Could not pin session.'); }
+};
+
+WitnessReplayApp.prototype._showPinnedSessions = async function() {
+    try {
+        const resp = await this.fetchWithTimeout('/api/pinned-sessions');
+        const data = await resp.json();
+        if (!data.pinned || data.pinned.length === 0) {
+            this.displaySystemMessage('📌 No pinned sessions yet. Use <code>/pin</code> to pin the current session.');
+            return;
+        }
+        let html = `<div class="pins-panel">`;
+        html += `<h4>📌 Pinned Sessions (${data.total})</h4>`;
+        for (const p of data.pinned) {
+            html += `<div class="pin-item" onclick="app.loadSession && app.loadSession('${p.session_id}')">`;
+            html += `<div class="pin-title">${p.case_title || p.session_id}</div>`;
+            html += `<div class="pin-meta">Pinned: ${new Date(p.pinned_at).toLocaleString()}</div>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not load pinned sessions.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 62: Summary Card Generator (/card command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showSummaryCard = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🪪 Generating summary card...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/summary-card`);
+        const data = await resp.json();
+        const emotionIcons = { fearful:'😨', angry:'😠', sad:'😢', calm:'😌', confused:'😕', neutral:'😐' };
+        let html = `<div class="summary-card">`;
+        html += `<div class="sc-header">`;
+        html += `<div class="sc-title">${data.case_title}</div>`;
+        html += `<div class="sc-status sc-status-${data.status}">${data.status}</div>`;
+        html += `</div>`;
+        html += `<div class="sc-opener">"${data.opener}"</div>`;
+        html += `<div class="sc-stats">`;
+        html += `<div class="sc-stat"><span class="sc-stat-num">${data.statement_count}</span><span class="sc-stat-label">Statements</span></div>`;
+        html += `<div class="sc-stat"><span class="sc-stat-num">${data.total_words.toLocaleString()}</span><span class="sc-stat-label">Words</span></div>`;
+        html += `<div class="sc-stat"><span class="sc-stat-num">${emotionIcons[data.dominant_emotion] || '😐'}</span><span class="sc-stat-label">${data.dominant_emotion}</span></div>`;
+        html += `</div>`;
+        if (data.people_mentioned.length > 0) {
+            html += `<div class="sc-section"><b>👤 People:</b> ${data.people_mentioned.join(', ')}</div>`;
+        }
+        if (data.times_referenced.length > 0) {
+            html += `<div class="sc-section"><b>🕐 Times:</b> ${data.times_referenced.join(', ')}</div>`;
+        }
+        if (data.locations.length > 0) {
+            html += `<div class="sc-section"><b>📍 Locations:</b> ${data.locations.join(', ')}</div>`;
+        }
+        html += `<div class="sc-footer">Session: ${data.session_id.slice(0,12)}... | ${data.created_at || 'N/A'}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate summary card.'); }
 };
