@@ -343,6 +343,7 @@ class AdminPortal {
         this._initDataRetention();
         this._loadDataRetention();
         this._initSessionViewer();
+        this._initActivityLog();
     }
     
     _initModalKeyboardNav() {
@@ -5440,4 +5441,51 @@ AdminPortal.prototype._escapeHtml = function(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 38: Admin User Activity Log
+// ═══════════════════════════════════════════════════════════════════
+AdminPortal.prototype._initActivityLog = function() {
+    const section = document.getElementById('activity-log-section');
+    if (!section) return;
+
+    const refreshBtn = document.getElementById('al-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => this._loadActivityLog());
+    }
+    this._loadActivityLog();
+};
+
+AdminPortal.prototype._loadActivityLog = async function() {
+    const container = document.getElementById('al-list');
+    if (!container) return;
+    container.innerHTML = '<div class="loading">Loading activity...</div>';
+
+    try {
+        const resp = await this.fetchWithTimeout('/api/admin/activity-log?limit=40');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        if (!data.activities || data.activities.length === 0) {
+            container.innerHTML = '<div class="al-empty">No activity recorded yet.</div>';
+            return;
+        }
+
+        let html = '';
+        data.activities.forEach(a => {
+            const ts = a.timestamp ? new Date(a.timestamp).toLocaleString() : 'Unknown';
+            html += `<div class="al-item al-type-${a.type}">`;
+            html += `<span class="al-icon">${a.icon}</span>`;
+            html += `<div class="al-details">`;
+            html += `<div class="al-desc">${this._escapeHtml(a.description)}</div>`;
+            html += `<div class="al-meta"><span class="al-time">${ts}</span>`;
+            if (a.session_id) html += ` <span class="al-sid sv-view-link" data-session-id="${a.session_id}">${a.session_id.substring(0, 8)}...</span>`;
+            html += `</div></div></div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="error">❌ ${this._escapeHtml(e.message)}</div>`;
+    }
 };

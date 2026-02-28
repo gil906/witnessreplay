@@ -11941,3 +11941,358 @@ async def generate_investigation_report(session_id: str):
     }
 
     return report
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 34: Witness Credibility Score
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/credibility-score")
+async def get_credibility_score(session_id: str):
+    """Analyze witness credibility based on testimony patterns."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    all_text = " ".join(s.text for s in statements)
+    words = all_text.split()
+    word_count = len(words)
+
+    # 1. Detail specificity (names, numbers, colors, times → higher score)
+    detail_patterns = [
+        r'\b\d{1,2}:\d{2}\b',  # times
+        r'\b\d+\s*(feet|meters|inches|yards|miles|km)\b',  # measurements
+        r'\b(red|blue|green|black|white|gray|silver|brown|yellow)\b',  # colors
+        r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)\b',  # proper names
+        r'\b\d{1,4}\b',  # numbers
+    ]
+    detail_hits = sum(len(re.findall(p, all_text, re.I)) for p in detail_patterns)
+    detail_score = min(100, (detail_hits / max(word_count / 100, 1)) * 25)
+
+    # 2. Consistency (corrections lower the score)
+    corrections = sum(1 for s in statements if getattr(s, "is_correction", False))
+    consistency_score = max(0, 100 - corrections * 15)
+
+    # 3. Coherence (avg sentence length, hedging language)
+    hedge_words = len(re.findall(r'\b(maybe|perhaps|possibly|i think|i guess|not sure|might have|could have|probably)\b', all_text, re.I))
+    hedge_ratio = hedge_words / max(word_count / 100, 1)
+    coherence_score = max(0, 100 - hedge_ratio * 20)
+
+    # 4. Completeness (based on 5W1H coverage)
+    w_checks = {
+        "who": bool(re.search(r'\b(he|she|they|man|woman|person|suspect|victim|officer|driver)\b', all_text, re.I)),
+        "what": bool(re.search(r'\b(happened|saw|heard|noticed|hit|crashed|attacked|stole|broke)\b', all_text, re.I)),
+        "when": bool(re.search(r'\b(\d{1,2}:\d{2}|morning|afternoon|evening|night|yesterday|today|ago)\b', all_text, re.I)),
+        "where": bool(re.search(r'\b(street|road|park|building|corner|intersection|house|store|inside|outside)\b', all_text, re.I)),
+        "why": bool(re.search(r'\b(because|reason|motive|argument|dispute|angry|drunk)\b', all_text, re.I)),
+        "how": bool(re.search(r'\b(how|slowly|quickly|suddenly|carefully|violently|running|driving|walking)\b', all_text, re.I)),
+    }
+    completeness_score = (sum(w_checks.values()) / 6) * 100
+
+    # 5. Volume (more statements → higher confidence in assessment)
+    volume_score = min(100, len(statements) * 12)
+
+    # Weighted overall
+    overall = round(
+        detail_score * 0.25 +
+        consistency_score * 0.25 +
+        coherence_score * 0.20 +
+        completeness_score * 0.20 +
+        volume_score * 0.10
+    )
+
+    return {
+        "session_id": session_id,
+        "credibility_score": min(100, max(0, overall)),
+        "breakdown": {
+            "detail_specificity": round(detail_score),
+            "consistency": round(consistency_score),
+            "coherence": round(coherence_score),
+            "completeness": round(completeness_score),
+            "volume": round(volume_score),
+        },
+        "coverage": w_checks,
+        "flags": {
+            "corrections": corrections,
+            "hedge_words": hedge_words,
+            "detail_mentions": detail_hits,
+            "statement_count": len(statements),
+        },
+        "assessment": (
+            "High credibility" if overall >= 75 else
+            "Moderate credibility" if overall >= 50 else
+            "Low credibility — needs more detail" if overall >= 25 else
+            "Insufficient data for assessment"
+        ),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 35: Testimony Timeline Extraction
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/extract-timeline")
+async def extract_testimony_timeline(session_id: str):
+    """Extract time-ordered events from testimony for visual timeline."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    events = []
+
+    time_patterns = [
+        (r'(?:at|around|about|approximately)\s+(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)', 'exact'),
+        (r'(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)', 'exact'),
+        (r'((?:early|late)\s+(?:morning|afternoon|evening|night))', 'approximate'),
+        (r'((?:around|about)\s+(?:noon|midnight|dawn|dusk|sunset|sunrise))', 'approximate'),
+        (r'(yesterday|today|last\s+(?:night|week|month))', 'relative'),
+        (r'(\d+\s+(?:minutes?|hours?|days?)\s+(?:ago|later|before|after))', 'relative'),
+        (r'((?:before|after|during|while)\s+\w+(?:\s+\w+){0,3})', 'sequential'),
+    ]
+
+    for i, s in enumerate(statements):
+        text = s.text
+        for pattern, precision in time_patterns:
+            matches = re.finditer(pattern, text, re.I)
+            for m in matches:
+                time_ref = m.group(1) if m.lastindex else m.group(0)
+                # Get surrounding context (up to 80 chars around match)
+                start = max(0, m.start() - 40)
+                end = min(len(text), m.end() + 40)
+                context = text[start:end].strip()
+                if start > 0:
+                    context = "..." + context
+                if end < len(text):
+                    context = context + "..."
+
+                events.append({
+                    "time_reference": time_ref.strip(),
+                    "precision": precision,
+                    "context": context,
+                    "statement_index": i,
+                    "position": m.start(),
+                })
+
+    # Sort: exact times first, then approximate, then sequential
+    precision_order = {"exact": 0, "approximate": 1, "relative": 2, "sequential": 3}
+    events.sort(key=lambda e: (precision_order.get(e["precision"], 9), e["statement_index"], e["position"]))
+
+    # Deduplicate close matches
+    seen = set()
+    unique_events = []
+    for e in events:
+        key = e["time_reference"].lower().strip()
+        if key not in seen:
+            seen.add(key)
+            unique_events.append(e)
+
+    return {
+        "session_id": session_id,
+        "event_count": len(unique_events),
+        "events": unique_events[:30],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 36: Session Comparison
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/compare/{session_a}/{session_b}")
+async def compare_sessions(session_a: str, session_b: str):
+    """Compare two witness sessions for contradictions and commonalities."""
+    sa = await firestore_service.get_session(session_a)
+    sb = await firestore_service.get_session(session_b)
+    if not sa:
+        raise HTTPException(404, f"Session {session_a} not found")
+    if not sb:
+        raise HTTPException(404, f"Session {session_b} not found")
+
+    text_a = " ".join(s.text for s in sa.witness_statements)
+    text_b = " ".join(s.text for s in sb.witness_statements)
+
+    words_a = set(re.findall(r'\b[a-z]{3,}\b', text_a.lower()))
+    words_b = set(re.findall(r'\b[a-z]{3,}\b', text_b.lower()))
+
+    common_words = words_a & words_b
+    stop_words = {'the', 'and', 'was', 'were', 'that', 'this', 'with', 'have', 'had', 'for', 'not', 'but',
+                  'are', 'from', 'they', 'been', 'said', 'what', 'when', 'where', 'who', 'how', 'about',
+                  'which', 'then', 'them', 'than', 'just', 'also', 'some', 'could', 'would', 'into', 'more',
+                  'like', 'very', 'there', 'their', 'your', 'other', 'after', 'before', 'back', 'over'}
+    shared_keywords = sorted(common_words - stop_words)[:30]
+
+    # Time references comparison
+    time_pat = r'\b\d{1,2}:\d{2}\s*(?:am|pm)?\b'
+    times_a = set(re.findall(time_pat, text_a, re.I))
+    times_b = set(re.findall(time_pat, text_b, re.I))
+
+    # Location references
+    loc_pat = r'(?:at|on|near|in)\s+(?:the\s+)?([A-Z][a-zA-Z\s]+(?:Street|St|Ave|Road|Rd|Park|Mall|Store|Building))'
+    locs_a = set(m.strip() for m in re.findall(loc_pat, text_a))
+    locs_b = set(m.strip() for m in re.findall(loc_pat, text_b))
+
+    return {
+        "session_a": {"id": session_a, "title": sa.title, "statements": len(sa.witness_statements), "words": len(text_a.split())},
+        "session_b": {"id": session_b, "title": sb.title, "statements": len(sb.witness_statements), "words": len(text_b.split())},
+        "comparison": {
+            "shared_keywords": shared_keywords,
+            "shared_keyword_count": len(shared_keywords),
+            "unique_to_a": len(words_a - words_b - stop_words),
+            "unique_to_b": len(words_b - words_a - stop_words),
+            "overlap_pct": round(len(common_words) / max(len(words_a | words_b), 1) * 100, 1),
+            "time_refs_a": sorted(times_a),
+            "time_refs_b": sorted(times_b),
+            "shared_times": sorted(times_a & times_b),
+            "locations_a": sorted(locs_a),
+            "locations_b": sorted(locs_b),
+            "shared_locations": sorted(locs_a & locs_b),
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 37: Word Cloud Data
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/wordcloud")
+async def get_wordcloud_data(session_id: str):
+    """Get word frequency data for visual word cloud rendering."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    all_text = " ".join(s.text for s in statements)
+    words = re.findall(r'\b[a-z]{3,}\b', all_text.lower())
+
+    stop_words = {
+        'the', 'and', 'was', 'were', 'that', 'this', 'with', 'have', 'had', 'for', 'not', 'but',
+        'are', 'from', 'they', 'been', 'said', 'what', 'when', 'where', 'who', 'how', 'about',
+        'which', 'then', 'them', 'than', 'just', 'also', 'some', 'could', 'would', 'into', 'more',
+        'like', 'very', 'there', 'their', 'your', 'other', 'after', 'before', 'back', 'over',
+        'can', 'don', 'did', 'does', 'because', 'through', 'too', 'only', 'its', 'being',
+        'you', 'she', 'her', 'his', 'him', 'has', 'will', 'way', 'each', 'make',
+    }
+
+    freq = {}
+    for w in words:
+        if w not in stop_words and len(w) >= 3:
+            freq[w] = freq.get(w, 0) + 1
+
+    sorted_words = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
+    max_count = sorted_words[0][1] if sorted_words else 1
+
+    cloud = [
+        {"word": w, "count": c, "size": round(0.6 + (c / max_count) * 2.4, 2)}
+        for w, c in sorted_words
+    ]
+
+    return {
+        "session_id": session_id,
+        "total_words": len(words),
+        "unique_words": len(freq),
+        "cloud": cloud,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 38: Admin User Activity Log
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/admin/activity-log")
+async def get_activity_log(limit: int = 50, auth=Depends(require_admin_auth)):
+    """Get detailed user activity log for admin review."""
+    sessions = await firestore_service.list_sessions()
+
+    activities = []
+    for s in sessions:
+        # Session creation
+        activities.append({
+            "type": "session_created",
+            "icon": "🆕",
+            "description": f"Session created: {s.title}",
+            "session_id": s.id,
+            "timestamp": s.created_at.isoformat() if s.created_at else None,
+        })
+        # Statement activity
+        stmt_count = len(s.witness_statements)
+        if stmt_count > 0:
+            last_stmt = s.witness_statements[-1]
+            activities.append({
+                "type": "statement_added",
+                "icon": "💬",
+                "description": f"{stmt_count} statement(s) in '{s.title}'",
+                "session_id": s.id,
+                "timestamp": last_stmt.timestamp.isoformat() if hasattr(last_stmt, "timestamp") and last_stmt.timestamp else None,
+            })
+        # Status changes
+        if s.status != "active":
+            activities.append({
+                "type": "status_change",
+                "icon": "📋",
+                "description": f"Session '{s.title}' → {s.status}",
+                "session_id": s.id,
+                "timestamp": s.updated_at.isoformat() if hasattr(s, "updated_at") and s.updated_at else None,
+            })
+
+    # Sort by timestamp (newest first)
+    activities.sort(key=lambda a: a.get("timestamp") or "", reverse=True)
+
+    return {
+        "total": len(activities),
+        "activities": activities[:limit],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# IMPROVEMENT 39: Auto-Summary Generation
+# ═══════════════════════════════════════════════════════════════════
+@router.get("/sessions/{session_id}/auto-summary")
+async def get_auto_summary(session_id: str):
+    """Generate a concise auto-summary of the current interview state."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    statements = session.witness_statements
+    if not statements:
+        return {"session_id": session_id, "summary": "No statements recorded yet.", "key_points": []}
+
+    all_text = " ".join(s.text for s in statements)
+    words = all_text.split()
+
+    # Extract key entities
+    names = list(set(re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+))\b', all_text)))[:5]
+    times = list(set(re.findall(r'\b(\d{1,2}:\d{2}\s*(?:am|pm)?)\b', all_text, re.I)))[:5]
+    locations = list(set(re.findall(r'(?:at|on|near)\s+(?:the\s+)?([A-Z][a-zA-Z\s]{3,30})', all_text)))[:5]
+
+    # Build key points
+    key_points = []
+    if names:
+        key_points.append(f"People mentioned: {', '.join(names[:3])}")
+    if times:
+        key_points.append(f"Times referenced: {', '.join(times[:3])}")
+    if locations:
+        key_points.append(f"Locations: {', '.join(locations[:3])}")
+
+    corrections = sum(1 for s in statements if getattr(s, "is_correction", False))
+    if corrections:
+        key_points.append(f"Witness made {corrections} correction(s)")
+
+    key_points.append(f"Interview contains {len(statements)} statements ({len(words)} words)")
+
+    # Quick narrative summary from last 5 statements
+    recent = statements[-5:]
+    recent_text = " ".join(s.text for s in recent)
+    if len(recent_text) > 200:
+        recent_text = recent_text[:197] + "..."
+
+    return {
+        "session_id": session_id,
+        "summary": f"Witness has provided {len(statements)} statements covering {len(words)} words. {f'Key people: {chr(44).join(names[:2])}. ' if names else ''}{f'Timeframe: {chr(44).join(times[:2])}. ' if times else ''}Recent focus: {recent_text}",
+        "key_points": key_points,
+        "stats": {
+            "statements": len(statements),
+            "words": len(words),
+            "corrections": corrections,
+            "names_found": len(names),
+            "times_found": len(times),
+            "locations_found": len(locations),
+        },
+    }

@@ -135,6 +135,8 @@ class WitnessReplayApp {
         this._initWitnessProfileCard(); // Witness profile card
         this._initContextMenu(); // Message context menu
         this._initQuickTemplates(); // Quick incident templates
+        this._initCredibilityGauge(); // Witness credibility score gauge
+        this._initAutoSummaryTracker(); // Auto-summary after N messages
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -7568,6 +7570,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/sentiment</code> — Witness sentiment timeline<br>' +
                 '<code>/tag [name]</code> — Add/view session tags<br>' +
                 '<code>/report</code> — Generate investigation report<br>' +
+                '<code>/credibility</code> — Witness credibility score<br>' +
+                '<code>/timeline</code> — Extract event timeline<br>' +
+                '<code>/wordcloud</code> — Word frequency cloud<br>' +
+                '<code>/compare [id]</code> — Compare with another session<br>' +
+                '<code>/autosummary</code> — Quick auto-summary<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7663,6 +7670,19 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/report': () => {
             this._generateReport();
+        },
+        '/credibility': () => {
+            this._showCredibilityScore();
+        },
+        '/wordcloud': () => {
+            this._showWordCloud();
+        },
+        '/compare': () => {
+            const rest = text.slice(8).trim();
+            this._compareSession(rest);
+        },
+        '/autosummary': () => {
+            this._showAutoSummary();
         }
     };
     
@@ -7743,7 +7763,11 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/quality', desc: 'Quality score' },
         { cmd: '/sentiment', desc: 'Sentiment timeline' },
         { cmd: '/tag', desc: 'Session tags' },
-        { cmd: '/report', desc: 'Investigation report' }
+        { cmd: '/report', desc: 'Investigation report' },
+        { cmd: '/credibility', desc: 'Credibility score' },
+        { cmd: '/wordcloud', desc: 'Word frequency cloud' },
+        { cmd: '/compare', desc: 'Compare sessions' },
+        { cmd: '/autosummary', desc: 'Quick auto-summary' }
     ];
     
     const filter = val.toLowerCase();
@@ -9393,6 +9417,257 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
         if (speaker === 'user' && text && !text.startsWith('/')) {
             this._updateWitnessProfile?.(text);
         }
+        // Auto-summary check
+        if (speaker === 'user' && text && !text.startsWith('/')) {
+            this._autoSummaryMsgCount = (this._autoSummaryMsgCount || 0) + 1;
+            if (this._autoSummaryMsgCount % 10 === 0) {
+                setTimeout(() => this._triggerAutoSummary?.(), 1200);
+            }
+        }
         return result;
     };
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 34: Witness Credibility Score
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initCredibilityGauge = function() {
+    const sidebar = document.querySelector('.sidebar') || document.querySelector('.right-panel');
+    if (!sidebar) return;
+
+    const gauge = document.createElement('div');
+    gauge.id = 'credibility-gauge';
+    gauge.className = 'credibility-gauge collapsed';
+    gauge.innerHTML = `
+        <div class="cg-header" id="cg-toggle">
+            <span>🛡️ Credibility</span>
+            <span class="cg-score" id="cg-score-val">--</span>
+        </div>
+        <div class="cg-body" id="cg-body">
+            <div class="cg-bar-wrap">
+                <div class="cg-bar" id="cg-bar" style="width: 0%"></div>
+            </div>
+            <div class="cg-assessment" id="cg-assessment">Awaiting data...</div>
+            <div class="cg-breakdown" id="cg-breakdown"></div>
+        </div>
+    `;
+    sidebar.appendChild(gauge);
+
+    document.getElementById('cg-toggle')?.addEventListener('click', () => {
+        gauge.classList.toggle('collapsed');
+    });
+};
+
+WitnessReplayApp.prototype._showCredibilityScore = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🛡️ Calculating credibility score...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/credibility-score`);
+        const data = await resp.json();
+        const s = data.credibility_score;
+        const b = data.breakdown;
+        const color = s >= 75 ? '#22c55e' : s >= 50 ? '#eab308' : '#ef4444';
+
+        // Update gauge widget
+        const bar = document.getElementById('cg-bar');
+        const scoreEl = document.getElementById('cg-score-val');
+        const assessEl = document.getElementById('cg-assessment');
+        const brkEl = document.getElementById('cg-breakdown');
+        if (bar) { bar.style.width = s + '%'; bar.style.background = color; }
+        if (scoreEl) scoreEl.textContent = s + '%';
+        if (assessEl) assessEl.textContent = data.assessment;
+        if (brkEl) {
+            brkEl.innerHTML = Object.entries(b).map(([k, v]) =>
+                `<div class="cg-row"><span>${k.replace('_', ' ')}</span><span>${v}%</span></div>`
+            ).join('');
+        }
+        const gauge = document.getElementById('credibility-gauge');
+        if (gauge) gauge.classList.remove('collapsed');
+
+        // Also show in chat
+        let html = `<div class="credibility-report">`;
+        html += `<h4>🛡️ Witness Credibility: <span style="color:${color}">${s}%</span> — ${data.assessment}</h4>`;
+        html += `<div class="cr-bars">`;
+        Object.entries(b).forEach(([k, v]) => {
+            const c = v >= 75 ? '#22c55e' : v >= 50 ? '#eab308' : '#ef4444';
+            html += `<div class="cr-bar-row"><span class="cr-label">${k.replace('_', ' ')}</span><div class="cr-track"><div class="cr-fill" style="width:${v}%;background:${c}"></div></div><span class="cr-val">${v}%</span></div>`;
+        });
+        html += `</div>`;
+        if (data.flags.corrections > 0) html += `<div class="cr-flag">⚠️ ${data.flags.corrections} correction(s) detected</div>`;
+        if (data.flags.hedge_words > 3) html += `<div class="cr-flag">⚠️ ${data.flags.hedge_words} hedging phrases found</div>`;
+        html += `</div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not calculate credibility score.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 35: Testimony Timeline Extraction (/timeline visual)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showExtractedTimeline = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('⏱️ Extracting timeline from testimony...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/extract-timeline`);
+        const data = await resp.json();
+        if (!data.events || data.events.length === 0) {
+            this.displaySystemMessage('⏱️ No time references found yet. Keep describing events with specific times.');
+            return;
+        }
+
+        let html = `<div class="extracted-timeline">`;
+        html += `<h4>⏱️ Testimony Timeline (${data.event_count} events)</h4>`;
+        html += `<div class="et-track">`;
+        data.events.forEach((e, i) => {
+            const precIcon = { exact: '🕐', approximate: '🕑', relative: '🕒', sequential: '🔗' }[e.precision] || '📌';
+            html += `<div class="et-event">`;
+            html += `<div class="et-dot"></div>`;
+            html += `<div class="et-content">`;
+            html += `<div class="et-time">${precIcon} ${this._escapeHtml(e.time_reference)}</div>`;
+            html += `<div class="et-ctx">${this._escapeHtml(e.context)}</div>`;
+            html += `</div></div>`;
+        });
+        html += `</div></div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract timeline.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 36: Session Comparison (/compare command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._compareSession = async function(otherSessionId) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!otherSessionId) {
+        this.displaySystemMessage('💡 Usage: <code>/compare [session-id]</code><br>Paste the ID of another session to compare testimonies side by side.');
+        return;
+    }
+    this.displaySystemMessage('🔄 Comparing sessions...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/compare/${this.sessionId}/${otherSessionId}`);
+        const data = await resp.json();
+        const c = data.comparison;
+
+        let html = `<div class="session-comparison">`;
+        html += `<h4>🔄 Session Comparison</h4>`;
+        html += `<div class="sc-pair">`;
+        html += `<div class="sc-card"><b>Session A</b><div>${this._escapeHtml(data.session_a.title)}</div><small>${data.session_a.statements} stmts · ${data.session_a.words} words</small></div>`;
+        html += `<div class="sc-vs">VS</div>`;
+        html += `<div class="sc-card"><b>Session B</b><div>${this._escapeHtml(data.session_b.title)}</div><small>${data.session_b.statements} stmts · ${data.session_b.words} words</small></div>`;
+        html += `</div>`;
+
+        html += `<div class="sc-stat"><span>Vocabulary Overlap</span><span>${c.overlap_pct}%</span></div>`;
+        html += `<div class="sc-stat"><span>Shared Keywords</span><span>${c.shared_keyword_count}</span></div>`;
+        html += `<div class="sc-stat"><span>Unique to A</span><span>${c.unique_to_a} words</span></div>`;
+        html += `<div class="sc-stat"><span>Unique to B</span><span>${c.unique_to_b} words</span></div>`;
+
+        if (c.shared_times.length > 0) html += `<div class="sc-match">🕐 Matching times: ${c.shared_times.join(', ')}</div>`;
+        if (c.shared_locations.length > 0) html += `<div class="sc-match">📍 Matching locations: ${c.shared_locations.join(', ')}</div>`;
+        if (c.shared_keywords.length > 0) html += `<div class="sc-keywords">Common terms: ${c.shared_keywords.slice(0, 15).join(', ')}</div>`;
+        html += `</div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not compare sessions. Check the session ID.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 37: Word Cloud Visualization (/wordcloud)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showWordCloud = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('☁️ Generating word cloud...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/wordcloud`);
+        const data = await resp.json();
+        if (!data.cloud || data.cloud.length === 0) {
+            this.displaySystemMessage('☁️ Not enough words yet. Keep talking!');
+            return;
+        }
+
+        const colors = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#e879f9'];
+        let html = `<div class="word-cloud">`;
+        html += `<h4>☁️ Word Cloud (${data.total_words} total, ${data.unique_words} unique)</h4>`;
+        html += `<div class="wc-container">`;
+        data.cloud.forEach((w, i) => {
+            const color = colors[i % colors.length];
+            const size = Math.max(0.65, Math.min(2.2, w.size));
+            const opacity = 0.6 + (w.size / 3) * 0.4;
+            html += `<span class="wc-word" style="font-size:${size}em;color:${color};opacity:${opacity}" title="${w.word}: ${w.count} times">${this._escapeHtml(w.word)}</span> `;
+        });
+        html += `</div></div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate word cloud.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 39: Auto-Summary System
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initAutoSummaryTracker = function() {
+    this._autoSummaryMsgCount = 0;
+};
+
+WitnessReplayApp.prototype._triggerAutoSummary = async function() {
+    if (!this.sessionId) return;
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/auto-summary`);
+        const data = await resp.json();
+        if (!data.summary) return;
+
+        let html = `<div class="auto-summary">`;
+        html += `<div class="as-header" onclick="this.parentElement.classList.toggle('as-collapsed')">`;
+        html += `<span>📝 Auto-Summary (${data.stats?.statements || 0} statements)</span>`;
+        html += `<span class="as-toggle">▼</span></div>`;
+        html += `<div class="as-body">`;
+        html += `<p>${this._escapeHtml(data.summary)}</p>`;
+        if (data.key_points && data.key_points.length) {
+            html += `<ul class="as-points">`;
+            data.key_points.forEach(p => { html += `<li>${this._escapeHtml(p)}</li>`; });
+            html += `</ul>`;
+        }
+        html += `</div></div>`;
+
+        this.displaySystemMessage(html);
+    } catch (e) { /* silent */ }
+};
+
+WitnessReplayApp.prototype._showAutoSummary = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('📝 Generating summary...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/auto-summary`);
+        const data = await resp.json();
+
+        let html = `<div class="auto-summary">`;
+        html += `<h4>📝 Interview Summary</h4>`;
+        html += `<p>${this._escapeHtml(data.summary)}</p>`;
+        if (data.key_points && data.key_points.length) {
+            html += `<ul class="as-points">`;
+            data.key_points.forEach(p => { html += `<li>${this._escapeHtml(p)}</li>`; });
+            html += `</ul>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate summary.'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 40: Enhanced Keyboard Shortcuts
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+Enter sends message
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            const sendBtn = document.querySelector('.send-btn') || document.getElementById('send-btn');
+            if (sendBtn) { sendBtn.click(); e.preventDefault(); }
+        }
+        // Ctrl+Shift+C — credibility
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+            if (window.app?._showCredibilityScore) { window.app._showCredibilityScore(); e.preventDefault(); }
+        }
+        // Ctrl+Shift+W — word cloud
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'W') {
+            if (window.app?._showWordCloud) { window.app._showWordCloud(); e.preventDefault(); }
+        }
+    });
 })();

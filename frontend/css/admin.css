@@ -6044,3 +6044,34 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .sv-empty { text-align: center; padding: 20px; color: #64748b; }
 .sv-view-link { color: #818cf8; cursor: pointer; text-decoration: underline; font-size: 0.82rem; }
 .sv-view-link:hover { color: #a5b4fc; }
+
+/* ═══ IMPROVEMENT 38: Activity Log ═══ */
+.al-list { max-height: 400px; overflow-y: auto; }
+.al-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.08);
+    transition: background 0.15s;
+}
+.al-item:hover { background: rgba(59, 130, 246, 0.04); }
+.al-icon { font-size: 1.1em; flex-shrink: 0; margin-top: 2px; }
+.al-details { flex: 1; min-width: 0; }
+.al-desc { font-size: 0.82rem; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.al-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; display: flex; gap: 8px; }
+.al-sid { color: #818cf8; cursor: pointer; text-decoration: underline; }
+.al-sid:hover { color: #a5b4fc; }
+.al-empty { text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem; }
+.admin-btn-sm {
+    background: none;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    color: #94a3b8;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    vertical-align: middle;
+    margin-left: 8px;
+}
+.admin-btn-sm:hover { background: rgba(59, 130, 246, 0.15); color: #e2e8f0; }
