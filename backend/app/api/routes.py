@@ -1324,6 +1324,7 @@ async def get_session_insights(session_id: str):
         
         # Get agent for this session to access state
         from app.agents.scene_agent import get_agent
+        from app.config import settings
         agent = get_agent(session_id)
         scene_summary = agent.get_scene_summary()
         
@@ -1386,7 +1387,6 @@ async def get_session_insights(session_id: str):
         }
         
         # Identify elements needing review (confidence below threshold)
-        from app.config import settings
         for elem in scene_summary.get("elements", []):
             confidence = elem.get("confidence", 0.5)
             if confidence < settings.confidence_threshold:
