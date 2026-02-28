@@ -7873,6 +7873,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/citations': () => {
             this._showLegalCitations();
         },
+        '/stance': () => {
+            this._showStanceTracker();
+        },
+        '/bullets': () => {
+            this._showBullets();
+        },
+        '/experteval': () => {
+            this._showExpertEval();
+        },
+        '/privileges': () => {
+            this._showPrivileges();
+        },
+        '/strength': () => {
+            this._showStrength();
+        },
         '/compareto': () => {
             const parts = this.textInput.value.trim().split(/\s+/);
             const otherId = parts[1] || '';
@@ -8016,7 +8031,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/objections', desc: 'Objection analysis' },
         { cmd: '/impeach', desc: 'Impeachment material finder' },
         { cmd: '/citations', desc: 'Legal citation extractor' },
-        { cmd: '/compareto', desc: 'Compare two testimonies' }
+        { cmd: '/compareto', desc: 'Compare two testimonies' },
+        { cmd: '/stance', desc: 'Witness stance tracker' },
+        { cmd: '/bullets', desc: 'Testimony summary bullets' },
+        { cmd: '/experteval', desc: 'Expert witness evaluator' },
+        { cmd: '/privileges', desc: 'Privilege log detector' },
+        { cmd: '/strength', desc: 'Testimony strength meter' }
     ];
     
     const filter = val.toLowerCase();
@@ -11559,4 +11579,182 @@ WitnessReplayApp.prototype._showCompareTo = async function(otherId) {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not compare testimonies.'); }
+};
+
+// ── Witness Stance Tracker ────────────────────────────────
+WitnessReplayApp.prototype._showStanceTracker = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/stance`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="stance-result">`;
+        html += `<h3>🎯 Witness Stance Tracker</h3>`;
+        html += `<div class="stance-summary">`;
+        html += `<span class="stance-badge">Dominant: <strong>${data.dominant_stance}</strong></span>`;
+        html += `<span class="stance-badge">Shifts: <strong>${data.total_shifts}</strong></span>`;
+        html += `<span class="stance-badge">Volatility: <strong>${data.volatility}</strong></span>`;
+        html += `</div>`;
+        if (Object.keys(data.stance_distribution).length) {
+            html += `<div class="stance-distrib">`;
+            Object.entries(data.stance_distribution).forEach(([k, v]) => {
+                const pct = Math.round(v / Math.max(1, data.total_segments) * 100);
+                const colors = {cooperative:'#4caf50',evasive:'#ff9800',hostile:'#e53935',assertive:'#1565c0',neutral:'#9e9e9e'};
+                html += `<div class="stance-bar-item"><span class="stance-label">${k}</span><div class="stance-bar-track"><div class="stance-bar-fill" style="width:${pct}%;background:${colors[k]||'#999'}"></div></div><span class="stance-pct">${pct}%</span></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.shifts.length) {
+            html += `<div class="stance-shifts"><strong>Notable Shifts:</strong>`;
+            data.shifts.slice(0, 8).forEach(s => {
+                html += `<div class="stance-shift-item">Seg ${s.from_segment}→${s.to_segment}: <span class="shift-from">${s.from_stance}</span> → <span class="shift-to">${s.to_stance}</span></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze witness stance.'); }
+};
+
+// ── Testimony Summary Bullets ─────────────────────────────
+WitnessReplayApp.prototype._showBullets = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/bullets`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="bullets-result">`;
+        html += `<h3>📋 Testimony Summary</h3>`;
+        html += `<div class="bullets-stats">`;
+        html += `<span class="bullet-stat">Points: <strong>${data.total_points}</strong></span>`;
+        html += `<span class="bullet-stat">Facts: <strong>${data.summary.facts_count}</strong></span>`;
+        html += `<span class="bullet-stat">Admissions: <strong>${data.summary.admissions_count}</strong></span>`;
+        html += `<span class="bullet-stat">Denials: <strong>${data.summary.denials_count}</strong></span>`;
+        html += `</div>`;
+        html += `<div class="bullets-list">`;
+        data.bullets.slice(0, 20).forEach(b => {
+            const icons = {fact:'📌',admission:'✅',denial:'❌',statement:'💬'};
+            html += `<div class="bullet-item bullet-${b.type}"><span class="bullet-icon">${icons[b.type]||'💬'}</span><span class="bullet-text">${b.text}</span><span class="bullet-type-badge">${b.type}</span></div>`;
+        });
+        html += `</div>`;
+        if (data.key_facts.length) {
+            html += `<div class="bullets-section"><strong>🔑 Key Facts:</strong>`;
+            data.key_facts.slice(0, 8).forEach(f => { html += `<div class="key-fact-item">${f}</div>`; });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate summary bullets.'); }
+};
+
+// ── Expert Witness Evaluator ──────────────────────────────
+WitnessReplayApp.prototype._showExpertEval = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/expert-eval`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const ds = data.daubert_scores;
+        let html = `<div class="expert-result">`;
+        html += `<h3>🎓 Expert Witness Evaluation</h3>`;
+        html += `<div class="expert-overall"><span class="expert-grade grade-${data.assessment}">${data.assessment.toUpperCase()}</span>`;
+        html += `<span class="expert-score">Overall: ${ds.overall}/10</span>`;
+        html += `<span class="expert-admiss ${data.daubert_admissible?'yes':'no'}">${data.daubert_admissible?'✅ Daubert Admissible':'⚠️ Daubert Concerns'}</span></div>`;
+        html += `<div class="daubert-scores">`;
+        ['qualifications','methodology','reliability','relevance'].forEach(k => {
+            const val = ds[k];
+            const pct = val * 10;
+            html += `<div class="daubert-row"><span class="daubert-label">${k}</span><div class="daubert-bar-track"><div class="daubert-bar-fill" style="width:${pct}%;background:${val>=7?'#4caf50':val>=4?'#ff9800':'#e53935'}"></div></div><span class="daubert-val">${val}/10</span></div>`;
+        });
+        html += `</div>`;
+        if (data.strengths.length) {
+            html += `<div class="expert-section strengths"><strong>💪 Strengths:</strong>`;
+            data.strengths.forEach(s => { html += `<div class="expert-item good">✅ ${s}</div>`; });
+            html += `</div>`;
+        }
+        if (data.vulnerabilities.length) {
+            html += `<div class="expert-section vulns"><strong>⚠️ Vulnerabilities:</strong>`;
+            data.vulnerabilities.forEach(v => { html += `<div class="expert-item warn">🔸 ${v}</div>`; });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not evaluate expert witness.'); }
+};
+
+// ── Privilege Log Detector ────────────────────────────────
+WitnessReplayApp.prototype._showPrivileges = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/privileges`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="priv-result">`;
+        html += `<h3>🔒 Privilege Log Detector</h3>`;
+        html += `<div class="priv-summary">`;
+        html += `<span class="priv-stat risk-${data.risk_level}">Risk: <strong>${data.risk_level.toUpperCase()}</strong></span>`;
+        html += `<span class="priv-stat">Flags: <strong>${data.total_flags}</strong></span>`;
+        html += `<span class="priv-stat">High Severity: <strong>${data.high_severity_count}</strong></span>`;
+        html += `</div>`;
+        if (Object.keys(data.by_type).length) {
+            html += `<div class="priv-types">`;
+            const typeLabels = {attorney_client:'Attorney-Client',work_product:'Work Product',medical:'Medical',spousal:'Spousal'};
+            const typeIcons = {attorney_client:'⚖️',work_product:'📁',medical:'🏥',spousal:'💍'};
+            Object.entries(data.by_type).forEach(([t, c]) => {
+                html += `<span class="priv-type-badge">${typeIcons[t]||'🔒'} ${typeLabels[t]||t}: ${c}</span>`;
+            });
+            html += `</div>`;
+        }
+        if (data.flags.length) {
+            html += `<div class="priv-flags">`;
+            data.flags.slice(0, 12).forEach(f => {
+                html += `<div class="priv-flag sev-${f.severity}"><span class="priv-seg">Seg ${f.segment}</span>`;
+                html += `<span class="priv-trigger">${f.trigger}</span>`;
+                html += `<span class="priv-sev">${f.severity}</span>`;
+                html += `<div class="priv-snippet">${f.snippet}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `<div class="priv-rec">${data.recommendation}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not detect privilege issues.'); }
+};
+
+// ── Testimony Strength Meter ──────────────────────────────
+WitnessReplayApp.prototype._showStrength = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/strength`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const sc = data.scores;
+        let html = `<div class="strength-result">`;
+        html += `<h3>💪 Testimony Strength Meter</h3>`;
+        html += `<div class="strength-header">`;
+        html += `<div class="strength-grade grade-${data.grade}">${data.grade}</div>`;
+        html += `<div class="strength-overall">${sc.overall}/10</div>`;
+        html += `<div class="strength-ready ${data.trial_ready?'yes':'no'}">${data.trial_ready?'✅ Trial Ready':'⚠️ Needs Prep'}</div>`;
+        html += `</div>`;
+        html += `<div class="strength-scores">`;
+        ['clarity','specificity','consistency','confidence','detail'].forEach(k => {
+            const val = sc[k];
+            const pct = val * 10;
+            html += `<div class="str-row"><span class="str-label">${k}</span><div class="str-bar-track"><div class="str-bar-fill" style="width:${pct}%;background:${val>=7?'#4caf50':val>=4?'#ff9800':'#e53935'}"></div></div><span class="str-val">${val}</span></div>`;
+        });
+        html += `</div>`;
+        if (data.strengths.length) {
+            html += `<div class="str-section"><strong>✅ Strengths:</strong>`;
+            data.strengths.forEach(s => { html += `<div class="str-item good">${s}</div>`; });
+            html += `</div>`;
+        }
+        if (data.weaknesses.length) {
+            html += `<div class="str-section"><strong>⚠️ Weaknesses:</strong>`;
+            data.weaknesses.forEach(w => { html += `<div class="str-item warn">${w}</div>`; });
+            html += `</div>`;
+        }
+        html += `<div class="str-rec">${data.recommendation}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not measure testimony strength.'); }
 };

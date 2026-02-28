@@ -6068,4 +6068,78 @@ document.addEventListener('DOMContentLoaded', function() {
     const rlRefresh = document.getElementById('rate-limiter-refresh');
     if (rlRefresh) rlRefresh.addEventListener('click', loadRateLimiter);
     loadRateLimiter();
+
+    // Feature Toggles
+    const ftRefresh = document.getElementById('feature-toggles-refresh');
+    if (ftRefresh) ftRefresh.addEventListener('click', loadFeatureToggles);
+    loadFeatureToggles();
+
+    // Notification Center
+    const ncRefresh = document.getElementById('notification-center-refresh');
+    if (ncRefresh) ncRefresh.addEventListener('click', loadNotificationCenter);
+    loadNotificationCenter();
 });
+
+// ── Feature Toggles ─────────────────────────────────────
+async function loadFeatureToggles() {
+    const div = document.getElementById('feature-toggles-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/feature-toggles', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_admin_token') || sessionStorage.getItem('wr_admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="ft-summary"><span class="ft-count">Enabled: <strong>${data.enabled_count}</strong>/${data.total}</span></div>`;
+        html += `<div class="ft-grid">`;
+        Object.entries(data.features).forEach(([name, enabled]) => {
+            const label = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            html += `<div class="ft-item">`;
+            html += `<span class="ft-name">${label}</span>`;
+            html += `<label class="ft-toggle"><input type="checkbox" ${enabled ? 'checked' : ''} data-feature="${name}" onchange="toggleFeature('${name}', this.checked)"><span class="ft-slider"></span></label>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load feature toggles</p>';
+    }
+}
+
+async function toggleFeature(name, enabled) {
+    try {
+        const body = {}; body[name] = enabled;
+        await fetch('/api/admin/feature-toggles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('wr_admin_token') || sessionStorage.getItem('wr_admin_token') || '') },
+            body: JSON.stringify(body)
+        });
+    } catch (e) { console.error('Toggle failed', e); }
+}
+
+// ── Notification Center ─────────────────────────────────
+async function loadNotificationCenter() {
+    const div = document.getElementById('notification-center-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/notifications', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_admin_token') || sessionStorage.getItem('wr_admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="nc-summary"><span class="nc-total">Total: <strong>${data.total}</strong></span><span class="nc-unread">Unread: <strong>${data.unread_count}</strong></span></div>`;
+        if (data.notifications.length) {
+            html += `<div class="nc-list">`;
+            const icons = {info:'ℹ️',warning:'⚠️',alert:'🚨',success:'✅'};
+            data.notifications.forEach(n => {
+                html += `<div class="nc-item nc-${n.type} ${n.read?'read':'unread'}">`;
+                html += `<span class="nc-icon">${icons[n.type]||'📌'}</span>`;
+                html += `<div class="nc-body"><strong>${n.title}</strong><div class="nc-msg">${n.message}</div>`;
+                html += `<div class="nc-time">${new Date(n.timestamp).toLocaleString()}</div></div>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p class="nc-empty">No notifications</p>`;
+        }
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load notifications</p>';
+    }
+}

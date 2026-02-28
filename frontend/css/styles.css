@@ -13090,3 +13090,99 @@ textarea:disabled {
 .contradiction-item { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; background: rgba(229,57,53,0.04); border-left: 3px solid #e53935; }
 .contradiction-topic { font-weight: 600; margin-bottom: 4px; }
 .contradiction-a, .contradiction-b { font-size: 0.88em; color: #555; margin: 2px 0; }
+
+/* ── Witness Stance Tracker ──────────────────────────────── */
+.stance-result h3 { margin: 0 0 12px; color: #7b1fa2; }
+.stance-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.stance-badge { padding: 4px 12px; background: rgba(123,31,162,0.08); border-radius: 8px; font-size: 0.9em; }
+.stance-distrib { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.stance-bar-item { display: flex; align-items: center; gap: 8px; }
+.stance-label { min-width: 90px; font-size: 0.85em; text-transform: capitalize; font-weight: 600; }
+.stance-bar-track { flex: 1; height: 16px; background: rgba(0,0,0,0.06); border-radius: 8px; overflow: hidden; }
+.stance-bar-fill { height: 100%; border-radius: 8px; transition: width 0.3s ease; }
+.stance-pct { min-width: 40px; text-align: right; font-size: 0.85em; font-weight: 600; }
+.stance-shifts { margin-top: 10px; }
+.stance-shift-item { padding: 4px 8px; margin: 3px 0; font-size: 0.88em; background: rgba(123,31,162,0.04); border-radius: 4px; }
+.shift-from { color: #e53935; }
+.shift-to { color: #4caf50; }
+
+/* ── Testimony Summary Bullets ───────────────────────────── */
+.bullets-result h3 { margin: 0 0 12px; color: #00695c; }
+.bullets-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.bullet-stat { padding: 4px 12px; background: rgba(0,105,92,0.08); border-radius: 8px; font-size: 0.9em; }
+.bullets-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.bullet-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 6px; border-left: 3px solid #00695c; }
+.bullet-item.bullet-fact { border-left-color: #1565c0; }
+.bullet-item.bullet-admission { border-left-color: #4caf50; }
+.bullet-item.bullet-denial { border-left-color: #e53935; }
+.bullet-icon { font-size: 0.9em; flex-shrink: 0; }
+.bullet-text { flex: 1; font-size: 0.88em; }
+.bullet-type-badge { font-size: 0.72em; padding: 2px 6px; border-radius: 8px; background: rgba(0,105,92,0.1); text-transform: uppercase; font-weight: 600; }
+.bullets-section { margin-top: 8px; }
+.key-fact-item { padding: 3px 8px; margin: 2px 0; font-size: 0.88em; background: rgba(21,101,192,0.05); border-radius: 4px; }
+
+/* ── Expert Witness Evaluator ────────────────────────────── */
+.expert-result h3 { margin: 0 0 12px; color: #4527a0; }
+.expert-overall { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.expert-grade { font-size: 1.4em; font-weight: 800; padding: 6px 16px; border-radius: 10px; }
+.grade-strong { background: rgba(76,175,80,0.15); color: #2e7d32; }
+.grade-adequate { background: rgba(255,152,0,0.15); color: #e65100; }
+.grade-weak { background: rgba(229,57,53,0.15); color: #c62828; }
+.expert-score { font-size: 1.2em; font-weight: 700; }
+.expert-admiss { padding: 4px 12px; border-radius: 8px; font-size: 0.9em; }
+.expert-admiss.yes { background: rgba(76,175,80,0.1); color: #2e7d32; }
+.expert-admiss.no { background: rgba(255,152,0,0.1); color: #e65100; }
+.daubert-scores { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.daubert-row { display: flex; align-items: center; gap: 8px; }
+.daubert-label { min-width: 110px; font-size: 0.85em; text-transform: capitalize; font-weight: 600; }
+.daubert-bar-track { flex: 1; height: 14px; background: rgba(0,0,0,0.06); border-radius: 7px; overflow: hidden; }
+.daubert-bar-fill { height: 100%; border-radius: 7px; transition: width 0.3s ease; }
+.daubert-val { min-width: 40px; text-align: right; font-size: 0.85em; font-weight: 600; }
+.expert-section { margin-top: 8px; }
+.expert-item { padding: 3px 8px; margin: 2px 0; font-size: 0.88em; border-radius: 4px; }
+.expert-item.good { background: rgba(76,175,80,0.06); }
+.expert-item.warn { background: rgba(255,152,0,0.06); }
+
+/* ── Privilege Log Detector ──────────────────────────────── */
+.priv-result h3 { margin: 0 0 12px; color: #b71c1c; }
+.priv-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.priv-stat { padding: 4px 12px; border-radius: 8px; font-size: 0.9em; background: rgba(183,28,28,0.06); }
+.priv-stat.risk-critical { background: rgba(183,28,28,0.15); color: #b71c1c; }
+.priv-stat.risk-elevated { background: rgba(255,152,0,0.15); color: #e65100; }
+.priv-stat.risk-low { background: rgba(76,175,80,0.1); color: #2e7d32; }
+.priv-stat.risk-none { background: rgba(158,158,158,0.1); color: #616161; }
+.priv-types { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.priv-type-badge { padding: 4px 10px; border-radius: 12px; background: rgba(183,28,28,0.06); font-size: 0.85em; }
+.priv-flags { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.priv-flag { padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,0.02); border-left: 3px solid #b71c1c; }
+.priv-flag.sev-high { border-left-color: #c62828; background: rgba(198,40,40,0.04); }
+.priv-flag.sev-medium { border-left-color: #ff9800; background: rgba(255,152,0,0.04); }
+.priv-seg { font-weight: 600; margin-right: 8px; font-size: 0.85em; }
+.priv-trigger { font-style: italic; color: #b71c1c; margin-right: 8px; font-size: 0.85em; }
+.priv-sev { font-size: 0.72em; padding: 2px 6px; border-radius: 8px; background: rgba(183,28,28,0.1); text-transform: uppercase; font-weight: 600; }
+.priv-snippet { font-size: 0.82em; color: #555; margin-top: 4px; }
+.priv-rec { margin-top: 10px; padding: 8px 12px; background: rgba(183,28,28,0.06); border-radius: 6px; font-size: 0.9em; font-weight: 600; }
+
+/* ── Testimony Strength Meter ────────────────────────────── */
+.strength-result h3 { margin: 0 0 12px; color: #0d47a1; }
+.strength-header { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.strength-grade { font-size: 2em; font-weight: 900; padding: 8px 20px; border-radius: 12px; background: rgba(13,71,161,0.08); }
+.grade-A { color: #2e7d32; background: rgba(76,175,80,0.12); }
+.grade-B { color: #1565c0; background: rgba(21,101,192,0.12); }
+.grade-C { color: #e65100; background: rgba(255,152,0,0.12); }
+.grade-D { color: #c62828; background: rgba(229,57,53,0.12); }
+.strength-overall { font-size: 1.4em; font-weight: 800; }
+.strength-ready { padding: 4px 14px; border-radius: 8px; font-size: 0.9em; font-weight: 600; }
+.strength-ready.yes { background: rgba(76,175,80,0.1); color: #2e7d32; }
+.strength-ready.no { background: rgba(255,152,0,0.1); color: #e65100; }
+.strength-scores { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.str-row { display: flex; align-items: center; gap: 8px; }
+.str-label { min-width: 100px; font-size: 0.85em; text-transform: capitalize; font-weight: 600; }
+.str-bar-track { flex: 1; height: 14px; background: rgba(0,0,0,0.06); border-radius: 7px; overflow: hidden; }
+.str-bar-fill { height: 100%; border-radius: 7px; transition: width 0.3s ease; }
+.str-val { min-width: 30px; text-align: right; font-size: 0.85em; font-weight: 600; }
+.str-section { margin-top: 8px; }
+.str-item { padding: 3px 8px; margin: 2px 0; font-size: 0.88em; border-radius: 4px; }
+.str-item.good { background: rgba(76,175,80,0.06); }
+.str-item.warn { background: rgba(255,152,0,0.06); }
+.str-rec { margin-top: 10px; padding: 8px 12px; background: rgba(13,71,161,0.06); border-radius: 6px; font-size: 0.9em; font-weight: 600; }

@@ -16685,3 +16685,551 @@ async def update_rate_limiter(data: dict, auth=Depends(require_admin_auth)):
         _rate_limit_config["blocked_ips"] = data["blocked_ips"]
 
     return {"status": "updated", "config": _rate_limit_config}
+
+
+# ── Witness Stance Tracker ─────────────────────────────────────
+@router.get("/sessions/{session_id}/stance")
+async def track_witness_stance(session_id: str):
+    """Track how a witness's position shifts across topics throughout testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    cooperative_words = {"yes", "agree", "correct", "absolutely", "certainly", "willing",
+                         "happy to", "of course", "exactly", "right", "sure", "definitely"}
+    evasive_words = {"i don't recall", "i don't remember", "not sure", "possibly",
+                     "i can't say", "hard to say", "i think", "maybe", "perhaps",
+                     "i believe", "approximately", "i don't know", "not certain"}
+    hostile_words = {"no", "never", "refuse", "that's not true", "objection", "won't",
+                     "misleading", "mischaracterize", "incorrect", "false", "reject",
+                     "absurd", "ridiculous", "inappropriate"}
+    assertive_words = {"i know", "i saw", "i remember clearly", "without a doubt",
+                       "i'm certain", "i witnessed", "it was", "there's no question",
+                       "absolutely certain", "i can confirm", "for a fact"}
+
+    stance_timeline = []
+    topic_stances = {}
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        words = lower.split()
+
+        coop = sum(1 for w in cooperative_words if w in lower)
+        evas = sum(1 for w in evasive_words if w in lower)
+        host = sum(1 for w in hostile_words if w in lower)
+        asrt = sum(1 for w in assertive_words if w in lower)
+
+        scores = {"cooperative": coop, "evasive": evas, "hostile": host, "assertive": asrt}
+        dominant = max(scores, key=scores.get) if any(scores.values()) else "neutral"
+        if not any(scores.values()):
+            dominant = "neutral"
+
+        # Extract topic keywords
+        import re as _re
+        topic_words = [w for w in words if len(w) > 5 and w.isalpha()]
+        topic = topic_words[0] if topic_words else f"segment_{idx+1}"
+
+        stance_timeline.append({
+            "segment": idx + 1,
+            "stance": dominant,
+            "scores": scores,
+            "topic_hint": topic,
+            "snippet": stmt[:80] + "..." if len(stmt) > 80 else stmt
+        })
+
+        if topic not in topic_stances:
+            topic_stances[topic] = []
+        topic_stances[topic].append(dominant)
+
+    # Detect stance shifts
+    shifts = []
+    for i in range(1, len(stance_timeline)):
+        if stance_timeline[i]["stance"] != stance_timeline[i-1]["stance"]:
+            shifts.append({
+                "from_segment": stance_timeline[i-1]["segment"],
+                "to_segment": stance_timeline[i]["segment"],
+                "from_stance": stance_timeline[i-1]["stance"],
+                "to_stance": stance_timeline[i]["stance"]
+            })
+
+    stance_counts = {}
+    for s in stance_timeline:
+        stance_counts[s["stance"]] = stance_counts.get(s["stance"], 0) + 1
+
+    dominant_overall = max(stance_counts, key=stance_counts.get) if stance_counts else "neutral"
+
+    return {
+        "session_id": session_id,
+        "timeline": stance_timeline,
+        "shifts": shifts,
+        "total_segments": len(stance_timeline),
+        "total_shifts": len(shifts),
+        "stance_distribution": stance_counts,
+        "dominant_stance": dominant_overall,
+        "volatility": "high" if len(shifts) > len(statements) * 0.6 else "moderate" if len(shifts) > len(statements) * 0.3 else "stable"
+    }
+
+
+# ── Testimony Summary Bullets ──────────────────────────────────
+@router.get("/sessions/{session_id}/bullets")
+async def testimony_bullets(session_id: str):
+    """Generate concise bullet-point summary of key testimony points."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    bullets = []
+    key_facts = []
+    admissions = []
+    denials = []
+
+    fact_indicators = {"saw", "witnessed", "observed", "heard", "noticed", "found",
+                       "discovered", "confirmed", "verified", "stated", "told", "said"}
+    admission_indicators = {"admitted", "acknowledged", "conceded", "agreed", "confirmed",
+                            "yes", "correct", "true", "right", "i did"}
+    denial_indicators = {"denied", "rejected", "refused", "no", "never", "not true",
+                         "false", "incorrect", "didn't", "did not", "wasn't"}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        words = lower.split()
+
+        # Create bullet summary
+        sentences = stmt.replace("?", ".").replace("!", ".").split(".")
+        first_sentence = sentences[0].strip()
+        if len(first_sentence) > 100:
+            first_sentence = first_sentence[:97] + "..."
+
+        bullet_type = "statement"
+        if any(w in lower for w in admission_indicators):
+            bullet_type = "admission"
+            admissions.append(first_sentence)
+        elif any(w in lower for w in denial_indicators):
+            bullet_type = "denial"
+            denials.append(first_sentence)
+        elif any(w in lower for w in fact_indicators):
+            bullet_type = "fact"
+            key_facts.append(first_sentence)
+
+        bullets.append({
+            "number": idx + 1,
+            "type": bullet_type,
+            "text": first_sentence,
+            "word_count": len(words)
+        })
+
+    return {
+        "session_id": session_id,
+        "title": getattr(session, "title", "Untitled"),
+        "bullets": bullets[:50],
+        "total_points": len(bullets),
+        "key_facts": key_facts[:15],
+        "admissions": admissions[:10],
+        "denials": denials[:10],
+        "summary": {
+            "total_statements": len(statements),
+            "facts_count": len(key_facts),
+            "admissions_count": len(admissions),
+            "denials_count": len(denials)
+        }
+    }
+
+
+# ── Expert Witness Evaluator ───────────────────────────────────
+@router.get("/sessions/{session_id}/expert-eval")
+async def evaluate_expert_witness(session_id: str):
+    """Evaluate expert witness qualifications and Daubert factors."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+
+    # Daubert factors
+    qualification_words = {"degree", "ph.d", "phd", "md", "m.d.", "doctorate", "master",
+                           "professor", "university", "board certified", "licensed",
+                           "credential", "fellowship", "residency", "certification",
+                           "published", "peer reviewed", "journal", "research",
+                           "training", "experience", "years", "specialty", "expert"}
+    methodology_words = {"method", "methodology", "procedure", "protocol", "standard",
+                         "technique", "approach", "analysis", "test", "examination",
+                         "peer review", "replicated", "validated", "accepted",
+                         "scientific", "evidence-based", "clinical"}
+    reliability_words = {"error rate", "accuracy", "reliable", "consistent",
+                         "reproducible", "standards", "controls", "tested",
+                         "verified", "confirmed", "statistically"}
+    relevance_words = {"relevant", "applicable", "fits", "pertains", "connected",
+                       "related", "applies to", "specific to", "case at hand"}
+
+    qual_score = min(10, sum(2 for w in qualification_words if w in full_text))
+    meth_score = min(10, sum(2 for w in methodology_words if w in full_text))
+    rel_score = min(10, sum(2 for w in reliability_words if w in full_text))
+    rev_score = min(10, sum(2 for w in relevance_words if w in full_text))
+
+    overall = round((qual_score + meth_score + rel_score + rev_score) / 4, 1)
+
+    # Detect qualification mentions
+    qualifications_found = [w for w in qualification_words if w in full_text]
+    methods_found = [w for w in methodology_words if w in full_text]
+
+    # Vulnerabilities
+    vuln = []
+    if qual_score < 4:
+        vuln.append("Limited qualification evidence in testimony")
+    if meth_score < 4:
+        vuln.append("Methodology insufficiently described")
+    if rel_score < 4:
+        vuln.append("Reliability of methods not established")
+    if "not sure" in full_text or "i think" in full_text:
+        vuln.append("Uncertainty language undermines authority")
+    if "first time" in full_text:
+        vuln.append("Possible lack of experience in this area")
+
+    strengths = []
+    if qual_score >= 7:
+        strengths.append("Strong qualification indicators")
+    if meth_score >= 7:
+        strengths.append("Well-described methodology")
+    if "published" in full_text or "peer review" in full_text:
+        strengths.append("Published/peer-reviewed work referenced")
+    if "board certified" in full_text:
+        strengths.append("Board certification mentioned")
+
+    return {
+        "session_id": session_id,
+        "daubert_scores": {
+            "qualifications": qual_score,
+            "methodology": meth_score,
+            "reliability": rel_score,
+            "relevance": rev_score,
+            "overall": overall
+        },
+        "qualifications_found": sorted(set(qualifications_found)),
+        "methods_found": sorted(set(methods_found)),
+        "vulnerabilities": vuln,
+        "strengths": strengths,
+        "assessment": "strong" if overall >= 7 else "adequate" if overall >= 4 else "weak",
+        "daubert_admissible": overall >= 5
+    }
+
+
+# ── Privilege Log Detector ─────────────────────────────────────
+@router.get("/sessions/{session_id}/privileges")
+async def detect_privilege_issues(session_id: str):
+    """Identify potentially privileged communications in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    ac_indicators = {"my attorney", "my lawyer", "counsel advised", "legal advice",
+                     "attorney-client", "privileged", "i told my lawyer",
+                     "my lawyer said", "legal counsel", "attorney told me",
+                     "confidential communication", "sought legal advice"}
+    wp_indicators = {"work product", "prepared for litigation", "in anticipation",
+                     "trial preparation", "attorney work", "mental impressions",
+                     "legal strategy", "case theory", "legal memorandum"}
+    medical_indicators = {"doctor told me", "my physician", "medical records",
+                          "therapy session", "therapist said", "psychiatric",
+                          "medical advice", "treatment plan", "diagnosis",
+                          "prognosis", "medical history", "health information"}
+    spousal_indicators = {"my wife said", "my husband said", "my spouse",
+                          "told my wife", "told my husband", "marital communication",
+                          "in confidence to my spouse"}
+
+    flags = []
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for indicator in ac_indicators:
+            if indicator in lower:
+                flags.append({
+                    "segment": idx + 1,
+                    "type": "attorney_client",
+                    "trigger": indicator,
+                    "snippet": stmt[:100] + "..." if len(stmt) > 100 else stmt,
+                    "severity": "high"
+                })
+                break
+        for indicator in wp_indicators:
+            if indicator in lower:
+                flags.append({
+                    "segment": idx + 1,
+                    "type": "work_product",
+                    "trigger": indicator,
+                    "snippet": stmt[:100] + "..." if len(stmt) > 100 else stmt,
+                    "severity": "high"
+                })
+                break
+        for indicator in medical_indicators:
+            if indicator in lower:
+                flags.append({
+                    "segment": idx + 1,
+                    "type": "medical",
+                    "trigger": indicator,
+                    "snippet": stmt[:100] + "..." if len(stmt) > 100 else stmt,
+                    "severity": "medium"
+                })
+                break
+        for indicator in spousal_indicators:
+            if indicator in lower:
+                flags.append({
+                    "segment": idx + 1,
+                    "type": "spousal",
+                    "trigger": indicator,
+                    "snippet": stmt[:100] + "..." if len(stmt) > 100 else stmt,
+                    "severity": "medium"
+                })
+                break
+
+    by_type = {}
+    for f in flags:
+        by_type[f["type"]] = by_type.get(f["type"], 0) + 1
+
+    high_count = sum(1 for f in flags if f["severity"] == "high")
+
+    return {
+        "session_id": session_id,
+        "flags": flags[:30],
+        "by_type": by_type,
+        "total_flags": len(flags),
+        "high_severity_count": high_count,
+        "risk_level": "critical" if high_count > 3 else "elevated" if high_count > 0 else "low" if flags else "none",
+        "recommendation": "Review flagged segments with counsel before proceeding" if flags else "No privilege concerns detected"
+    }
+
+
+# ── Testimony Strength Meter ──────────────────────────────────
+@router.get("/sessions/{session_id}/strength")
+async def measure_testimony_strength(session_id: str):
+    """Rate overall testimony strength and trial readiness."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+    total_words = len(full_text.split())
+
+    # Clarity score (0-10)
+    filler_words = {"um", "uh", "like", "you know", "basically", "actually", "i mean",
+                    "well", "so", "right", "kind of", "sort of"}
+    filler_count = sum(full_text.count(w) for w in filler_words)
+    clarity = max(0, min(10, 10 - (filler_count * 2 / max(1, total_words / 100))))
+
+    # Specificity score (0-10)
+    specific_indicators = {"date", "time", "location", "address", "number", "name",
+                           "exactly", "specifically", "approximately", "at about",
+                           "on or around", "i remember", "i saw", "i heard"}
+    spec_count = sum(1 for w in specific_indicators if w in full_text)
+    specificity = min(10, spec_count * 1.5)
+
+    # Consistency score (0-10)
+    contradiction_signals = {"actually", "i mean", "wait", "let me correct",
+                             "i misspoke", "that's not what i meant", "sorry"}
+    contra_count = sum(full_text.count(w) for w in contradiction_signals)
+    consistency = max(0, min(10, 10 - contra_count))
+
+    # Confidence score (0-10)
+    confident_words = {"i know", "i'm certain", "absolutely", "definitely", "without doubt",
+                       "clearly", "i remember", "i saw", "i confirm"}
+    uncertain_words = {"i think", "maybe", "perhaps", "not sure", "i don't recall",
+                       "possibly", "i guess", "i believe", "might have"}
+    conf_pos = sum(1 for w in confident_words if w in full_text)
+    conf_neg = sum(1 for w in uncertain_words if w in full_text)
+    confidence = min(10, max(0, 5 + conf_pos * 1.5 - conf_neg * 1.5))
+
+    # Detail score (0-10)
+    avg_stmt_len = sum(len(s.split()) for s in statements) / max(1, len(statements))
+    detail = min(10, avg_stmt_len / 5)
+
+    overall = round((clarity + specificity + consistency + confidence + detail) / 5, 1)
+
+    strengths = []
+    weaknesses = []
+    if clarity >= 7: strengths.append("Clear and articulate testimony")
+    if clarity < 4: weaknesses.append("Excessive filler words reduce clarity")
+    if specificity >= 7: strengths.append("Rich in specific details")
+    if specificity < 4: weaknesses.append("Lacks specific details and dates")
+    if consistency >= 7: strengths.append("Consistent throughout")
+    if consistency < 4: weaknesses.append("Self-corrections suggest inconsistency")
+    if confidence >= 7: strengths.append("Projects confidence and certainty")
+    if confidence < 4: weaknesses.append("Appears uncertain and hesitant")
+    if detail >= 7: strengths.append("Detailed responses")
+    if detail < 4: weaknesses.append("Responses are too brief")
+
+    return {
+        "session_id": session_id,
+        "scores": {
+            "clarity": round(clarity, 1),
+            "specificity": round(specificity, 1),
+            "consistency": round(consistency, 1),
+            "confidence": round(confidence, 1),
+            "detail": round(detail, 1),
+            "overall": overall
+        },
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "trial_ready": overall >= 6,
+        "grade": "A" if overall >= 8 else "B" if overall >= 6 else "C" if overall >= 4 else "D",
+        "recommendation": "Strong testimony for trial use" if overall >= 7 else "Consider preparation coaching" if overall >= 4 else "Significant preparation needed"
+    }
+
+
+# ── Admin Feature Toggle ──────────────────────────────────────
+_feature_toggles = {
+    "sentiment_analysis": True,
+    "contradiction_detection": True,
+    "timeline_reconstruction": True,
+    "expert_evaluation": True,
+    "privilege_detection": True,
+    "testimony_comparison": True,
+    "batch_processing": True,
+    "pii_redaction": True,
+    "word_cloud": True,
+    "auto_summarization": True
+}
+
+
+@router.get("/admin/feature-toggles")
+async def get_feature_toggles(auth=Depends(require_admin_auth)):
+    """Get status of all feature toggles."""
+    enabled = sum(1 for v in _feature_toggles.values() if v)
+    disabled = sum(1 for v in _feature_toggles.values() if not v)
+    return {
+        "features": _feature_toggles,
+        "total": len(_feature_toggles),
+        "enabled_count": enabled,
+        "disabled_count": disabled
+    }
+
+
+@router.post("/admin/feature-toggles")
+async def update_feature_toggles(data: dict, auth=Depends(require_admin_auth)):
+    """Update feature toggles."""
+    updated = []
+    for key, val in data.items():
+        if key in _feature_toggles and isinstance(val, bool):
+            _feature_toggles[key] = val
+            updated.append(key)
+    return {"status": "updated", "updated_features": updated, "features": _feature_toggles}
+
+
+# ── Admin Notification Center ──────────────────────────────────
+_notifications = []
+
+
+@router.get("/admin/notifications")
+async def get_notifications(limit: int = 50, auth=Depends(require_admin_auth)):
+    """Get system notifications and alerts."""
+    from datetime import datetime, timedelta
+    # Generate recent system notifications from tracked data
+    now = datetime.utcnow()
+    auto_notifs = []
+
+    # Add startup notification
+    auto_notifs.append({
+        "id": 1,
+        "type": "info",
+        "title": "System Started",
+        "message": "Witness Replay service started successfully",
+        "timestamp": (now - timedelta(hours=1)).isoformat() + "Z",
+        "read": True
+    })
+
+    # Check error count
+    error_log = globals().get("_error_log", [])
+    if len(list(error_log)) > 0:
+        auto_notifs.append({
+            "id": 2,
+            "type": "warning",
+            "title": "Errors Detected",
+            "message": f"{len(list(error_log))} errors logged in the system",
+            "timestamp": now.isoformat() + "Z",
+            "read": False
+        })
+
+    # Feature toggle changes
+    disabled = [k for k, v in _feature_toggles.items() if not v]
+    if disabled:
+        auto_notifs.append({
+            "id": 3,
+            "type": "warning",
+            "title": "Features Disabled",
+            "message": f"{len(disabled)} features currently disabled: {', '.join(disabled)}",
+            "timestamp": now.isoformat() + "Z",
+            "read": False
+        })
+
+    # Rate limiter status
+    if _rate_limit_config.get("blocked_ips"):
+        auto_notifs.append({
+            "id": 4,
+            "type": "alert",
+            "title": "IPs Blocked",
+            "message": f"{len(_rate_limit_config['blocked_ips'])} IPs currently blocked by rate limiter",
+            "timestamp": now.isoformat() + "Z",
+            "read": False
+        })
+
+    # Include custom notifications
+    all_notifs = auto_notifs + _notifications
+    unread = sum(1 for n in all_notifs if not n.get("read", True))
+
+    return {
+        "notifications": sorted(all_notifs, key=lambda x: x.get("timestamp", ""), reverse=True)[:limit],
+        "total": len(all_notifs),
+        "unread_count": unread
+    }
+
+
+@router.post("/admin/notifications")
+async def add_notification(data: dict, auth=Depends(require_admin_auth)):
+    """Add a custom notification."""
+    from datetime import datetime
+    notif = {
+        "id": len(_notifications) + 100,
+        "type": data.get("type", "info"),
+        "title": data.get("title", "Notification"),
+        "message": data.get("message", ""),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "read": False
+    }
+    _notifications.append(notif)
+    return {"status": "created", "notification": notif}
