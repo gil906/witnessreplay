@@ -24,6 +24,13 @@ CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
     ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
 ]
 
+# Routine conversational tasks should preserve higher-tier Flash budgets.
+ROUTINE_CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
+    ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+    ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+]
+
 LIGHTWEIGHT_MODELS: List[Tuple[str, Dict[str, int]]] = [
     ("gemma-3-27b-it", {"rpm": 30, "tpm": 15_000, "rpd": 14_400}),
     ("gemma-3-12b-it", {"rpm": 30, "tpm": 15_000, "rpd": 14_400}),
@@ -41,11 +48,16 @@ EMBEDDING_MODELS: List[Tuple[str, Dict[str, int]]] = [
 ]
 
 TTS_MODELS: List[Tuple[str, Dict[str, int]]] = [
+    ("gemini-2.5-flash-native-audio-latest", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
+    ("gemini-2.5-flash-native-audio-preview-12-2025", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
+    ("gemini-2.5-flash-native-audio-preview-09-2025", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
     ("gemini-2.5-flash-preview-tts", {"rpm": 3, "tpm": 10_000, "rpd": 10}),
 ]
 
 LIVE_MODELS: List[Tuple[str, Dict[str, int]]] = [
-    ("gemini-2.5-flash-exp-native-audio-thinking", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
+    ("gemini-2.5-flash-native-audio-latest", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
+    ("gemini-2.5-flash-native-audio-preview-12-2025", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
+    ("gemini-2.5-flash-native-audio-preview-09-2025", {"rpm": 0, "tpm": 1_000_000, "rpd": 0}),
 ]
 
 # Convenience mapping: model name → quota dict
@@ -63,10 +75,14 @@ LIGHTWEIGHT_WITH_FALLBACK: List[Tuple[str, Dict[str, int]]] = LIGHTWEIGHT_MODELS
 
 # Task-type → fallback chain mapping
 TASK_CHAINS: Dict[str, List[Tuple[str, Dict[str, int]]]] = {
-    "chat": CHAT_MODELS,
+    "chat": ROUTINE_CHAT_MODELS,
     "analysis": CHAT_MODELS,
-    "scene": CHAT_MODELS,
+    "scene": ROUTINE_CHAT_MODELS,
     "classification": LIGHTWEIGHT_WITH_FALLBACK,
+    "summarization": ROUTINE_CHAT_MODELS,
+    "transcription": ROUTINE_CHAT_MODELS,
+    "extraction": LIGHTWEIGHT_WITH_FALLBACK,
+    "verification": LIGHTWEIGHT_WITH_FALLBACK,
     "intent": LIGHTWEIGHT_WITH_FALLBACK,
     "preprocessing": LIGHTWEIGHT_WITH_FALLBACK,
     "lightweight": LIGHTWEIGHT_WITH_FALLBACK,
@@ -86,6 +102,21 @@ def estimate_tokens(text: str) -> int:
     if not text:
         return 0
     return max(1, len(text) // 4)
+
+
+def is_retryable_model_error(error: Exception) -> bool:
+    """Errors that should trigger retry/fallback model switching."""
+    msg = str(error).lower()
+    return (
+        "429" in msg
+        or "resource_exhausted" in msg
+        or "resource has been exhausted" in msg
+        or "quota" in msg
+        or "rate" in msg
+        or "not_found" in msg
+        or "not found" in msg
+        or "model not found" in msg
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +399,53 @@ class ModelSelector:
                 self._current_scene_model = model
             return model
 
+    def get_model_chain(self, task_type: str) -> List[str]:
+        """Return ordered fallback model names for a task type."""
+        chain = TASK_CHAINS.get(task_type, CHAT_MODELS)
+        return [model for model, _ in chain]
+
+    async def explain_model_selection(
+        self, task_type: str, use_optimization: bool = True
+    ) -> Dict[str, Any]:
+        """Explain selected model and fallback reasoning for a task type."""
+        chain = TASK_CHAINS.get(task_type, CHAT_MODELS)
+        fallback_chain = [model for model, _ in chain]
+        async with self._lock:
+            self._cleanup_rate_limits()
+            if use_optimization:
+                try:
+                    selected_model = await self._pick_from_chain_optimized(chain, task_type)
+                except Exception as e:
+                    logger.debug(f"Optimized selection failed, using standard: {e}")
+                    selected_model = await self._pick_from_chain(chain)
+            else:
+                selected_model = await self._pick_from_chain(chain)
+
+            unavailable_models: List[Dict[str, Any]] = []
+            for model, _ in chain:
+                reasons: List[str] = []
+                if self._is_rate_limited(model):
+                    reasons.append("rate_limited")
+                if not await quota_tracker.can_make_request(model):
+                    reasons.append("quota_exhausted")
+                if reasons:
+                    unavailable_models.append({"model": model, "reasons": reasons})
+
+            if not unavailable_models:
+                reason = "primary_model_available"
+            elif selected_model == fallback_chain[0]:
+                reason = "all_models_constrained_using_primary"
+            else:
+                reason = "primary_model_unavailable_using_fallback"
+
+            return {
+                "task_type": task_type,
+                "selected_model": selected_model,
+                "fallback_chain": fallback_chain,
+                "reason": reason,
+                "unavailable_models": unavailable_models,
+            }
+
     async def mark_rate_limited(self, model_name: str):
         async with self._lock:
             self._rate_limited_models[model_name] = datetime.now(timezone.utc)
@@ -392,7 +470,18 @@ class ModelSelector:
         return statuses
 
     def get_current_model(self, task_type: str = "scene") -> str:
-        if task_type in ("chat", "analysis", "classification", "lightweight", "intent", "preprocessing"):
+        if task_type in (
+            "chat",
+            "analysis",
+            "classification",
+            "summarization",
+            "transcription",
+            "extraction",
+            "verification",
+            "lightweight",
+            "intent",
+            "preprocessing",
+        ):
             return self._current_chat_model or CHAT_MODELS[0][0]
         elif task_type == "scene":
             return self._current_scene_model or CHAT_MODELS[0][0]
@@ -426,7 +515,7 @@ async def call_with_retry(
     task_type: str = "unknown",
     **kwargs: Any,
 ) -> Any:
-    """Call *func* with exponential backoff + jitter on 429 / RESOURCE_EXHAUSTED.
+    """Call *func* with exponential backoff + jitter on retryable model errors.
     
     Also tracks performance metrics for model selection optimization.
     """
@@ -452,6 +541,10 @@ async def call_with_retry(
                 output_tokens = getattr(usage, "candidates_token_count", 0) or 0
             
             if model_name:
+                await quota_tracker.record_request(
+                    model_name,
+                    tokens_used=input_tokens + output_tokens,
+                )
                 model_metrics.record_request(
                     model=model_name,
                     task_type=task_type,
@@ -466,8 +559,7 @@ async def call_with_retry(
         except Exception as e:
             last_error = e
             err = str(e)
-            err_lower = err.lower()
-            if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err_lower or "rate" in err_lower:
+            if is_retryable_model_error(e):
                 wait = (2 ** attempt) + random.uniform(0, 1)
                 logger.warning(
                     f"Rate limited (attempt {attempt + 1}/{max_retries}), "
@@ -502,6 +594,10 @@ async def call_with_retry(
             output_tokens = getattr(usage, "candidates_token_count", 0) or 0
         
         if model_name:
+            await quota_tracker.record_request(
+                model_name,
+                tokens_used=input_tokens + output_tokens,
+            )
             model_metrics.record_request(
                 model=model_name,
                 task_type=task_type,
@@ -529,4 +625,3 @@ async def call_with_retry(
 # ---------------------------------------------------------------------------
 
 model_selector = ModelSelector()
-

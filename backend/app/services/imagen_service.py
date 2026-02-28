@@ -109,12 +109,16 @@ class ImagenService:
         Returns:
             Relative URL path to saved image, or None.
         """
-        prompt = f"Witness report scene: {scene_description}"
+        prompt = (
+            "Latest witness report reconstruction. "
+            "Generate a realistic 3D scene update that reflects only the described details.\n"
+            f"Report details: {scene_description}"
+        )
         if elements:
             descs = ", ".join(
                 e.get("description", e.get("type", "unknown")) for e in elements[:10]
             )
-            prompt += f"\nKey elements: {descs}"
+            prompt += f"\nVisible entities to include: {descs}"
 
         image_bytes = await self.generate_scene(prompt, quality="fast")
         if image_bytes:
@@ -122,7 +126,11 @@ class ImagenService:
         return None
 
     async def generate_case_scene(
-        self, case_id: str, case_summary: str, scene_description: str
+        self,
+        case_id: str,
+        case_summary: str,
+        scene_description: str,
+        quality: str = "standard",
     ) -> Optional[str]:
         """Generate composite scene image from all witness accounts for a case.
 
@@ -130,11 +138,12 @@ class ImagenService:
             Relative URL path to saved image, or None.
         """
         prompt = (
-            "Comprehensive crime scene combining multiple witness accounts:\n"
-            f"{scene_description}\nCase summary: {case_summary}"
+            "Comprehensive 3D reconstruction combining multiple witness accounts. "
+            "Keep scene continuity while integrating the newest corroborated details.\n"
+            f"Scene details: {scene_description}\nCase summary: {case_summary}"
         )
 
-        image_bytes = await self.generate_scene(prompt, quality="standard")
+        image_bytes = await self.generate_scene(prompt, quality=quality)
         if image_bytes:
             return self._save_image(image_bytes, f"case_{case_id}")
         return None
@@ -209,11 +218,13 @@ class ImagenService:
 
     def _build_scene_prompt(self, description: str) -> str:
         return (
-            "Create a detailed, realistic bird's-eye view illustration of a crime/accident scene. "
-            "Style: Professional forensic scene diagram, top-down perspective, clear labels, daylight conditions. "
+            "Create a detailed, realistic 3D reconstruction of a crime/accident scene from witness testimony. "
+            "Style: cinematic but factual, oblique camera angle (not top-down), natural lighting, high detail. "
+            "Do NOT use template-like intersection diagrams, map symbols, color dots, labels, UI overlays, or legends. "
+            "Continuously incorporate new witness details as concrete scene objects, positions, and actions. "
             "Do NOT include any graphic violence, blood, or disturbing content. "
             f"Scene description: {description} "
-            "Show vehicles, people positions, street layout, and key evidence markers."
+            "Show physically plausible placement of vehicles, people, environment, and evidence."
         )
 
     def _get_model_order(self, quality: str) -> list[str]:

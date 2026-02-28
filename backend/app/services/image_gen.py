@@ -1,6 +1,8 @@
 import logging
 import base64
 import math
+import hashlib
+import random
 import re
 from typing import Optional, List, Tuple, Dict
 from io import BytesIO
@@ -132,12 +134,12 @@ class ImageGenerationService:
         font_small = _get_font(11)
         font_desc = _get_font(10)
 
-        # --- background grid (road/intersection) ---
-        self._draw_road_grid(draw, W, H)
+        # --- dynamic 3D-style environment backdrop ---
+        self._draw_road_grid(draw, W, H, scene_description)
 
         # --- header bar ---
         draw.rectangle([(0, 0), (W, 50)], fill=(12, 14, 20))
-        draw.text((14, 14), "🔍 CRIME SCENE DIAGRAM", fill=(0, 212, 255), font=font_title)
+        draw.text((14, 14), "🔍 3D SCENE RECONSTRUCTION", fill=(0, 212, 255), font=font_title)
         draw.text((W - 200, 18), "WitnessReplay", fill=(100, 110, 130), font=font_small)
 
         # --- scene description area ---
@@ -178,44 +180,107 @@ class ImageGenerationService:
     # Background
     # ------------------------------------------------------------------
 
-    def _draw_road_grid(self, draw: ImageDraw.Draw, W: int, H: int):
-        """Draw road / intersection grid pattern."""
-        grid_color = (30, 36, 48)
-        line_color = (40, 48, 60)
+    def _draw_road_grid(self, draw: ImageDraw.Draw, W: int, H: int, scene_description: str = ""):
+        """Draw a dynamic 3D-style environment without fixed scene templates."""
+        # Sky gradient
+        sky_top = (14, 20, 34)
+        sky_bottom = (36, 60, 94)
+        horizon = int(H * 0.34)
+        for y in range(0, horizon):
+            t = y / max(horizon, 1)
+            color = (
+                int(sky_top[0] + (sky_bottom[0] - sky_top[0]) * t),
+                int(sky_top[1] + (sky_bottom[1] - sky_top[1]) * t),
+                int(sky_top[2] + (sky_bottom[2] - sky_top[2]) * t),
+            )
+            draw.line([(0, y), (W, y)], fill=color, width=1)
 
-        # Grid lines
-        for x in range(0, W, 60):
-            draw.line([(x, 0), (x, H)], fill=grid_color, width=1)
-        for y in range(0, H, 60):
-            draw.line([(0, y), (W, y)], fill=line_color, width=1)
+        # Ground gradient
+        ground_top = (56, 60, 66)
+        ground_bottom = (34, 38, 44)
+        for y in range(horizon, H):
+            t = (y - horizon) / max(H - horizon, 1)
+            color = (
+                int(ground_top[0] + (ground_bottom[0] - ground_top[0]) * t),
+                int(ground_top[1] + (ground_bottom[1] - ground_top[1]) * t),
+                int(ground_top[2] + (ground_bottom[2] - ground_top[2]) * t),
+            )
+            draw.line([(0, y), (W, y)], fill=color, width=1)
 
-        # Main road (horizontal)
-        road_y = H // 2 - 30
-        draw.rectangle([(0, road_y), (W, road_y + 80)], fill=(35, 40, 52))
-        # Center dashes
-        for x in range(0, W, 40):
-            draw.rectangle([(x, road_y + 38), (x + 20, road_y + 42)], fill=(80, 85, 60))
-        # Road edges
-        draw.line([(0, road_y), (W, road_y)], fill=(60, 65, 50), width=2)
-        draw.line([(0, road_y + 80), (W, road_y + 80)], fill=(60, 65, 50), width=2)
+        desc = (scene_description or "").lower().strip()
+        seed_src = desc or "scene-default"
+        seed = int(hashlib.sha256(seed_src.encode("utf-8")).hexdigest()[:8], 16)
+        rng = random.Random(seed)
 
-        # Cross road (vertical)
-        road_x = W // 2 - 30
-        draw.rectangle([(road_x, 100), (road_x + 80, H - 120)], fill=(35, 40, 52))
-        for y in range(100, H - 120, 40):
-            draw.rectangle([(road_x + 38, y), (road_x + 42, y + 20)], fill=(80, 85, 60))
-        draw.line([(road_x, 100), (road_x, H - 120)], fill=(60, 65, 50), width=2)
-        draw.line([(road_x + 80, 100), (road_x + 80, H - 120)], fill=(60, 65, 50), width=2)
+        # Perspective guide lines (vary by description so each scene is unique)
+        vanishing_x = int(W * (0.38 + 0.24 * rng.random()))
+        if "left" in desc:
+            vanishing_x = int(W * (0.32 + 0.08 * rng.random()))
+        elif "right" in desc:
+            vanishing_x = int(W * (0.60 + 0.08 * rng.random()))
 
-        # Intersection fill
-        draw.rectangle([(road_x, road_y), (road_x + 80, road_y + 80)], fill=(40, 45, 55))
+        guide_spacing = int(90 + rng.random() * 45)
+        for x in range(-W // 2, W + W // 2, guide_spacing):
+            draw.line([(x, H), (vanishing_x, horizon)], fill=(62, 68, 76), width=1)
 
-        # Sidewalk hints
-        sw = (48, 50, 58)
-        draw.rectangle([(0, road_y - 12), (road_x, road_y)], fill=sw)
-        draw.rectangle([(road_x + 80, road_y - 12), (W, road_y)], fill=sw)
-        draw.rectangle([(0, road_y + 80), (road_x, road_y + 92)], fill=sw)
-        draw.rectangle([(road_x + 80, road_y + 80), (W, road_y + 92)], fill=sw)
+        depth_rows = 10 + int(rng.random() * 4)
+        for i in range(1, depth_rows):
+            t = i / depth_rows
+            y = H - int((t ** 1.6) * (H - horizon))
+            draw.line([(0, y), (W, y)], fill=(64, 70, 78), width=1)
+
+        # Main road only when testimony suggests one
+        has_road = any(k in desc for k in ["street", "road", "lane", "highway", "avenue", "boulevard"])
+        road_center = vanishing_x
+        if has_road:
+            road_center += int((rng.random() - 0.5) * W * 0.16)
+            road_center = max(int(W * 0.2), min(int(W * 0.8), road_center))
+            near_half = int(W * (0.20 + rng.random() * 0.10))
+            far_half = int(W * (0.04 + rng.random() * 0.04))
+            road_top_y = horizon + int(10 + rng.random() * 20)
+            road_poly = [
+                (road_center - near_half, H),
+                (road_center + near_half, H),
+                (road_center + far_half, road_top_y),
+                (road_center - far_half, road_top_y),
+            ]
+            draw.polygon(road_poly, fill=(48, 52, 58))
+            for i in range(1, 11):
+                t = i / 11
+                y = H - int((t ** 1.45) * (H - (road_top_y + 6)))
+                w = int(near_half - (near_half - far_half) * t)
+                if i % 2 == 0:
+                    draw.rectangle(
+                        [(road_center - 2, y - 7), (road_center + 2, y + 3)],
+                        fill=(220, 210, 120),
+                    )
+                draw.line([(road_center - w, y), (road_center + w, y)], fill=(64, 68, 74), width=1)
+
+        # Optional intersecting lane rendered with scene-specific angle (no fixed cross template)
+        if any(k in desc for k in ["intersection", "junction", "crosswalk", "crossing"]):
+            cross_y = int(H * (0.50 + rng.random() * 0.14))
+            near_half = int(W * (0.28 + rng.random() * 0.08))
+            far_half = int(W * (0.08 + rng.random() * 0.05))
+            tilt = int(W * (0.08 + rng.random() * 0.12))
+            cross_poly = [
+                (-near_half, cross_y + 42),
+                (W + near_half, cross_y - 28),
+                (W + far_half + tilt, cross_y - 78),
+                (-far_half + tilt, cross_y - 8),
+            ]
+            draw.polygon(cross_poly, fill=(50, 54, 60))
+
+            # Crosswalk stripes follow angled lane
+            for i in range(9):
+                offset = i * 52 - 30
+                x1 = offset
+                y1 = cross_y + 24 - int(offset * 0.14)
+                x2 = x1 + 22
+                y2 = y1 - 8
+                draw.polygon(
+                    [(x1, y1), (x2, y2), (x2 + 4, y2 - 6), (x1 + 4, y1 - 6)],
+                    fill=(210, 210, 210),
+                )
 
     # ------------------------------------------------------------------
     # Element drawing
@@ -281,20 +346,46 @@ class ImageGenerationService:
             self._draw_object(draw, cx, cy, color, elem, font_label, font_small)
 
     def _draw_vehicle(self, draw, cx, cy, color, elem, font_label, font_small):
-        w, h = 60, 30
+        w, h = 62, 28
         # Determine if truck/large
         desc_l = (elem.description or "").lower() + (elem.size or "").lower()
         if any(k in desc_l for k in ["truck", "suv", "van", "bus", "large"]):
-            w, h = 75, 35
-        # Shadow
-        draw.rectangle([(cx - w // 2 + 3, cy - h // 2 + 3), (cx + w // 2 + 3, cy + h // 2 + 3)],
-                        fill=(0, 0, 0, 80))
-        # Body
-        draw.rectangle([(cx - w // 2, cy - h // 2), (cx + w // 2, cy + h // 2)],
-                        fill=color, outline=(255, 255, 255, 120), width=2)
-        # Windshield
-        draw.rectangle([(cx - w // 4, cy - h // 2 + 3), (cx + w // 4, cy - h // 2 + 8)],
-                        fill=(180, 210, 230))
+            w, h = 78, 34
+
+        depth = max(8, h // 3)
+        # Soft shadow
+        draw.ellipse([(cx - w // 2, cy + h // 2 + 4), (cx + w // 2, cy + h // 2 + 14)], fill=(22, 24, 30))
+
+        # Isometric top
+        top = [
+            (cx - w // 2, cy - h // 2),
+            (cx + w // 2, cy - h // 2),
+            (cx + w // 2 + depth, cy - h // 2 - depth),
+            (cx - w // 2 + depth, cy - h // 2 - depth),
+        ]
+        right_face = [
+            (cx + w // 2, cy - h // 2),
+            (cx + w // 2, cy + h // 2),
+            (cx + w // 2 + depth, cy + h // 2 - depth),
+            (cx + w // 2 + depth, cy - h // 2 - depth),
+        ]
+        front_face = [
+            (cx - w // 2, cy + h // 2),
+            (cx + w // 2, cy + h // 2),
+            (cx + w // 2 + depth, cy + h // 2 - depth),
+            (cx - w // 2 + depth, cy + h // 2 - depth),
+        ]
+
+        draw.polygon(top, fill=tuple(min(255, c + 26) for c in color), outline=(235, 238, 245))
+        draw.polygon(right_face, fill=tuple(max(0, c - 30) for c in color), outline=(220, 224, 232))
+        draw.polygon(front_face, fill=color, outline=(220, 224, 232))
+
+        # Windshield highlight
+        wx1 = cx - w // 5 + depth // 2
+        wx2 = cx + w // 6 + depth // 2
+        wy1 = cy - h // 2 - depth + 2
+        wy2 = wy1 + 6
+        draw.polygon([(wx1, wy2), (wx2, wy2), (wx2 + 6, wy1), (wx1 + 6, wy1)], fill=(175, 205, 232))
         # Wheels
         for dx in [-w // 3, w // 3]:
             draw.ellipse([(cx + dx - 5, cy + h // 2 - 4), (cx + dx + 5, cy + h // 2 + 4)],
@@ -306,26 +397,33 @@ class ImageGenerationService:
         self._draw_confidence_dot(draw, cx + w // 2 + 4, cy - h // 2, elem.confidence)
 
     def _draw_person(self, draw, cx, cy, color, elem, font_label, font_small):
-        r = 14
+        r = 11
         # Shadow
-        draw.ellipse([(cx - r + 2, cy - r + 2), (cx + r + 2, cy + r + 2)], fill=(0, 0, 0, 80))
-        # Body circle
-        draw.ellipse([(cx - r, cy - r), (cx + r, cy + r)],
-                      fill=color, outline=(255, 255, 255, 120), width=2)
+        draw.ellipse([(cx - r - 4, cy + r + 6), (cx + r + 4, cy + r + 14)], fill=(22, 24, 30))
+        # Torso (capsule-like)
+        body_color = tuple(max(0, c - 8) for c in color)
+        draw.rounded_rectangle([(cx - r, cy - r), (cx + r, cy + r + 8)], radius=7,
+                               fill=body_color, outline=(235, 235, 240), width=1)
         # Head
-        draw.ellipse([(cx - 5, cy - r - 10), (cx + 5, cy - r)], fill=color, outline=(255, 255, 255, 80))
+        draw.ellipse([(cx - 6, cy - r - 12), (cx + 6, cy - r)], fill=tuple(min(255, c + 10) for c in color),
+                     outline=(235, 235, 240))
         # Label
         label = self._short_label(elem)
-        draw.text((cx - 30, cy + r + 6), label, fill=(220, 230, 240), font=font_small)
+        draw.text((cx - 30, cy + r + 14), label, fill=(220, 230, 240), font=font_small)
         self._draw_confidence_dot(draw, cx + r + 4, cy - r, elem.confidence)
 
     def _draw_object(self, draw, cx, cy, color, elem, font_label, font_small):
         s = 12
-        # Diamond shape
-        points = [(cx, cy - s), (cx + s, cy), (cx, cy + s), (cx - s, cy)]
-        draw.polygon(points, fill=color, outline=(255, 255, 255, 120))
+        # Isometric cube-like marker
+        top = [(cx, cy - s), (cx + s, cy - s // 2), (cx, cy), (cx - s, cy - s // 2)]
+        right = [(cx + s, cy - s // 2), (cx + s, cy + s // 2), (cx, cy + s), (cx, cy)]
+        left = [(cx - s, cy - s // 2), (cx, cy), (cx, cy + s), (cx - s, cy + s // 2)]
+        draw.polygon(top, fill=tuple(min(255, c + 18) for c in color), outline=(235, 235, 240))
+        draw.polygon(right, fill=tuple(max(0, c - 22) for c in color), outline=(215, 215, 225))
+        draw.polygon(left, fill=color, outline=(215, 215, 225))
+        draw.ellipse([(cx - s, cy + s + 4), (cx + s, cy + s + 12)], fill=(22, 24, 30))
         label = self._short_label(elem)
-        draw.text((cx - 30, cy + s + 6), label, fill=(220, 230, 240), font=font_small)
+        draw.text((cx - 30, cy + s + 10), label, fill=(220, 230, 240), font=font_small)
         self._draw_confidence_dot(draw, cx + s + 4, cy - s, elem.confidence)
 
     def _draw_confidence_dot(self, draw, x, y, confidence):

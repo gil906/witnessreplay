@@ -157,7 +157,7 @@ Text to translate:
 
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model=settings.gemini_model,
+                model=settings.gemini_lite_model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.3,

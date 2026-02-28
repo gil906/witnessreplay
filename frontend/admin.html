@@ -154,6 +154,7 @@
                 <button class="header-btn" onclick="window.adminPortal?.showNotificationCenter()" title="Notifications" aria-label="Open notifications">
                     🔔 <span id="notif-badge" class="notif-badge" style="display:none">0</span>
                 </button>
+                <button id="notification-mute-toggle" class="header-btn" title="Mute notifications" aria-label="Toggle notification mute">🔔 Alerts On</button>
 
                 <div class="global-search-wrap" style="position:relative;">
                     <input type="text" id="global-search-input" placeholder="🔍 Search cases, sessions..." class="global-search-input" oninput="window.adminPortal?.handleGlobalSearch(this.value)" aria-label="Search cases and sessions">
@@ -245,35 +246,73 @@
                     <input type="text" id="case-search" placeholder="Search by case ID, type, or location..." class="search-input">
                     <button id="search-btn" class="btn btn-primary">🔍 Search</button>
                 </div>
-                
-                <div class="filter-controls">
-                    <select id="filter-type" class="filter-select">
-                        <option value="">All Case Types</option>
-                        <option value="accident">Accident</option>
-                        <option value="crime">Crime</option>
-                        <option value="incident">Incident</option>
-                        <option value="other">Other</option>
-                    </select>
-                    
-                    <select id="filter-status" class="filter-select">
-                        <option value="">All Statuses</option>
-                        <option value="active">Active</option>
-                        <option value="complete">Complete</option>
-                        <option value="review">Under Review</option>
-                    </select>
-                    
-                    <select id="sort-by" class="filter-select">
-                        <option value="date-desc">Newest First</option>
-                        <option value="date-asc">Oldest First</option>
-                        <option value="priority-desc">Highest Priority</option>
-                        <option value="priority-asc">Lowest Priority</option>
-                        <option value="witnesses-desc">Most Witnesses</option>
-                        <option value="scenes-desc">Most Scenes</option>
-                    </select>
-                    
-                    <button id="clear-filters-btn" class="btn btn-secondary">Clear Filters</button>
+                <div class="filter-panel-header">
+                    <button id="filters-panel-toggle" class="btn btn-secondary btn-sm" aria-expanded="true">▾ Filters</button>
+                </div>
+                <div id="filters-panel" class="filters-panel">
+                    <div class="filter-controls">
+                        <select id="filter-type" class="filter-select">
+                            <option value="">All Case Types</option>
+                            <option value="accident">Accident</option>
+                            <option value="crime">Crime</option>
+                            <option value="incident">Incident</option>
+                            <option value="other">Other</option>
+                        </select>
+                        
+                        <select id="filter-status" class="filter-select">
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="complete">Complete</option>
+                            <option value="review">Under Review</option>
+                        </select>
+                        
+                        <select id="sort-by" class="filter-select">
+                            <option value="date-desc">Newest</option>
+                            <option value="date-asc">Oldest</option>
+                            <option value="reports-desc">Most Reports</option>
+                            <option value="priority-desc">Priority Desc</option>
+                        </select>
+
+                        <select id="auto-refresh-interval" class="filter-select auto-refresh-select" aria-label="Auto refresh interval">
+                            <option value="0">⏸ Auto-refresh: Off</option>
+                            <option value="30">⏱ Auto-refresh: 30s</option>
+                            <option value="60">⏱ Auto-refresh: 60s</option>
+                            <option value="120">⏱ Auto-refresh: 120s</option>
+                        </select>
+                        <button id="auto-assign-orphans-btn" class="btn btn-secondary">🧩 Auto-Assign Orphans</button>
+                        <button id="clear-filters-btn" class="btn btn-secondary">Clear Filters</button>
+                    </div>
+                    <div class="quick-filter-chips" id="quick-filter-chips">
+                        <button type="button" class="quick-filter-chip active" data-quick-filter="">All</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="open">Open</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="under_review">Under Review</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="closed">Closed</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="high_priority">High Priority</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="has_scene">Has Scene</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="due_soon">Due Soon</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="overdue">Overdue</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="mine">Mine</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="unassigned">Unassigned</button>
+                    </div>
+                    <div class="filter-presets-row">
+                        <input type="text" id="filter-preset-name" class="assign-input" placeholder="Preset name" maxlength="60">
+                        <select id="filter-preset-select" class="filter-select" aria-label="Saved filter presets">
+                            <option value="">Saved presets…</option>
+                        </select>
+                        <button id="filter-preset-save" class="btn btn-secondary btn-sm">💾 Save</button>
+                        <button id="filter-preset-load" class="btn btn-secondary btn-sm">📂 Load</button>
+                        <button id="filter-preset-delete" class="btn btn-secondary btn-sm">🗑 Delete</button>
+                        <button id="filter-preset-export" class="btn btn-secondary btn-sm">⬇ Export</button>
+                        <label for="filter-preset-import" class="btn btn-secondary btn-sm">⬆ Import</label>
+                        <input type="file" id="filter-preset-import" accept="application/json" style="display:none;">
+                    </div>
                 </div>
             </section>
+
+            <div id="admin-error-banner" class="error-banner" style="display:none;">
+                <span id="admin-error-text"></span>
+                <button id="error-retry-btn" class="btn btn-secondary btn-sm">Retry</button>
+            </div>
 
             <!-- Advanced Search Toolbar -->
             <div class="search-toolbar">
@@ -311,15 +350,51 @@
             <!-- Bulk Operations Toolbar -->
             <div id="bulk-toolbar" class="bulk-toolbar" style="display:none;">
                 <span id="selected-count">0 selected</span>
-                <button onclick="window.adminPortal?.bulkUpdateStatus('under_review')" class="bulk-btn">📋 Set Under Review</button>
-                <button onclick="window.adminPortal?.bulkUpdateStatus('closed')" class="bulk-btn">✅ Close Cases</button>
-                <button onclick="window.adminPortal?.bulkExport()" class="bulk-btn">📥 Export Selected</button>
-                <button onclick="window.adminPortal?.clearSelection()" class="bulk-btn danger">✖ Clear</button>
+                <div class="bulk-inline-group">
+                    <button onclick="window.adminPortal?.selectAllFilteredCases()" class="bulk-btn">☑️ Select Filtered</button>
+                    <button onclick="window.adminPortal?.deselectAllCases()" class="bulk-btn">◻ Deselect</button>
+                    <button onclick="window.adminPortal?.invertCaseSelection()" class="bulk-btn">🔁 Invert</button>
+                </div>
+                <div class="bulk-inline-group">
+                    <button onclick="window.adminPortal?.bulkUpdateStatus('under_review')" class="bulk-btn">📋 Set Under Review</button>
+                    <button onclick="window.adminPortal?.bulkUpdateStatus('closed')" class="bulk-btn">✅ Close Cases</button>
+                    <button onclick="window.adminPortal?.bulkExport()" class="bulk-btn">📥 Export Selected CSV</button>
+                    <button onclick="window.adminPortal?.clearSelection()" class="bulk-btn danger">✖ Clear</button>
+                </div>
+                <div class="bulk-inline-group bulk-control-group">
+                    <select id="bulk-assign-investigator" class="filter-select" aria-label="Bulk assign investigator">
+                        <option value="">Assign investigator…</option>
+                    </select>
+                    <button onclick="window.adminPortal?.bulkAssignSelected()" class="bulk-btn">👮 Assign</button>
+                </div>
+                <div class="bulk-inline-group bulk-control-group">
+                    <select id="bulk-priority-label" class="filter-select" aria-label="Bulk priority label">
+                        <option value="">Priority label…</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="normal">Normal</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <input id="bulk-priority-score" class="assign-input" type="number" min="0" max="100" step="1" placeholder="Score (optional)">
+                    <button onclick="window.adminPortal?.bulkSetPrioritySelected()" class="bulk-btn">🎯 Priority</button>
+                </div>
+                <div class="bulk-inline-group bulk-control-group">
+                    <input id="bulk-tag-text" class="assign-input" type="text" placeholder="Tag name">
+                    <input id="bulk-tag-color" type="color" value="#60a5fa" title="Tag color">
+                    <button onclick="window.adminPortal?.bulkAddTagSelected()" class="bulk-btn">🏷 Tag</button>
+                </div>
+                <div class="bulk-inline-group">
+                    <button onclick="window.adminPortal?.bulkTogglePinned(true)" class="bulk-btn">📌 Pin</button>
+                    <button onclick="window.adminPortal?.bulkToggleWatchlisted(true)" class="bulk-btn">👁 Watch</button>
+                </div>
             </div>
 
             <!-- View Toggle Tabs -->
             <section class="view-toggle" role="tablist" aria-label="Dashboard views">
                 <button class="view-tab active" data-view="cases" role="tab" aria-selected="true">📁 Cases View</button>
+                <button class="view-tab" data-view="pinned" role="tab" aria-selected="false">📌 Pinned</button>
+                <button class="view-tab" data-view="watchlist" role="tab" aria-selected="false">👁 Watchlist</button>
                 <button class="view-tab" data-view="reports" role="tab" aria-selected="false">📝 Reports View</button>
                 <button class="view-tab" data-view="workload" role="tab" aria-selected="false">👮 Workload</button>
                 <button class="view-tab" data-view="dashboard" role="tab" aria-selected="false">📊 Dashboard</button>
@@ -327,10 +402,46 @@
                 <button class="view-tab" data-view="settings" role="tab" aria-selected="false">⚙️ Settings</button>
             </section>
 
+            <aside id="admin-side-panel" class="admin-side-panel">
+                <h3>Quick Shortcuts</h3>
+                <div class="side-panel-counts">
+                    <button class="side-shortcut-btn" onclick="window.adminPortal?.switchView('pinned')">📌 Pinned <span id="side-pinned-count">0</span></button>
+                    <button class="side-shortcut-btn" onclick="window.adminPortal?.switchView('watchlist')">👁 Watchlist <span id="side-watch-count">0</span></button>
+                </div>
+                <div class="side-panel-shortcuts">
+                    <button class="side-shortcut-btn" onclick="window.adminPortal?.openCommandPalette()">⌘/Ctrl+K Commands</button>
+                    <button class="side-shortcut-btn" onclick="window.adminPortal?.openShortcutsHelp()">❔ Keyboard Help</button>
+                    <button class="side-shortcut-btn" onclick="window.adminPortal?.switchView('cases')">📁 Back to Cases</button>
+                </div>
+            </aside>
+
+            <section class="cases-section recent-actions-section" id="recent-actions-section">
+                <div class="section-header">
+                    <h2>Recent Actions</h2>
+                </div>
+                <div id="recent-actions-list" class="recent-actions-list">
+                    <div class="empty-state">No recent actions yet</div>
+                </div>
+            </section>
+
+            <section class="cases-section recent-viewed-section" id="recent-viewed-section">
+                <div class="section-header">
+                    <h2>Recently Viewed Cases</h2>
+                </div>
+                <div id="recent-viewed-list" class="recent-viewed-list">
+                    <div class="empty-state">No recently viewed cases</div>
+                </div>
+            </section>
+
             <!-- Cases List -->
             <section class="cases-section" id="cases-section" role="tabpanel" aria-label="Cases view">
                 <div class="section-header">
                     <h2>Cases <span class="section-subtitle" id="cases-count-subtitle"></span></h2>
+                    <div class="case-selection-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.selectAllFilteredCases()">☑️ Select Filtered</button>
+                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.deselectAllCases()">◻ Deselect</button>
+                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.invertCaseSelection()">🔁 Invert</button>
+                    </div>
                     <div class="cases-view-mode">
                         <button class="view-mode-btn active" data-mode="compact" title="Compact View" aria-label="Compact view">▦</button>
                         <button class="view-mode-btn" data-mode="expanded" title="Expanded View" aria-label="Expanded view">▣</button>
@@ -1018,6 +1129,34 @@ const scene = await fetch(`${BASE}/sessions/${sid}/scene`, {
     </div>
 
 
+
+
+    <div id="command-palette" class="command-palette" style="display:none;" aria-hidden="true">
+        <div class="command-palette-dialog" role="dialog" aria-modal="true" aria-label="Admin command palette">
+            <input id="command-palette-input" type="text" class="command-palette-input" placeholder="Type a command…">
+            <div id="command-palette-list" class="command-palette-list"></div>
+        </div>
+    </div>
+
+    <div id="shortcuts-help-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⌨️ Admin Shortcuts</h2>
+                <button class="modal-close" data-modal="shortcuts-help-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ul class="shortcuts-list">
+                    <li><kbd>/</kbd> Focus search</li>
+                    <li><kbd>R</kbd> Refresh cases</li>
+                    <li><kbd>Ctrl/Cmd + K</kbd> Open command palette</li>
+                    <li><kbd>A</kbd> Auto-assign orphan reports</li>
+                    <li><kbd>P</kbd> Toggle pin on open case modal</li>
+                    <li><kbd>W</kbd> Toggle watch on open case modal</li>
+                    <li><kbd>?</kbd> Open this help</li>
+                </ul>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Notifications Container -->
     <div id="toast-container" class="toast-container"></div>

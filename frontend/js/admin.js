@@ -17,6 +17,11 @@ class AdminPortal {
         this.authToken = null;
         this.selectedCases = new Set();
         this.searchDebounceTimer = null;
+        this.quickFilter = '';
+        this.autoRefreshInterval = this.getStoredAutoRefreshInterval();
+        this.autoRefreshEnabled = this.autoRefreshInterval > 0;
+        this.autoRefreshTimer = null;
+        this.recentAuditItems = [];
         this.chartInstances = {};
         this.incidentMap = null;
         this.mapMarkers = [];
@@ -26,6 +31,16 @@ class AdminPortal {
         this.investigators = [];
         this.workloadData = null;
         this.currentUser = null;
+        this.lastSelectedCaseIndex = null;
+        this.pinnedCaseIds = new Set();
+        this.watchlistCaseIds = new Set();
+        this.filterPresets = this.loadFilterPresetsFromStorage();
+        this.filtersPanelCollapsed = localStorage.getItem('adminFiltersPanelCollapsed') === 'true';
+        this.recentViewedCases = this.loadRecentViewedCases();
+        this.notificationsMuted = localStorage.getItem('adminNotificationsMuted') === 'true';
+        this.commandPaletteOpen = false;
+        this.commandPaletteItems = [];
+        this.commandPaletteCursor = 0;
         
         this.checkAuth();
     }
@@ -304,7 +319,17 @@ class AdminPortal {
         this.restoreCasesViewMode();
         this._initModalKeyboardNav();
         this._initRegisterValidation();
+        this.renderFilterPresetOptions();
+        this.updateFiltersPanelUI();
+        this.updateNotificationMuteUI();
+        this.renderRecentViewedWidget();
+        await this.loadInvestigators();
+        this.populateBulkInvestigatorControl();
         await this.loadCases();
+        const caseFromUrl = new URLSearchParams(window.location.search).get('case');
+        if (caseFromUrl) {
+            this.showCaseDetail(caseFromUrl);
+        }
         this.startAutoRefresh();
         this.fetchAndDisplayVersion();
         this.loadQuotaDashboard();
@@ -404,12 +429,13 @@ class AdminPortal {
         });
         
         // Header actions
-        document.getElementById('seed-data-btn').addEventListener('click', () => this.seedMockData());
-        document.getElementById('refresh-btn').addEventListener('click', () => this.loadCases());
-        document.getElementById('logout-btn').addEventListener('click', () => this.logout());
-        document.getElementById('witness-view-btn').addEventListener('click', () => {
+        document.getElementById('seed-data-btn')?.addEventListener('click', () => this.seedMockData());
+        document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadCases());
+        document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
+        document.getElementById('witness-view-btn')?.addEventListener('click', () => {
             window.location.href = '/static/index.html';
         });
+        document.getElementById('notification-mute-toggle')?.addEventListener('click', () => this.toggleNotificationMute());
         
         // View toggle tabs
         document.querySelectorAll('.view-tab').forEach(tab => {
@@ -422,12 +448,34 @@ class AdminPortal {
         });
         
         // Search and filters
-        document.getElementById('case-search').addEventListener('input', () => this.filterCases());
-        document.getElementById('search-btn').addEventListener('click', () => this.filterCases());
-        document.getElementById('filter-type').addEventListener('change', () => this.filterCases());
-        document.getElementById('filter-status').addEventListener('change', () => this.filterCases());
-        document.getElementById('sort-by').addEventListener('change', () => this.filterCases());
-        document.getElementById('clear-filters-btn').addEventListener('click', () => this.clearFilters());
+        document.getElementById('case-search')?.addEventListener('input', () => this.filterCases());
+        document.getElementById('search-btn')?.addEventListener('click', () => this.filterCases());
+        document.getElementById('filter-type')?.addEventListener('change', () => this.filterCases());
+        document.getElementById('filter-status')?.addEventListener('change', () => this.filterCases());
+        document.getElementById('sort-by')?.addEventListener('change', () => this.filterCases());
+        document.getElementById('clear-filters-btn')?.addEventListener('click', () => this.clearFilters());
+        document.getElementById('auto-refresh-interval')?.addEventListener('change', (e) => this.setAutoRefreshInterval(e.target?.value));
+        document.getElementById('auto-assign-orphans-btn')?.addEventListener('click', () => this.autoAssignOrphans());
+        document.getElementById('error-retry-btn')?.addEventListener('click', () => this.loadCases());
+        document.getElementById('filters-panel-toggle')?.addEventListener('click', () => this.toggleFiltersPanel());
+        document.getElementById('filter-preset-save')?.addEventListener('click', () => this.saveFilterPreset());
+        document.getElementById('filter-preset-load')?.addEventListener('click', () => this.loadSelectedFilterPreset());
+        document.getElementById('filter-preset-delete')?.addEventListener('click', () => this.deleteSelectedFilterPreset());
+        document.getElementById('filter-preset-export')?.addEventListener('click', () => this.exportFilterPresets());
+        document.getElementById('filter-preset-import')?.addEventListener('change', (e) => this.importFilterPresets(e.target?.files?.[0]));
+        document.querySelectorAll('.quick-filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => this.setQuickFilter(chip.dataset.quickFilter || ''));
+        });
+        const paletteInput = document.getElementById('command-palette-input');
+        paletteInput?.addEventListener('input', () => this.renderCommandPaletteList(paletteInput.value));
+        paletteInput?.addEventListener('keydown', (e) => this.handleCommandPaletteKeydown(e));
+        document.getElementById('command-palette')?.addEventListener('click', (e) => {
+            if (e.target?.id === 'command-palette') this.closeCommandPalette();
+        });
+        this.updateQuickFilterUI();
+        this.updateAutoRefreshUI();
+        this.updateNotificationMuteUI();
+        this.initKeyboardShortcuts();
         
         // Case detail actions
         document.getElementById('regenerate-summary-btn')?.addEventListener('click', () => this.regenerateSummary());
@@ -468,18 +516,33 @@ class AdminPortal {
     switchView(view) {
         this.currentView = view;
         document.querySelectorAll('.view-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.view === view);
+            const active = tab.dataset.view === view;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
         });
-        
-        document.getElementById('cases-section').style.display = view === 'cases' ? '' : 'none';
-        document.getElementById('reports-section').style.display = view === 'reports' ? '' : 'none';
-        document.getElementById('workload-section').style.display = view === 'workload' ? '' : 'none';
-        document.getElementById('dashboard-view').style.display = view === 'dashboard' ? '' : 'none';
-        document.getElementById('map-view').style.display = view === 'map' ? '' : 'none';
+
+        const isCaseView = ['cases', 'pinned', 'watchlist'].includes(view);
+        const casesSection = document.getElementById('cases-section');
+        const reportsSection = document.getElementById('reports-section');
+        const workloadSection = document.getElementById('workload-section');
+        const dashboardView = document.getElementById('dashboard-view');
+        const mapView = document.getElementById('map-view');
+        const recentActionsSection = document.getElementById('recent-actions-section');
+        const recentViewedSection = document.getElementById('recent-viewed-section');
+        if (casesSection) casesSection.style.display = isCaseView ? '' : 'none';
+        if (reportsSection) reportsSection.style.display = view === 'reports' ? '' : 'none';
+        if (workloadSection) workloadSection.style.display = view === 'workload' ? '' : 'none';
+        if (dashboardView) dashboardView.style.display = view === 'dashboard' ? '' : 'none';
+        if (mapView) mapView.style.display = view === 'map' ? '' : 'none';
+        if (recentActionsSection) recentActionsSection.style.display = isCaseView ? '' : 'none';
+        if (recentViewedSection) recentViewedSection.style.display = isCaseView ? '' : 'none';
         const settingsEl = document.getElementById('settings-view');
         if (settingsEl) settingsEl.style.display = view === 'settings' ? '' : 'none';
-        
-        if (view === 'reports') {
+
+        if (isCaseView) {
+            this.filterCases();
+            this.renderRecentViewedWidget();
+        } else if (view === 'reports') {
             this.renderReports();
         } else if (view === 'workload') {
             this.loadWorkload();
@@ -494,6 +557,7 @@ class AdminPortal {
     
     switchCasesViewMode(mode) {
         const casesList = document.getElementById('cases-list');
+        if (!casesList) return;
         document.querySelectorAll('.view-mode-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mode === mode);
         });
@@ -546,13 +610,17 @@ class AdminPortal {
         }
     }
     
-    async loadCases() {
+    async loadCases(options = {}) {
+        const { silent = false } = options;
         const container = document.getElementById('cases-list');
         const spinner = this._showLoading(container);
+        this.hideErrorBanner();
         try {
-            const [casesResponse, reportsResponse] = await Promise.all([
+            const [casesResponse, reportsResponse, pinnedResponse, watchlistResponse] = await Promise.all([
                 this.fetchWithTimeout('/api/cases'),
-                this.fetchWithTimeout('/api/sessions')
+                this.fetchWithTimeout('/api/sessions'),
+                this.fetchWithTimeout('/api/cases/pinned').catch(() => null),
+                this.fetchWithTimeout('/api/cases/watchlist').catch(() => null)
             ]);
             
             if (!casesResponse.ok) {
@@ -561,6 +629,21 @@ class AdminPortal {
             
             const casesData = await casesResponse.json();
             this.cases = casesData.cases || [];
+
+            if (pinnedResponse?.ok) {
+                const pinnedData = await pinnedResponse.json().catch(() => ({}));
+                this.pinnedCaseIds = new Set((pinnedData.cases || []).map(c => c.id).filter(Boolean));
+            } else {
+                this.pinnedCaseIds = new Set(this.cases.filter(c => c?.metadata?.pinned).map(c => c.id));
+            }
+
+            if (watchlistResponse?.ok) {
+                const watchData = await watchlistResponse.json().catch(() => ({}));
+                this.watchlistCaseIds = new Set((watchData.cases || []).map(c => c.id).filter(Boolean));
+            } else {
+                this.watchlistCaseIds = new Set(this.cases.filter(c => c?.metadata?.watchlisted).map(c => c.id));
+            }
+            this.applyCaseFlagMetadata();
             
             if (reportsResponse.ok) {
                 const reportsData = await reportsResponse.json();
@@ -569,16 +652,24 @@ class AdminPortal {
             
             this.updateStats();
             this.filterCases();
+            this.updateSidePanelCounts();
+            this.renderRecentViewedWidget();
             
             if (this.currentView === 'reports') {
                 this.renderReports();
             }
             
-            this.showToast('Data loaded successfully', 'success');
+            this.renderRecentActions();
+            if (!silent) {
+                this.showToast('Data loaded successfully', 'success');
+            }
         } catch (error) {
             console.error('Error loading cases:', error);
-            this.showToast('Failed to load cases: ' + error.message, 'error');
-            this.renderEmptyState();
+            this.showErrorBanner('Failed to load data: ' + error.message);
+            if (!silent) {
+                this.showToast('Failed to load cases: ' + error.message, 'error');
+            }
+            this.renderEmptyState('error');
         } finally {
             this._hideLoading(spinner);
         }
@@ -603,13 +694,14 @@ class AdminPortal {
         document.getElementById('total-scenes').textContent = totalScenes;
         
         this.updateNotifications();
+        this.renderRecentActions();
     }
     
     filterCases() {
-        const searchTerm = document.getElementById('case-search').value.toLowerCase();
-        const typeFilter = document.getElementById('filter-type').value;
-        const statusFilter = document.getElementById('filter-status').value;
-        const sortBy = document.getElementById('sort-by').value;
+        const searchTerm = (document.getElementById('case-search')?.value || '').toLowerCase();
+        const typeFilter = (document.getElementById('filter-type')?.value || '').toLowerCase();
+        const statusFilter = document.getElementById('filter-status')?.value || '';
+        const sortBy = document.getElementById('sort-by')?.value || 'date-desc';
         
         // Filter cases
         this.filteredCases = this.cases.filter(c => {
@@ -619,10 +711,11 @@ class AdminPortal {
                 (c.location || '').toLowerCase().includes(searchTerm) ||
                 (c.summary || '').toLowerCase().includes(searchTerm);
             
-            const matchesType = !typeFilter || (c.case_type || c.status || '') === typeFilter;
-            const matchesStatus = !statusFilter || (c.status || 'active') === statusFilter;
+            const caseType = (c.case_type || c.metadata?.incident_type || this.guessIncidentType(c) || '').toLowerCase();
+            const matchesType = !typeFilter || caseType === typeFilter;
+            const matchesStatus = !statusFilter || this.normalizeStatus(c.status || 'active') === this.normalizeStatus(statusFilter);
             
-            return matchesSearch && matchesType && matchesStatus;
+            return matchesSearch && matchesType && matchesStatus && this.caseMatchesQuickFilter(c) && this.caseMatchesViewFilter(c);
         });
         
         // Filter reports
@@ -645,10 +738,8 @@ class AdminPortal {
                     return new Date(a.created_at || 0) - new Date(b.created_at || 0);
                 case 'priority-desc':
                     return (b.priority_score || 0) - (a.priority_score || 0);
-                case 'priority-asc':
-                    return (a.priority_score || 0) - (b.priority_score || 0);
+                case 'reports-desc':
                 case 'witnesses-desc':
-                    return (b.report_count || 0) - (a.report_count || 0);
                 case 'scenes-desc':
                     return (b.report_count || 0) - (a.report_count || 0);
                 default:
@@ -657,27 +748,404 @@ class AdminPortal {
         });
         
         this.renderCases();
+        this.syncSelectionUI({ pruneMissing: true });
         
         // Update subtitles
-        document.getElementById('cases-count-subtitle').textContent = 
-            `— ${this.filteredCases.length} case${this.filteredCases.length !== 1 ? 's' : ''}`;
-        document.getElementById('reports-count-subtitle').textContent = 
-            `— ${this.filteredReports.length} report${this.filteredReports.length !== 1 ? 's' : ''}`;
+        const caseSubtitle = document.getElementById('cases-count-subtitle');
+        const reportSubtitle = document.getElementById('reports-count-subtitle');
+        if (caseSubtitle) {
+            caseSubtitle.textContent = `— ${this.filteredCases.length} case${this.filteredCases.length !== 1 ? 's' : ''}`;
+        }
+        if (reportSubtitle) {
+            reportSubtitle.textContent = `— ${this.filteredReports.length} report${this.filteredReports.length !== 1 ? 's' : ''}`;
+        }
     }
     
     clearFilters() {
-        document.getElementById('case-search').value = '';
-        document.getElementById('filter-type').value = '';
-        document.getElementById('filter-status').value = '';
-        document.getElementById('sort-by').value = 'date-desc';
+        const caseSearch = document.getElementById('case-search');
+        const filterType = document.getElementById('filter-type');
+        const filterStatus = document.getElementById('filter-status');
+        const sortBy = document.getElementById('sort-by');
+        const advStatus = document.getElementById('adv-filter-status');
+        const advType = document.getElementById('adv-filter-type');
+        const dateFrom = document.getElementById('filter-date-from');
+        const dateTo = document.getElementById('filter-date-to');
+        const source = document.getElementById('filter-source');
+        const searchQuery = document.getElementById('search-query');
+        if (caseSearch) caseSearch.value = '';
+        if (filterType) filterType.value = '';
+        if (filterStatus) filterStatus.value = '';
+        if (sortBy) sortBy.value = 'date-desc';
+        if (advStatus) advStatus.value = '';
+        if (advType) advType.value = '';
+        if (dateFrom) dateFrom.value = '';
+        if (dateTo) dateTo.value = '';
+        if (source) source.value = '';
+        if (searchQuery) searchQuery.value = '';
+        this.quickFilter = '';
+        this.updateQuickFilterUI();
         this.filterCases();
+    }
+
+    setQuickFilter(filter) {
+        this.quickFilter = filter || '';
+        this.updateQuickFilterUI();
+        this.filterCases();
+    }
+
+    updateQuickFilterUI() {
+        document.querySelectorAll('.quick-filter-chip').forEach(chip => {
+            chip.classList.toggle('active', (chip.dataset.quickFilter || '') === this.quickFilter);
+        });
+    }
+
+    loadFilterPresetsFromStorage() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem('adminFilterPresets') || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    saveFilterPresetsToStorage() {
+        localStorage.setItem('adminFilterPresets', JSON.stringify(this.filterPresets || {}));
+    }
+
+    renderFilterPresetOptions() {
+        const select = document.getElementById('filter-preset-select');
+        if (!select) return;
+        const current = select.value;
+        const options = Object.keys(this.filterPresets || {}).sort((a, b) => a.localeCompare(b));
+        select.innerHTML = '<option value="">Saved presets…</option>';
+        options.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            select.appendChild(option);
+        });
+        if (current && options.includes(current)) select.value = current;
+    }
+
+    getCurrentFilterState() {
+        return {
+            search: document.getElementById('case-search')?.value || '',
+            type: document.getElementById('filter-type')?.value || '',
+            status: document.getElementById('filter-status')?.value || '',
+            sort: document.getElementById('sort-by')?.value || 'date-desc',
+            quick: this.quickFilter || '',
+            advStatus: document.getElementById('adv-filter-status')?.value || '',
+            advType: document.getElementById('adv-filter-type')?.value || '',
+            dateFrom: document.getElementById('filter-date-from')?.value || '',
+            dateTo: document.getElementById('filter-date-to')?.value || '',
+            source: document.getElementById('filter-source')?.value || '',
+            query: document.getElementById('search-query')?.value || '',
+            view: this.currentView || 'cases'
+        };
+    }
+
+    applyFilterState(state = {}) {
+        const setValue = (id, value) => {
+            const el = document.getElementById(id);
+            if (el && value !== undefined && value !== null) el.value = value;
+        };
+        setValue('case-search', state.search || '');
+        setValue('filter-type', state.type || '');
+        setValue('filter-status', state.status || '');
+        setValue('sort-by', state.sort || 'date-desc');
+        setValue('adv-filter-status', state.advStatus || '');
+        setValue('adv-filter-type', state.advType || '');
+        setValue('filter-date-from', state.dateFrom || '');
+        setValue('filter-date-to', state.dateTo || '');
+        setValue('filter-source', state.source || '');
+        setValue('search-query', state.query || '');
+        this.quickFilter = state.quick || '';
+        this.updateQuickFilterUI();
+        if (state.view) this.switchView(state.view);
+        this.filterCases();
+        if (this.currentView === 'reports') this.renderReports();
+    }
+
+    saveFilterPreset() {
+        const input = document.getElementById('filter-preset-name');
+        const fallbackName = input?.value?.trim();
+        const name = fallbackName || prompt('Preset name?');
+        if (!name) return;
+        this.filterPresets[name] = this.getCurrentFilterState();
+        this.saveFilterPresetsToStorage();
+        this.renderFilterPresetOptions();
+        const select = document.getElementById('filter-preset-select');
+        if (select) select.value = name;
+        if (input) input.value = '';
+        this.showToast(`Saved preset "${name}"`, 'success');
+    }
+
+    loadSelectedFilterPreset() {
+        const select = document.getElementById('filter-preset-select');
+        const name = select?.value;
+        if (!name || !this.filterPresets[name]) return;
+        this.applyFilterState(this.filterPresets[name]);
+        this.showToast(`Loaded preset "${name}"`, 'success');
+    }
+
+    deleteSelectedFilterPreset() {
+        const select = document.getElementById('filter-preset-select');
+        const name = select?.value;
+        if (!name || !this.filterPresets[name]) return;
+        delete this.filterPresets[name];
+        this.saveFilterPresetsToStorage();
+        this.renderFilterPresetOptions();
+        this.showToast(`Deleted preset "${name}"`, 'info');
+    }
+
+    exportFilterPresets() {
+        const blob = new Blob([JSON.stringify(this.filterPresets || {}, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `admin-filter-presets-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showToast('Presets exported', 'success');
+    }
+
+    async importFilterPresets(file) {
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            if (!parsed || typeof parsed !== 'object') throw new Error('Invalid JSON');
+            this.filterPresets = { ...this.filterPresets, ...parsed };
+            this.saveFilterPresetsToStorage();
+            this.renderFilterPresetOptions();
+            this.showToast('Presets imported', 'success');
+        } catch (error) {
+            this.showToast(`Preset import failed: ${error.message}`, 'error');
+        } finally {
+            const input = document.getElementById('filter-preset-import');
+            if (input) input.value = '';
+        }
+    }
+
+    normalizeStatus(status) {
+        return String(status || 'open').toLowerCase().replace(/\s+/g, '_');
+    }
+
+    isHighPriority(caseData) {
+        const label = (caseData.priority_label || '').toLowerCase();
+        const score = Number(caseData.priority_score || 0);
+        return label === 'critical' || label === 'high' || score >= 70;
+    }
+
+    hasSceneImage(caseData) {
+        return Boolean(
+            caseData.scene_image_url ||
+            caseData.scene_image ||
+            caseData.metadata?.scene_image_url ||
+            caseData.metadata?.has_scene ||
+            caseData.scene_count > 0
+        );
+    }
+
+    caseMatchesViewFilter(caseData) {
+        if (this.currentView === 'pinned') return this.isCasePinned(caseData);
+        if (this.currentView === 'watchlist') return this.isCaseWatchlisted(caseData);
+        return true;
+    }
+
+    getCurrentUserLabels() {
+        const storedUser = (() => {
+            try {
+                return JSON.parse(sessionStorage.getItem('admin_user') || '{}');
+            } catch (e) {
+                return {};
+            }
+        })();
+        return [
+            this.currentUser?.full_name,
+            this.currentUser?.display_name,
+            this.currentUser?.username,
+            storedUser?.full_name,
+            storedUser?.display_name,
+            storedUser?.username
+        ]
+            .filter(Boolean)
+            .map(v => String(v).trim().toLowerCase())
+            .filter(Boolean);
+    }
+
+    caseIsMine(caseData) {
+        const assignedTo = String(caseData?.metadata?.assigned_to || '').trim().toLowerCase();
+        if (!assignedTo) return false;
+        return this.getCurrentUserLabels().includes(assignedTo);
+    }
+
+    caseIsUnassigned(caseData) {
+        return !String(caseData?.metadata?.assigned_to || '').trim();
+    }
+
+    caseMatchesQuickFilter(caseData) {
+        if (!this.quickFilter) return true;
+        const status = this.normalizeStatus(caseData.status);
+        switch (this.quickFilter) {
+            case 'open':
+                return status === 'open' || status === 'active';
+            case 'under_review':
+                return status === 'under_review' || status === 'review';
+            case 'closed':
+                return status === 'closed' || status === 'complete';
+            case 'high_priority':
+                return this.isHighPriority(caseData);
+            case 'has_scene':
+                return this.hasSceneImage(caseData);
+            case 'due_soon':
+                return this.isCaseDueSoon(caseData);
+            case 'overdue':
+                return this.isCaseOverdue(caseData);
+            case 'mine':
+                return this.caseIsMine(caseData);
+            case 'unassigned':
+                return this.caseIsUnassigned(caseData);
+            default:
+                return true;
+        }
+    }
+
+    applyCaseFlagMetadata() {
+        this.cases = (this.cases || []).map(caseData => {
+            if (!caseData || !caseData.id) return caseData;
+            const metadata = { ...(caseData.metadata || {}) };
+            if (this.pinnedCaseIds.has(caseData.id)) metadata.pinned = true;
+            if (this.watchlistCaseIds.has(caseData.id)) metadata.watchlisted = true;
+            return { ...caseData, metadata };
+        });
+    }
+
+    isCasePinned(caseData) {
+        return Boolean(caseData?.metadata?.pinned || (caseData?.id && this.pinnedCaseIds.has(caseData.id)));
+    }
+
+    isCaseWatchlisted(caseData) {
+        return Boolean(caseData?.metadata?.watchlisted || (caseData?.id && this.watchlistCaseIds.has(caseData.id)));
+    }
+
+    parseDeadlineDate(value) {
+        if (!value) return null;
+        const parsed = new Date(value);
+        return Number.isFinite(parsed.getTime()) ? parsed : null;
+    }
+
+    getCaseDeadlines(caseData) {
+        const metadata = caseData?.metadata || {};
+        const deadlines = [];
+        const list = [];
+        if (Array.isArray(caseData?.deadlines)) list.push(...caseData.deadlines);
+        if (Array.isArray(metadata.deadlines)) list.push(...metadata.deadlines);
+        ['next_deadline', 'next_deadline_at', 'sla_due_at', 'due_at', 'deadline_at'].forEach(key => {
+            if (caseData?.[key]) list.push({ due_at: caseData[key], type: key });
+            if (metadata?.[key]) list.push({ due_at: metadata[key], type: key });
+        });
+        list.forEach(item => {
+            if (!item) return;
+            const completed = item.completed === true || item.is_completed === true || ['completed', 'done', 'closed', 'resolved'].includes(String(item.status || '').toLowerCase());
+            const dueRaw = item.date || item.due_at || item.due_date || item.deadline_at || item.sla_due_at;
+            const dueAt = this.parseDeadlineDate(dueRaw);
+            if (!dueAt || completed) return;
+            deadlines.push({
+                type: item.type || item.deadline_type || item.kind || 'deadline',
+                dueAt,
+                description: item.description || item.label || ''
+            });
+        });
+        return deadlines.sort((a, b) => a.dueAt - b.dueAt);
+    }
+
+    getNearestDeadline(caseData) {
+        return this.getCaseDeadlines(caseData)[0] || null;
+    }
+
+    isCaseOverdue(caseData) {
+        const nearest = this.getNearestDeadline(caseData);
+        return Boolean(nearest && nearest.dueAt.getTime() < Date.now());
+    }
+
+    isCaseDueSoon(caseData) {
+        const nearest = this.getNearestDeadline(caseData);
+        if (!nearest) return false;
+        const ms = nearest.dueAt.getTime() - Date.now();
+        return ms >= 0 && ms <= 48 * 60 * 60 * 1000;
+    }
+
+    formatDeadlineDistance(deadlineDate) {
+        const ms = deadlineDate.getTime() - Date.now();
+        const absMs = Math.abs(ms);
+        const totalHours = Math.round(absMs / 3600000);
+        if (totalHours < 1) return ms < 0 ? 'overdue' : '<1h';
+        if (totalHours < 24) return `${ms < 0 ? '-' : ''}${totalHours}h`;
+        const days = Math.round(totalHours / 24);
+        return `${ms < 0 ? '-' : ''}${days}d`;
+    }
+
+    renderDeadlineBadge(caseData, compact = false) {
+        const nearest = this.getNearestDeadline(caseData);
+        if (!nearest) return '';
+        const overdue = nearest.dueAt.getTime() < Date.now();
+        const label = overdue ? 'Overdue' : `SLA ${this.formatDeadlineDistance(nearest.dueAt)}`;
+        const cls = overdue ? 'case-overdue-badge' : 'case-sla-badge';
+        return `<span class="case-flag-badge ${cls} ${compact ? 'compact' : ''}" title="${overdue ? 'Deadline overdue' : `Nearest due ${this.formatDateTime(nearest.dueAt)}`}">${label}</span>`;
+    }
+
+    renderPinWatchBadges(caseData, compact = false) {
+        const badges = [];
+        if (this.isCasePinned(caseData)) {
+            badges.push(`<span class="case-flag-badge case-pinned-badge ${compact ? 'compact' : ''}" title="Pinned case">📌 Pinned</span>`);
+        }
+        if (this.isCaseWatchlisted(caseData)) {
+            badges.push(`<span class="case-flag-badge case-watch-badge ${compact ? 'compact' : ''}" title="Watchlist case">👁 Watch</span>`);
+        }
+        const deadlineBadge = this.renderDeadlineBadge(caseData, compact);
+        if (deadlineBadge) badges.push(deadlineBadge);
+        const viewedBadge = this.renderLastViewedBadge(caseData?.id, compact);
+        if (viewedBadge) badges.push(viewedBadge);
+        return badges.join('');
+    }
+
+    renderSceneAvailabilityBadge(caseData, compact = false) {
+        const hasScene = this.hasSceneImage(caseData);
+        return `<span class="scene-availability-badge ${hasScene ? 'has-scene' : 'no-scene'} ${compact ? 'compact' : ''}" title="${hasScene ? 'Scene image available' : 'No scene image'}">${hasScene ? '🎬 Scene' : '🚫 Scene'}</span>`;
+    }
+
+    getEnhancedEmptyStateMarkup(icon, title, message, actions = []) {
+        const actionHtml = actions.length
+            ? `<div class="empty-state-actions">${actions.map(action => `<button class="btn btn-secondary btn-sm" onclick="${action.onclick}">${action.label}</button>`).join('')}</div>`
+            : '';
+        return `
+            <div class="empty-state empty-state-enhanced">
+                <div class="empty-state-icon">${icon}</div>
+                <h3>${title}</h3>
+                <p>${message}</p>
+                ${actionHtml}
+            </div>
+        `;
     }
     
     renderCases() {
         const container = document.getElementById('cases-list');
+        if (!container) return;
         
         if (this.filteredCases.length === 0) {
-            container.innerHTML = '<div class="empty-state">No cases found matching your criteria</div>';
+            const hasData = this.cases.length > 0;
+            container.innerHTML = this.getEnhancedEmptyStateMarkup(
+                '📁',
+                hasData ? 'No matching cases' : 'No cases yet',
+                hasData ? 'Try adjusting filters or quick chips.' : 'Cases will appear here once reports are grouped into cases.',
+                hasData
+                    ? [
+                        { label: 'Clear Filters', onclick: 'window.adminPortal?.clearFilters()' },
+                        { label: 'Refresh', onclick: 'window.adminPortal?.loadCases()' }
+                    ]
+                    : [{ label: 'Refresh', onclick: 'window.adminPortal?.loadCases()' }]
+            );
             return;
         }
         
@@ -688,7 +1156,7 @@ class AdminPortal {
                 row.addEventListener('click', () => this.showCaseDetail(row.dataset.caseId));
             });
         } else {
-            container.innerHTML = this.filteredCases.map(c => this.renderCaseCard(c)).join('');
+            container.innerHTML = this.filteredCases.map((c, index) => this.renderCaseCard(c, index)).join('');
             container.querySelectorAll('.case-card').forEach((card) => {
                 card.addEventListener('click', () => {
                     const caseId = card.dataset.caseId;
@@ -711,11 +1179,11 @@ class AdminPortal {
                 <div class="ct-col ct-col-sources">Sources</div>
                 <div class="ct-col ct-col-date">Created</div>
             </div>`;
-        const rows = this.filteredCases.map(c => this.renderCasesTableRow(c)).join('');
+        const rows = this.filteredCases.map((c, index) => this.renderCasesTableRow(c, index)).join('');
         return header + rows;
     }
     
-    renderCasesTableRow(caseData) {
+    renderCasesTableRow(caseData, index = 0) {
         const status = caseData.status || 'active';
         const statusClass = `status-${status}`;
         const reportCount = caseData.report_count || 0;
@@ -725,16 +1193,19 @@ class AdminPortal {
         const title = this._sanitize(caseData.title || 'Untitled Case');
         const truncTitle = title.length > 50 ? title.substring(0, 50) + '…' : title;
         const daysOld = caseData.created_at ? Math.floor((Date.now() - new Date(caseData.created_at).getTime()) / 86400000) : '—';
+        const sceneBadge = this.renderSceneAvailabilityBadge(caseData, true);
+        const stateBadges = this.renderPinWatchBadges(caseData, true);
         
         return `
             <div class="cases-table-row" data-case-id="${caseData.id}">
                 <div class="ct-col ct-col-check">
                     <input type="checkbox" class="case-checkbox" data-case-id="${caseData.id}"
                            ${this.selectedCases.has(caseData.id) ? 'checked' : ''}
-                           onclick="event.stopPropagation(); window.adminPortal?.updateBulkSelection()">
+                           data-case-index="${index}"
+                           onclick="event.stopPropagation(); window.adminPortal?.handleCaseCheckboxClick(event, '${caseData.id}', ${index})">
                 </div>
                 <div class="ct-col ct-col-num">${caseData.case_number || caseData.id}</div>
-                <div class="ct-col ct-col-title" title="${title}">${truncTitle}</div>
+                <div class="ct-col ct-col-title" title="${title}">${truncTitle} ${sceneBadge} ${stateBadges}</div>
                 <div class="ct-col ct-col-reports">${reportCount}</div>
                 <div class="ct-col ct-col-age">${daysOld}d</div>
                 <div class="ct-col ct-col-status"><span class="case-status-badge ${statusClass}">${status}</span></div>
@@ -744,7 +1215,7 @@ class AdminPortal {
             </div>`;
     }
     
-    renderCaseCard(caseData) {
+    renderCaseCard(caseData, index = 0) {
         const status = caseData.status || 'active';
         const statusClass = `status-${status}`;
         const reportCount = caseData.report_count || 0;
@@ -772,12 +1243,27 @@ class AdminPortal {
         const priorityLabel = caseData.priority_label || 'normal';
         const priorityScore = caseData.priority_score != null ? Math.round(caseData.priority_score) : null;
         const priorityBadge = this.renderPriorityBadge(priorityLabel, priorityScore);
+        const sceneBadge = this.renderSceneAvailabilityBadge(caseData);
+        const stateBadges = this.renderPinWatchBadges(caseData);
+        const isPinned = this.isCasePinned(caseData);
+        const isWatchlisted = this.isCaseWatchlisted(caseData);
+        const nextStatus = this.getNextStatusValue(status);
+        const quickActions = `
+            <div class="case-card-quick-actions">
+                <button class="case-quick-action-btn" title="Cycle status to ${nextStatus}" onclick="event.stopPropagation(); window.adminPortal?.cycleCaseStatus('${caseData.id}')">⟳ Status</button>
+                <button class="case-quick-action-btn" title="Copy case ID" onclick="event.stopPropagation(); window.adminPortal?.copyCaseId('${caseData.id}')">🆔</button>
+                <button class="case-quick-action-btn" title="Copy case link" onclick="event.stopPropagation(); window.adminPortal?.copyCaseLink('${caseData.id}')">🔗</button>
+                <button class="case-quick-action-btn ${isPinned ? 'active' : ''}" title="${isPinned ? 'Unpin case' : 'Pin case'}" onclick="event.stopPropagation(); window.adminPortal?.toggleCasePin('${caseData.id}')">📌</button>
+                <button class="case-quick-action-btn ${isWatchlisted ? 'active' : ''}" title="${isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}" onclick="event.stopPropagation(); window.adminPortal?.toggleCaseWatchlist('${caseData.id}')">👁</button>
+            </div>
+        `;
         
         return `
             <div class="case-card case-card-enhanced" data-case-id="${caseData.id}">
                 <input type="checkbox" class="case-checkbox" data-case-id="${caseData.id}" 
                        ${this.selectedCases.has(caseData.id) ? 'checked' : ''}
-                       onclick="event.stopPropagation(); window.adminPortal?.updateBulkSelection()">
+                       data-case-index="${index}"
+                       onclick="event.stopPropagation(); window.adminPortal?.handleCaseCheckboxClick(event, '${caseData.id}', ${index})">
                 <div class="case-icon">📁</div>
                 <div class="case-info">
                     <div class="case-header">
@@ -785,14 +1271,17 @@ class AdminPortal {
                             <h3 class="case-title">${this._sanitize(caseData.title || 'Untitled Case')}</h3>
                             <div class="case-id">${caseData.case_number || caseData.id} <span class="compact-date">· ${this.formatDateShort(caseData.created_at)}</span></div>
                         </div>
-                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <div class="case-header-right">
                             ${priorityBadge}
                             <span class="incident-type-badge">${incidentIcon} ${incidentType}</span>
+                            ${sceneBadge}
+                            ${stateBadges}
                             <div class="case-status-badge ${statusClass}">
                                 ${status}
                             </div>
                         </div>
                     </div>
+                    ${quickActions}
                     <div class="case-meta">
                         <div class="case-meta-item">
                             <span>📄</span>
@@ -904,7 +1393,18 @@ class AdminPortal {
         const container = document.getElementById('reports-list');
         
         if (this.filteredReports.length === 0) {
-            container.innerHTML = '<div class="empty-state">No reports found</div>';
+            const hasData = this.reports.length > 0;
+            container.innerHTML = this.getEnhancedEmptyStateMarkup(
+                '📝',
+                hasData ? 'No matching reports' : 'No reports yet',
+                hasData ? 'Try a broader search term or source filter.' : 'Reports will appear here after witness submissions.',
+                hasData
+                    ? [
+                        { label: 'Clear Filters', onclick: 'window.adminPortal?.clearFilters()' },
+                        { label: 'Refresh', onclick: 'window.adminPortal?.loadCases()' }
+                    ]
+                    : [{ label: 'Refresh', onclick: 'window.adminPortal?.loadCases()' }]
+            );
             return;
         }
         
@@ -983,6 +1483,14 @@ class AdminPortal {
             
             const caseData = await response.json();
             this.currentCase = caseData;
+            if (!this.currentCase.metadata || typeof this.currentCase.metadata !== 'object') {
+                this.currentCase.metadata = {};
+            }
+            this.currentCase.metadata.pinned = this.isCasePinned(caseData);
+            this.currentCase.metadata.watchlisted = this.isCaseWatchlisted(caseData);
+            this.recordCaseViewed(this.currentCase);
+            this.renderRecentViewedWidget();
+            this.filterCases();
             
             // Update modal title
             document.getElementById('case-detail-title').textContent = 
@@ -1659,18 +2167,318 @@ class AdminPortal {
         return container;
     }
     
-    renderEmptyState() {
-        document.getElementById('cases-list').innerHTML = `
-            <div class="empty-state">
-                <p>No cases found. Click "Seed Demo Data" to populate with sample data, or wait for reports to be submitted.</p>
-            </div>
-        `;
+    renderEmptyState(type = 'cases') {
+        const casesList = document.getElementById('cases-list');
+        const reportsList = document.getElementById('reports-list');
+        if (casesList) {
+            casesList.innerHTML = this.getEnhancedEmptyStateMarkup(
+                type === 'error' ? '⚠️' : '📁',
+                type === 'error' ? 'Unable to load cases' : 'No cases yet',
+                type === 'error'
+                    ? 'We could not load case data. Retry when your connection is stable.'
+                    : 'No cases found. Click "Seed Demo Data" or wait for reports to be submitted.',
+                [{ label: 'Retry', onclick: 'window.adminPortal?.loadCases()' }]
+            );
+        }
+        if (reportsList && type === 'error') {
+            reportsList.innerHTML = this.getEnhancedEmptyStateMarkup(
+                '⚠️',
+                'Unable to load reports',
+                'Reports could not be loaded right now.',
+                [{ label: 'Retry', onclick: 'window.adminPortal?.loadCases()' }]
+            );
+        }
     }
     
+    showErrorBanner(message) {
+        const banner = document.getElementById('admin-error-banner');
+        const text = document.getElementById('admin-error-text');
+        if (!banner || !text) return;
+        text.textContent = message;
+        banner.style.display = 'flex';
+    }
+
+    hideErrorBanner() {
+        const banner = document.getElementById('admin-error-banner');
+        if (banner) banner.style.display = 'none';
+    }
+
+    getStoredAutoRefreshInterval() {
+        const stored = Number(localStorage.getItem('adminAutoRefreshInterval'));
+        if ([0, 30, 60, 120].includes(stored)) return stored;
+        const legacyEnabled = localStorage.getItem('adminAutoRefreshEnabled');
+        if (legacyEnabled === 'false') return 0;
+        return 30;
+    }
+
+    setAutoRefreshInterval(value, options = {}) {
+        const { notify = true } = options;
+        const parsed = Number(value);
+        this.autoRefreshInterval = [0, 30, 60, 120].includes(parsed) ? parsed : 30;
+        this.autoRefreshEnabled = this.autoRefreshInterval > 0;
+        localStorage.setItem('adminAutoRefreshInterval', String(this.autoRefreshInterval));
+        localStorage.setItem('adminAutoRefreshEnabled', String(this.autoRefreshEnabled));
+        this.startAutoRefresh();
+        if (notify) {
+            const label = this.autoRefreshInterval > 0 ? `${this.autoRefreshInterval}s` : 'Off';
+            this.showToast(`Auto-refresh set to ${label}`, 'info');
+        }
+    }
+
     startAutoRefresh() {
-        setInterval(() => {
-            this.loadCases();
-        }, 30000);
+        if (this.autoRefreshTimer) {
+            clearInterval(this.autoRefreshTimer);
+            this.autoRefreshTimer = null;
+        }
+        if (this.autoRefreshInterval > 0) {
+            this.autoRefreshTimer = setInterval(() => {
+                this.loadCases({ silent: true });
+            }, this.autoRefreshInterval * 1000);
+        }
+        this.updateAutoRefreshUI();
+    }
+
+    toggleAutoRefresh() {
+        const next = this.autoRefreshInterval > 0 ? 0 : 30;
+        this.setAutoRefreshInterval(next);
+    }
+
+    updateAutoRefreshUI() {
+        const select = document.getElementById('auto-refresh-interval');
+        if (!select) return;
+        select.value = String(this.autoRefreshInterval);
+        select.classList.toggle('active', this.autoRefreshInterval > 0);
+    }
+
+    toggleFiltersPanel() {
+        this.filtersPanelCollapsed = !this.filtersPanelCollapsed;
+        localStorage.setItem('adminFiltersPanelCollapsed', String(this.filtersPanelCollapsed));
+        this.updateFiltersPanelUI();
+    }
+
+    updateFiltersPanelUI() {
+        const panel = document.getElementById('filters-panel');
+        const toggleBtn = document.getElementById('filters-panel-toggle');
+        if (panel) panel.classList.toggle('collapsed', this.filtersPanelCollapsed);
+        if (toggleBtn) {
+            toggleBtn.textContent = this.filtersPanelCollapsed ? '▸ Filters' : '▾ Filters';
+            toggleBtn.setAttribute('aria-expanded', this.filtersPanelCollapsed ? 'false' : 'true');
+        }
+    }
+
+    toggleNotificationMute() {
+        this.notificationsMuted = !this.notificationsMuted;
+        localStorage.setItem('adminNotificationsMuted', String(this.notificationsMuted));
+        this.updateNotificationMuteUI();
+        this._updateNotifBadge();
+        this.updateNotifications();
+        this.showToast(this.notificationsMuted ? 'Notifications muted' : 'Notifications unmuted', 'info');
+    }
+
+    updateNotificationMuteUI() {
+        const muteBtn = document.getElementById('notification-mute-toggle');
+        if (!muteBtn) return;
+        muteBtn.textContent = this.notificationsMuted ? '🔕 Alerts Muted' : '🔔 Alerts On';
+        muteBtn.classList.toggle('active', this.notificationsMuted);
+    }
+
+    isCaseModalOpen() {
+        return Boolean(document.getElementById('case-detail-modal')?.classList.contains('active'));
+    }
+
+    initKeyboardShortcuts() {
+        if (this._shortcutsBound) return;
+        this._shortcutsBound = true;
+        document.addEventListener('keydown', (e) => {
+            const target = e.target;
+            const typing = target && (
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' ||
+                target.isContentEditable
+            );
+
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                this.openCommandPalette();
+                return;
+            }
+
+            if (this.commandPaletteOpen && e.key === 'Escape') {
+                e.preventDefault();
+                this.closeCommandPalette();
+                return;
+            }
+            if (this.commandPaletteOpen) return;
+
+            if (!typing && e.key === '?') {
+                e.preventDefault();
+                this.openShortcutsHelp();
+                return;
+            }
+
+            if (!typing && e.key === '/') {
+                e.preventDefault();
+                document.getElementById('case-search')?.focus();
+                return;
+            }
+
+            if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                this.loadCases();
+                return;
+            }
+
+            if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                this.autoAssignOrphans();
+                return;
+            }
+
+            if (!typing && this.isCaseModalOpen() && this.currentCase?.id && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                if (e.key.toLowerCase() === 'p') {
+                    e.preventDefault();
+                    this.toggleCasePin(this.currentCase.id);
+                    return;
+                }
+                if (e.key.toLowerCase() === 'w') {
+                    e.preventDefault();
+                    this.toggleCaseWatchlist(this.currentCase.id);
+                }
+            }
+        });
+    }
+
+    openShortcutsHelp() {
+        this.showModal('shortcuts-help-modal');
+    }
+
+    openCommandPalette() {
+        const palette = document.getElementById('command-palette');
+        const input = document.getElementById('command-palette-input');
+        if (!palette || !input) return;
+        this.commandPaletteOpen = true;
+        palette.style.display = 'flex';
+        palette.setAttribute('aria-hidden', 'false');
+        input.value = '';
+        this.commandPaletteCursor = 0;
+        this.renderCommandPaletteList('');
+        setTimeout(() => input.focus(), 0);
+    }
+
+    closeCommandPalette() {
+        const palette = document.getElementById('command-palette');
+        if (!palette) return;
+        this.commandPaletteOpen = false;
+        palette.style.display = 'none';
+        palette.setAttribute('aria-hidden', 'true');
+    }
+
+    getCommandPaletteActions() {
+        return [
+            {
+                id: 'refresh-data',
+                label: 'Refresh data',
+                keywords: 'reload refresh cases',
+                run: async () => this.loadCases()
+            },
+            {
+                id: 'auto-assign-orphans',
+                label: 'Auto-assign orphans',
+                keywords: 'auto assign orphan reports',
+                run: async () => this.autoAssignOrphans()
+            },
+            {
+                id: 'export-selected-csv',
+                label: 'Export selected CSV',
+                keywords: 'export csv selected',
+                run: async () => this.bulkExport()
+            },
+            {
+                id: 'switch-pinned-view',
+                label: 'Switch to pinned view',
+                keywords: 'pinned tab',
+                run: async () => this.switchView('pinned')
+            },
+            {
+                id: 'switch-watchlist-view',
+                label: 'Switch to watchlist view',
+                keywords: 'watchlist tab',
+                run: async () => this.switchView('watchlist')
+            },
+            {
+                id: 'open-shortcuts-help',
+                label: 'Open shortcuts help',
+                keywords: 'keyboard help',
+                run: async () => this.openShortcutsHelp()
+            }
+        ];
+    }
+
+    renderCommandPaletteList(query = '', options = {}) {
+        const { preserveCursor = false } = options;
+        const list = document.getElementById('command-palette-list');
+        if (!list) return;
+        const normalized = String(query || '').trim().toLowerCase();
+        const actions = this.getCommandPaletteActions().filter(action => {
+            if (!normalized) return true;
+            const haystack = `${action.label} ${action.keywords || ''}`.toLowerCase();
+            return haystack.includes(normalized);
+        });
+        this.commandPaletteItems = actions;
+        if (!preserveCursor) this.commandPaletteCursor = 0;
+        if (this.commandPaletteCursor >= actions.length) this.commandPaletteCursor = Math.max(actions.length - 1, 0);
+        if (!actions.length) {
+            list.innerHTML = '<div class="command-empty-state">No matching command</div>';
+            return;
+        }
+        list.innerHTML = actions.map((action, index) => `
+            <button class="command-item ${index === this.commandPaletteCursor ? 'active' : ''}" onclick="window.adminPortal?.executeCommandPaletteAction(${index})">
+                ${this._sanitize(action.label)}
+            </button>
+        `).join('');
+    }
+
+    handleCommandPaletteKeydown(e) {
+        if (!this.commandPaletteOpen) return;
+        const input = document.getElementById('command-palette-input');
+        if (!input) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (this.commandPaletteItems.length) {
+                this.commandPaletteCursor = (this.commandPaletteCursor + 1) % this.commandPaletteItems.length;
+                this.renderCommandPaletteList(input.value, { preserveCursor: true });
+            }
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (this.commandPaletteItems.length) {
+                this.commandPaletteCursor = (this.commandPaletteCursor - 1 + this.commandPaletteItems.length) % this.commandPaletteItems.length;
+                this.renderCommandPaletteList(input.value, { preserveCursor: true });
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.executeCommandPaletteAction(this.commandPaletteCursor);
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            this.closeCommandPalette();
+        }
+    }
+
+    async executeCommandPaletteAction(index) {
+        const action = this.commandPaletteItems?.[index];
+        if (!action) return;
+        this.closeCommandPalette();
+        try {
+            await action.run();
+        } catch (error) {
+            this.showToast(`Command failed: ${error.message}`, 'error');
+        }
     }
     
     // ======================================
@@ -1786,12 +2594,137 @@ class AdminPortal {
         const recentCount = this.cases.filter(c => new Date(c.updated_at) > oneHourAgo).length;
         const countEl = document.getElementById('notification-count');
         if (!countEl) return;
+        if (this.notificationsMuted) {
+            countEl.style.display = 'none';
+            return;
+        }
         if (recentCount > 0) {
             countEl.textContent = recentCount;
             countEl.style.display = '';
         } else {
             countEl.style.display = 'none';
         }
+    }
+
+    renderRecentActions() {
+        const container = document.getElementById('recent-actions-list');
+        if (!container) return;
+        const toMs = (value) => {
+            const ms = new Date(value || 0).getTime();
+            return Number.isFinite(ms) ? ms : 0;
+        };
+
+        const notificationActions = this._notifications.slice(0, 6).map(n => ({
+            icon: n.type === 'error' ? '⚠️' : n.type === 'success' ? '✅' : '🔔',
+            text: `${n.title}: ${n.message}`,
+            time: n.timestamp || n.time
+        }));
+        const auditActions = (this.recentAuditItems || []).slice(0, 6).map(item => ({
+            icon: item.icon || '📋',
+            text: item.text,
+            time: item.time
+        }));
+        const caseActions = [...this.cases]
+            .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0))
+            .slice(0, 6)
+            .map(c => ({
+                icon: '📁',
+                text: `Case ${c.case_number || c.id} updated`,
+                time: c.updated_at || c.created_at
+            }));
+        const reportActions = [...this.reports]
+            .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+            .slice(0, 6)
+            .map(r => ({
+                icon: this.getSourceIcon(r.source_type),
+                text: `Report ${r.report_number || r.id} ${r.case_id ? 'assigned' : 'unassigned'}`,
+                time: r.created_at
+            }));
+
+        const actions = [...notificationActions, ...auditActions, ...caseActions, ...reportActions]
+            .filter(a => a.time)
+            .sort((a, b) => toMs(b.time) - toMs(a.time))
+            .slice(0, 10);
+
+        if (actions.length === 0) {
+            container.innerHTML = '<div class="empty-state">No recent actions yet</div>';
+            return;
+        }
+
+        container.innerHTML = actions.map(action => `
+            <div class="recent-action-item">
+                <span class="recent-action-icon">${action.icon}</span>
+                <div class="recent-action-content">
+                    <div class="recent-action-text">${this._sanitize(action.text)}</div>
+                    <div class="recent-action-time">${this.formatDateTime(action.time)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    loadRecentViewedCases() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem('adminRecentViewedCases') || '[]');
+            return Array.isArray(parsed) ? parsed.slice(0, 10) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    saveRecentViewedCases() {
+        localStorage.setItem('adminRecentViewedCases', JSON.stringify((this.recentViewedCases || []).slice(0, 10)));
+    }
+
+    recordCaseViewed(caseData) {
+        if (!caseData?.id) return;
+        const entry = {
+            id: caseData.id,
+            case_number: caseData.case_number || caseData.id,
+            title: caseData.title || 'Untitled Case',
+            viewed_at: new Date().toISOString()
+        };
+        const existing = (this.recentViewedCases || []).filter(item => item.id !== caseData.id);
+        this.recentViewedCases = [entry, ...existing].slice(0, 10);
+        this.saveRecentViewedCases();
+    }
+
+    getRecentViewedCaseEntry(caseId) {
+        if (!caseId) return null;
+        return (this.recentViewedCases || []).find(entry => entry.id === caseId) || null;
+    }
+
+    renderLastViewedBadge(caseId, compact = false) {
+        const entry = this.getRecentViewedCaseEntry(caseId);
+        if (!entry?.viewed_at) return '';
+        return `<span class="case-flag-badge case-last-viewed-badge ${compact ? 'compact' : ''}" title="Viewed ${this.formatDateTime(entry.viewed_at)}">Last viewed ${this.timeSince(entry.viewed_at)}</span>`;
+    }
+
+    renderRecentViewedWidget() {
+        const container = document.getElementById('recent-viewed-list');
+        if (!container) return;
+        const items = (this.recentViewedCases || []).slice(0, 10);
+        if (!items.length) {
+            container.innerHTML = '<div class="empty-state">No recently viewed cases</div>';
+            return;
+        }
+        container.innerHTML = items.map(item => `
+            <button class="recent-viewed-item" onclick="window.adminPortal?.openRecentViewedCase('${item.id}')">
+                <span class="recent-viewed-title">${this._sanitize(item.case_number)} · ${this._sanitize(item.title)}</span>
+                <span class="recent-viewed-time">${this.timeSince(item.viewed_at)}</span>
+            </button>
+        `).join('');
+    }
+
+    openRecentViewedCase(caseId) {
+        if (!caseId) return;
+        this.showCaseDetail(caseId);
+    }
+
+    updateSidePanelCounts() {
+        const pinnedCountEl = document.getElementById('side-pinned-count');
+        const watchCountEl = document.getElementById('side-watch-count');
+        if (pinnedCountEl) pinnedCountEl.textContent = String(this.pinnedCaseIds.size || 0);
+        if (watchCountEl) watchCountEl.textContent = String(this.watchlistCaseIds.size || 0);
     }
     
     renderAuditTrail(caseData) {
@@ -1839,6 +2772,8 @@ class AdminPortal {
         }
         
         items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+        this.recentAuditItems = items.slice(0, 8);
+        this.renderRecentActions();
         
         container.innerHTML = items.map(item => `
             <div class="audit-item">
@@ -1871,6 +2806,127 @@ class AdminPortal {
         if (hours < 24) return `${hours}h ago`;
         const days = Math.floor(hours / 24);
         return `${days}d ago`;
+    }
+
+    getNextStatusValue(status) {
+        const normalized = this.normalizeStatus(status);
+        if (normalized === 'open' || normalized === 'active') return 'under_review';
+        if (normalized === 'under_review' || normalized === 'review') return 'closed';
+        return 'open';
+    }
+
+    async cycleCaseStatus(caseId) {
+        const caseData = this.cases.find(c => c.id === caseId) || this.currentCase;
+        if (!caseData?.id) return;
+        const nextStatus = this.getNextStatusValue(caseData.status);
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${caseData.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: nextStatus })
+            });
+            if (!response.ok) throw new Error('Status update failed');
+            this.showToast(`Status set to ${nextStatus}`, 'success');
+            await this.loadCases({ silent: true });
+            if (this.currentCase?.id === caseData.id) await this.showCaseDetail(caseData.id);
+        } catch (error) {
+            this.showToast(`Failed to cycle status: ${error.message}`, 'error');
+        }
+    }
+
+    async copyTextToClipboard(text) {
+        if (!text) return false;
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            let copied = false;
+            try { copied = document.execCommand('copy'); } catch (err) { copied = false; }
+            textarea.remove();
+            return copied;
+        }
+    }
+
+    async copyCaseId(caseId) {
+        const caseData = this.cases.find(c => c.id === caseId) || this.currentCase;
+        const value = caseData?.case_number || caseData?.id || caseId;
+        const copied = await this.copyTextToClipboard(value);
+        this.showToast(copied ? `Copied ${value}` : 'Failed to copy case ID', copied ? 'success' : 'error');
+    }
+
+    async copyCaseLink(caseId) {
+        const link = `${window.location.origin}${window.location.pathname}?case=${encodeURIComponent(caseId)}`;
+        const copied = await this.copyTextToClipboard(link);
+        this.showToast(copied ? 'Case link copied' : 'Failed to copy case link', copied ? 'success' : 'error');
+    }
+
+    updateCaseFlagState(caseId, field, enabled) {
+        if (!caseId) return;
+        if (field === 'pinned') {
+            if (enabled) this.pinnedCaseIds.add(caseId);
+            else this.pinnedCaseIds.delete(caseId);
+        }
+        if (field === 'watchlisted') {
+            if (enabled) this.watchlistCaseIds.add(caseId);
+            else this.watchlistCaseIds.delete(caseId);
+        }
+        this.cases = this.cases.map(c => {
+            if (c.id !== caseId) return c;
+            const metadata = { ...(c.metadata || {}), [field]: enabled };
+            return { ...c, metadata };
+        });
+        if (this.currentCase?.id === caseId) {
+            if (!this.currentCase.metadata || typeof this.currentCase.metadata !== 'object') {
+                this.currentCase.metadata = {};
+            }
+            this.currentCase.metadata[field] = enabled;
+        }
+        this.updateSidePanelCounts();
+    }
+
+    async toggleCasePin(caseId, forcedValue = null) {
+        const caseData = this.cases.find(c => c.id === caseId) || this.currentCase;
+        if (!caseData?.id) return;
+        const pinned = forcedValue == null ? !this.isCasePinned(caseData) : Boolean(forcedValue);
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${caseData.id}/pin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pinned })
+            });
+            if (!response.ok) throw new Error('Unable to update pin');
+            this.updateCaseFlagState(caseData.id, 'pinned', pinned);
+            this.filterCases();
+            this.showToast(pinned ? 'Case pinned' : 'Case unpinned', 'success');
+        } catch (error) {
+            this.showToast(`Pin update failed: ${error.message}`, 'error');
+        }
+    }
+
+    async toggleCaseWatchlist(caseId, forcedValue = null) {
+        const caseData = this.cases.find(c => c.id === caseId) || this.currentCase;
+        if (!caseData?.id) return;
+        const watchlisted = forcedValue == null ? !this.isCaseWatchlisted(caseData) : Boolean(forcedValue);
+        try {
+            const response = await this.fetchWithTimeout(`/api/cases/${caseData.id}/watchlist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ watchlisted })
+            });
+            if (!response.ok) throw new Error('Unable to update watchlist');
+            this.updateCaseFlagState(caseData.id, 'watchlisted', watchlisted);
+            this.filterCases();
+            this.showToast(watchlisted ? 'Case added to watchlist' : 'Case removed from watchlist', 'success');
+        } catch (error) {
+            this.showToast(`Watchlist update failed: ${error.message}`, 'error');
+        }
     }
     
     async updateCaseStatus() {
@@ -2408,10 +3464,12 @@ class AdminPortal {
         
         this.filteredCases = this.cases.filter(c => {
             if (query && !JSON.stringify(c).toLowerCase().includes(query)) return false;
-            if (status && (c.status || 'open') !== status) return false;
+            if (status && this.normalizeStatus(c.status || 'open') !== this.normalizeStatus(status)) return false;
             if (type && (c.metadata?.incident_type || this.guessIncidentType(c)).toLowerCase() !== type) return false;
             if (dateFrom && c.created_at < dateFrom) return false;
             if (dateTo && c.created_at > dateTo + 'T23:59:59') return false;
+            if (!this.caseMatchesQuickFilter(c)) return false;
+            if (!this.caseMatchesViewFilter(c)) return false;
             return true;
         });
         
@@ -2422,29 +3480,74 @@ class AdminPortal {
         });
         
         this.renderCases();
+        this.syncSelectionUI({ pruneMissing: true });
         if (this.currentView === 'reports') this.renderReports();
         
-        document.getElementById('cases-count-subtitle').textContent = 
-            `— ${this.filteredCases.length} case${this.filteredCases.length !== 1 ? 's' : ''}`;
-        document.getElementById('reports-count-subtitle').textContent = 
-            `— ${this.filteredReports.length} report${this.filteredReports.length !== 1 ? 's' : ''}`;
+        const casesSubtitle = document.getElementById('cases-count-subtitle');
+        const reportsSubtitle = document.getElementById('reports-count-subtitle');
+        if (casesSubtitle) {
+            casesSubtitle.textContent = `— ${this.filteredCases.length} case${this.filteredCases.length !== 1 ? 's' : ''}`;
+        }
+        if (reportsSubtitle) {
+            reportsSubtitle.textContent = `— ${this.filteredReports.length} report${this.filteredReports.length !== 1 ? 's' : ''}`;
+        }
     }
     
     // ======================================
     // #33 Bulk Operations
     // ======================================
     
+    handleCaseCheckboxClick(event, caseId, index = 0) {
+        const target = event?.target;
+        if (!target) return;
+        const shouldSelect = Boolean(target.checked);
+        const safeIndex = Number(index);
+
+        if (event?.shiftKey && Number.isInteger(this.lastSelectedCaseIndex) && Number.isInteger(safeIndex)) {
+            const start = Math.min(this.lastSelectedCaseIndex, safeIndex);
+            const end = Math.max(this.lastSelectedCaseIndex, safeIndex);
+            for (let i = start; i <= end; i++) {
+                const caseAtIndex = this.filteredCases[i];
+                if (!caseAtIndex?.id) continue;
+                if (shouldSelect) this.selectedCases.add(caseAtIndex.id);
+                else this.selectedCases.delete(caseAtIndex.id);
+            }
+        } else {
+            if (shouldSelect) this.selectedCases.add(caseId);
+            else this.selectedCases.delete(caseId);
+        }
+
+        this.lastSelectedCaseIndex = Number.isInteger(safeIndex) ? safeIndex : null;
+        this.syncSelectionUI();
+    }
+
     updateBulkSelection() {
-        this.selectedCases.clear();
-        document.querySelectorAll('.case-checkbox:checked').forEach(cb => {
-            this.selectedCases.add(cb.dataset.caseId);
+        const checkedIds = [...document.querySelectorAll('.case-checkbox:checked')]
+            .map(cb => cb.dataset.caseId)
+            .filter(Boolean);
+        this.selectedCases = new Set(checkedIds);
+        this.syncSelectionUI();
+    }
+
+    syncSelectionUI(options = {}) {
+        const { pruneMissing = false } = options;
+        if (pruneMissing) {
+            const visibleIds = new Set((this.filteredCases || []).map(c => c.id));
+            this.selectedCases.forEach(id => {
+                if (!visibleIds.has(id)) this.selectedCases.delete(id);
+            });
+        }
+        document.querySelectorAll('.case-checkbox').forEach(cb => {
+            const caseId = cb.dataset.caseId;
+            cb.checked = Boolean(caseId && this.selectedCases.has(caseId));
         });
-        
         const toolbar = document.getElementById('bulk-toolbar');
         const countEl = document.getElementById('selected-count');
-        if (this.selectedCases.size > 0) {
+        if (!toolbar || !countEl) return;
+        const selectedCount = this.selectedCases.size;
+        if (selectedCount > 0) {
             toolbar.style.display = 'flex';
-            countEl.textContent = `${this.selectedCases.size} selected`;
+            countEl.textContent = `${selectedCount} selected`;
         } else {
             toolbar.style.display = 'none';
         }
@@ -2452,8 +3555,26 @@ class AdminPortal {
     
     clearSelection() {
         this.selectedCases.clear();
-        document.querySelectorAll('.case-checkbox').forEach(cb => cb.checked = false);
-        document.getElementById('bulk-toolbar').style.display = 'none';
+        this.lastSelectedCaseIndex = null;
+        this.syncSelectionUI();
+    }
+
+    selectAllFilteredCases() {
+        (this.filteredCases || []).forEach(c => c?.id && this.selectedCases.add(c.id));
+        this.syncSelectionUI();
+    }
+
+    deselectAllCases() {
+        this.clearSelection();
+    }
+
+    invertCaseSelection() {
+        (this.filteredCases || []).forEach(c => {
+            if (!c?.id) return;
+            if (this.selectedCases.has(c.id)) this.selectedCases.delete(c.id);
+            else this.selectedCases.add(c.id);
+        });
+        this.syncSelectionUI();
     }
     
     async bulkUpdateStatus(newStatus) {
@@ -2476,19 +3597,169 @@ class AdminPortal {
         this.clearSelection();
         await this.loadCases();
     }
+
+    async bulkAssignSelected() {
+        if (this.selectedCases.size === 0) return;
+        const assignee = document.getElementById('bulk-assign-investigator')?.value?.trim();
+        if (!assignee) {
+            this.showToast('Select an investigator to assign', 'warning');
+            return;
+        }
+        await this.runBulkCaseMutation('/api/cases/bulk/assign', {
+            case_ids: [...this.selectedCases],
+            assignee
+        }, `Assigned ${this.selectedCases.size} case(s) to ${assignee}`);
+    }
+
+    async bulkSetPrioritySelected() {
+        if (this.selectedCases.size === 0) return;
+        const label = document.getElementById('bulk-priority-label')?.value || '';
+        const scoreInput = document.getElementById('bulk-priority-score')?.value;
+        const hasScore = scoreInput !== '' && scoreInput !== null && scoreInput !== undefined;
+        if (!label && !hasScore) {
+            this.showToast('Set a priority label or score first', 'warning');
+            return;
+        }
+        const payload = { case_ids: [...this.selectedCases] };
+        if (label) payload.priority_label = label;
+        if (hasScore) payload.priority_score = Number(scoreInput);
+        await this.runBulkCaseMutation('/api/cases/bulk/priority', payload, 'Priority updated for selected cases');
+    }
+
+    async bulkAddTagSelected() {
+        if (this.selectedCases.size === 0) return;
+        const tag = document.getElementById('bulk-tag-text')?.value?.trim();
+        const color = document.getElementById('bulk-tag-color')?.value || '';
+        if (!tag) {
+            this.showToast('Enter a tag before applying', 'warning');
+            return;
+        }
+        await this.runBulkCaseMutation('/api/cases/bulk/tag', {
+            case_ids: [...this.selectedCases],
+            tag,
+            color
+        }, `Tag "${tag}" applied to selected cases`);
+    }
+
+    async runBulkCaseMutation(endpoint, payload, successMessage) {
+        try {
+            const resp = await this.fetchWithTimeout(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.detail || 'Bulk operation failed');
+            const updatedCount = Array.isArray(data.updated) ? data.updated.length : this.selectedCases.size;
+            this.showToast(successMessage || `Updated ${updatedCount} cases`, 'success');
+            this.clearSelection();
+            await this.loadCases({ silent: true });
+        } catch (error) {
+            this.showToast(`Bulk action failed: ${error.message}`, 'error');
+        }
+    }
+
+    async bulkTogglePinned(pinned = true) {
+        await this.bulkToggleCaseFlag('pin', 'pinned', pinned);
+    }
+
+    async bulkToggleWatchlisted(watchlisted = true) {
+        await this.bulkToggleCaseFlag('watchlist', 'watchlisted', watchlisted);
+    }
+
+    async bulkToggleCaseFlag(route, field, enabled) {
+        if (this.selectedCases.size === 0) return;
+        const ids = [...this.selectedCases];
+        let success = 0;
+        for (const id of ids) {
+            try {
+                const resp = await this.fetchWithTimeout(`/api/cases/${id}/${route}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: enabled })
+                });
+                if (resp.ok) success++;
+            } catch (e) { /* noop */ }
+        }
+        this.showToast(`${enabled ? 'Updated' : 'Cleared'} ${success}/${ids.length} case flags`, success ? 'success' : 'error');
+        this.clearSelection();
+        await this.loadCases({ silent: true });
+    }
     
     bulkExport() {
-        if (this.selectedCases.size === 0) return;
+        if (this.selectedCases.size === 0) {
+            this.showToast('Select at least one case to export', 'warning');
+            return;
+        }
         
         const exportData = this.cases.filter(c => this.selectedCases.has(c.id));
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const headers = [
+            'case_id',
+            'case_number',
+            'title',
+            'status',
+            'priority_label',
+            'priority_score',
+            'report_count',
+            'location',
+            'has_scene',
+            'created_at',
+            'updated_at'
+        ];
+        const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        const rows = exportData.map(c => [
+            c.id,
+            c.case_number || '',
+            c.title || '',
+            c.status || '',
+            c.priority_label || '',
+            c.priority_score ?? '',
+            c.report_count ?? 0,
+            c.location || '',
+            this.hasSceneImage(c) ? 'yes' : 'no',
+            c.created_at || '',
+            c.updated_at || ''
+        ].map(escape).join(','));
+        const csv = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `cases_export_${Date.now()}.json`;
+        a.download = `cases_export_${Date.now()}.csv`;
         a.click();
         URL.revokeObjectURL(url);
-        this.showToast(`Exported ${exportData.length} cases`, 'success');
+        this.showToast(`Exported ${exportData.length} cases to CSV`, 'success');
+    }
+
+    async autoAssignOrphans() {
+        const btn = document.getElementById('auto-assign-orphans-btn');
+        const originalText = btn?.textContent;
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Auto-Assigning...';
+        }
+        try {
+            const resp = await this.fetchWithTimeout('/api/reports/orphans/auto-assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.detail || 'Auto-assign failed');
+            const assigned = data.assigned_count ?? data.assigned ?? data.updated ?? 0;
+            const resultText = data.message || `Auto-assigned ${assigned} orphan report${assigned === 1 ? '' : 's'}`;
+            this.showToast(resultText, 'success');
+            this.addNotification('Orphans Auto-Assigned', resultText, 'success');
+            await this.loadCases({ silent: true });
+        } catch (error) {
+            const message = `Failed to auto-assign orphans: ${error.message}`;
+            this.showToast(message, 'error');
+            this.addNotification('Orphan Auto-Assign Failed', error.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText || '🧩 Auto-Assign Orphans';
+            }
+        }
     }
     
     // ======================================
@@ -2525,6 +3796,7 @@ class AdminPortal {
             if (resp.ok) {
                 const data = await resp.json();
                 this.investigators = data.investigators || [];
+                this.populateBulkInvestigatorControl();
             }
         } catch (e) {
             console.error('Failed to load investigators:', e);
@@ -2544,6 +3816,24 @@ class AdminPortal {
             opt.textContent = `${inv.name}${inv.badge_number ? ` #${inv.badge_number}` : ''}${workload}`;
             select.appendChild(opt);
         });
+    }
+
+    populateBulkInvestigatorControl() {
+        const select = document.getElementById('bulk-assign-investigator');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">Assign investigator…</option>';
+        this.investigators.forEach(inv => {
+            const assignee = inv.name || inv.investigator_name || inv.username;
+            if (!assignee) return;
+            const option = document.createElement('option');
+            option.value = assignee;
+            option.textContent = `${assignee}${inv.badge_number ? ` #${inv.badge_number}` : ''}`;
+            select.appendChild(option);
+        });
+        if (current && [...select.options].some(opt => opt.value === current)) {
+            select.value = current;
+        }
     }
     
     async assignCaseToInvestigator() {
@@ -3401,9 +4691,21 @@ class AdminPortal {
     }
 
     addNotification(title, message, type = 'info') {
-        this._notifications.unshift({id: Date.now(), title, message, type, time: new Date().toLocaleTimeString(), read: false});
-        this._notificationCount++;
+        const now = new Date();
+        this._notifications.unshift({
+            id: Date.now(),
+            title,
+            message,
+            type,
+            time: now.toLocaleTimeString(),
+            timestamp: now.toISOString(),
+            read: false
+        });
+        if (!this.notificationsMuted) {
+            this._notificationCount++;
+        }
         this._updateNotifBadge();
+        this.renderRecentActions();
     }
 
     _renderNotifications() {
@@ -3423,13 +4725,14 @@ class AdminPortal {
         this._notificationCount = 0;
         this._updateNotifBadge();
         this._renderNotifications();
+        this.renderRecentActions();
     }
 
     _updateNotifBadge() {
         const badge = document.getElementById('notif-badge');
         if (badge) {
             badge.textContent = this._notificationCount;
-            badge.style.display = this._notificationCount > 0 ? '' : 'none';
+            badge.style.display = !this.notificationsMuted && this._notificationCount > 0 ? '' : 'none';
         }
     }
 

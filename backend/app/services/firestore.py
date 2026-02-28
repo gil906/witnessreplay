@@ -199,6 +199,17 @@ class FirestoreService:
             reverse=True
         )
         return sessions[:limit]
+
+    async def list_orphan_sessions(self, limit: int = 50, scan_limit: Optional[int] = None) -> List[ReconstructionSession]:
+        """List sessions that do not have a case_id assigned."""
+        limit = max(1, min(limit, 200))
+        if scan_limit is None:
+            scan_limit = max(limit * 5, 500)
+        scan_limit = max(limit, scan_limit)
+
+        sessions = await self.list_sessions(limit=scan_limit)
+        orphans = [session for session in sessions if not getattr(session, "case_id", None)]
+        return orphans[:limit]
     
     # ── Case Methods ────────────────────────────────────
 

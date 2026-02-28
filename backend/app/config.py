@@ -1,7 +1,10 @@
 import os
+import logging
 from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -19,6 +22,8 @@ class Settings(BaseSettings):
     # Application Configuration
     environment: str = "development"
     debug: bool = False
+    maintenance_mode: bool = False
+    data_retention_days: int = 30
 
     allowed_origins: List[str] = ["*"]
 
@@ -40,8 +45,8 @@ class Settings(BaseSettings):
     gemma_model: str = "gemma-3-27b-it"
     imagen_model: str = "imagen-4-fast-generate"
     embedding_model: str = "gemini-embedding-001"
-    tts_model: str = "gemini-2.5-flash-preview-tts"
-    live_model: str = "gemini-2.5-flash-exp-native-audio-thinking"
+    tts_model: str = "gemini-2.5-flash-native-audio-latest"
+    live_model: str = "gemini-2.5-flash-native-audio-latest"
     
     # Rate Limiting
     max_requests_per_minute: int = 60
@@ -89,6 +94,19 @@ class Settings(BaseSettings):
         extra="ignore",
         validate_assignment=True  # Allow runtime updates
     )
+
+    def validate_config(self):
+        """Log warnings for missing configurations."""
+        warnings = []
+        if not self.google_api_key:
+            warnings.append("GOOGLE_API_KEY not set - AI features will not work")
+        if not self.gcp_project_id:
+            warnings.append("GCP_PROJECT_ID not set - Firestore will not work")
+        if self.admin_password == "change_this_password_immediately":
+            warnings.append("⚠️ ADMIN_PASSWORD is using default value - CHANGE IT for production!")
+        for w in warnings:
+            _config_logger.warning(f"[CONFIG] {w}")
+        return warnings
 
 
 # Global settings instance

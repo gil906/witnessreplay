@@ -45,7 +45,7 @@
                 </div>
                 
                 <div class="session-info">
-                    <div class="connection-status connecting" id="connection-status" title="Click for details" role="button" tabindex="0">
+                    <div class="connection-status connecting" id="connection-status" title="Click for details" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                         <span class="status-dot"></span>
                         <span class="status-spinner"></span>
                         <span class="status-text">Connecting...</span>
@@ -60,6 +60,7 @@
                             <button class="connection-popup-retry" id="popup-retry-btn">Retry Connection</button>
                         </div>
                     </div>
+                    <span id="connection-quality-badge" class="connection-quality-badge" data-level="unstable" aria-live="polite">Unstable</span>
                     <div class="session-status" style="display:none;">
                         <span class="status-dot"></span>
                         <span id="session-id">Initializing...</span>
@@ -167,6 +168,28 @@
                     </div>
                 </div>
 
+                <!-- Mobile Call Header -->
+                <div id="mobile-call-header" class="mobile-call-header" role="region" aria-label="Officer Ray call status">
+                    <div class="mobile-call-header-main">
+                        <div>
+                            <h3 class="mobile-call-title">📞 Officer Ray</h3>
+                            <div class="mobile-call-chips">
+                                <span id="mobile-call-state-chip" class="mobile-call-chip state-ready" aria-live="polite">Ready</span>
+                                <span id="mobile-call-speaker-chip" class="mobile-call-chip" aria-live="polite">Speaker on</span>
+                                <span id="mobile-call-autolisten-chip" class="mobile-call-chip" aria-live="polite">Auto-listen on</span>
+                            </div>
+                        </div>
+                        <button id="mobile-call-help-btn" type="button" class="mobile-call-help-btn" aria-label="Open voice call help">
+                            ❓
+                        </button>
+                    </div>
+                    <div class="mobile-call-meta">
+                        <span class="mobile-call-elapsed-label">Elapsed</span>
+                        <span id="mobile-call-elapsed" class="mobile-call-elapsed" aria-live="polite">00:00</span>
+                        <span id="ray-listening-cue" class="ray-listening-cue hidden" aria-live="polite">Ray is listening</span>
+                    </div>
+                </div>
+
                 <!-- Scene Preview Panel (Item 24) -->
                 <div id="scene-preview-panel" class="scene-preview" style="display:none;" role="complementary" aria-label="Scene reconstruction preview">
                     <div class="scene-preview-header">
@@ -184,14 +207,30 @@
                 <div id="mobile-scene-strip" class="mobile-scene-strip" aria-label="Scene preview">
                     <img id="mobile-scene-strip-img" src="" alt="Scene reconstruction" class="mobile-scene-strip-img">
                     <div class="mobile-scene-strip-overlay">
-                        <span class="mobile-scene-strip-label">Scene reconstruction</span>
+                        <div class="mobile-scene-strip-copy">
+                            <div class="mobile-scene-strip-title-row">
+                                <span class="mobile-scene-strip-label">Scene reconstruction</span>
+                                <span id="mobile-scene-update-indicator" class="scene-update-indicator hidden" aria-label="New scene update available"></span>
+                            </div>
+                            <span id="mobile-scene-strip-subtitle" class="mobile-scene-strip-subtitle">Waiting for your first scene update</span>
+                        </div>
                         <span class="mobile-scene-strip-expand">⤢</span>
                     </div>
                 </div>
 
+                <!-- Quick Phrase Rail -->
+                <div id="quick-phrase-rail" class="quick-phrase-rail" aria-label="Quick phrase shortcuts">
+                    <button type="button" class="quick-phrase-chip" data-phrase="I saw a red car speeding away." aria-label="Send quick phrase red car speeding away">🚗 Red car sped away</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="It happened near the entrance." aria-label="Send quick phrase near entrance">📍 Near the entrance</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I heard shouting before the impact." aria-label="Send quick phrase heard shouting">🗣️ Heard shouting</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I can describe the person's clothing." aria-label="Send quick phrase describe clothing">👕 Clothing details</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I noticed the license plate started with..." aria-label="Send quick phrase license plate">🔢 License plate info</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I need to correct one detail." aria-label="Send quick phrase correct detail">✏️ Need a correction</button>
+                </div>
+
                 <!-- Chat transcript -->
                 <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite" aria-label="Interview conversation">
-                    <p class="empty-state">Your conversation will appear here. Start by describing what happened.</p>
+                    <p class="empty-state">Tap the big mic below and talk naturally with Officer Ray. You can also use quick phrases, then add typed details anytime.</p>
                 </div>
 
                 <!-- Typing indicator -->
@@ -200,6 +239,11 @@
                     <div class="typing-dots">
                         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                     </div>
+                </div>
+
+                <div id="tap-interrupt-affordance" class="tap-interrupt-affordance hidden" aria-live="polite">
+                    <span>Officer Ray is speaking — jump in anytime.</span>
+                    <button id="tap-interrupt-btn" type="button" class="btn btn-secondary" aria-label="Interrupt Officer Ray and start talking">Tap to interrupt</button>
                 </div>
 
                 <!-- Suggested Actions -->
@@ -271,6 +315,33 @@
                     <div id="audio-quality-container" class="audio-quality-container"></div>
                 </div>
 
+                <div id="voice-dock" class="voice-dock" role="region" aria-label="Voice quick controls">
+                    <button id="voice-dock-mic-btn" type="button" class="voice-dock-mic-btn" aria-label="Start or stop voice recording">
+                        <span class="voice-dock-mic-icon" aria-hidden="true">🎤</span>
+                        <span id="voice-dock-mic-text" class="voice-dock-mic-text">Tap to talk</span>
+                    </button>
+                    <div class="voice-dock-actions">
+                        <button id="dock-repeat-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to repeat the question">🔁 Repeat</button>
+                        <button id="dock-slow-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to slow down">🐢 Slow down</button>
+                        <button id="dock-moment-btn" type="button" class="voice-dock-action-btn" aria-label="Pause auto listen and take a moment">⏸ Need a moment</button>
+                        <button id="dock-more-btn" type="button" class="voice-dock-action-btn voice-dock-more-btn" aria-label="Show more voice controls" aria-expanded="false">⋯ More</button>
+                    </div>
+                    <div id="voice-dock-more-panel" class="voice-dock-more-panel hidden">
+                        <button id="dock-repeat-more-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to repeat the question">🔁 Repeat</button>
+                        <button id="dock-slow-more-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to slow down">🐢 Slow down</button>
+                        <button id="dock-moment-more-btn" type="button" class="voice-dock-action-btn" aria-label="Pause auto listen and take a moment">⏸ Need a moment</button>
+                        <button id="dock-help-btn" type="button" class="voice-dock-action-btn" aria-label="Open voice help sheet">❓ Voice help</button>
+                        <button id="dock-auto-btn" type="button" class="voice-dock-action-btn" aria-label="Toggle auto listen mode">🔁 Auto-listen</button>
+                        <button id="dock-audio-toggle-btn" type="button" class="voice-dock-action-btn" aria-label="Disable or enable automatic audio playback" aria-pressed="false">🔊 Audio on</button>
+                        <div class="voice-speed-group" role="group" aria-label="Officer Ray speaking speed">
+                            <span class="voice-speed-label">Ray speed</span>
+                            <button id="dock-speed-09-btn" type="button" class="voice-dock-action-btn voice-speed-btn" aria-label="Set speech speed to point nine">0.9x</button>
+                            <button id="dock-speed-10-btn" type="button" class="voice-dock-action-btn voice-speed-btn is-active" aria-label="Set speech speed to one">1.0x</button>
+                            <button id="dock-speed-11-btn" type="button" class="voice-dock-action-btn voice-speed-btn" aria-label="Set speech speed to one point one">1.1x</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Text Input — collapsed bar, expandable (secondary to voice) -->
                 <div class="text-input text-input-collapsed" id="text-input-bar">
                     <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record" style="display:none;">🎤</button>
@@ -308,7 +379,11 @@
                     <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)" aria-hidden="true">
                     <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type instead...">⌨️ Type instead...</button>
                     <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Type your statement">
+                    <span id="text-char-counter" class="text-char-counter" aria-live="polite">0 chars</span>
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
+                    <button id="retry-last-btn" class="btn btn-secondary" disabled aria-label="Retry last message" title="Retry last message">↻</button>
+                    <button id="auto-scroll-toggle" class="btn btn-secondary" aria-label="Toggle auto-scroll" title="Auto-scroll on" aria-pressed="true">⇣</button>
+                    <button id="compact-mode-toggle" class="btn btn-secondary" aria-label="Toggle compact mode" title="Toggle compact mode" aria-pressed="false">▤</button>
                     <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
                         📋
                     </button>
@@ -818,6 +893,12 @@
                     <label for="witness-contact">Contact</label>
                     <input type="text" id="witness-contact" placeholder="Phone or email (optional)" aria-label="Contact information">
                 </div>
+                <div class="form-group form-group-full anonymous-toggle-row">
+                    <label class="anonymous-toggle" for="witness-anonymous-toggle">
+                        <input type="checkbox" id="witness-anonymous-toggle" aria-label="Remain anonymous and clear name and contact">
+                        <span>Remain anonymous (clear name and contact)</span>
+                    </label>
+                </div>
                 <div class="form-group form-group-full">
                     <label for="witness-location">Location at time of incident</label>
                     <div class="location-input-wrapper">
@@ -1174,6 +1255,38 @@
                 </div>
             </div>
             <button class="btn btn-secondary" onclick="window.app.hideShortcuts()">Close</button>
+        </div>
+    </div>
+
+    <div id="mobile-voice-help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-voice-help-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="mobile-voice-help-title">📱 Voice call shortcuts</h2>
+                <button id="mobile-voice-help-close-x" class="modal-close" aria-label="Close voice help">&times;</button>
+            </div>
+            <div class="modal-body mobile-voice-help-body">
+                <p>Use these controls to keep the conversation natural with Officer Ray:</p>
+                <ul>
+                    <li><strong>🎤 Tap to talk</strong> — Start/stop recording quickly.</li>
+                    <li><strong>🔁 Repeat</strong> — Ask Officer Ray to repeat the last question.</li>
+                    <li><strong>🐢 Slow down</strong> — Request shorter, slower prompts.</li>
+                    <li><strong>⏸ Need a moment</strong> — Pause auto-listen while you collect details.</li>
+                    <li><strong>Tap to interrupt</strong> — Cut in while Ray is speaking.</li>
+                </ul>
+            </div>
+            <div class="modal-actions">
+                <button id="mobile-voice-help-close-btn" class="btn btn-secondary" type="button" aria-label="Close voice help sheet">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mobile-voice-coachmark" class="mobile-voice-coachmark hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-voice-coachmark-title">
+        <div class="mobile-voice-coachmark-card">
+            <h2 id="mobile-voice-coachmark-title">🎙️ Talk like a phone call</h2>
+            <p>Tap <strong>Tap to talk</strong>, speak naturally, and use quick chips when you need speed.</p>
+            <div class="mobile-voice-coachmark-actions">
+                <button id="mobile-voice-coachmark-dismiss" type="button" class="btn btn-primary" aria-label="Dismiss mobile voice coaching tips">Got it</button>
+            </div>
         </div>
     </div>
 

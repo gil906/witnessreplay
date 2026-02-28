@@ -14,7 +14,7 @@ from app.services.interview_branching import interview_branching
 from app.services.prompt_optimizer import prompt_optimizer
 from app.services.timeline_disambiguator import timeline_disambiguator
 from google.genai import types
-from app.services.model_selector import model_selector, call_with_retry
+from app.services.model_selector import model_selector, call_with_retry, is_retryable_model_error
 from typing import AsyncIterator
 from app.agents.prompts import (
     SYSTEM_PROMPT,
@@ -37,6 +37,7 @@ class SceneReconstructionAgent:
     Supports dynamic interview branching based on detected topics.
     Includes memory context from prior sessions for returning witnesses.
     """
+    MAX_MODEL_STATEMENT_CHARS = 12_000
     
     def __init__(self, session_id: str):
         self.session_id = session_id
@@ -70,6 +71,32 @@ class SceneReconstructionAgent:
         elif any(x in model_lower for x in ["lite", "27b"]):
             return "optimized"
         return "full"
+
+    @staticmethod
+    def _is_retryable_model_error(error: Exception) -> bool:
+        """Errors that should trigger model switch/fallback."""
+        return is_retryable_model_error(error)
+
+    def _truncate_statement_for_model(self, statement: str) -> str:
+        """Trim oversized witness statements while preserving interview flow."""
+        if not statement or len(statement) <= self.MAX_MODEL_STATEMENT_CHARS:
+            return statement
+
+        truncation_marker = "\n\n[... witness statement truncated for model limits ...]\n\n"
+        payload_budget = max(0, self.MAX_MODEL_STATEMENT_CHARS - len(truncation_marker))
+        if payload_budget <= 0:
+            return statement[:self.MAX_MODEL_STATEMENT_CHARS]
+
+        head_chars = int(payload_budget * 0.75)
+        tail_chars = payload_budget - head_chars
+        truncated = f"{statement[:head_chars]}{truncation_marker}{statement[-tail_chars:]}"
+
+        self._log_structured(
+            "statement_truncated",
+            original_chars=len(statement),
+            truncated_chars=len(truncated),
+        )
+        return truncated
 
     def _initialize_model(self):
         """Initialize the Gemini model for conversation."""
@@ -234,6 +261,7 @@ class SceneReconstructionAgent:
             # Add context if this is a correction
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
+            statement_for_model = self._truncate_statement_for_model(statement)
             
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
@@ -255,7 +283,7 @@ class SceneReconstructionAgent:
             # Pre-check token quota before sending request
             quota_check, token_estimate = usage_tracker.precheck_request(
                 model_name=current_model,
-                prompt=statement,
+                prompt=statement_for_model,
                 system_prompt=current_prompt,
                 history=optimized_history,
                 task_type="chat",
@@ -291,13 +319,13 @@ class SceneReconstructionAgent:
                     response = await call_with_retry(
                         asyncio.to_thread,
                         self.chat.send_message,
-                        statement,
+                        statement_for_model,
                         model_name=current_model,
                         task_type="chat",
                     )
                     break
                 except Exception as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    if self._is_retryable_model_error(e):
                         # Mark current model as rate limited
                         if hasattr(self.chat, '_model'):
                             current_model = self.chat._model
@@ -306,7 +334,7 @@ class SceneReconstructionAgent:
                         else:
                             current_model = settings.gemini_model
                         
-                        logger.warning(f"Rate limited on model {current_model}, switching model...")
+                        logger.warning(f"Model unavailable/rate-limited on {current_model}, switching model...")
                         await model_selector.mark_rate_limited(current_model)
                         
                         # Try a different model
@@ -341,7 +369,7 @@ class SceneReconstructionAgent:
             agent_response = response.text
             
             # Track usage with actual token counts
-            input_tokens = self._estimate_tokens(statement)
+            input_tokens = self._estimate_tokens(statement_for_model)
             output_tokens = self._estimate_tokens(agent_response)
             usage_tracker.record_request(
                 model_name=current_model,
@@ -405,7 +433,7 @@ class SceneReconstructionAgent:
             return agent_response, should_generate, token_info
         
         except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            if self._is_retryable_model_error(e):
                 self._log_structured("error_rate_limited", error=str(e)[:200])
                 return ("I'm experiencing high demand right now. Could you please "
                         "repeat that in a moment? Your testimony is important.",
@@ -459,6 +487,7 @@ class SceneReconstructionAgent:
             
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
+            statement_for_model = self._truncate_statement_for_model(statement)
             
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
@@ -466,7 +495,7 @@ class SceneReconstructionAgent:
             # Pre-check token quota before sending request
             quota_check, token_estimate = usage_tracker.precheck_request(
                 model_name=current_model,
-                prompt=statement,
+                prompt=statement_for_model,
                 system_prompt=SYSTEM_PROMPT,
                 history=self.conversation_history,
                 task_type="chat",
@@ -498,21 +527,31 @@ class SceneReconstructionAgent:
             
             for attempt in range(3):
                 try:
-                    # Send message with stream=True
-                    response_stream = await asyncio.to_thread(
-                        self.chat.send_message_stream,
-                        statement,
-                    )
-                    
-                    # Yield chunks as they arrive
-                    for chunk in response_stream:
-                        if hasattr(chunk, 'text') and chunk.text:
-                            full_response += chunk.text
-                            yield chunk.text, False, False, None
+                    # Prefer native streaming when available; fall back to non-streaming.
+                    if hasattr(self.chat, "send_message_stream"):
+                        response_stream = await asyncio.to_thread(
+                            self.chat.send_message_stream,
+                            statement_for_model,
+                        )
+
+                        # Yield chunks as they arrive
+                        for chunk in response_stream:
+                            if hasattr(chunk, 'text') and chunk.text:
+                                full_response += chunk.text
+                                yield chunk.text, False, False, None
+                    else:
+                        response = await asyncio.to_thread(
+                            self.chat.send_message,
+                            statement_for_model,
+                        )
+                        response_text = (getattr(response, "text", "") or "").strip()
+                        if response_text:
+                            full_response += response_text
+                            yield response_text, False, False, None
                     break
                     
                 except Exception as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    if self._is_retryable_model_error(e):
                         if hasattr(self.chat, '_model'):
                             current_model = self.chat._model
                         elif hasattr(self.chat, 'model'):
@@ -520,7 +559,7 @@ class SceneReconstructionAgent:
                         else:
                             current_model = settings.gemini_model
                         
-                        logger.warning(f"Rate limited on model {current_model}, switching model...")
+                        logger.warning(f"Model unavailable/rate-limited on {current_model}, switching model...")
                         await model_selector.mark_rate_limited(current_model)
                         
                         new_model = await model_selector.get_best_model_for_task("chat")
@@ -548,7 +587,7 @@ class SceneReconstructionAgent:
                 return
             
             # Track usage with actual token counts
-            input_tokens = self._estimate_tokens(statement)
+            input_tokens = self._estimate_tokens(statement_for_model)
             output_tokens = self._estimate_tokens(full_response)
             usage_tracker.record_request(
                 model_name=current_model,
@@ -604,7 +643,7 @@ class SceneReconstructionAgent:
             yield "", True, should_generate, token_info
         
         except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            if self._is_retryable_model_error(e):
                 self._log_structured("error_rate_limited", error=str(e)[:200])
                 yield "I'm experiencing high demand right now. Could you please repeat that in a moment?", True, False, None
             elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):

@@ -27,10 +27,15 @@ class WitnessReplayApp {
         this.ui = null;
         this._reconnectAttempt = 0;
         this._maxReconnectDelay = 30000;
+        this.connectionStatus = 'connecting';
         this.reconnectTimer = null;
         this.hasReceivedGreeting = false;
+        this.lastUserMessage = '';
+        this.autoScrollEnabled = localStorage.getItem('witnessreplay-auto-scroll') !== 'false';
+        this.compactMode = localStorage.getItem('witnessreplay-compact-chat') === 'true';
         this.fetchTimeout = 10000; // 10 second timeout for API calls
-        this.soundEnabled = localStorage.getItem('soundEnabled') !== 'false'; // Default true
+        this.audioOutputDisabled = localStorage.getItem('audioOutputDisabled') === 'true';
+        this.soundEnabled = !this.audioOutputDisabled && localStorage.getItem('soundEnabled') !== 'false'; // Default true
         this.sounds = {}; // Sound effect cache
         this.comparisonMode = false; // Scene comparison mode
         this.previousSceneUrl = null; // For before/after comparison
@@ -56,6 +61,21 @@ class WitnessReplayApp {
         this.autoListenEnabled = localStorage.getItem('autoListenEnabled') !== 'false';
         this._isSpeakingResponse = false;
         this._autoListenTimer = null;
+        this._recordingTrigger = 'manual';
+        this._autoListenPausedUntilManual = false;
+        this._lastVoiceHintState = null;
+        this._lastVoiceHintToastAt = 0;
+        this._micPermissionGranted = false; // Track if user has granted mic permission via gesture
+        this.conversationState = 'ready';
+        this.lastAgentMessage = '';
+        this._rayListeningCueTimer = null;
+        this._sceneUpdatePulseTimer = null;
+        this._mobileVoiceHelpEscHandler = null;
+        this._mobileTimerObserver = null;
+        this.isMobileVoiceUI = window.matchMedia('(max-width: 768px)').matches;
+        this.lastCallMetrics = null;
+        this._isPageClosing = false;
+        this._pageLifecycleHandler = null;
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -94,6 +114,7 @@ class WitnessReplayApp {
         this.initializeLanguageSelector(); // Initialize translation language selector
         this.fetchAndDisplayVersion(); // Fetch version from API
         this._initOfflineQueue(); // Initialize offline message queue
+        this._initPageLifecycleHandlers(); // Stop session cleanly on tab close
         this._initAutoTheme(); // Auto dark/light theme detection
         this._initCommandPalette(); // Feature 49: Command palette (Ctrl+K)
         this._initAutoSave(); // Auto-save interview progress
@@ -154,6 +175,57 @@ class WitnessReplayApp {
         window.addEventListener('online', () => this._flushOfflineQueue());
     }
 
+    _initPageLifecycleHandlers() {
+        if (this._pageLifecycleHandler) return;
+        this._pageLifecycleHandler = () => this._handlePageClose();
+        window.addEventListener('pagehide', this._pageLifecycleHandler);
+        window.addEventListener('beforeunload', this._pageLifecycleHandler);
+    }
+
+    _handlePageClose() {
+        if (this._isPageClosing) return;
+        this._isPageClosing = true;
+
+        // Clean up all intervals to prevent memory leaks
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.durationTimer) {
+            clearInterval(this.durationTimer);
+            this.durationTimer = null;
+        }
+        if (this._autoSaveInterval) {
+            clearInterval(this._autoSaveInterval);
+            this._autoSaveInterval = null;
+        }
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try {
+                this.ws.close(1000, 'tab closing');
+            } catch (_) {}
+        }
+
+        if (!this.sessionId) return;
+        const closeUrl = `/api/sessions/${this.sessionId}/close?reason=tab_close`;
+
+        try {
+            if (navigator.sendBeacon) {
+                const payload = new Blob([], { type: 'application/json' });
+                navigator.sendBeacon(closeUrl, payload);
+                return;
+            }
+        } catch (error) {
+            console.debug('Session close beacon failed:', error);
+        }
+
+        fetch(closeUrl, { method: 'POST', keepalive: true }).catch(() => {});
+    }
+
     _queueOfflineMessage(data) {
         this.offlineQueue.push(data);
         localStorage.setItem('wr_offline_queue', JSON.stringify(this.offlineQueue));
@@ -193,6 +265,8 @@ class WitnessReplayApp {
                 this.sessionIdEl.textContent = `Session: ${sessionParam.substring(0, 8)}...`;
                 this.sessionStartTime = Date.now();
                 this.startDurationTimer();
+                await this.loadVoicePreferencesFromSession();
+                this.syncVoicePreferencesToSession();
                 this.connectWebSocket();
                 return;
             }
@@ -269,20 +343,24 @@ class WitnessReplayApp {
                 micBtn.classList.add('connecting');
                 if (btnText) btnText.textContent = 'Connecting...';
                 if (hint) { hint.textContent = 'Setting up session'; hint.style.display = ''; }
+                this.voiceDockMicBtn && (this.voiceDockMicBtn.disabled = true);
                 break;
             case 'connected':
                 micBtn.disabled = false;
                 if (btnText) btnText.textContent = 'Tap to Report';
                 if (hint) hint.style.display = 'none';
+                this._setConversationState('ready', { silent: true });
                 break;
             case 'disconnected':
                 micBtn.disabled = false;
                 micBtn.classList.add('disconnected');
                 if (btnText) btnText.textContent = 'Tap to reconnect';
                 if (hint) { hint.textContent = 'Connection lost'; hint.style.display = ''; }
+                this._setConversationState('ready', { silent: true });
                 // Override click to reconnect
                 break;
         }
+        this._syncVoiceDockMicLabel();
     }
     
     /**
@@ -315,6 +393,7 @@ class WitnessReplayApp {
     initializeUI() {
         // Initialize UI Manager
         this.ui = new UIManager();
+        this.ui.soundEnabled = !this.audioOutputDisabled && this.soundEnabled;
         
         // Get UI elements
         this.micBtn = document.getElementById('mic-btn');
@@ -329,6 +408,42 @@ class WitnessReplayApp {
         this.sessionsListBtn = document.getElementById('sessions-list-btn');
         this.helpBtn = document.getElementById('help-btn');
         this.waveformRing = document.getElementById('waveform-ring');
+        this.charCounter = document.getElementById('text-char-counter');
+        this.retryLastBtn = document.getElementById('retry-last-btn');
+        this.autoScrollToggleBtn = document.getElementById('auto-scroll-toggle');
+        this.compactModeBtn = document.getElementById('compact-mode-toggle');
+        this.connectionQualityBadge = document.getElementById('connection-quality-badge');
+        this.anonymousToggle = document.getElementById('witness-anonymous-toggle');
+        this.mobileCallStateChip = document.getElementById('mobile-call-state-chip');
+        this.mobileCallSpeakerChip = document.getElementById('mobile-call-speaker-chip');
+        this.mobileCallAutoListenChip = document.getElementById('mobile-call-autolisten-chip');
+        this.mobileCallElapsed = document.getElementById('mobile-call-elapsed');
+        this.mobileCallHelpBtn = document.getElementById('mobile-call-help-btn');
+        this.mobileVoiceHelpModal = document.getElementById('mobile-voice-help-modal');
+        this.mobileVoiceHelpCloseBtn = document.getElementById('mobile-voice-help-close-btn');
+        this.mobileVoiceHelpCloseX = document.getElementById('mobile-voice-help-close-x');
+        this.quickPhraseRail = document.getElementById('quick-phrase-rail');
+        this.voiceDock = document.getElementById('voice-dock');
+        this.voiceDockMicBtn = document.getElementById('voice-dock-mic-btn');
+        this.voiceDockMicText = document.getElementById('voice-dock-mic-text');
+        this.dockRepeatBtn = document.getElementById('dock-repeat-btn');
+        this.dockSlowBtn = document.getElementById('dock-slow-btn');
+        this.dockMomentBtn = document.getElementById('dock-moment-btn');
+        this.dockMoreBtn = document.getElementById('dock-more-btn');
+        this.dockMorePanel = document.getElementById('voice-dock-more-panel');
+        this.dockHelpBtn = document.getElementById('dock-help-btn');
+        this.dockAutoBtn = document.getElementById('dock-auto-btn');
+        this.dockAudioToggleBtn = document.getElementById('dock-audio-toggle-btn');
+        this.dockSpeed09Btn = document.getElementById('dock-speed-09-btn');
+        this.dockSpeed10Btn = document.getElementById('dock-speed-10-btn');
+        this.dockSpeed11Btn = document.getElementById('dock-speed-11-btn');
+        this.tapInterruptAffordance = document.getElementById('tap-interrupt-affordance');
+        this.tapInterruptBtn = document.getElementById('tap-interrupt-btn');
+        this.mobileSceneStripSubtitle = document.getElementById('mobile-scene-strip-subtitle');
+        this.mobileSceneUpdateIndicator = document.getElementById('mobile-scene-update-indicator');
+        this.rayListeningCue = document.getElementById('ray-listening-cue');
+        this.mobileVoiceCoachmark = document.getElementById('mobile-voice-coachmark');
+        this.mobileVoiceCoachmarkDismiss = document.getElementById('mobile-voice-coachmark-dismiss');
         
         // Stats elements
         this.versionCountEl = document.getElementById('version-count');
@@ -342,9 +457,14 @@ class WitnessReplayApp {
         // Event listeners
         this.micBtn.addEventListener('click', () => this.toggleRecording());
         this.sendBtn.addEventListener('click', () => this.sendTextMessage());
-        this.textInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.sendTextMessage();
+        this.textInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+            }
+            this.sendTextMessage();
         });
+        this.textInput.addEventListener('input', () => this._updateCharCounter());
         this.newSessionBtn.addEventListener('click', () => this.createNewSession());
         this.sessionsListBtn.addEventListener('click', () => this.showSessionsList());
         this.helpBtn.addEventListener('click', () => this.ui.showOnboarding());
@@ -353,6 +473,18 @@ class WitnessReplayApp {
         this.chatMicBtn = document.getElementById('chat-mic-btn');
         if (this.chatMicBtn) {
             this.chatMicBtn.addEventListener('click', () => this.toggleRecording());
+        }
+        if (this.retryLastBtn) {
+            this.retryLastBtn.addEventListener('click', () => this.retryLastMessage());
+        }
+        if (this.autoScrollToggleBtn) {
+            this.autoScrollToggleBtn.addEventListener('click', () => this.toggleAutoScroll());
+        }
+        if (this.compactModeBtn) {
+            this.compactModeBtn.addEventListener('click', () => this.toggleCompactMode());
+        }
+        if (this.anonymousToggle) {
+            this.anonymousToggle.addEventListener('change', (e) => this.toggleAnonymousWitness(e.target.checked));
         }
         
         // Scene controls
@@ -400,24 +532,699 @@ class WitnessReplayApp {
         
         // Initialize keyboard shortcuts
         this._initKeyboardShortcuts();
+        this._updateCharCounter();
+        this._updateRetryButton();
+        this.setAutoScroll(this.autoScrollEnabled, false);
+        this.setCompactMode(this.compactMode, false);
+        this._updateConnectionQualityBadge(this.connectionStatus);
         
         // Sound toggle button — add to controls area (near mic), not header
         // _addSoundToggle removed from header — speakers controlled by phone volume
         
         // TTS toggle — add near mic controls instead of header
         this._addTTSToggle();
+
+        // Global audio output toggle (mute/unmute)
+        this._addAudioOutputToggle();
         
         // Auto-listen toggle for voice conversation — near mic only, not header
         this._addAutoListenToggle();
+        this._initSimplifiedControlMenus();
         
         // Feature 7/9/10: Mode toggles and accessibility
         this._initModeToggles();
         this._initKeyboardAccessibility();
+        this.initializeMobileVoiceUX();
+        this.setAudioOutputDisabled(this.audioOutputDisabled, { notify: false, persist: false });
+    }
+
+    initializeMobileVoiceUX() {
+        const isMobileQuery = window.matchMedia('(max-width: 768px)');
+        this.isMobileVoiceUI = isMobileQuery.matches;
+        isMobileQuery.addEventListener('change', (e) => {
+            this.isMobileVoiceUI = e.matches;
+            if (!e.matches) {
+                this.closeMobileVoiceHelp();
+                this.voiceDock?.classList.remove('voice-dock-more-open');
+                this.dockMorePanel?.classList.add('hidden');
+            }
+            this._updateMobileEmptyStateCopy();
+            this._initSimplifiedControlMenus();
+        });
+
+        this.voiceDockMicBtn?.addEventListener('click', () => this.toggleRecording());
+        this.tapInterruptBtn?.addEventListener('click', () => this.interruptAgentSpeech());
+        this.mobileCallHelpBtn?.addEventListener('click', () => this.openMobileVoiceHelp());
+        this.dockHelpBtn?.addEventListener('click', () => this.openMobileVoiceHelp());
+        this.mobileVoiceHelpCloseBtn?.addEventListener('click', () => this.closeMobileVoiceHelp());
+        this.mobileVoiceHelpCloseX?.addEventListener('click', () => this.closeMobileVoiceHelp());
+
+        this.dockMoreBtn?.addEventListener('click', () => this.toggleVoiceDockMore());
+        document.addEventListener('click', (event) => {
+            if (!this.voiceDock || !this.voiceDock.classList.contains('voice-dock-more-open')) return;
+            if (this.voiceDock.contains(event.target)) return;
+            this.voiceDock.classList.remove('voice-dock-more-open');
+            this.dockMorePanel?.classList.add('hidden');
+            this.dockMoreBtn?.setAttribute('aria-expanded', 'false');
+        });
+
+        this.mobileVoiceHelpModal?.addEventListener('click', (event) => {
+            if (event.target === this.mobileVoiceHelpModal) {
+                this.closeMobileVoiceHelp();
+            }
+        });
+
+        const bindAction = (id, handler) => {
+            const btn = document.getElementById(id);
+            if (btn) btn.addEventListener('click', handler);
+        };
+        bindAction('dock-repeat-btn', () => this.requestRepeatQuestion());
+        bindAction('dock-repeat-more-btn', () => this.requestRepeatQuestion());
+        bindAction('dock-slow-btn', () => this.requestSlowDown());
+        bindAction('dock-slow-more-btn', () => this.requestSlowDown());
+        bindAction('dock-moment-btn', () => this.takeNeedAMoment());
+        bindAction('dock-moment-more-btn', () => this.takeNeedAMoment());
+        bindAction('dock-auto-btn', () => this.toggleAutoListen());
+        bindAction('dock-audio-toggle-btn', () => this.toggleAudioOutputDisabled());
+        bindAction('dock-speed-09-btn', () => this.setTTSPlaybackSpeed(0.9));
+        bindAction('dock-speed-10-btn', () => this.setTTSPlaybackSpeed(1.0));
+        bindAction('dock-speed-11-btn', () => this.setTTSPlaybackSpeed(1.1));
+
+        this.quickPhraseRail?.querySelectorAll('.quick-phrase-chip').forEach((btn) => {
+            btn.addEventListener('click', () => this.sendQuickPhrase(btn.dataset.phrase || ''));
+        });
+
+        this._syncAutoListenChip();
+        this._syncAudioToggleButton();
+        this._syncSpeakerChip();
+        this._syncSpeedButtons();
+        this._syncVoiceDockMicLabel();
+        this._syncMobileElapsedTimer();
+        this._setConversationState('ready', { silent: true });
+        this._initMobileVoiceCoachmark();
+        this._updateMobileEmptyStateCopy();
+    }
+
+    _syncMobileElapsedTimer() {
+        const source = document.getElementById('interview-duration-display');
+        if (!source || !this.mobileCallElapsed) return;
+        const sync = () => {
+            const text = (source.textContent || '').trim();
+            this.mobileCallElapsed.textContent = text || '00:00';
+        };
+        sync();
+        if (this._mobileTimerObserver) {
+            this._mobileTimerObserver.disconnect();
+        }
+        this._mobileTimerObserver = new MutationObserver(sync);
+        this._mobileTimerObserver.observe(source, { childList: true, subtree: true, characterData: true });
+    }
+
+    _initMobileVoiceCoachmark() {
+        const key = 'witnessreplay-mobile-voice-coachmark-seen';
+        if (!this.mobileVoiceCoachmark || !this.isMobileVoiceUI || localStorage.getItem(key) === 'true') return;
+        const dismiss = () => {
+            this.mobileVoiceCoachmark.classList.add('hidden');
+            localStorage.setItem(key, 'true');
+        };
+        this.mobileVoiceCoachmarkDismiss?.addEventListener('click', dismiss, { once: true });
+        this.mobileVoiceCoachmark.addEventListener('click', (event) => {
+            if (event.target === this.mobileVoiceCoachmark) dismiss();
+        });
+        setTimeout(() => this.mobileVoiceCoachmark.classList.remove('hidden'), 900);
+    }
+
+    _updateMobileEmptyStateCopy() {
+        if (!this.isMobileVoiceUI || !this.chatTranscript) return;
+        const empty = this.chatTranscript.querySelector('.empty-state');
+        if (empty) {
+            empty.textContent = 'Tap the big mic below and speak naturally with Officer Ray. Use quick phrase chips for fast details.';
+        }
+    }
+
+    openMobileVoiceHelp() {
+        if (!this.mobileVoiceHelpModal) return;
+        if (this.mobileVoiceHelpModal.classList.contains('active')) return;
+        this.mobileVoiceHelpModal.classList.remove('hidden');
+        this.mobileVoiceHelpModal.classList.add('active');
+        this.playSound('click');
+        this._mobileVoiceHelpEscHandler = (event) => {
+            if (event.key === 'Escape') this.closeMobileVoiceHelp();
+        };
+        document.addEventListener('keydown', this._mobileVoiceHelpEscHandler);
+    }
+
+    closeMobileVoiceHelp() {
+        if (!this.mobileVoiceHelpModal) return;
+        this.mobileVoiceHelpModal.classList.add('hidden');
+        this.mobileVoiceHelpModal.classList.remove('active');
+        if (this._mobileVoiceHelpEscHandler) {
+            document.removeEventListener('keydown', this._mobileVoiceHelpEscHandler);
+            this._mobileVoiceHelpEscHandler = null;
+        }
+    }
+
+    toggleVoiceDockMore() {
+        if (!this.voiceDock || !this.dockMorePanel || !this.dockMoreBtn) return;
+        const expanded = !this.voiceDock.classList.contains('voice-dock-more-open');
+        this.voiceDock.classList.toggle('voice-dock-more-open', expanded);
+        this.dockMorePanel.classList.toggle('hidden', !expanded);
+        this.dockMoreBtn.setAttribute('aria-expanded', String(expanded));
+        this.playSound('click');
+    }
+
+    sendQuickPhrase(phrase) {
+        if (!phrase) return;
+        if (this.textInput) {
+            this.textInput.value = phrase;
+            this._updateCharCounter();
+        }
+        this.sendTextMessage();
+        this._vibrate(10);
+    }
+
+    requestRepeatQuestion() {
+        const snippet = (this.lastAgentMessage || '').trim();
+        const request = snippet
+            ? `Please repeat that. I may have missed this: "${snippet.slice(0, 140)}"`
+            : 'Please repeat that.';
+        this.sendQuickPhrase(request);
+        this.voiceDock?.classList.remove('voice-dock-more-open');
+        this.dockMorePanel?.classList.add('hidden');
+        this.dockMoreBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    requestSlowDown() {
+        this.sendQuickPhrase('Please slow down and ask one question at a time.');
+        this.voiceDock?.classList.remove('voice-dock-more-open');
+        this.dockMorePanel?.classList.add('hidden');
+        this.dockMoreBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    takeNeedAMoment() {
+        this.autoListenEnabled = false;
+        localStorage.setItem('autoListenEnabled', 'false');
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+        const btn = document.getElementById('auto-listen-btn');
+        if (btn) btn.innerHTML = '⏸️ Manual';
+        this._syncAutoListenChip();
+        this.setStatus('Take your time — auto-listen paused');
+        this.ui?.showToast('Auto-listen paused. Tap to talk when ready.', 'info', 2200);
+        this._setConversationState('ready');
+        this._vibrate([18, 40, 18]);
+        this.syncVoicePreferencesToSession();
+        this.recordCallEvent('need_a_moment', { auto_listen: false });
+        this.voiceDock?.classList.remove('voice-dock-more-open');
+        this.dockMorePanel?.classList.add('hidden');
+        this.dockMoreBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    interruptAgentSpeech() {
+        if (this.ttsPlayer && this.ttsPlayer.isCurrentlyPlaying()) {
+            this.ttsPlayer.interrupt?.('tap_interrupt');
+        }
+        clearTimeout(this._aiSpeakingTimeout);
+        this._isSpeakingResponse = false;
+        this._setMicSpeakingState(false);
+        this._setConversationState('ready');
+        this.recordBargeIn('tap_interrupt');
+        this._vibrate([12, 24, 12]);
+    }
+
+    _syncAutoListenChip() {
+        if (this.mobileCallAutoListenChip) {
+            this.mobileCallAutoListenChip.textContent = this.autoListenEnabled ? 'Auto-listen on' : 'Auto-listen off';
+            this.mobileCallAutoListenChip.classList.toggle('is-off', !this.autoListenEnabled);
+        }
+        if (this.dockAutoBtn) {
+            this.dockAutoBtn.textContent = this.autoListenEnabled ? '🔁 Auto-listen on' : '🔁 Auto-listen off';
+            this.dockAutoBtn.setAttribute('aria-pressed', String(this.autoListenEnabled));
+        }
+    }
+
+    _syncAudioToggleButton() {
+        if (!this.dockAudioToggleBtn) return;
+        const disabled = !!this.audioOutputDisabled;
+        this.dockAudioToggleBtn.textContent = disabled ? '🔇 Audio off' : '🔊 Audio on';
+        this.dockAudioToggleBtn.classList.toggle('is-muted', disabled);
+        this.dockAudioToggleBtn.setAttribute('aria-pressed', String(disabled));
+    }
+
+    setAudioOutputDisabled(disabled, options = {}) {
+        const { notify = true, persist = true, restoreTTS = true } = options;
+        this.audioOutputDisabled = !!disabled;
+        if (persist) {
+            localStorage.setItem('audioOutputDisabled', String(this.audioOutputDisabled));
+        }
+
+        if (this.audioOutputDisabled) {
+            localStorage.setItem('soundEnabledBeforeAudioDisable', String(this.soundEnabled));
+            if (this.ttsPlayer) {
+                localStorage.setItem('ttsEnabledBeforeAudioDisable', String(this.ttsPlayer.isEnabled()));
+                this.ttsPlayer.interrupt?.('audio_output_disabled');
+                this.ttsPlayer.setEnabled(false);
+            }
+            this._isSpeakingResponse = false;
+            this._setMicSpeakingState(false);
+            this.soundEnabled = false;
+            localStorage.setItem('soundEnabled', 'false');
+            if (this.ui) this.ui.soundEnabled = false;
+        } else {
+            const prevSound = localStorage.getItem('soundEnabledBeforeAudioDisable');
+            const shouldEnableSound = prevSound !== null ? prevSound === 'true' : (localStorage.getItem('soundEnabled') !== 'false');
+            this.soundEnabled = shouldEnableSound;
+            localStorage.setItem('soundEnabled', String(shouldEnableSound));
+            if (this.ui) this.ui.soundEnabled = shouldEnableSound;
+            if (restoreTTS && this.ttsPlayer) {
+                const prevTTS = localStorage.getItem('ttsEnabledBeforeAudioDisable');
+                if (prevTTS !== null) {
+                    this.ttsPlayer.setEnabled(prevTTS === 'true');
+                }
+            }
+        }
+
+        const ttsBtn = document.getElementById('tts-toggle-btn');
+        if (ttsBtn) {
+            ttsBtn.innerHTML = this.ttsPlayer && this.ttsPlayer.isEnabled() ? '🔈' : '🔇';
+        }
+        const audioToggleBtn = document.getElementById('audio-output-toggle-btn');
+        if (audioToggleBtn) {
+            audioToggleBtn.innerHTML = this.audioOutputDisabled ? '🔇 Audio Off' : '🔊 Audio On';
+            audioToggleBtn.setAttribute('aria-pressed', String(this.audioOutputDisabled));
+        }
+
+        this._syncAudioToggleButton();
+        this._syncSpeakerChip();
+        this._syncSpeedButtons();
+        this._syncVoiceSettingsMenu();
+        this.syncVoicePreferencesToSession();
+
+        if (notify && this.ui) {
+            this.ui.showToast(
+                this.audioOutputDisabled
+                    ? '🔇 Audio disabled — Detective Ray voice will not auto-play'
+                    : '🔊 Audio enabled',
+                'success',
+                2400
+            );
+        }
+    }
+
+    toggleAudioOutputDisabled() {
+        this.setAudioOutputDisabled(!this.audioOutputDisabled);
+    }
+
+    _syncSpeakerChip() {
+        if (!this.mobileCallSpeakerChip) return;
+        if (this.audioOutputDisabled) {
+            this.mobileCallSpeakerChip.textContent = 'Audio off';
+            this.mobileCallSpeakerChip.classList.add('is-off');
+            return;
+        }
+        const enabled = this.ttsPlayer ? this.ttsPlayer.isEnabled() : true;
+        const speed = this.ttsPlayer?.getPlaybackSpeed ? this.ttsPlayer.getPlaybackSpeed() : 1.0;
+        this.mobileCallSpeakerChip.textContent = enabled ? `Speaker on · ${speed.toFixed(1)}x` : 'Speaker off';
+        this.mobileCallSpeakerChip.classList.toggle('is-off', !enabled);
+    }
+
+    _syncSpeedButtons() {
+        const speed = this.ttsPlayer?.getPlaybackSpeed ? this.ttsPlayer.getPlaybackSpeed() : 1.0;
+        const speedButtons = [
+            { btn: this.dockSpeed09Btn, speed: 0.9 },
+            { btn: this.dockSpeed10Btn, speed: 1.0 },
+            { btn: this.dockSpeed11Btn, speed: 1.1 },
+        ];
+        speedButtons.forEach(({ btn, speed: candidate }) => {
+            if (!btn) return;
+            const active = Math.abs(speed - candidate) < 0.01;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-pressed', String(active));
+        });
+    }
+
+    setTTSPlaybackSpeed(speed) {
+        if (!this.ttsPlayer || !this.ttsPlayer.setPlaybackSpeed) return;
+        this.ttsPlayer.setPlaybackSpeed(speed);
+        this._syncSpeedButtons();
+        this._syncSpeakerChip();
+        this.syncVoicePreferencesToSession();
+        this.ui?.showToast(`Voice speed set to ${this.ttsPlayer.getPlaybackSpeed().toFixed(1)}x`, 'success', 1500);
+    }
+
+    _collectVoicePreferencesPayload() {
+        return {
+            auto_listen: !!this.autoListenEnabled,
+            tts_enabled: this.audioOutputDisabled ? false : (this.ttsPlayer ? this.ttsPlayer.isEnabled() : true),
+            playback_speed: this.ttsPlayer?.getPlaybackSpeed ? this.ttsPlayer.getPlaybackSpeed() : 1.0,
+            voice: this.ttsPlayer?.getVoice ? this.ttsPlayer.getVoice() : 'Puck',
+        };
+    }
+
+    async loadVoicePreferencesFromSession() {
+        if (!this.sessionId) return;
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/voice/preferences`, {}, 7000);
+            if (!response.ok) return;
+            const data = await response.json();
+            const prefs = data.voice_preferences || {};
+            if (typeof prefs.auto_listen === 'boolean') {
+                this.autoListenEnabled = prefs.auto_listen;
+                localStorage.setItem('autoListenEnabled', String(this.autoListenEnabled));
+            }
+            if (this.ttsPlayer) {
+                if (typeof prefs.tts_enabled === 'boolean') {
+                    this.ttsPlayer.setEnabled(prefs.tts_enabled);
+                }
+                if (typeof prefs.voice === 'string' && prefs.voice.trim()) {
+                    this.ttsPlayer.setVoice(prefs.voice.trim());
+                }
+                if (typeof prefs.playback_speed === 'number') {
+                    this.ttsPlayer.setPlaybackSpeed(prefs.playback_speed);
+                }
+                if (this.audioOutputDisabled) {
+                    this.ttsPlayer.setEnabled(false);
+                }
+            }
+            const autoBtn = document.getElementById('auto-listen-btn');
+            if (autoBtn) autoBtn.innerHTML = this.autoListenEnabled ? '🔁 Auto' : '⏸️ Manual';
+            const ttsBtn = document.getElementById('tts-toggle-btn');
+            if (ttsBtn) ttsBtn.innerHTML = this.ttsPlayer && this.ttsPlayer.isEnabled() ? '🔈' : '🔇';
+            this._syncAudioToggleButton();
+            this._syncAutoListenChip();
+            this._syncSpeakerChip();
+            this._syncSpeedButtons();
+            this._syncVoiceSettingsMenu();
+            this._syncTextToolsMenu();
+        } catch (error) {
+            console.debug('Voice preference load skipped:', error?.message || error);
+        }
+    }
+
+    syncVoicePreferencesToSession() {
+        if (!this.sessionId) return;
+        const payload = this._collectVoicePreferencesPayload();
+        fetch(`/api/sessions/${this.sessionId}/voice/preferences`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        }).catch((error) => {
+            console.debug('Voice preference sync skipped:', error?.message || error);
+        });
+    }
+
+    recordCallEvent(eventType, payload = {}) {
+        if (!this.sessionId) return;
+        fetch(`/api/sessions/${this.sessionId}/call-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                event_type: eventType,
+                source: 'web',
+                payload,
+            }),
+        }).catch(() => {});
+    }
+
+    recordBargeIn(reason = 'tap_interrupt') {
+        if (!this.sessionId) return;
+        fetch(`/api/sessions/${this.sessionId}/barge-in`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: 'web',
+                reason,
+            }),
+        }).catch(() => {});
+    }
+
+    _syncVoiceDockMicLabel() {
+        if (!this.voiceDockMicBtn || !this.voiceDockMicText) return;
+        this.voiceDockMicBtn.disabled = !!this.micBtn?.disabled;
+        let label = 'Tap to talk';
+        if (this.micBtn?.classList.contains('disconnected')) label = 'Tap to reconnect';
+        else if (this.isRecording) label = 'Tap to stop';
+        else if (this.conversationState === 'speaking') label = 'Interrupt & talk';
+        else if (this.conversationState === 'thinking') label = 'Ray is thinking...';
+        this.voiceDockMicText.textContent = label;
+        this.voiceDockMicBtn.classList.toggle('is-recording', this.isRecording);
+        this.voiceDockMicBtn.classList.toggle('is-busy', this.conversationState === 'thinking' || this.conversationState === 'speaking');
+    }
+
+    _setConversationState(state, options = {}) {
+        const validState = ['ready', 'listening', 'thinking', 'speaking'].includes(state) ? state : 'ready';
+        const changed = this.conversationState !== validState;
+        this.conversationState = validState;
+
+        const labels = {
+            ready: 'Ready',
+            listening: 'Listening',
+            thinking: 'Thinking',
+            speaking: 'Ray speaking'
+        };
+
+        if (this.mobileCallStateChip) {
+            this.mobileCallStateChip.textContent = labels[validState] || 'Ready';
+            this.mobileCallStateChip.classList.remove('state-ready', 'state-listening', 'state-thinking', 'state-speaking');
+            this.mobileCallStateChip.classList.add(`state-${validState}`);
+        }
+
+        if (this.tapInterruptAffordance) {
+            const showInterrupt = this.isMobileVoiceUI && validState === 'speaking';
+            this.tapInterruptAffordance.classList.toggle('hidden', !showInterrupt);
+            this.tapInterruptAffordance.classList.toggle('visible', showInterrupt);
+        }
+
+        if (validState !== 'ready') {
+            this._hideRayListeningCue();
+        }
+
+        this._syncVoiceDockMicLabel();
+
+        if (!changed || options.silent) return;
+        this.recordCallEvent('conversation_state', { state: validState });
+        const pattern = {
+            listening: [16],
+            thinking: [10, 30, 10],
+            speaking: [20, 30, 20],
+            ready: [8]
+        }[validState];
+        this._vibrate(pattern);
+    }
+
+    _showRayListeningCue() {
+        if (!this.rayListeningCue || !this.isMobileVoiceUI) return;
+        this.rayListeningCue.classList.remove('hidden');
+        clearTimeout(this._rayListeningCueTimer);
+        this._rayListeningCueTimer = setTimeout(() => {
+            this.rayListeningCue?.classList.add('hidden');
+        }, 5000);
+    }
+
+    _hideRayListeningCue() {
+        if (!this.rayListeningCue) return;
+        clearTimeout(this._rayListeningCueTimer);
+        this.rayListeningCue.classList.add('hidden');
+    }
+
+    _triggerSceneUpdatePulse() {
+        if (!this.mobileSceneUpdateIndicator) return;
+        this.mobileSceneUpdateIndicator.classList.remove('hidden');
+        this.mobileSceneUpdateIndicator.classList.add('pulse');
+        clearTimeout(this._sceneUpdatePulseTimer);
+        this._sceneUpdatePulseTimer = setTimeout(() => {
+            this.mobileSceneUpdateIndicator?.classList.remove('pulse');
+        }, 2200);
+    }
+
+    _vibrate(pattern) {
+        if (!this.isMobileVoiceUI || !pattern || typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        try { navigator.vibrate(pattern); } catch (_) {}
     }
     
     _addSoundToggle() {
         // Sound effects controlled by phone volume — no separate button needed
         // Keeping the method stub for backward compatibility
+    }
+
+    _initSimplifiedControlMenus() {
+        if (!window.matchMedia('(min-width: 769px)').matches) {
+            document.body.classList.remove('modern-simplified-ui');
+            return;
+        }
+        document.body.classList.add('modern-simplified-ui');
+        this._ensureModernMenuDismissHandler();
+        this._mountVoiceSettingsMenu();
+        this._mountTextToolsMenu();
+    }
+
+    _ensureModernMenuDismissHandler() {
+        if (this._modernMenuDismissHandler) return;
+        this._modernMenuDismissHandler = (event) => {
+            const openMenus = document.querySelectorAll('.modern-dropdown.open');
+            openMenus.forEach((menuEl) => {
+                if (!menuEl.contains(event.target)) {
+                    menuEl.classList.remove('open');
+                    menuEl.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+                }
+            });
+        };
+        document.addEventListener('click', this._modernMenuDismissHandler);
+    }
+
+    _toggleModernDropdown(dropdownId) {
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        const shouldOpen = !dropdown.classList.contains('open');
+        document.querySelectorAll('.modern-dropdown.open').forEach((el) => {
+            el.classList.remove('open');
+            el.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+        dropdown.classList.toggle('open', shouldOpen);
+        dropdown.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
+    _mountVoiceSettingsMenu() {
+        const controls = document.querySelector('.controls') || document.querySelector('.session-info');
+        if (!controls) return;
+
+        let wrap = document.getElementById('voice-settings-dropdown');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'voice-settings-dropdown';
+            wrap.className = 'modern-dropdown modern-dropdown-inline';
+            wrap.innerHTML = `
+                <button id="voice-settings-btn" type="button" class="btn btn-secondary modern-dropdown-trigger" aria-haspopup="menu" aria-expanded="false">
+                    ⚙️ Voice settings
+                </button>
+                <div id="voice-settings-menu" class="modern-dropdown-menu" role="menu" aria-label="Voice settings options"></div>
+            `;
+            controls.appendChild(wrap);
+            const trigger = wrap.querySelector('#voice-settings-btn');
+            trigger?.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this._syncVoiceSettingsMenu();
+                this._toggleModernDropdown('voice-settings-dropdown');
+                trigger.setAttribute('aria-expanded', String(wrap.classList.contains('open')));
+            });
+        }
+
+        this._syncVoiceSettingsMenu();
+    }
+
+    _syncVoiceSettingsMenu() {
+        const menu = document.getElementById('voice-settings-menu');
+        if (!menu) return;
+
+        const items = [
+            { id: 'auto-listen-btn', fallback: '🔁 Auto-listen' },
+            { id: 'tts-toggle-btn', fallback: '🔈 Speaker voice' },
+            { id: 'audio-output-toggle-btn', fallback: '🔊 Audio output' },
+        ];
+
+        menu.innerHTML = '';
+        items.forEach(({ id, fallback }) => {
+            const source = document.getElementById(id);
+            if (!source) return;
+            source.classList.add('menu-hidden-source');
+
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'modern-dropdown-item';
+            item.textContent = (source.textContent || '').trim() || source.getAttribute('aria-label') || fallback;
+            item.disabled = !!source.disabled;
+            item.addEventListener('click', () => {
+                source.click();
+                this._syncVoiceSettingsMenu();
+                const dropdown = document.getElementById('voice-settings-dropdown');
+                dropdown?.classList.remove('open');
+                dropdown?.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+            });
+            menu.appendChild(item);
+        });
+    }
+
+    _mountTextToolsMenu() {
+        const textBar = document.getElementById('text-input-bar');
+        if (!textBar) return;
+
+        let wrap = document.getElementById('text-tools-dropdown');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'text-tools-dropdown';
+            wrap.className = 'modern-dropdown modern-dropdown-inline text-tools-dropdown';
+            wrap.innerHTML = `
+                <button id="text-tools-btn" type="button" class="btn btn-secondary modern-dropdown-trigger text-tools-trigger" aria-haspopup="menu" aria-expanded="false">
+                    ⋯ Tools
+                </button>
+                <div id="text-tools-menu" class="modern-dropdown-menu modern-dropdown-menu-right" role="menu" aria-label="Message tools"></div>
+            `;
+            const sendBtn = document.getElementById('send-btn');
+            if (sendBtn && sendBtn.parentNode === textBar) {
+                textBar.insertBefore(wrap, sendBtn);
+            } else {
+                textBar.appendChild(wrap);
+            }
+
+            const trigger = wrap.querySelector('#text-tools-btn');
+            trigger?.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this._syncTextToolsMenu();
+                this._toggleModernDropdown('text-tools-dropdown');
+                trigger.setAttribute('aria-expanded', String(wrap.classList.contains('open')));
+            });
+        }
+
+        this._syncTextToolsMenu();
+    }
+
+    _syncTextToolsMenu() {
+        const menu = document.getElementById('text-tools-menu');
+        if (!menu) return;
+
+        const items = [
+            { id: 'upload-evidence-btn', label: '📎 Attach evidence photo' },
+            { id: 'upload-sketch-btn', label: '✏️ Upload sketch' },
+            { id: 'camera-btn', label: '📸 Take photo now' },
+            { id: 'retry-last-btn', label: '↻ Retry last message' },
+            { id: 'auto-scroll-toggle', label: this.autoScrollEnabled ? '⇣ Auto-scroll: On' : '⏸ Auto-scroll: Off' },
+            { id: 'compact-mode-toggle', label: this.compactMode ? '▤ Compact mode: On' : '▤ Compact mode: Off' },
+            { id: 'guided-mode-btn', label: '📋 Guided mode' },
+            { id: 'child-mode-btn', label: '🧒 Child mode' },
+            { id: 'high-contrast-btn', label: '🔲 High contrast' },
+        ];
+
+        menu.innerHTML = '';
+        items.forEach(({ id, label }) => {
+            const source = document.getElementById(id);
+            if (!source) return;
+            source.classList.add('menu-hidden-source');
+            let displayLabel = label;
+            if (id === 'guided-mode-btn') {
+                displayLabel = `📋 Guided mode: ${source.classList.contains('active') ? 'On' : 'Off'}`;
+            } else if (id === 'child-mode-btn') {
+                displayLabel = `🧒 Child mode: ${source.classList.contains('active') ? 'On' : 'Off'}`;
+            } else if (id === 'high-contrast-btn') {
+                displayLabel = `🔲 High contrast: ${source.classList.contains('active') ? 'On' : 'Off'}`;
+            }
+
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'modern-dropdown-item';
+            item.textContent = displayLabel;
+            item.disabled = !!source.disabled;
+            item.addEventListener('click', () => {
+                source.click();
+                this._syncTextToolsMenu();
+                const dropdown = document.getElementById('text-tools-dropdown');
+                dropdown?.classList.remove('open');
+                dropdown?.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+            });
+            menu.appendChild(item);
+        });
     }
     
     _addTTSToggle() {
@@ -433,8 +1240,36 @@ class WitnessReplayApp {
         ttsBtn.addEventListener('click', () => this.toggleTTS());
         
         controls.appendChild(ttsBtn);
+        this._syncSpeakerChip();
+    }
+
+    _addAudioOutputToggle() {
+        const controls = document.querySelector('.controls') || document.querySelector('.session-info');
+        if (!controls || document.getElementById('audio-output-toggle-btn')) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'audio-output-toggle-btn';
+        btn.className = 'btn btn-secondary mic-area-btn';
+        btn.setAttribute('aria-label', 'Disable or enable all audio output');
+        btn.setAttribute('data-tooltip', 'Mute/unmute all app audio output');
+        btn.innerHTML = this.audioOutputDisabled ? '🔇 Audio Off' : '🔊 Audio On';
+        btn.addEventListener('click', () => this.toggleAudioOutputDisabled());
+        controls.appendChild(btn);
     }
     
+
+    _syncAutoListenButtonState(buttonEl = null) {
+        const btn = buttonEl || document.getElementById('auto-listen-btn');
+        if (!btn) return;
+        if (!this.autoListenEnabled) {
+            btn.innerHTML = '⏸️ Manual';
+            this._syncVoiceSettingsMenu();
+            return;
+        }
+        btn.innerHTML = this._autoListenPausedUntilManual ? '⏸️ Auto Paused' : '🔁 Auto';
+        this._syncVoiceSettingsMenu();
+    }
+
     _addAutoListenToggle() {
         const controls = document.querySelector('.controls') || document.querySelector('.session-info');
         if (!controls || document.getElementById('auto-listen-btn')) return;
@@ -444,18 +1279,19 @@ class WitnessReplayApp {
         btn.className = 'btn btn-secondary mic-area-btn';
         btn.setAttribute('data-tooltip', 'Auto-listen after AI speaks');
         btn.setAttribute('aria-label', 'Toggle auto-listen mode');
-        btn.innerHTML = this.autoListenEnabled ? '🔁 Auto' : '⏸️ Manual';
+        this._syncAutoListenButtonState(btn);
         btn.addEventListener('click', () => this.toggleAutoListen());
         
         controls.appendChild(btn);
+        this._syncAutoListenChip();
     }
     
     toggleAutoListen() {
         this.autoListenEnabled = !this.autoListenEnabled;
         localStorage.setItem('autoListenEnabled', this.autoListenEnabled.toString());
         
-        const btn = document.getElementById('auto-listen-btn');
-        if (btn) btn.innerHTML = this.autoListenEnabled ? '🔁 Auto' : '⏸️ Manual';
+        this._syncAutoListenButtonState();
+        this._syncAutoListenChip();
         
         this.ui.showToast(
             this.autoListenEnabled
@@ -463,18 +1299,28 @@ class WitnessReplayApp {
                 : '⏸️ Auto-listen OFF — tap mic each time',
             'success', 3000
         );
+        if (this.autoListenEnabled) {
+            this._autoListenPausedUntilManual = false;
+        }
+        this._syncAutoListenButtonState();
+        this._vibrate(this.autoListenEnabled ? [10, 20, 10] : [18]);
         
         // Cancel pending auto-listen if turning off
         if (!this.autoListenEnabled && this._autoListenTimer) {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
         }
+        this.syncVoicePreferencesToSession();
     }
     
     initializeTTS() {
         // Initialize TTS player for accessibility
         if (window.TTSPlayer) {
             this.ttsPlayer = new TTSPlayer();
+            if (this.audioOutputDisabled) {
+                this.ttsPlayer.setEnabled(false);
+            }
+            this._syncSpeedButtons();
             
             // Wire up voice conversation callbacks
             this.ttsPlayer.onPlaybackStart = () => {
@@ -496,20 +1342,28 @@ class WitnessReplayApp {
             this.micBtn.classList.add('ai-speaking');
             const t = this.micBtn.querySelector('.btn-text');
             if (t) t.textContent = 'Detective Ray speaking...';
+            this._setConversationState('speaking');
         } else {
             this.micBtn.classList.remove('ai-speaking');
             const t = this.micBtn.querySelector('.btn-text');
             if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
                 t.textContent = 'Tap to Report';
             }
+            this._setConversationState('ready');
+            this._showRayListeningCue();
         }
+        this._syncVoiceDockMicLabel();
     }
     
     _triggerAutoListen() {
         if (!this.autoListenEnabled) return;
+        if (this._autoListenPausedUntilManual) return;
         if (this.isRecording) return;
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         if (this.micBtn && (this.micBtn.classList.contains('connecting') || this.micBtn.classList.contains('disconnected'))) return;
+        // On iOS, getUserMedia requires a user gesture. Only auto-listen if
+        // the user has already granted mic permission via a manual tap.
+        if (!this._micPermissionGranted) return;
         
         // Brief 1-second pause, then auto-start recording
         if (this._autoListenTimer) clearTimeout(this._autoListenTimer);
@@ -517,15 +1371,59 @@ class WitnessReplayApp {
             this._autoListenTimer = null;
             if (!this.isRecording && !this._isSpeakingResponse && this.ws && this.ws.readyState === WebSocket.OPEN) {
                 console.debug('[VoiceConversation] Auto-listen: starting recording');
-                this.startRecording();
+                this.startRecording({ trigger: 'auto_listen' });
             }
         }, 1000);
+    }
+
+    _isLikelySilentAutoCapture(qualityMetrics, audioBlob) {
+        const sizeKB = (audioBlob?.size || 0) / 1024;
+        if (!qualityMetrics) {
+            return sizeKB < 12;
+        }
+
+        const totalSamples = Math.max(
+            1,
+            Number(qualityMetrics.totalSamples || qualityMetrics.volumeSamples || 0),
+        );
+        const quietRatio = Number(qualityMetrics.tooQuietSamples || 0) / totalSamples;
+        const avgVolume = Number(qualityMetrics.avgVolume || 0);
+        const qualityScore = Number(qualityMetrics.qualityScore || 100);
+        const durationMs = Number(qualityMetrics.duration || 0);
+
+        if (durationMs > 0 && durationMs < 700) {
+            return true;
+        }
+
+        return (
+            quietRatio >= 0.9
+            || avgVolume < 0.018
+            || (qualityScore <= 20 && sizeKB < 32)
+        );
+    }
+
+    _pauseAutoListenUntilManual(reason = 'silence_detected') {
+        if (this._autoListenPausedUntilManual) return;
+        this._autoListenPausedUntilManual = true;
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+        this._setConversationState('ready');
+        this.ui?.setStatus('Waiting for witness input...', 'default');
+        this._syncAutoListenButtonState();
+        this.ui?.showToast('⏸️ Auto-listen paused. Tap the mic when ready.', 'info', 2800);
+        this.recordCallEvent('auto_listen_paused', { reason });
     }
     
     toggleTTS() {
         if (!this.ttsPlayer) {
             this.ui.showToast('Text-to-Speech not available', 'warning', 2000);
             return;
+        }
+
+        if (this.audioOutputDisabled) {
+            this.setAudioOutputDisabled(false, { notify: false, restoreTTS: false });
         }
         
         const newState = !this.ttsPlayer.isEnabled();
@@ -535,6 +1433,8 @@ class WitnessReplayApp {
         if (ttsBtn) {
             ttsBtn.innerHTML = newState ? '🔈' : '🔇';
         }
+        this._syncSpeakerChip();
+        this._syncVoiceSettingsMenu();
         
         this.ui.showToast(
             newState ? '🔈 Text-to-Speech enabled - AI responses will be spoken' : '🔇 Text-to-Speech disabled',
@@ -546,10 +1446,16 @@ class WitnessReplayApp {
         if (newState) {
             this.ttsPlayer.speak('Text to speech is now enabled. I will read AI responses aloud.', true);
         }
+        this._syncSpeedButtons();
+        this.syncVoicePreferencesToSession();
     }
     
     // Speak AI response using TTS (called when agent responds)
     speakAIResponse(text) {
+        if (this.audioOutputDisabled) {
+            if (this.autoListenEnabled) this._triggerAutoListen();
+            return;
+        }
         if (this.ttsPlayer && this.ttsPlayer.isEnabled()) {
             // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
             this.ttsPlayer.speak(text);
@@ -560,8 +1466,12 @@ class WitnessReplayApp {
     }
     
     toggleSound() {
+        if (this.audioOutputDisabled) {
+            this.setAudioOutputDisabled(false, { notify: false });
+        }
         this.soundEnabled = !this.soundEnabled;
         localStorage.setItem('soundEnabled', this.soundEnabled);
+        if (this.ui) this.ui.soundEnabled = this.soundEnabled;
         
         const soundBtn = document.getElementById('sound-toggle-btn');
         if (soundBtn) {
@@ -581,7 +1491,7 @@ class WitnessReplayApp {
     }
     
     playSound(type) {
-        if (!this.soundEnabled || !this.audioContext) return;
+        if (this.audioOutputDisabled || !this.soundEnabled || !this.audioContext) return;
         
         const ctx = this.audioContext;
         const oscillator = ctx.createOscillator();
@@ -657,8 +1567,20 @@ class WitnessReplayApp {
     
     _initKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
+            const isTypingField =
+                e.target.tagName === 'INPUT' ||
+                e.target.tagName === 'TEXTAREA' ||
+                e.target.isContentEditable;
+            
+            // Slash: focus chat input (unless already typing)
+            if (!isTypingField && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                this.focusChatInput();
+                return;
+            }
+            
             // Ignore if typing in input field
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            if (isTypingField) {
                 return;
             }
             
@@ -720,6 +1642,155 @@ class WitnessReplayApp {
                 this.showServerInfo();
             }
         });
+    }
+
+    focusChatInput() {
+        const bar = document.getElementById('text-input-bar');
+        if (bar && bar.classList.contains('text-input-collapsed')) {
+            bar.classList.remove('text-input-collapsed');
+            bar.classList.add('text-input-expanded');
+        }
+        if (this.textInput && !this.textInput.disabled) {
+            this.textInput.focus();
+        }
+    }
+
+    _updateCharCounter() {
+        if (!this.charCounter || !this.textInput) return;
+        const length = this.textInput.value.length;
+        this.charCounter.textContent = `${length} chars`;
+        this.charCounter.classList.toggle('warning', length > 400);
+    }
+
+    _updateRetryButton() {
+        if (!this.retryLastBtn) return;
+        const hasLastMessage = !!this.lastUserMessage;
+        this.retryLastBtn.disabled = !hasLastMessage;
+        this.retryLastBtn.title = hasLastMessage ? 'Retry last message' : 'No message to retry';
+        this._syncTextToolsMenu();
+    }
+
+    retryLastMessage() {
+        if (!this.lastUserMessage) {
+            this.ui?.showToast('No previous message to retry yet.', 'info', 1800);
+            return;
+        }
+        this.textInput.value = this.lastUserMessage;
+        this._updateCharCounter();
+        this.sendTextMessage();
+    }
+
+    setAutoScroll(enabled, save = true) {
+        this.autoScrollEnabled = !!enabled;
+        if (save) {
+            localStorage.setItem('witnessreplay-auto-scroll', this.autoScrollEnabled.toString());
+        }
+        if (this.autoScrollToggleBtn) {
+            this.autoScrollToggleBtn.classList.toggle('is-off', !this.autoScrollEnabled);
+            this.autoScrollToggleBtn.setAttribute('aria-pressed', String(this.autoScrollEnabled));
+            this.autoScrollToggleBtn.title = this.autoScrollEnabled ? 'Auto-scroll on' : 'Auto-scroll off';
+            this.autoScrollToggleBtn.textContent = this.autoScrollEnabled ? '⇣' : '⏸';
+        }
+        if (this.chatTranscript) {
+            this.chatTranscript.classList.toggle('auto-scroll-off', !this.autoScrollEnabled);
+        }
+        this._syncTextToolsMenu();
+    }
+
+    toggleAutoScroll() {
+        this.setAutoScroll(!this.autoScrollEnabled);
+    }
+
+    _scrollChatToBottom(behavior = 'smooth') {
+        if (!this.chatTranscript || !this.autoScrollEnabled) return;
+        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior });
+    }
+
+    setCompactMode(enabled, save = true) {
+        this.compactMode = !!enabled;
+        document.body.classList.toggle('compact-chat', this.compactMode);
+        if (save) {
+            localStorage.setItem('witnessreplay-compact-chat', this.compactMode.toString());
+        }
+        if (this.compactModeBtn) {
+            this.compactModeBtn.classList.toggle('active', this.compactMode);
+            this.compactModeBtn.setAttribute('aria-pressed', String(this.compactMode));
+            this.compactModeBtn.title = this.compactMode ? 'Compact mode on' : 'Compact mode off';
+        }
+        this._syncTextToolsMenu();
+    }
+
+    toggleCompactMode() {
+        this.setCompactMode(!this.compactMode);
+    }
+
+    _updateConnectionQualityBadge(status = this.connectionStatus) {
+        const badge = this.connectionQualityBadge || document.getElementById('connection-quality-badge');
+        if (!badge) return;
+        let level = 'unstable';
+        if (status === 'disconnected') {
+            level = 'disconnected';
+        } else if (status === 'connected' && this._reconnectAttempt === 0) {
+            level = 'good';
+        }
+        badge.dataset.level = level;
+        badge.textContent = level === 'good' ? 'Good' : level === 'disconnected' ? 'Disconnected' : 'Unstable';
+    }
+
+    toggleAnonymousWitness(isAnonymous) {
+        const nameInput = document.getElementById('witness-name');
+        const contactInput = document.getElementById('witness-contact');
+        [nameInput, contactInput].forEach((input) => {
+            if (!input) return;
+            if (isAnonymous) input.value = '';
+            input.disabled = !!isAnonymous;
+        });
+        if (isAnonymous) {
+            localStorage.removeItem('witnessreplay-witness-name');
+            localStorage.removeItem('witnessreplay-witness-contact');
+        }
+    }
+
+    _addAssistantCopyButton(messageDiv, text) {
+        if (!messageDiv || messageDiv.querySelector('.msg-copy-btn')) return;
+        const actions = document.createElement('div');
+        actions.className = 'message-actions';
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'msg-copy-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.setAttribute('aria-label', 'Copy assistant message');
+        copyBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const copied = await this._copyToClipboard(text);
+            this.ui?.showToast(copied ? 'Copied response to clipboard' : 'Copy failed', copied ? 'success' : 'error', 1600);
+        });
+        actions.appendChild(copyBtn);
+        messageDiv.appendChild(actions);
+    }
+
+    async _copyToClipboard(text) {
+        if (!text) return false;
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (_) {
+            try {
+                const area = document.createElement('textarea');
+                area.value = text;
+                area.setAttribute('readonly', '');
+                area.style.position = 'absolute';
+                area.style.left = '-9999px';
+                document.body.appendChild(area);
+                area.select();
+                const ok = document.execCommand('copy');
+                area.remove();
+                return ok;
+            } catch (e) {
+                return false;
+            }
+        }
     }
     
     initializeAudio() {
@@ -880,6 +1951,7 @@ class WitnessReplayApp {
             }
             
             this.setStatus('Listening for voice...');
+            this._setConversationState('listening');
             console.debug('[VAD] Started listening');
             
         } catch (error) {
@@ -911,6 +1983,7 @@ class WitnessReplayApp {
         }
         
         this.setStatus('Ready to listen');
+        this._setConversationState('ready');
         console.debug('[VAD] Stopped listening');
     }
     
@@ -1163,10 +2236,13 @@ class WitnessReplayApp {
             this.sessionStartTime = Date.now();
             this._reconnectAttempt = 0;
             this.hasReceivedGreeting = false;
+            this.lastUserMessage = '';
             this.selectedTemplateId = null;
             this._clearAutoSave();
+            this._updateRetryButton();
             
             // Start duration timer
+            this.startDurationTimer();
             
             // Start comfort manager interview tracking
             if (this.comfortManager) {
@@ -1174,7 +2250,10 @@ class WitnessReplayApp {
             }
             
             // Clear UI
-            this.chatTranscript.innerHTML = '';
+            const emptyCopy = this.isMobileVoiceUI
+                ? 'Tap the big mic below and talk naturally with Officer Ray. Quick phrase chips can help you start fast.'
+                : 'Your conversation will appear here. Start by describing what happened.';
+            this.chatTranscript.innerHTML = `<p class="empty-state">${this._escapeHtml(emptyCopy)}</p>`;
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
             
             // Update stats
@@ -1183,6 +2262,12 @@ class WitnessReplayApp {
                 statementCount: 0,
                 duration: 0
             });
+
+            // Keep session-scoped voice preferences in sync with persistent local experience settings.
+            this.syncVoicePreferencesToSession();
+            this._syncAutoListenChip();
+            this._syncSpeakerChip();
+            this._syncSpeedButtons();
             
             // Connect WebSocket
             this.connectWebSocket();
@@ -1191,6 +2276,10 @@ class WitnessReplayApp {
             if (!localStorage.getItem('witnessreplay-witness-info-shown')) {
                 const overlay = document.getElementById('witness-info-overlay');
                 if (overlay) {
+                    if (this.anonymousToggle) {
+                        this.anonymousToggle.checked = false;
+                        this.toggleAnonymousWitness(false);
+                    }
                     // Pre-fill from localStorage if returning user
                     const savedName = localStorage.getItem('witnessreplay-witness-name');
                     const savedContact = localStorage.getItem('witnessreplay-witness-contact');
@@ -1223,17 +2312,34 @@ class WitnessReplayApp {
         }
     }
     
+    _formatElapsedDuration(seconds) {
+        const s = Math.max(0, Math.floor(seconds || 0));
+        const hours = Math.floor(s / 3600);
+        const minutes = Math.floor((s % 3600) / 60);
+        const secs = s % 60;
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        return `${minutes}:${String(secs).padStart(2, '0')}`;
+    }
+
     startDurationTimer() {
         if (this.durationTimer) {
             clearInterval(this.durationTimer);
         }
-        
-        this.durationTimer = setInterval(() => {
-            if (this.sessionStartTime) {
-                const elapsed = Math.floor((Date.now() - this.sessionStartTime) / 1000);
-                this.ui.updateStats({ duration: elapsed });
+
+        const tick = () => {
+            if (!this.sessionStartTime) return;
+            const elapsed = Math.floor((Date.now() - this.sessionStartTime) / 1000);
+            this.ui.updateStats({ duration: elapsed });
+            const durationDisplay = document.getElementById('interview-duration-display');
+            if (durationDisplay) {
+                durationDisplay.textContent = this._formatElapsedDuration(elapsed);
             }
-        }, 10000); // Update every 10 seconds
+        };
+
+        tick();
+        this.durationTimer = setInterval(tick, 1000);
     }
     
     connectWebSocket() {
@@ -1265,6 +2371,9 @@ class WitnessReplayApp {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
+            this._isPageClosing = false;
+            this._autoListenPausedUntilManual = false;
+            this._syncAutoListenButtonState();
             this._reconnectAttempt = 0;
             this.connectionError = null;
             this._addConnectionStep('✅ Connected!');
@@ -1277,6 +2386,7 @@ class WitnessReplayApp {
             // Update connection status indicator and mic state
             this.updateConnectionStatus('connected');
             this._updateMicState('connected');
+            this._setConversationState('ready', { silent: true });
             
             // Load witnesses for multi-witness support
             this.loadWitnesses();
@@ -1298,9 +2408,13 @@ class WitnessReplayApp {
             this.connectionError = `WebSocket failed to connect to ${window.location.host}. This may be a CORS/origin issue.`;
             this._addConnectionStep(`❌ WebSocket error (check browser console)`);
             this.ui.setStatus('Connection error', 'default');
+            this._setConversationState('ready', { silent: true });
         };
         
         this.ws.onclose = (event) => {
+            if (this._isPageClosing) {
+                return;
+            }
             const reason = event.code === 1006 ? 'Connection refused (CORS or server down)' 
                          : event.code === 403 ? 'Forbidden - origin not allowed'
                          : event.reason || `Code: ${event.code}`;
@@ -1316,6 +2430,7 @@ class WitnessReplayApp {
             // Update connection status indicator
             this.updateConnectionStatus('reconnecting');
             this._updateMicState('connecting');
+            this._setConversationState('ready', { silent: true });
             
             // Reconnect with exponential backoff
             if (this.sessionId) {
@@ -1375,6 +2490,7 @@ class WitnessReplayApp {
     updateConnectionStatus(status) {
         const indicator = document.getElementById('connection-status');
         if (!indicator) return;
+        this.connectionStatus = status;
         const text = indicator.querySelector('.status-text');
         const popupState = document.getElementById('popup-state');
         const popupSession = document.getElementById('popup-session');
@@ -1422,6 +2538,7 @@ class WitnessReplayApp {
                 if (popupState) popupState.textContent = '❌ Disconnected';
                 break;
         }
+        this._updateConnectionQualityBadge(status);
     }
     
     handleWebSocketMessage(message) {
@@ -1430,6 +2547,9 @@ class WitnessReplayApp {
                 const speaker = message.data.speaker || 'agent';
                 const originalText = message.data.original_text;
                 const language = message.data.language;
+                if (speaker === 'agent' && message.data.text) {
+                    this.lastAgentMessage = message.data.text;
+                }
                 
                 // Update mic button state for voice-first UX when agent responds
                 if (speaker === 'agent' && this.micBtn && !this.isRecording) {
@@ -1437,6 +2557,7 @@ class WitnessReplayApp {
                     this.micBtn.classList.add('ai-speaking');
                     const micBtnText = this.micBtn.querySelector('.btn-text');
                     if (micBtnText) micBtnText.textContent = 'Detective Ray speaking...';
+                    this._setConversationState('speaking');
                     // If TTS is enabled, callbacks will manage mic state reset.
                     // Otherwise, reset to idle after a short delay.
                     if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
@@ -1448,6 +2569,8 @@ class WitnessReplayApp {
                                 if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
                                     t.textContent = 'Tap to Report';
                                 }
+                                this._setConversationState('ready');
+                                this._showRayListeningCue();
                             }
                         }, 3000);
                     }
@@ -1507,6 +2630,13 @@ class WitnessReplayApp {
                 const statusMsg = message.data.message || message.data.status;
                 const state = this.getStatusState(statusMsg);
                 this.ui.setStatus(statusMsg, state);
+                if (state === 'listening') {
+                    this._setConversationState('listening');
+                } else if (state === 'processing' || state === 'generating') {
+                    this._setConversationState('thinking');
+                } else if (!this.isRecording && !this._isSpeakingResponse) {
+                    this._setConversationState('ready');
+                }
                 
                 // Update mic button state for voice-first UX
                 if (this.micBtn && !this.isRecording) {
@@ -1530,6 +2660,57 @@ class WitnessReplayApp {
                     this.showSceneLoadingSkeleton();
                 }
                 break;
+
+            case 'call_state': {
+                const callState = message.data || {};
+                if (typeof callState.statement_count === 'number' && this.ui) {
+                    this.statementCount = callState.statement_count;
+                    this.ui.updateStats({ statementCount: callState.statement_count });
+                }
+                if (callState.is_speaking) {
+                    this._setConversationState('speaking', { silent: true });
+                } else if (callState.is_recording) {
+                    this._setConversationState('listening', { silent: true });
+                } else {
+                    const mappedState = this.getStatusState(String(callState.status || ''));
+                    if (mappedState === 'listening') this._setConversationState('listening', { silent: true });
+                    else if (mappedState === 'processing' || mappedState === 'generating') this._setConversationState('thinking', { silent: true });
+                    else this._setConversationState('ready', { silent: true });
+                }
+                if (Number.isFinite(callState.elapsed_sec) && this.mobileCallElapsed) {
+                    this.mobileCallElapsed.textContent = this._formatElapsedDuration(callState.elapsed_sec);
+                }
+                break;
+            }
+
+            case 'voice_hint': {
+                const hintState = message.data?.state;
+                const hintMessage = message.data?.message;
+                if (hintState === 'ready_to_talk') {
+                    this._showRayListeningCue();
+                } else if (hintState === 'agent_speaking') {
+                    this._hideRayListeningCue();
+                }
+
+                const now = Date.now();
+                const stateChanged = !!hintState && hintState !== this._lastVoiceHintState;
+                if (hintState) {
+                    this._lastVoiceHintState = hintState;
+                }
+                const toastCooldownPassed = now - this._lastVoiceHintToastAt > 4500;
+                if (hintMessage && this.isMobileVoiceUI && (stateChanged || toastCooldownPassed)) {
+                    this.ui?.showToast(hintMessage, 'info', 1200);
+                    this._lastVoiceHintToastAt = now;
+                }
+                break;
+            }
+
+            case 'call_metrics':
+                this.lastCallMetrics = message.data || null;
+                if (Number.isFinite(this.lastCallMetrics?.elapsed_sec) && this.mobileCallElapsed) {
+                    this.mobileCallElapsed.textContent = this._formatElapsedDuration(this.lastCallMetrics.elapsed_sec);
+                }
+                break;
             
             case 'error':
                 const errorMsg = `Error: ${message.data.message}`;
@@ -1537,6 +2718,7 @@ class WitnessReplayApp {
                 this.displaySystemMessage(errorMsg);
                 this.ui.showToast(message.data.message, 'error');
                 this._hideTyping();
+                this._setConversationState('ready');
                 break;
             
             case 'pong':
@@ -1593,6 +2775,9 @@ class WitnessReplayApp {
                 element: messageDiv,
                 content: ''
             };
+            if (speaker === 'agent') {
+                this._setConversationState('speaking');
+            }
         }
         
         const streamData = this.streamingMessages[message_id];
@@ -1605,7 +2790,7 @@ class WitnessReplayApp {
                 contentSpan.textContent = streamData.content;
             }
             // Scroll to show new content
-            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+            this._scrollChatToBottom();
         }
         
         if (is_final) {
@@ -1613,6 +2798,9 @@ class WitnessReplayApp {
             streamData.element.classList.remove('streaming');
             const cursor = streamData.element.querySelector('.stream-cursor');
             if (cursor) cursor.remove();
+            if (speaker === 'agent') {
+                this._addAssistantCopyButton(streamData.element, streamData.content);
+            }
             
             // Play notification sound
             this.ui.playSound('notification');
@@ -1623,7 +2811,16 @@ class WitnessReplayApp {
             
             // TTS: Speak completed streamed agent response
             if (speaker === 'agent' && finalContent) {
+                this.lastAgentMessage = finalContent;
                 this.speakAIResponse(finalContent);
+                if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
+                    setTimeout(() => {
+                        if (!this.isRecording && !this._isSpeakingResponse) {
+                            this._setConversationState('ready');
+                            this._showRayListeningCue();
+                        }
+                    }, 400);
+                }
             }
             
             // Update interview progress
@@ -1660,32 +2857,49 @@ class WitnessReplayApp {
         
         // Interrupt TTS if speaking (user wants to talk)
         if (this.ttsPlayer && this.ttsPlayer.isCurrentlyPlaying()) {
-            this.ttsPlayer.stop();
-            this.ttsPlayer.queue = [];
+            this.ttsPlayer.interrupt?.('toggle_recording');
             this._isSpeakingResponse = false;
             this._setMicSpeakingState(false);
+            this.recordBargeIn('toggle_recording');
         }
         
         if (this.isRecording) {
+            this._autoListenPausedUntilManual = false;
+            this._syncAutoListenButtonState();
             this.stopRecording();
         } else {
-            this.startRecording();
+            this.startRecording({ trigger: 'manual' });
         }
     }
     
-    async startRecording() {
+    async startRecording(options = {}) {
+        const trigger = options?.trigger === 'auto_listen' ? 'auto_listen' : 'manual';
+        this._recordingTrigger = trigger;
+        if (trigger !== 'auto_listen') {
+            this._autoListenPausedUntilManual = false;
+            this._syncAutoListenButtonState();
+        }
         try {
+            if (this.ttsPlayer?.isCurrentlyPlaying()) {
+                this.ttsPlayer.interrupt?.('start_recording');
+                this._isSpeakingResponse = false;
+                this._setMicSpeakingState(false);
+                this.recordBargeIn('start_recording');
+            }
+
             // Check secure context first
             if (!window.isSecureContext && 
                 window.location.hostname !== 'localhost' && 
                 window.location.hostname !== '127.0.0.1') {
                 this.ui.showToast('⚠️ Microphone requires HTTPS. Use text input or access via localhost.', 'error', 5000);
                 this.displaySystemMessage('⚠️ Voice recording requires a secure connection (HTTPS). Please type your statement instead.');
+                this._setConversationState('ready');
                 return;
             }
             
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 this.ui.showToast('Microphone not supported in this browser', 'error');
+                this._setConversationState('ready');
                 return;
             }
             
@@ -1698,10 +2912,19 @@ class WitnessReplayApp {
             try {
                 const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 testStream.getTracks().forEach(t => t.stop());
+                this._micPermissionGranted = true;
             } catch (permErr) {
                 console.error('Microphone permission denied:', permErr);
+                // Distinguish between "never asked" (no user gesture) vs actually denied
+                if (!this._micPermissionGranted && trigger === 'auto_listen') {
+                    // Auto-listen tried without prior permission — silently skip
+                    console.debug('[AutoListen] Skipping — mic permission not yet granted via user gesture');
+                    this._setConversationState('ready');
+                    return;
+                }
                 this.ui.showToast('🎤 Microphone access denied. Check browser permissions.', 'error', 5000);
                 this.displaySystemMessage('🎤 Microphone access was denied. Please allow microphone access in your browser settings, or type your statement below.');
+                this._setConversationState('ready');
                 return;
             }
             
@@ -1753,9 +2976,16 @@ class WitnessReplayApp {
                 }
                 if (this.stopBtn) this.stopBtn.style.display = 'inline-block';
                 this.setStatus('Listening...');
+                this._setConversationState('listening');
+                this.recordCallEvent('recording_started', {
+                    auto_listen: this.autoListenEnabled,
+                    trigger: this._recordingTrigger,
+                });
+                this._syncVoiceDockMicLabel();
                 
                 // Play recording start sound
                 this.playSound('recording-start');
+                this._vibrate([20, 40, 20]);
                 
                 // Add pulsing animation to Detective Ray avatar
                 const detectiveAvatar = document.querySelector('.detective-avatar');
@@ -1776,6 +3006,7 @@ class WitnessReplayApp {
             this.ui.showToast('Microphone error: ' + error.message, 'error');
             this.playSound('error');
             this.displaySystemMessage('🎤 Could not access microphone. Please type your statement instead.');
+            this._setConversationState('ready');
         }
     }
     
@@ -1809,9 +3040,11 @@ class WitnessReplayApp {
                     this.chatMicBtn.textContent = '🎤';
                 }
                 if (this.stopBtn) this.stopBtn.style.display = 'none';
+                this._syncVoiceDockMicLabel();
                 
                 // Play recording stop sound
                 this.playSound('recording-stop');
+                this._vibrate(18);
                 
                 // Remove pulsing animation from Detective Ray avatar
                 const detectiveAvatar = document.querySelector('.detective-avatar');
@@ -1819,11 +3052,28 @@ class WitnessReplayApp {
                     detectiveAvatar.classList.remove('listening');
                 }
                 
+                const wasAutoListen = this._recordingTrigger === 'auto_listen';
+                if (wasAutoListen && this._isLikelySilentAutoCapture(qualityMetrics, audioBlob)) {
+                    this._pauseAutoListenUntilManual('silent_auto_capture');
+                    this.recordCallEvent('auto_listen_silence', {
+                        audio_bytes: audioBlob?.size || 0,
+                        quality_score: qualityMetrics?.qualityScore ?? null,
+                    });
+
+                    // Restart VAD listening if enabled
+                    if (this.vadEnabled && !this.vadListening && this._micPermissionGranted) {
+                        setTimeout(() => this.startVADListening(), 500);
+                    }
+                    return;
+                }
+
                 // Convert to base64 and send with quality metrics
                 this.sendAudioMessage(audioBlob, qualityMetrics);
+                this._setConversationState('thinking');
+                this.recordCallEvent('recording_stopped', { has_quality_metrics: !!qualityMetrics });
                 
                 // Restart VAD listening if enabled
-                if (this.vadEnabled && !this.vadListening) {
+                if (this.vadEnabled && !this.vadListening && this._micPermissionGranted) {
                     setTimeout(() => this.startVADListening(), 500);
                 }
             }
@@ -1831,6 +3081,7 @@ class WitnessReplayApp {
             console.error('Error stopping recording:', error);
             this.setStatus('Error processing audio');
             this.playSound('error');
+            this._setConversationState('ready');
         }
     }
     
@@ -1852,7 +3103,8 @@ class WitnessReplayApp {
                     type: 'audio',
                     data: {
                         audio: base64Audio,
-                        format: 'webm'
+                        format: 'webm',
+                        capture_mode: this._recordingTrigger === 'auto_listen' ? 'auto_listen' : 'manual',
                     }
                 };
                 
@@ -1871,6 +3123,7 @@ class WitnessReplayApp {
                 
                 this.ws.send(JSON.stringify(messageData));
                 this.setStatus('Detective Ray is thinking...');
+                this._setConversationState('thinking');
             };
             reader.onerror = (err) => {
                 console.error('[Audio] FileReader error:', err);
@@ -1885,6 +3138,10 @@ class WitnessReplayApp {
     sendTextMessage() {
         const text = this.textInput.value.trim();
         if (!text) return;
+        this._autoListenPausedUntilManual = false;
+        this._syncAutoListenButtonState();
+        this.lastUserMessage = text;
+        this._updateRetryButton();
         
         // Feature 8: Auto-detect language on first user message
         if (this.statementCount === 0) {
@@ -1908,6 +3165,7 @@ class WitnessReplayApp {
             this._queueOfflineMessage({ type: 'text', data: messageData });
             this.displayMessage(text, 'user');
             this.textInput.value = '';
+            this._updateCharCounter();
             return;
         }
         
@@ -1925,7 +3183,9 @@ class WitnessReplayApp {
             
             this.displayMessage(text, 'user');
             this.textInput.value = '';
+            this._updateCharCounter();
             this.setStatus('Detective Ray is thinking...');
+            this._setConversationState('thinking');
             
             // Feature 7: Advance guided mode step
             if (this.guidedMode) this._advanceGuidedStep();
@@ -1962,9 +3222,16 @@ class WitnessReplayApp {
         }
         
         messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong>${witnessBadge}<span class="msg-time">${timeStr}</span>${speaker === 'user' ? `<span class="emotion-badge">${this._getEmotionEmoji(text)}</span>` : ''}<br>${this._escapeHtml(text)}`;
-        
+        if (speaker === 'agent') {
+            this._addAssistantCopyButton(messageDiv, text);
+            this.lastAgentMessage = text;
+            if (!this._isSpeakingResponse && !this.isRecording) {
+                this._setConversationState('ready');
+                this._showRayListeningCue();
+            }
+        }
         this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        this._scrollChatToBottom();
         
         // Track statement count for user messages
         if (speaker === 'user') {
@@ -2039,9 +3306,16 @@ class WitnessReplayApp {
             <span class="msg-time">${timeStr}</span><br>
             ${this._escapeHtml(text)}
             ${translationInfo}`;
-        
+        if (speaker === 'agent') {
+            this._addAssistantCopyButton(messageDiv, text);
+            this.lastAgentMessage = text;
+            if (!this._isSpeakingResponse && !this.isRecording) {
+                this._setConversationState('ready');
+                this._showRayListeningCue();
+            }
+        }
         this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        this._scrollChatToBottom();
         
         // Track statement count for user messages
         if (speaker === 'user') {
@@ -2070,7 +3344,7 @@ class WitnessReplayApp {
         const el = document.getElementById('typing-indicator');
         if (el) el.classList.remove('hidden');
         // Scroll
-        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        this._scrollChatToBottom();
     }
     
     _hideTyping() {
@@ -2913,6 +4187,7 @@ class WitnessReplayApp {
             const session = await response.json();
             this.sessionId = session.id;
             this.sessionIdEl.textContent = `Session: ${session.id.substring(0, 8)}...`;
+            await this.loadVoicePreferencesFromSession();
             
             this.connectWebSocket();
             
@@ -3081,7 +4356,7 @@ class WitnessReplayApp {
         messageDiv.textContent = text;
         
         this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+        this._scrollChatToBottom('auto');
     }
     
     async handlePhotoUpload(event) {
@@ -3097,8 +4372,12 @@ class WitnessReplayApp {
                 img.className = 'chat-evidence-image';
                 img.style.cssText = 'max-width:200px;border-radius:8px;margin:8px 0;';
                 this.displayMessage(`📸 Uploaded: ${file.name}`, 'user');
+                this.ui.showToast('📸 Photo uploaded', 'success', 1800);
+            } else {
+                this.ui.showToast('⚠️ Photo upload failed: disconnected', 'error', 2400);
             }
         };
+        reader.onerror = () => this.ui.showToast('❌ Failed to read photo file', 'error', 2200);
         reader.readAsDataURL(file);
         event.target.value = '';
     }
@@ -3147,7 +4426,7 @@ class WitnessReplayApp {
         }
         
         this.chatTranscript.appendChild(card);
-        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+        this._scrollChatToBottom();
     }
     
     /**
@@ -3196,6 +4475,8 @@ class WitnessReplayApp {
 
         stripImg.src = imageUrl;
         strip.classList.add('visible');
+        this._triggerSceneUpdatePulse();
+        this._updateMobileSceneSubtitle(data);
 
         // Wire up tap-to-fullscreen (once)
         if (!strip._tapWired) {
@@ -3205,6 +4486,21 @@ class WitnessReplayApp {
                 if (src) this._showFullscreenImage(src, this.currentVersion || '');
             });
         }
+    }
+
+    _updateMobileSceneSubtitle(data = {}) {
+        if (!this.mobileSceneStripSubtitle) return;
+        const elements = Array.isArray(data.elements) ? data.elements : [];
+        const countText = elements.length ? `${elements.length} element${elements.length === 1 ? '' : 's'}` : 'Scene refreshed';
+        const confidenceValues = elements
+            .map((element) => Number(element?.confidence))
+            .filter((value) => Number.isFinite(value));
+        const avgConfidence = confidenceValues.length
+            ? Math.round((confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length) * 100)
+            : null;
+        this.mobileSceneStripSubtitle.textContent = avgConfidence !== null
+            ? `${countText} • ${avgConfidence}% confidence`
+            : countText;
     }
     _getSeverityIcon(level) {
         const icons = {
@@ -3244,7 +4540,7 @@ class WitnessReplayApp {
         
         messageDiv.innerHTML = html;
         this.chatTranscript.appendChild(messageDiv);
-        this.chatTranscript.scrollTop = this.chatTranscript.scrollHeight;
+        this._scrollChatToBottom('auto');
     }
     
     // ======================================
@@ -3276,6 +4572,7 @@ class WitnessReplayApp {
             const elemCount = document.getElementById('scene-elements-count');
             if (previewPanel) previewPanel.style.display = 'block';
             if (elemCount) elemCount.textContent = `${data.elements.length} elements detected`;
+            this._updateMobileSceneSubtitle(data);
         }
         
         // Update checklist
@@ -3429,6 +4726,10 @@ class WitnessReplayApp {
         if (this.ui) {
             this.ui.setStatus(status);
         }
+        const mapped = this.getStatusState(String(status || ''));
+        if (mapped === 'listening') this._setConversationState('listening');
+        else if (mapped === 'processing' || mapped === 'generating') this._setConversationState('thinking');
+        else if (!this._isSpeakingResponse && !this.isRecording) this._setConversationState('ready');
     }
     
     // Export functions
@@ -5106,7 +6407,7 @@ Corrections: ${reliability.correction_count || 0}`;
             const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             msgDiv.innerHTML = `<span class="msg-avatar">👤</span><strong>You</strong><span class="msg-time">${timeStr}</span><br>📎 Evidence photo attached<br><img src="${base64Data}" alt="Evidence photo uploaded by witness" class="evidence-thumbnail">`;
             this.chatTranscript.appendChild(msgDiv);
-            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+            this._scrollChatToBottom();
 
             // Send via WebSocket if connected
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -5118,11 +6419,17 @@ Corrections: ${reliability.correction_count || 0}`;
                         mime_type: file.type
                     }
                 }));
+                this.ui.showToast('📎 Evidence uploaded', 'success', 1800);
+            } else {
+                this.ui.showToast('⚠️ Evidence attached locally while disconnected', 'warning', 2200);
             }
 
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
             this.updateInterviewProgress();
+        };
+        reader.onerror = () => {
+            this.ui.showToast('❌ Failed to read evidence file', 'error', 2200);
         };
         reader.readAsDataURL(file);
 
@@ -5206,7 +6513,7 @@ Corrections: ${reliability.correction_count || 0}`;
                 ${interpretationHtml}
             `;
             this.chatTranscript.appendChild(msgDiv);
-            this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior: 'smooth' });
+            this._scrollChatToBottom();
 
             // Add to sketches gallery
             this.addSketchToGallery(sketch);
@@ -5364,6 +6671,7 @@ Corrections: ${reliability.correction_count || 0}`;
         } else if (suggestionsEl) {
             suggestionsEl.style.display = 'none';
         }
+        this._syncTextToolsMenu();
     }
     
     _showGuidedChip() {
@@ -5416,6 +6724,7 @@ Corrections: ${reliability.correction_count || 0}`;
         if (this.childMode) {
             this.displayMessage("Hi there! 👋 I'm here to help. Can you tell me what happened? Take your time, there's no rush. 😊", 'agent');
         }
+        this._syncTextToolsMenu();
     }
     
     // ===== Feature 10: Enhanced Accessibility =====
@@ -5423,6 +6732,7 @@ Corrections: ${reliability.correction_count || 0}`;
         document.body.classList.toggle('high-contrast');
         const btn = document.getElementById('high-contrast-btn');
         if (btn) btn.classList.toggle('active', document.body.classList.contains('high-contrast'));
+        this._syncTextToolsMenu();
     }
     
     _initKeyboardAccessibility() {
@@ -5626,13 +6936,22 @@ async function startInterview() {
     localStorage.setItem('witnessreplay-witness-info-shown', 'true');
     
     // Gather witness info from form
-    const witnessName = document.getElementById('witness-name')?.value?.trim() || '';
-    const witnessContact = document.getElementById('witness-contact')?.value?.trim() || '';
+    const isAnonymous = !!document.getElementById('witness-anonymous-toggle')?.checked;
+    const witnessName = isAnonymous ? '' : (document.getElementById('witness-name')?.value?.trim() || '');
+    const witnessContact = isAnonymous ? '' : (document.getElementById('witness-contact')?.value?.trim() || '');
     const witnessLocation = document.getElementById('witness-location')?.value?.trim() || '';
     
     // Save to localStorage for pre-fill on next visit
-    localStorage.setItem('witnessreplay-witness-name', witnessName);
-    localStorage.setItem('witnessreplay-witness-contact', witnessContact);
+    if (witnessName) {
+        localStorage.setItem('witnessreplay-witness-name', witnessName);
+    } else {
+        localStorage.removeItem('witnessreplay-witness-name');
+    }
+    if (witnessContact) {
+        localStorage.setItem('witnessreplay-witness-contact', witnessContact);
+    } else {
+        localStorage.removeItem('witnessreplay-witness-contact');
+    }
     localStorage.setItem('witnessreplay-witness-location', witnessLocation);
     
     // Save witness info to backend database
@@ -5759,185 +7078,185 @@ function openSketchModal(sketchId) {
             })
             .catch(err => console.error('Failed to load sketch:', err));
     }
-
-    // ── Feature 46: Onboarding Tour ─────────────────────────────
-    _showOnboardingTour() {
-        if (localStorage.getItem('wr_tour_done')) return;
-        const steps = [
-            { target: '.mic-main-btn', text: '🎤 Tap the microphone to start recording your witness statement' },
-            { target: '.chat-input', text: '⌨️ Or type your description here' },
-            { target: '#scene-canvas-container', text: '🎬 Watch your scene come to life as you describe it' },
-        ];
-
-        const overlay = document.createElement('div');
-        overlay.id = 'tour-overlay';
-        overlay.className = 'tour-overlay';
-        let step = 0;
-
-        const showStep = () => {
-            if (step >= steps.length) {
-                overlay.remove();
-                localStorage.setItem('wr_tour_done', 'true');
-                return;
-            }
-            const s = steps[step];
-            const el = document.querySelector(s.target);
-            overlay.innerHTML = `
-                <div class="tour-backdrop"></div>
-                <div class="tour-tooltip" style="${el ? `top: ${el.getBoundingClientRect().bottom + 10}px; left: ${Math.max(10, el.getBoundingClientRect().left)}px;` : 'top:50%;left:50%;transform:translate(-50%,-50%);'}">
-                    <div class="tour-text">${s.text}</div>
-                    <div class="tour-nav">
-                        <span class="tour-progress">${step + 1}/${steps.length}</span>
-                        <button class="tour-next-btn" onclick="document.getElementById('tour-overlay')._next()">
-                            ${step < steps.length - 1 ? 'Next →' : 'Got it! ✓'}
-                        </button>
-                    </div>
-                </div>
-            `;
-            overlay._next = () => { step++; showStep(); };
-        };
-
-        document.body.appendChild(overlay);
-        showStep();
-    }
-
-    // ── Feature 47: Witness Feedback Form ────────────────────────
-    _showFeedbackPrompt(sessionId) {
-        const modal = document.createElement('div');
-        modal.className = 'feedback-modal-overlay';
-        modal.innerHTML = `
-            <div class="feedback-modal">
-                <h3>📝 How was your experience?</h3>
-                <div class="feedback-stars" id="feedback-stars">
-                    ${[1,2,3,4,5].map(i => `<span class="star" data-rating="${i}" onclick="document.querySelector('.feedback-modal')._setRating(${i})">⭐</span>`).join('')}
-                </div>
-                <p id="feedback-rating-text" style="color:var(--text-secondary);font-size:0.85rem;">Tap to rate</p>
-                <div class="feedback-q">
-                    <label>How easy was it to use? (1-5)</label>
-                    <input type="range" id="feedback-ease" min="1" max="5" value="3">
-                </div>
-                <div class="feedback-q">
-                    <label>Did you feel heard? (1-5)</label>
-                    <input type="range" id="feedback-heard" min="1" max="5" value="3">
-                </div>
-                <textarea id="feedback-comments" placeholder="Any additional comments..." rows="2" style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;resize:none;"></textarea>
-                <div style="display:flex;gap:8px;margin-top:12px;">
-                    <button class="btn-primary" onclick="document.querySelector('.feedback-modal-overlay')._submit()">Submit</button>
-                    <button class="btn-secondary" onclick="document.querySelector('.feedback-modal-overlay').remove()">Skip</button>
-                </div>
-            </div>
-        `;
-        let rating = 0;
-        modal.querySelector('.feedback-modal')._setRating = (r) => {
-            rating = r;
-            const ratingText = document.getElementById('feedback-rating-text');
-            if (ratingText) ratingText.textContent = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][r];
-        };
-        modal._submit = async () => {
-            try {
-                await fetch(`/sessions/${sessionId}/feedback`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        rating,
-                        ease_of_use: parseInt(document.getElementById('feedback-ease')?.value || 3),
-                        felt_heard: parseInt(document.getElementById('feedback-heard')?.value || 3),
-                        comments: document.getElementById('feedback-comments')?.value || ''
-                    })
-                });
-            } catch(e) { console.error(e); }
-            modal.remove();
-        };
-        document.body.appendChild(modal);
-    }
-
-    // ── Feature 48: AI Confidence Visualization ──────────────────
-    _renderConfidenceBar(confidence) {
-        if (!confidence && confidence !== 0) return '';
-        const pct = Math.round(confidence * 100);
-        const color = pct > 80 ? '#22c55e' : pct > 50 ? '#eab308' : '#ef4444';
-        const label = pct > 80 ? 'High' : pct > 50 ? 'Medium' : 'Low';
-        return `<div class="confidence-bar" title="AI Confidence: ${pct}%"><div class="confidence-fill" style="width:${pct}%;background:${color}"></div><span class="confidence-label">${label} (${pct}%)</span></div>`;
-    }
-
-    // ── Feature 49: Quick Action Command Palette ─────────────────
-    _initCommandPalette() {
-        document.addEventListener('keydown', (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                this._toggleCommandPalette();
-            }
-        });
-    }
-
-    _toggleCommandPalette() {
-        let palette = document.getElementById('command-palette');
-        if (palette) { palette.remove(); return; }
-
-        const actions = [
-            { icon: '🎤', label: 'Start Recording', action: () => this.toggleRecording?.() },
-            { icon: '📝', label: 'New Report', action: () => this.createNewSession?.() },
-            { icon: '🌙', label: 'Toggle Dark Mode', action: () => document.body.classList.toggle('light-mode') },
-            { icon: '📊', label: 'Open Admin', action: () => window.location.href = '/admin' },
-            { icon: '❓', label: 'Help & Tutorial', action: () => this._showOnboardingTour?.() },
-        ];
-
-        palette = document.createElement('div');
-        palette.id = 'command-palette';
-        palette.className = 'command-palette';
-        palette.innerHTML = `
-            <input type="text" class="cmd-input" placeholder="Type a command..." autofocus oninput="this.parentElement._filter(this.value)">
-            <div class="cmd-list" id="cmd-list">
-                ${actions.map((a, i) => `<div class="cmd-item" data-idx="${i}" onclick="document.getElementById('command-palette')._run(${i})">${a.icon} ${a.label}</div>`).join('')}
-            </div>
-        `;
-        palette._filter = (q) => {
-            const items = palette.querySelectorAll('.cmd-item');
-            items.forEach(item => { item.style.display = item.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none'; });
-        };
-        palette._run = (idx) => { actions[idx]?.action(); palette.remove(); };
-        palette.addEventListener('click', (e) => { if (e.target === palette) palette.remove(); });
-        document.body.appendChild(palette);
-        palette.querySelector('.cmd-input').focus();
-    }
-
-    // ── Auto-save interview progress ─────────────────────────────
-    _initAutoSave() {
-        this._autoSaveInterval = setInterval(() => this._autoSave(), 30000);
-    }
-
-    _autoSave() {
-        if (!this.sessionId) return;
-        const messages = document.getElementById('chat-messages');
-        if (!messages) return;
-        const saveData = {
-            sessionId: this.sessionId,
-            timestamp: Date.now(),
-            messageCount: messages.children.length,
-            recentMessages: Array.from(messages.querySelectorAll('.message')).slice(-20).map(m => ({
-                role: m.classList.contains('user') ? 'user' : 'assistant',
-                text: m.querySelector('.message-text')?.textContent?.substring(0, 500) || ''
-            }))
-        };
-        try {
-            localStorage.setItem('wr_autosave', JSON.stringify(saveData));
-        } catch(e) { /* localStorage full */ }
-    }
-
-    _checkAutoSave() {
-        try {
-            const saved = JSON.parse(localStorage.getItem('wr_autosave'));
-            if (saved && Date.now() - saved.timestamp < 3600000) {
-                return saved;
-            }
-        } catch(e) {}
-        return null;
-    }
-
-    _clearAutoSave() {
-        localStorage.removeItem('wr_autosave');
-    }
 }
+
+// ── Feature 46: Onboarding Tour ─────────────────────────────
+WitnessReplayApp.prototype._showOnboardingTour = function() {
+    if (localStorage.getItem('wr_tour_done')) return;
+    const steps = [
+        { target: '.mic-main-btn', text: '🎤 Tap the microphone to start recording your witness statement' },
+        { target: '.chat-input', text: '⌨️ Or type your description here' },
+        { target: '#scene-canvas-container', text: '🎬 Watch your scene come to life as you describe it' },
+    ];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tour-overlay';
+    overlay.className = 'tour-overlay';
+    let step = 0;
+
+    const showStep = () => {
+        if (step >= steps.length) {
+            overlay.remove();
+            localStorage.setItem('wr_tour_done', 'true');
+            return;
+        }
+        const s = steps[step];
+        const el = document.querySelector(s.target);
+        overlay.innerHTML = `
+            <div class="tour-backdrop"></div>
+            <div class="tour-tooltip" style="${el ? `top: ${el.getBoundingClientRect().bottom + 10}px; left: ${Math.max(10, el.getBoundingClientRect().left)}px;` : 'top:50%;left:50%;transform:translate(-50%,-50%);'}">
+                <div class="tour-text">${s.text}</div>
+                <div class="tour-nav">
+                    <span class="tour-progress">${step + 1}/${steps.length}</span>
+                    <button class="tour-next-btn" onclick="document.getElementById('tour-overlay')._next()">
+                        ${step < steps.length - 1 ? 'Next →' : 'Got it! ✓'}
+                    </button>
+                </div>
+            </div>
+        `;
+        overlay._next = () => { step++; showStep(); };
+    };
+
+    document.body.appendChild(overlay);
+    showStep();
+};
+
+// ── Feature 47: Witness Feedback Form ────────────────────────
+WitnessReplayApp.prototype._showFeedbackPrompt = function(sessionId) {
+    const modal = document.createElement('div');
+    modal.className = 'feedback-modal-overlay';
+    modal.innerHTML = `
+        <div class="feedback-modal">
+            <h3>📝 How was your experience?</h3>
+            <div class="feedback-stars" id="feedback-stars">
+                ${[1,2,3,4,5].map(i => `<span class="star" data-rating="${i}" onclick="document.querySelector('.feedback-modal')._setRating(${i})">⭐</span>`).join('')}
+            </div>
+            <p id="feedback-rating-text" style="color:var(--text-secondary);font-size:0.85rem;">Tap to rate</p>
+            <div class="feedback-q">
+                <label>How easy was it to use? (1-5)</label>
+                <input type="range" id="feedback-ease" min="1" max="5" value="3">
+            </div>
+            <div class="feedback-q">
+                <label>Did you feel heard? (1-5)</label>
+                <input type="range" id="feedback-heard" min="1" max="5" value="3">
+            </div>
+            <textarea id="feedback-comments" placeholder="Any additional comments..." rows="2" style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px;resize:none;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-primary" onclick="document.querySelector('.feedback-modal-overlay')._submit()">Submit</button>
+                <button class="btn-secondary" onclick="document.querySelector('.feedback-modal-overlay').remove()">Skip</button>
+            </div>
+        </div>
+    `;
+    let rating = 0;
+    modal.querySelector('.feedback-modal')._setRating = (r) => {
+        rating = r;
+        const ratingText = document.getElementById('feedback-rating-text');
+        if (ratingText) ratingText.textContent = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][r];
+    };
+    modal._submit = async () => {
+        try {
+            await fetch(`/sessions/${sessionId}/feedback`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    rating,
+                    ease_of_use: parseInt(document.getElementById('feedback-ease')?.value || 3),
+                    felt_heard: parseInt(document.getElementById('feedback-heard')?.value || 3),
+                    comments: document.getElementById('feedback-comments')?.value || ''
+                })
+            });
+        } catch(e) { console.error(e); }
+        modal.remove();
+    };
+    document.body.appendChild(modal);
+};
+
+// ── Feature 48: AI Confidence Visualization ──────────────────
+WitnessReplayApp.prototype._renderConfidenceBar = function(confidence) {
+    if (!confidence && confidence !== 0) return '';
+    const pct = Math.round(confidence * 100);
+    const color = pct > 80 ? '#22c55e' : pct > 50 ? '#eab308' : '#ef4444';
+    const label = pct > 80 ? 'High' : pct > 50 ? 'Medium' : 'Low';
+    return `<div class="confidence-bar" title="AI Confidence: ${pct}%"><div class="confidence-fill" style="width:${pct}%;background:${color}"></div><span class="confidence-label">${label} (${pct}%)</span></div>`;
+};
+
+// ── Feature 49: Quick Action Command Palette ─────────────────
+WitnessReplayApp.prototype._initCommandPalette = function() {
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            this._toggleCommandPalette();
+        }
+    });
+};
+
+WitnessReplayApp.prototype._toggleCommandPalette = function() {
+    let palette = document.getElementById('command-palette');
+    if (palette) { palette.remove(); return; }
+
+    const actions = [
+        { icon: '🎤', label: 'Start Recording', action: () => this.toggleRecording?.() },
+        { icon: '📝', label: 'New Report', action: () => this.createNewSession?.() },
+        { icon: '🌙', label: 'Toggle Dark Mode', action: () => document.body.classList.toggle('light-mode') },
+        { icon: '📊', label: 'Open Admin', action: () => window.location.href = '/admin' },
+        { icon: '❓', label: 'Help & Tutorial', action: () => this._showOnboardingTour?.() },
+    ];
+
+    palette = document.createElement('div');
+    palette.id = 'command-palette';
+    palette.className = 'command-palette';
+    palette.innerHTML = `
+        <input type="text" class="cmd-input" placeholder="Type a command..." autofocus oninput="this.parentElement._filter(this.value)">
+        <div class="cmd-list" id="cmd-list">
+            ${actions.map((a, i) => `<div class="cmd-item" data-idx="${i}" onclick="document.getElementById('command-palette')._run(${i})">${a.icon} ${a.label}</div>`).join('')}
+        </div>
+    `;
+    palette._filter = (q) => {
+        const items = palette.querySelectorAll('.cmd-item');
+        items.forEach(item => { item.style.display = item.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none'; });
+    };
+    palette._run = (idx) => { actions[idx]?.action(); palette.remove(); };
+    palette.addEventListener('click', (e) => { if (e.target === palette) palette.remove(); });
+    document.body.appendChild(palette);
+    palette.querySelector('.cmd-input').focus();
+};
+
+// ── Auto-save interview progress ─────────────────────────────
+WitnessReplayApp.prototype._initAutoSave = function() {
+    this._autoSaveInterval = setInterval(() => this._autoSave(), 30000);
+};
+
+WitnessReplayApp.prototype._autoSave = function() {
+    if (!this.sessionId) return;
+    const messages = document.getElementById('chat-messages');
+    if (!messages) return;
+    const saveData = {
+        sessionId: this.sessionId,
+        timestamp: Date.now(),
+        messageCount: messages.children.length,
+        recentMessages: Array.from(messages.querySelectorAll('.message')).slice(-20).map(m => ({
+            role: m.classList.contains('user') ? 'user' : 'assistant',
+            text: m.querySelector('.message-text')?.textContent?.substring(0, 500) || ''
+        }))
+    };
+    try {
+        localStorage.setItem('wr_autosave', JSON.stringify(saveData));
+    } catch(e) { /* localStorage full */ }
+};
+
+WitnessReplayApp.prototype._checkAutoSave = function() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('wr_autosave'));
+        if (saved && Date.now() - saved.timestamp < 3600000) {
+            return saved;
+        }
+    } catch(e) {}
+    return null;
+};
+
+WitnessReplayApp.prototype._clearAutoSave = function() {
+    localStorage.removeItem('wr_autosave');
+};
 
 // Orphaned class methods wrapped as standalone functions
 async function uploadReferencePhoto(file) {

@@ -8,8 +8,8 @@ import logging
 import asyncio
 import json
 import math
-from typing import Optional, List, Dict, Tuple
-from datetime import datetime
+from typing import Optional, List, Dict, Tuple, Any
+from datetime import datetime, timezone
 from google import genai
 
 from app.services.token_estimator import token_estimator
@@ -22,10 +22,16 @@ class EmbeddingService:
 
     MODEL = "gemini-embedding-001"
     EMBEDDING_DIM = 768  # Default dimension
+    CACHE_TTL_SECONDS = 24 * 60 * 60  # 24h default cache TTL
 
     def __init__(self):
         self.client = None
-        self._cache: Dict[str, List[float]] = {}  # key -> embedding
+        self._cache: Dict[str, Dict[str, Any]] = {}  # key -> {"embedding": [...], "cached_at": iso}
+        self._cache_ttl_seconds = self.CACHE_TTL_SECONDS
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_expired_purged = 0
+        self._last_cache_cleanup: str = ""
         self._request_count = 0
         self._token_usage = 0  # Track token usage for TPM limit
         self._last_reset = ""
@@ -41,6 +47,60 @@ class EmbeddingService:
         """Get current token usage for the day."""
         self._reset_daily_if_needed()
         return self._token_usage
+
+    @staticmethod
+    def _utcnow_iso() -> str:
+        return datetime.utcnow().isoformat()
+
+    def _create_cache_entry(self, embedding: List[float], cached_at: Optional[str] = None) -> Dict[str, Any]:
+        return {
+            "embedding": embedding,
+            "cached_at": cached_at or self._utcnow_iso(),
+        }
+
+    def _is_cache_entry_expired(self, entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False  # legacy in-memory entry without metadata
+
+        cached_at = entry.get("cached_at")
+        if not cached_at:
+            return False
+
+        try:
+            ts = datetime.fromisoformat(str(cached_at).replace("Z", "+00:00"))
+            if ts.tzinfo is not None:
+                ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+            age_seconds = (datetime.utcnow() - ts).total_seconds()
+            return age_seconds > self._cache_ttl_seconds
+        except Exception:
+            return False
+
+    def cleanup_expired_cache(self) -> int:
+        """Lazily purge expired in-memory cache entries."""
+        expired_keys = [
+            key for key, entry in self._cache.items()
+            if self._is_cache_entry_expired(entry)
+        ]
+        for key in expired_keys:
+            self._cache.pop(key, None)
+
+        purged = len(expired_keys)
+        if purged:
+            self._cache_expired_purged += purged
+            logger.debug(f"Purged {purged} expired embedding cache entries")
+        self._last_cache_cleanup = self._utcnow_iso()
+        return purged
+
+    @staticmethod
+    def _extract_embedding(entry: Any) -> Optional[List[float]]:
+        if isinstance(entry, dict):
+            embedding = entry.get("embedding")
+            if isinstance(embedding, list):
+                return embedding
+            return None
+        if isinstance(entry, list):
+            return entry
+        return None
 
     async def embed_text(
         self, 
@@ -62,10 +122,15 @@ class EmbeddingService:
         if not self.client:
             return None, None
 
+        self.cleanup_expired_cache()
+
         # Check cache first
         cache_key = f"{task_type}:{hash(text)}"
-        if cache_key in self._cache:
-            return self._cache[cache_key], {"cached": True, "estimated_tokens": 0}
+        cached_embedding = self._extract_embedding(self._cache.get(cache_key))
+        if cached_embedding:
+            self._cache_hits += 1
+            return cached_embedding, {"cached": True, "estimated_tokens": 0}
+        self._cache_misses += 1
 
         self._reset_daily_if_needed()
         if self._request_count >= 1000:
@@ -103,7 +168,7 @@ class EmbeddingService:
 
             if result and result.embeddings:
                 embedding = result.embeddings[0].values
-                self._cache[cache_key] = embedding
+                self._cache[cache_key] = self._create_cache_entry(embedding)
                 # Persist to SQLite in background
                 asyncio.create_task(self._save_embedding_to_db(cache_key, embedding))
                 return embedding, token_info
@@ -268,7 +333,7 @@ class EmbeddingService:
                 )
                 await db_svc._db.execute(
                     "INSERT OR REPLACE INTO embeddings (key, vector, created_at) VALUES (?, ?, ?)",
-                    (key, json.dumps(embedding), datetime.utcnow().isoformat())
+                    (key, json.dumps(embedding), self._utcnow_iso())
                 )
                 await db_svc._db.commit()
         except Exception as e:
@@ -284,9 +349,13 @@ class EmbeddingService:
                 await db_svc._db.execute(
                     "CREATE TABLE IF NOT EXISTS embeddings (key TEXT PRIMARY KEY, vector TEXT NOT NULL, created_at TEXT)"
                 )
-                async with db_svc._db.execute("SELECT key, vector FROM embeddings") as cursor:
+                async with db_svc._db.execute("SELECT key, vector, created_at FROM embeddings") as cursor:
                     async for row in cursor:
-                        self._cache[row[0]] = json.loads(row[1])
+                        self._cache[row[0]] = self._create_cache_entry(
+                            json.loads(row[1]),
+                            row[2],
+                        )
+                self.cleanup_expired_cache()
                 if self._cache:
                     logger.info(f"Loaded {len(self._cache)} cached embeddings from SQLite")
         except Exception as e:
@@ -299,15 +368,30 @@ class EmbeddingService:
             self._token_usage = 0
             self._last_reset = today
 
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Return cache and TTL metrics."""
+        purged_now = self.cleanup_expired_cache()
+        return {
+            "entries": len(self._cache),
+            "ttl_seconds": self._cache_ttl_seconds,
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "expired_purged_total": self._cache_expired_purged,
+            "expired_purged_last_cleanup": purged_now,
+            "last_cleanup_at": self._last_cache_cleanup,
+        }
+
     def get_quota_status(self) -> dict:
         self._reset_daily_if_needed()
+        cache_stats = self.get_cache_stats()
         return {
             "model": self.MODEL,
             "requests_today": self._request_count,
             "daily_limit": 1000,
             "tokens_today": self._token_usage,
             "token_limit": 30_000,  # TPM limit for embeddings
-            "cache_size": len(self._cache),
+            "cache_size": cache_stats["entries"],  # backward compatible
+            "cache": cache_stats,
         }
 
 

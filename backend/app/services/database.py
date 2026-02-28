@@ -5,7 +5,8 @@ Provides persistent local storage as fallback when Firestore is unavailable.
 import json
 import logging
 import os
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 import aiosqlite
@@ -28,10 +29,33 @@ class DatabaseService:
     async def initialize(self):
         """Create database directory and tables."""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
+        # Auto-backup existing database before schema changes
+        if os.path.exists(self.db_path) and os.path.getsize(self.db_path) > 0:
+            backup_dir = os.path.join(os.path.dirname(self.db_path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(backup_dir, f"auto_backup_{timestamp}.db")
+            try:
+                shutil.copy2(self.db_path, backup_path)
+                logger.info(f"Auto-backup created: {backup_path}")
+                # Keep only last 5 auto-backups
+                backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("auto_backup_")])
+                for old in backups[:-5]:
+                    os.remove(os.path.join(backup_dir, old))
+            except Exception as e:
+                logger.warning(f"Auto-backup failed: {e}")
+        
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("PRAGMA synchronous=NORMAL")
         await self._create_tables()
+        try:
+            await self.cleanup_old_records(settings.data_retention_days)
+        except Exception as e:
+            logger.warning(f"SQLite cleanup_old_records failed: {e}")
         logger.info(f"SQLite database initialized at {self.db_path}")
 
     async def _create_tables(self):
@@ -316,12 +340,34 @@ class DatabaseService:
                 created_at TEXT
             );
         """)
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_statements_session ON statements(session_id)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_scene_versions_session ON scene_versions(session_id)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await self._db.commit()
 
     async def close(self):
         if self._db:
             await self._db.close()
             self._db = None
+
+    async def optimize(self):
+        await self._db.execute("PRAGMA optimize")
+        await self._db.execute("ANALYZE")
+        await self._db.commit()
+
+    async def cleanup_old_records(self, days: int = 30):
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        await self._db.execute(
+            "DELETE FROM background_tasks WHERE created_at IS NOT NULL AND created_at < ?",
+            (cutoff,),
+        )
+        await self._db.execute(
+            "DELETE FROM generated_images WHERE created_at IS NOT NULL AND created_at < ?",
+            (cutoff,),
+        )
+        await self._db.commit()
 
     # ── Session CRUD ──────────────────────────────────────
 

@@ -1,19 +1,23 @@
 import logging
 from contextlib import asynccontextmanager
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import uuid as uuid_lib
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from pathlib import Path
 import os
 import asyncio
+import time as time_module
 
 from app.config import settings
 from app.api.routes import router as api_router
 from app.api.websocket import websocket_endpoint
+from app.api.auth import cleanup_expired_sessions
 from app.middleware.request_logging import RequestLoggingMiddleware, request_metrics
 
 # Configure logging
@@ -51,6 +55,9 @@ async def lifespan(app: FastAPI):
     logger.info("Starting WitnessReplay application")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
+    
+    # Validate configuration on startup
+    settings.validate_config()
     
     # Initialize API key rotation if multiple keys configured
     if settings.google_api_keys:
@@ -99,6 +106,14 @@ async def lifespan(app: FastAPI):
     
     cleanup_task = asyncio.create_task(cleanup_cache_periodically())
     logger.info("Started cache cleanup background task")
+    
+    async def _session_cleanup_loop():
+        while True:
+            await asyncio.sleep(300)  # Every 5 minutes
+            await cleanup_expired_sessions()
+    
+    asyncio.create_task(_session_cleanup_loop())
+    logger.info("Started session cleanup background task")
     
     # Start request queue processor
     from app.services.request_queue import request_queue
@@ -162,16 +177,41 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers={"X-Request-ID": request_id}
     )
 
-# Security headers middleware (applied before CORS)
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
-    return response
+# Custom 404 handler
+@app.exception_handler(404)
+async def custom_404(request, exc):
+    # Return JSON for API routes
+    if request.url.path.startswith('/api/') or request.url.path.startswith('/v1/') or request.url.path.startswith('/admin/'):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "Not Found", "path": str(request.url.path)})
+    # Return styled HTML for browser requests
+    return HTMLResponse(status_code=404, content="""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>404 - Not Found</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0f;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}.c{max-width:400px;padding:20px}.icon{font-size:4rem;margin-bottom:1rem}h1{font-size:2rem;margin:0 0 .5rem;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}p{color:#94a3b8;font-size:1rem;line-height:1.5}a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}.links{margin-top:1.5rem;display:flex;gap:16px;justify-content:center}</style></head><body><div class="c"><div class="icon">🔍</div><h1>Page Not Found</h1><p>The page you're looking for doesn't exist or has been moved.</p><div class="links"><a href="/">← Back to WitnessReplay</a><a href="/admin">Admin Portal</a></div></div></body></html>""")
+
+# Security headers middleware with CSP (applied before CORS)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' ws: wss: https://generativelanguage.googleapis.com https://maps.googleapis.com; "
+            "media-src 'self' blob:; "
+            "frame-src 'none'"
+        )
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Request size limit middleware
 @app.middleware("http")
@@ -181,17 +221,73 @@ async def limit_request_size(request: Request, call_next):
         return JSONResponse(status_code=413, content={"detail": "Request too large"})
     return await call_next(request)
 
+# Maintenance mode write guard
+@app.middleware("http")
+async def maintenance_mode_write_guard(request: Request, call_next):
+    if (
+        settings.maintenance_mode
+        and request.url.path.startswith("/api/")
+        and request.url.path != "/api/health"
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service temporarily in maintenance mode"},
+        )
+    return await call_next(request)
+
 # GZip compression for responses >= 500 bytes
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # CORS middleware
+is_wildcard = settings.allowed_origins == ["*"]
+if is_wildcard and settings.environment == "production":
+    import logging
+    logging.getLogger("witnessreplay").warning(
+        "⚠️ CORS is set to allow ALL origins (*) in production. "
+        "Set ALLOWED_ORIGINS to specific domains for security."
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=not is_wildcard,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
 )
+
+# Global rate limiting middleware (after CORS)
+_request_counts = defaultdict(list)
+_RATE_LIMIT = 100  # requests per minute
+_RATE_WINDOW = 60  # seconds
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # Skip rate limiting for static files and health checks
+        path = request.url.path
+        if path.startswith('/static') or path == '/api/health':
+            return await call_next(request)
+        
+        client_ip = request.client.host if request.client else "unknown"
+        now = time_module.time()
+        
+        # Clean old entries
+        _request_counts[client_ip] = [t for t in _request_counts[client_ip] if now - t < _RATE_WINDOW]
+        
+        if len(_request_counts[client_ip]) >= _RATE_LIMIT:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please try again later.", "retry_after": _RATE_WINDOW},
+                headers={"Retry-After": str(_RATE_WINDOW)}
+            )
+        
+        _request_counts[client_ip].append(now)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT)
+        response.headers["X-RateLimit-Remaining"] = str(_RATE_LIMIT - len(_request_counts[client_ip]))
+        return response
+
+app.add_middleware(RateLimitMiddleware)
 
 # Add request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
@@ -202,13 +298,37 @@ app.include_router(api_router, prefix="/api", tags=["api"])
 # API versioning: mount same router under /api/v1/ as alias
 app.include_router(api_router, prefix="/api/v1", tags=["api-v1"])
 
+# Lightweight health check alias for Docker HEALTHCHECK
+@app.get("/api/health")
+async def api_health_check():
+    """Health check endpoint for Docker."""
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+# Serve robots.txt and security.txt
+@app.get("/robots.txt")
+async def robots_txt():
+    path = os.path.join(os.path.dirname(__file__), "../../frontend/robots.txt")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="text/plain")
+    return PlainTextResponse("User-agent: *\nDisallow: /admin\nDisallow: /api/\n")
+
+@app.get("/.well-known/security.txt")
+async def security_txt():
+    path = os.path.join(os.path.dirname(__file__), "../../frontend/security.txt")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="text/plain")
+    return PlainTextResponse("Contact: security@witnessreplay.com\n")
+
 # Serve generated images from /data/images/
 @app.get("/data/images/{filename}")
 async def serve_data_image(filename: str):
     """Serve generated image files from the data directory."""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         return JSONResponse(status_code=400, content={"detail": "Invalid filename"})
-    filepath = os.path.join("/app/data/images", filename)
+    base_dir = os.path.realpath("/app/data/images")
+    filepath = os.path.realpath(os.path.join(base_dir, filename))
+    if not filepath.startswith(base_dir + os.sep):
+        return JSONResponse(status_code=400, content={"detail": "Invalid filename"})
     if not os.path.exists(filepath):
         return JSONResponse(status_code=404, content={"detail": "Image not found"})
     return FileResponse(filepath, media_type="image/png")
@@ -510,16 +630,15 @@ async def log_requests(request, call_next):
 
 
 # Request ID middleware for debugging
-@app.middleware("http")
-async def add_request_id(request, call_next):
-    """Add request ID for tracking."""
-    import uuid
-    request_id = str(uuid.uuid4())
-    request.state.request_id = request_id
-    
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid_lib.uuid4())[:8])
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestIDMiddleware)
 
 
 # Static asset caching and API cache-control headers
@@ -552,6 +671,17 @@ async def timeout_middleware(request: Request, call_next):
                 "path": str(request.url.path)
             }
         )
+
+
+@app.middleware("http")
+async def add_response_timing_headers(request: Request, call_next):
+    start_time = time_module.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time_module.perf_counter() - start_time) * 1000
+    duration_value = f"{duration_ms:.2f}"
+    response.headers["X-Response-Time-ms"] = duration_value
+    response.headers["Server-Timing"] = f"app;dur={duration_value}"
+    return response
 
 
 

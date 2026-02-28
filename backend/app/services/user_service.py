@@ -189,7 +189,11 @@ class UserService:
         if not filtered:
             return await self.get_user_by_id(user_id)
         
-        sets = ", ".join(f"{k} = ?" for k in filtered)
+        # Use explicit column allowlist to prevent SQL injection via column names
+        column_allowlist = {"full_name": "full_name", "email": "email", "role": "role",
+                           "is_active": "is_active", "avatar_url": "avatar_url"}
+        safe_cols = [column_allowlist[k] for k in filtered]
+        sets = ", ".join(f"{col} = ?" for col in safe_cols)
         vals = list(filtered.values()) + [user_id]
         db = self._db
         await db._db.execute(f"UPDATE users SET {sets} WHERE id = ?", vals)

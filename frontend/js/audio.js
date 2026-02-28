@@ -234,12 +234,24 @@ class TTSPlayer {
     constructor() {
         this.audioContext = null;
         this.currentSource = null;
+        this.currentUtterance = null;
         this.isPlaying = false;
-        this.enabled = localStorage.getItem('ttsEnabled') === 'true';
-        this.voice = localStorage.getItem('ttsVoice') || 'Puck';
+        this._storageOk = this._storageAvailable();
+        const isMobileViewport = !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+        const savedEnabled = this._readStorage('ttsEnabled');
+        this.enabled = savedEnabled === null ? isMobileViewport : savedEnabled === 'true';
+        if (savedEnabled === null && isMobileViewport) {
+            this._writeStorage('ttsEnabled', 'true');
+        }
+        this.voice = this._readStorage('ttsVoice') || 'Puck';
+        this.playbackSpeed = this._normalizePlaybackSpeed(this._readStorage('ttsPlaybackSpeed'));
+        this._writeStorage('ttsPlaybackSpeed', this.playbackSpeed.toString());
         this.availableVoices = [];
         this.queue = [];
         this.isProcessing = false;
+        this.webSpeechSupported = typeof window !== 'undefined'
+            && 'speechSynthesis' in window
+            && typeof window.SpeechSynthesisUtterance !== 'undefined';
         
         // Voice conversation callbacks
         this.onPlaybackStart = null;
@@ -260,10 +272,45 @@ class TTSPlayer {
             console.warn('Could not fetch TTS voices:', error);
         }
     }
+
+    _storageAvailable() {
+        try {
+            if (typeof window === 'undefined' || !window.localStorage) return false;
+            const key = '__tts_probe__';
+            window.localStorage.setItem(key, '1');
+            window.localStorage.removeItem(key);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _readStorage(key) {
+        if (!this._storageOk) return null;
+        try {
+            return window.localStorage.getItem(key);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeStorage(key, value) {
+        if (!this._storageOk) return;
+        try {
+            window.localStorage.setItem(key, value);
+        } catch (_) {}
+    }
+
+    _normalizePlaybackSpeed(value) {
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed)) return 1.0;
+        const clamped = Math.max(0.8, Math.min(1.25, parsed));
+        return Math.round(clamped * 100) / 100;
+    }
     
     setEnabled(enabled) {
         this.enabled = enabled;
-        localStorage.setItem('ttsEnabled', enabled.toString());
+        this._writeStorage('ttsEnabled', enabled.toString());
     }
     
     isEnabled() {
@@ -272,11 +319,20 @@ class TTSPlayer {
     
     setVoice(voice) {
         this.voice = voice;
-        localStorage.setItem('ttsVoice', voice);
+        this._writeStorage('ttsVoice', voice);
     }
     
     getVoice() {
         return this.voice;
+    }
+
+    setPlaybackSpeed(speed) {
+        this.playbackSpeed = this._normalizePlaybackSpeed(speed);
+        this._writeStorage('ttsPlaybackSpeed', this.playbackSpeed.toString());
+    }
+
+    getPlaybackSpeed() {
+        return this.playbackSpeed;
     }
     
     getAvailableVoices() {
@@ -298,8 +354,7 @@ class TTSPlayer {
         if (!cleanText) return;
         
         if (immediate) {
-            this.stop();
-            this.queue = [];
+            this.interrupt('immediate');
         }
         
         this.queue.push(cleanText);
@@ -342,35 +397,41 @@ class TTSPlayer {
             
             if (!response.ok) {
                 const error = await response.json().catch(() => ({}));
-                throw new Error(error.detail || `TTS API error: ${response.status}`);
+                const message = error.detail || `TTS API error: ${response.status}`;
+                const requestError = new Error(message);
+                requestError.status = response.status;
+                throw requestError;
             }
             
             const data = await response.json();
             
             if (data.audio_base64) {
                 await this._playAudioBase64(data.audio_base64, data.mime_type);
+                return;
             }
+            throw new Error('TTS API returned no audio payload');
         } catch (error) {
             console.error('TTS generation failed:', error);
-            // Show user-friendly message for quota errors
-            if (error.message.includes('429') || error.message.includes('quota')) {
-                console.warn('TTS quota reached, speech disabled temporarily');
+            const fallbackPlayed = await this._playWithWebSpeech(text);
+            if (!fallbackPlayed && (String(error.message || '').includes('429') || String(error.message || '').toLowerCase().includes('quota'))) {
+                console.warn('TTS quota reached and browser speech fallback unavailable');
             }
         }
     }
     
     async _playAudioBase64(base64Data, mimeType = 'audio/wav') {
+        // Create audio context if needed
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // Resume audio context if suspended (browser autoplay policy)
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+        }
+        
         return new Promise((resolve, reject) => {
             try {
-                // Create audio context if needed
-                if (!this.audioContext) {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                
-                // Resume audio context if suspended (browser autoplay policy)
-                if (this.audioContext.state === 'suspended') {
-                    this.audioContext.resume();
-                }
                 
                 // Decode base64 to array buffer
                 const binaryString = atob(base64Data);
@@ -393,6 +454,7 @@ class TTSPlayer {
                         // Create and play buffer source
                         this.currentSource = this.audioContext.createBufferSource();
                         this.currentSource.buffer = audioBuffer;
+                        this.currentSource.playbackRate.value = this.playbackSpeed;
                         this.currentSource.connect(this.audioContext.destination);
                         
                         this.isPlaying = true;
@@ -412,6 +474,48 @@ class TTSPlayer {
                 );
             } catch (error) {
                 reject(error);
+            }
+        });
+    }
+
+    async _playWithWebSpeech(text) {
+        if (!this.webSpeechSupported || !text) return false;
+        return new Promise((resolve) => {
+            try {
+                const synth = window.speechSynthesis;
+                synth.cancel();
+                const utterance = new window.SpeechSynthesisUtterance(text);
+                utterance.rate = this.playbackSpeed;
+                utterance.pitch = 1.0;
+
+                const voices = synth.getVoices ? synth.getVoices() : [];
+                const preferredVoice = voices.find((voice) =>
+                    this.voice && voice.name && voice.name.toLowerCase().includes(this.voice.toLowerCase())
+                );
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                }
+
+                this.currentUtterance = utterance;
+                this.isPlaying = true;
+
+                utterance.onend = () => {
+                    this.isPlaying = false;
+                    this.currentUtterance = null;
+                    resolve(true);
+                };
+                utterance.onerror = () => {
+                    this.isPlaying = false;
+                    this.currentUtterance = null;
+                    resolve(false);
+                };
+
+                synth.speak(utterance);
+            } catch (error) {
+                console.warn('Web Speech fallback failed:', error);
+                this.isPlaying = false;
+                this.currentUtterance = null;
+                resolve(false);
             }
         });
     }
@@ -446,7 +550,19 @@ class TTSPlayer {
             } catch (e) {}
             this.currentSource = null;
         }
+        if (this.webSpeechSupported && window.speechSynthesis) {
+            try {
+                window.speechSynthesis.cancel();
+            } catch (_) {}
+        }
+        this.currentUtterance = null;
         this.isPlaying = false;
+    }
+
+    interrupt(reason = 'user_speaking') {
+        this.queue = [];
+        this.stop();
+        this.lastInterruptReason = reason;
     }
     
     isCurrentlyPlaying() {

@@ -2,6 +2,7 @@
 Admin authentication module
 Simple password-based authentication for admin portal
 """
+import asyncio
 import os
 import secrets
 import time
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Session store: token → {user_id, username, role, created_at}
 active_sessions: Dict[str, Dict] = {}
+_session_lock = asyncio.Lock()
 
 # Session expiry
 SESSION_EXPIRY_HOURS = 24
@@ -54,46 +56,59 @@ def check_rate_limit(client_ip: str) -> bool:
     return True
 
 
-def create_session(user_id: str = "superadmin", username: str = "admin", role: str = "admin") -> str:
+async def create_session(user_id: str = "superadmin", username: str = "admin", role: str = "admin") -> str:
     """Create a new session token with user info."""
     token = secrets.token_urlsafe(32)
-    active_sessions[token] = {
-        "user_id": user_id,
-        "username": username,
-        "role": role,
-        "created_at": datetime.now(timezone.utc),
-    }
+    async with _session_lock:
+        active_sessions[token] = {
+            "user_id": user_id,
+            "username": username,
+            "role": role,
+            "created_at": datetime.now(timezone.utc),
+        }
     logger.info(f"Created session for {username}: {token[:8]}...")
     return token
 
 
-def validate_session(token: str) -> Optional[Dict]:
+async def validate_session(token: str) -> Optional[Dict]:
     """Validate session. Returns session dict with user info, or None."""
-    if token not in active_sessions:
-        return None
-    session = active_sessions[token]
-    if datetime.now(timezone.utc) - session["created_at"] > timedelta(hours=SESSION_EXPIRY_HOURS):
-        del active_sessions[token]
-        logger.info(f"Session expired: {token[:8]}...")
-        return None
-    # Keep-alive
-    session["created_at"] = datetime.now(timezone.utc)
-    return session
+    async with _session_lock:
+        if token not in active_sessions:
+            return None
+        session = active_sessions[token]
+        if datetime.now(timezone.utc) - session["created_at"] > timedelta(hours=SESSION_EXPIRY_HOURS):
+            del active_sessions[token]
+            logger.info(f"Session expired: {token[:8]}...")
+            return None
+        # Keep-alive
+        session["created_at"] = datetime.now(timezone.utc)
+        return session
+
+
+async def _revoke_session_locked(token: str) -> bool:
+    async with _session_lock:
+        if token in active_sessions:
+            del active_sessions[token]
+            logger.info(f"Revoked session: {token[:8]}...")
+            return True
+    return False
 
 
 def revoke_session(token: str) -> bool:
     """Revoke an admin session."""
-    if token in active_sessions:
-        del active_sessions[token]
-        logger.info(f"Revoked session: {token[:8]}...")
-        return True
-    return False
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_revoke_session_locked(token))
+    existed = token in active_sessions
+    loop.create_task(_revoke_session_locked(token))
+    return existed
 
 
-def authenticate(password: str) -> Optional[str]:
+async def authenticate(password: str) -> Optional[str]:
     """Legacy: authenticate with just admin password (superadmin fallback)."""
     if bcrypt.checkpw(password.encode('utf-8'), _get_hashed_password()):
-        return create_session(user_id="superadmin", username="admin", role="admin")
+        return await create_session(user_id="superadmin", username="admin", role="admin")
     return None
 
 
@@ -102,19 +117,31 @@ async def authenticate_user_credentials(username: str, password: str) -> Optiona
     from app.services.user_service import user_service
     user = await user_service.authenticate_user(username, password)
     if user:
-        token = create_session(user_id=user["id"], username=user["username"], role=user["role"])
+        token = await create_session(user_id=user["id"], username=user["username"], role=user["role"])
         return token, user
     return None
 
 
-def require_admin_auth(authorization: Optional[str] = Header(None)) -> Dict:
+async def cleanup_expired_sessions():
+    """Remove expired sessions from memory."""
+    now = datetime.now(timezone.utc)
+    async with _session_lock:
+        expired = [token for token, session in active_sessions.items()
+                   if (now - session.get("created_at", now)).total_seconds() > SESSION_EXPIRY_HOURS * 3600]
+        for token in expired:
+            del active_sessions[token]
+    if expired:
+        logger.info(f"Cleaned up {len(expired)} expired sessions")
+
+
+async def require_admin_auth(authorization: Optional[str] = Header(None)) -> Dict:
     """Dependency to require admin authentication. Returns session info."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization format")
     token = authorization[7:]
-    session = validate_session(token)
+    session = await validate_session(token)
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session"
         )

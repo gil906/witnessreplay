@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from collections import deque
@@ -78,6 +79,129 @@ import uuid
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── File upload validation ────────────────────────────────
+
+ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_LIST_LIMIT = 200
+MAX_VOICE_EVENTS = 200
+VOICE_DEFAULT_PREFERENCES = {
+    "tts_enabled": True,
+    "auto_listen": True,
+    "playback_speed": 1.0,
+    "voice": "Puck",
+}
+VOICE_QUICK_PHRASES = [
+    "Start from the beginning.",
+    "What happened next?",
+    "Where were you standing?",
+    "Can you describe the person?",
+    "Can you describe the vehicle?",
+    "What did you hear?",
+    "What direction did they go?",
+    "Repeat that slowly.",
+]
+
+
+def _guard_limit(limit: int) -> int:
+    """Clamp list limits to a safe range."""
+    return max(1, min(limit, MAX_LIST_LIMIT))
+
+
+def _normalize_voice_preferences(
+    raw_preferences: Optional[Dict[str, Any]],
+    base_preferences: Optional[Dict[str, Any]] = None,
+    *,
+    strict: bool = False,
+) -> Dict[str, Any]:
+    """Validate and normalize voice preferences."""
+    normalized = dict(base_preferences or VOICE_DEFAULT_PREFERENCES)
+    if raw_preferences is None:
+        return normalized
+    if not isinstance(raw_preferences, dict):
+        if strict:
+            raise HTTPException(status_code=400, detail="voice preferences payload must be an object")
+        return normalized
+
+    allowed_keys = set(VOICE_DEFAULT_PREFERENCES.keys())
+    for key, value in raw_preferences.items():
+        if key not in allowed_keys:
+            if strict:
+                raise HTTPException(status_code=400, detail=f"Unsupported voice preference key: {key}")
+            continue
+
+        if key in ("tts_enabled", "auto_listen"):
+            if not isinstance(value, bool):
+                if strict:
+                    raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
+                continue
+            normalized[key] = value
+            continue
+
+        if key == "playback_speed":
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                if strict:
+                    raise HTTPException(status_code=400, detail="playback_speed must be a number")
+                continue
+            speed = float(value)
+            if speed < 0.8 or speed > 1.25:
+                if strict:
+                    raise HTTPException(status_code=400, detail="playback_speed must be between 0.8 and 1.25")
+                continue
+            normalized[key] = round(speed, 2)
+            continue
+
+        if key == "voice":
+            if not isinstance(value, str):
+                if strict:
+                    raise HTTPException(status_code=400, detail="voice must be a string")
+                continue
+            cleaned = value.strip()
+            if not cleaned or len(cleaned) > 40:
+                if strict:
+                    raise HTTPException(status_code=400, detail="voice must be non-empty and <= 40 characters")
+                continue
+            normalized[key] = cleaned
+
+    return normalized
+
+
+def _append_voice_event(metadata: Dict[str, Any], event: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Append a voice event and cap history length."""
+    events = metadata.get("voice_events")
+    if not isinstance(events, list):
+        events = []
+    events.append(event)
+    metadata["voice_events"] = events[-MAX_VOICE_EVENTS:]
+    return metadata["voice_events"]
+
+
+def _log_voice_event_write(session_id: str, event: Dict[str, Any], total_events: int) -> None:
+    """Structured log for voice event writes."""
+    logger.info(
+        json.dumps(
+            {
+                "event": "voice_event_write",
+                "session_id": session_id,
+                "voice_event_type": event.get("type"),
+                "voice_events_count": total_events,
+                "timestamp": event.get("timestamp"),
+            }
+        )
+    )
+
+async def validate_upload(file):
+    """Validate file upload."""
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}. Allowed: JPEG, PNG, GIF, WebP")
+    content = await file.read()
+    await file.seek(0)
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size: {MAX_UPLOAD_SIZE // (1024*1024)}MB")
+    if len(content) < 100:
+        raise HTTPException(status_code=400, detail="File too small or empty")
+    return content
 
 
 # ── Background task queue ─────────────────────────────────
@@ -169,7 +293,7 @@ async def login(request: LoginRequest, raw_request: Request):
             return LoginResponse(token=token, user=user)
     
     # Fallback: legacy admin password (no username)
-    token = authenticate(request.password)
+    token = await authenticate(request.password)
     if token:
         return LoginResponse(token=token, user={"id": "superadmin", "username": "admin", "role": "admin", "full_name": "Administrator"})
     
@@ -185,6 +309,9 @@ async def register(request: RegisterRequest, raw_request: Request):
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     if not request.email or "@" not in request.email:
         raise HTTPException(status_code=400, detail="Valid email is required")
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, request.email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
     
     try:
         user = await user_service.create_user(
@@ -195,7 +322,7 @@ async def register(request: RegisterRequest, raw_request: Request):
             role="officer",
         )
         # Auto-login after registration
-        token = create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
+        token = await create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
         return {"token": token, "user": user, "expires_in": 86400}
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -223,7 +350,7 @@ async def oauth_login(request: OAuthLoginRequest):
         full_name=request.full_name,
         avatar_url=request.avatar_url,
     )
-    token = create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
+    token = await create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
     return {"token": token, "user": user, "expires_in": 86400}
 
 
@@ -522,6 +649,77 @@ async def list_sessions(limit: int = 50):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list sessions"
+        )
+
+
+@router.get("/reports/orphans")
+async def list_orphan_reports(limit: int = 50):
+    """List reports that are missing a case assignment."""
+    try:
+        limit = _guard_limit(limit)
+        orphan_sessions = await firestore_service.list_orphan_sessions(limit=limit)
+
+        reports = [
+            {
+                "id": session.id,
+                "report_number": getattr(session, "report_number", ""),
+                "title": session.title,
+                "source_type": getattr(session, "source_type", "chat"),
+                "statement_count": len(getattr(session, "witness_statements", []) or []),
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+            }
+            for session in orphan_sessions
+        ]
+
+        return {
+            "reports": reports,
+            "count": len(reports),
+            "limit": limit,
+        }
+    except Exception as e:
+        logger.error(f"Error listing orphan reports: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list orphan reports",
+        )
+
+
+@router.post("/reports/orphans/auto-assign")
+async def auto_assign_orphan_reports(limit: int = 50, _auth=Depends(require_admin_auth)):
+    """Auto-assign orphan reports to existing/new cases."""
+    try:
+        limit = _guard_limit(limit)
+        orphan_sessions = await firestore_service.list_orphan_sessions(limit=limit)
+
+        assigned = 0
+        failures = []
+
+        for session in orphan_sessions:
+            try:
+                case_id = await case_manager.assign_report_to_case(session)
+                if not case_id:
+                    failures.append({"report_id": session.id, "error": "No case assignment returned"})
+                    continue
+
+                session.case_id = case_id
+                session.updated_at = datetime.utcnow()
+                await firestore_service.update_session(session)
+                assigned += 1
+            except Exception as assign_error:
+                failures.append({"report_id": session.id, "error": str(assign_error)})
+
+        return {
+            "processed": len(orphan_sessions),
+            "assigned": assigned,
+            "failed": len(failures),
+            "failures": failures,
+        }
+    except Exception as e:
+        logger.error(f"Error auto-assigning orphan reports: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to auto-assign orphan reports",
         )
 
 
@@ -935,7 +1133,8 @@ async def export_session(session_id: str):
         if session.created_at:
             try:
                 date_str = session.created_at.strftime('%Y-%m-%d %H:%M')
-            except:
+            except Exception as e:
+                logger.warning(f"Error formatting date: {e}")
                 date_str = str(session.created_at)
             pdf.cell(0, 10, f"Date: {date_str}", ln=True)
         else:
@@ -2649,15 +2848,17 @@ async def upload_sketch(session_id: str, request: Request):
         if not image_file:
             raise HTTPException(status_code=400, detail="No image file provided")
         
-        # Validate file type
+        # Validate file type and size
         content_type = getattr(image_file, 'content_type', 'image/png')
-        if not content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
+        if content_type and content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {content_type}. Allowed: JPEG, PNG, GIF, WebP")
         
         # Read image data
         image_data = await image_file.read()
-        if len(image_data) > 10 * 1024 * 1024:  # 10MB limit
-            raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        if len(image_data) > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=400, detail=f"File too large. Maximum size: {MAX_UPLOAD_SIZE // (1024*1024)}MB")
+        if len(image_data) < 100:
+            raise HTTPException(status_code=400, detail="File too small or empty")
         
         # Generate unique filename
         sketch_id = f"sketch-{uuid.uuid4().hex[:8]}"
@@ -3005,6 +3206,45 @@ async def update_session(session_id: str, update_data: SessionUpdate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update session"
+        )
+
+
+
+@router.post("/sessions/{session_id}/close")
+async def close_session_on_client_exit(session_id: str, reason: str = "tab_close"):
+    """Mark a session completed when the client tab/app is closed."""
+    try:
+        session = await firestore_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        metadata = dict(session.metadata or {})
+        metadata["closed_by_client"] = True
+        metadata["close_reason"] = (reason or "tab_close")[:80]
+        metadata["closed_at"] = datetime.utcnow().isoformat()
+        session.metadata = metadata
+
+        if session.status == "active":
+            session.status = "completed"
+        session.updated_at = datetime.utcnow()
+
+        success = await firestore_service.update_session(session)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to close session",
+            )
+
+        remove_agent(session_id)
+        return {"closed": True, "session_id": session_id, "status": session.status}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error closing session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to close session",
         )
 
 
@@ -3434,6 +3674,43 @@ async def get_models_status():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get model status: {str(e)}"
+        )
+
+
+@router.get("/models/selection/{task_type}")
+async def get_model_selection(task_type: str):
+    """Return model selection details for a task type."""
+    from app.services.model_selector import model_selector, TASK_CHAINS
+
+    try:
+        helper = None
+        for helper_name in (
+            "get_selection_explanation",
+            "explain_selection",
+            "explain_model_selection",
+            "get_model_selection_explanation",
+        ):
+            candidate = getattr(model_selector, helper_name, None)
+            if callable(candidate):
+                helper = candidate
+                break
+
+        if helper:
+            return await helper(task_type) if asyncio.iscoroutinefunction(helper) else helper(task_type)
+
+        selected_model = await model_selector.get_best_model_for_task(task_type)
+        return {
+            "task_type": task_type,
+            "selected_model": selected_model,
+            "current_model": model_selector.get_current_model(task_type),
+            "fallback_chain": [model_name for model_name, _ in TASK_CHAINS.get(task_type, [])],
+            "note": "Selection explanation helper not available on model_selector",
+        }
+    except Exception as e:
+        logger.error(f"Error getting model selection for {task_type}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get model selection: {str(e)}"
         )
 
 
@@ -4948,6 +5225,173 @@ async def get_request_metrics():
 
 # ── Case Management ──────────────────────────────────
 
+MAX_BULK_CASE_IDS = 500
+ADMIN_CASE_SCAN_LIMIT = 1000
+
+
+class CaseBulkStatusRequest(BaseModel):
+    case_ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_CASE_IDS)
+    status: str = Field(..., min_length=1, max_length=100)
+
+
+class CaseBulkAssignRequest(BaseModel):
+    case_ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_CASE_IDS)
+    assignee: str = Field(..., min_length=1, max_length=200)
+
+
+class CaseBulkPriorityRequest(BaseModel):
+    case_ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_CASE_IDS)
+    priority_label: Optional[str] = Field(default=None, max_length=100)
+    priority_score: Optional[float] = None
+
+
+class CaseBulkTagRequest(BaseModel):
+    case_ids: List[str] = Field(..., min_length=1, max_length=MAX_BULK_CASE_IDS)
+    tag: str = Field(..., min_length=1, max_length=100)
+    color: Optional[str] = Field(default=None, max_length=32)
+
+
+class CaseWatchlistToggleRequest(BaseModel):
+    watchlisted: bool
+
+
+class CasePinToggleRequest(BaseModel):
+    pinned: bool
+
+
+def _normalize_case_ids(case_ids: List[str]) -> List[str]:
+    if not case_ids:
+        raise HTTPException(status_code=400, detail="case_ids is required")
+    if len(case_ids) > MAX_BULK_CASE_IDS:
+        raise HTTPException(status_code=400, detail=f"case_ids cannot exceed {MAX_BULK_CASE_IDS}")
+
+    normalized: List[str] = []
+    seen = set()
+    for case_id in case_ids:
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise HTTPException(status_code=400, detail="case_ids must contain non-empty strings")
+        value = case_id.strip()
+        if value not in seen:
+            seen.add(value)
+            normalized.append(value)
+    return normalized
+
+
+def _build_bulk_response(updated: List[str], reasons: List[Dict[str, str]]) -> Dict[str, Any]:
+    return {
+        "updated": updated,
+        "failed": len(reasons),
+        "reasons": reasons,
+    }
+
+
+def _ensure_case_metadata(case: Case) -> Dict[str, Any]:
+    if not isinstance(case.metadata, dict):
+        case.metadata = {}
+    return case.metadata
+
+
+def _tag_key(tag_item: Any) -> str:
+    if isinstance(tag_item, dict):
+        for key in ("tag", "name", "label"):
+            value = tag_item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().lower()
+        return json.dumps(tag_item, sort_keys=True, default=str)
+    if isinstance(tag_item, str):
+        return tag_item.strip().lower()
+    return str(tag_item).strip().lower()
+
+
+def _merge_tags(existing_tags: Any, incoming_tags: List[Any]) -> List[Any]:
+    merged: List[Any] = []
+    tag_index: Dict[str, int] = {}
+
+    for item in (existing_tags if isinstance(existing_tags, list) else []):
+        normalized_item = dict(item) if isinstance(item, dict) else item
+        key = _tag_key(normalized_item)
+        if key in tag_index:
+            existing_item = merged[tag_index[key]]
+            if isinstance(existing_item, dict) and isinstance(normalized_item, dict):
+                existing_item.update(normalized_item)
+            continue
+        tag_index[key] = len(merged)
+        merged.append(normalized_item)
+
+    for item in incoming_tags:
+        normalized_item = dict(item) if isinstance(item, dict) else item
+        key = _tag_key(normalized_item)
+        if key in tag_index:
+            existing_item = merged[tag_index[key]]
+            if isinstance(existing_item, dict) and isinstance(normalized_item, dict):
+                existing_item.update(normalized_item)
+            continue
+        tag_index[key] = len(merged)
+        merged.append(normalized_item)
+
+    return merged
+
+
+def _merge_unique_list(existing_values: Any, incoming_values: List[Any]) -> List[Any]:
+    existing_list = existing_values if isinstance(existing_values, list) else []
+    merged = list(existing_list)
+    seen = {json.dumps(item, sort_keys=True, default=str) for item in merged}
+    for item in incoming_values:
+        marker = json.dumps(item, sort_keys=True, default=str)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        merged.append(item)
+    return merged
+
+
+def _merge_case_metadata(existing_metadata: Optional[Dict[str, Any]], incoming_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(existing_metadata or {})
+    for key, value in incoming_metadata.items():
+        if key == "tags" and isinstance(value, list):
+            merged[key] = _merge_tags(merged.get(key), value)
+        elif key == "deadlines" and isinstance(value, list):
+            merged[key] = _merge_unique_list(merged.get(key), value)
+        elif isinstance(value, dict) and isinstance(merged.get(key), dict):
+            nested = dict(merged.get(key) or {})
+            nested.update(value)
+            merged[key] = nested
+        else:
+            merged[key] = value
+    return merged
+
+
+def _parse_deadline_datetime(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str):
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    candidates = [raw]
+    if raw.endswith("Z"):
+        no_z = raw[:-1]
+        candidates.append(f"{no_z}+00:00")
+    else:
+        no_z = raw
+
+    if "T" not in no_z and " " not in no_z:
+        candidates.append(f"{no_z}T00:00:00")
+        if raw.endswith("Z"):
+            candidates.append(f"{no_z}T00:00:00+00:00")
+
+    for candidate in candidates:
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
 @router.get("/cases")
 async def list_cases(limit: int = 50, sort_by: str = "updated"):
     """List all cases with report counts and priority scores.
@@ -5040,6 +5484,193 @@ async def list_cases_by_priority(limit: int = 50, min_score: float = 0):
         raise HTTPException(status_code=500, detail="Failed to list cases by priority")
 
 
+@router.get("/export/cases.csv")
+async def export_cases_csv(limit: int = 200):
+    """Export cases as CSV."""
+    try:
+        from fastapi.responses import Response
+        import csv
+
+        limit = _guard_limit(limit)
+        cases = await firestore_service.list_cases(limit=limit)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "number",
+            "title",
+            "status",
+            "location",
+            "report_count",
+            "updated_at",
+            "scene_image_url",
+        ])
+
+        for case in cases:
+            writer.writerow([
+                case.case_number,
+                case.title,
+                case.status,
+                case.location,
+                len(case.report_ids or []),
+                case.updated_at.isoformat() if case.updated_at else "",
+                case.scene_image_url or "",
+            ])
+
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=cases.csv"},
+        )
+    except Exception as e:
+        logger.error(f"Error exporting cases CSV: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export cases CSV")
+
+
+@router.post("/cases/recalculate-priorities")
+async def recalculate_case_priorities(limit: int = 200, _auth=Depends(require_admin_auth)):
+    """Recalculate and persist case priority score/label metadata."""
+    try:
+        limit = _guard_limit(limit)
+        cases = await firestore_service.list_cases(limit=limit)
+
+        updated = 0
+        failures = []
+
+        for case in cases:
+            try:
+                report_count = len(case.report_ids or [])
+                priority = priority_scoring_service.calculate_priority(case, report_count)
+
+                case.metadata = case.metadata or {}
+                case.metadata["priority_score"] = priority.total_score
+                case.metadata["priority_label"] = priority.priority_label
+                case.metadata["priority"] = priority.priority_label
+                case.metadata["priority_calculated_at"] = (
+                    priority.calculated_at.isoformat() if priority.calculated_at else None
+                )
+
+                await firestore_service.update_case(case)
+                updated += 1
+            except Exception as case_error:
+                failures.append({"case_id": case.id, "error": str(case_error)})
+
+        return {
+            "processed": len(cases),
+            "updated": updated,
+            "failed": len(failures),
+            "failures": failures,
+        }
+    except Exception as e:
+        logger.error(f"Error recalculating priorities: {e}")
+        raise HTTPException(status_code=500, detail="Failed to recalculate priorities")
+
+
+@router.get("/cases/{case_id}/timeline")
+async def get_case_timeline(case_id: str, limit: int = 100):
+    """Aggregate witness statements across case reports into a sorted timeline."""
+    try:
+        limit = _guard_limit(limit)
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        timeline_events = []
+        for report_id in case.report_ids:
+            session = await firestore_service.get_session(report_id)
+            if not session:
+                continue
+
+            for idx, statement in enumerate(session.witness_statements):
+                sort_ts = statement.timestamp or session.created_at or session.updated_at
+                timeline_events.append({
+                    "event_id": f"{session.id}:{statement.id or idx}",
+                    "report_id": session.id,
+                    "report_number": getattr(session, "report_number", ""),
+                    "report_title": session.title,
+                    "statement_id": statement.id,
+                    "timestamp": statement.timestamp.isoformat() if statement.timestamp else None,
+                    "witness_name": statement.witness_name or getattr(session, "witness_name", None),
+                    "text": statement.text,
+                    "_sort_key": sort_ts.isoformat() if sort_ts else "",
+                })
+
+        timeline_events.sort(
+            key=lambda item: (
+                item.get("_sort_key") == "",
+                item.get("_sort_key") or "",
+                item.get("report_id") or "",
+            )
+        )
+        events = [{k: v for k, v in event.items() if k != "_sort_key"} for event in timeline_events[:limit]]
+
+        return {
+            "case_id": case_id,
+            "case_number": case.case_number,
+            "case_title": case.title,
+            "total_events": len(timeline_events),
+            "returned": len(events),
+            "limit": limit,
+            "timeline": events,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting case timeline: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get case timeline")
+
+
+@router.get("/cases/{case_id}/snippets")
+async def get_case_snippets(case_id: str, limit: int = 50):
+    """Return short statement snippets grouped by report for a case."""
+    try:
+        limit = _guard_limit(limit)
+        case = await firestore_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        grouped = []
+        for report_id in case.report_ids[:limit]:
+            session = await firestore_service.get_session(report_id)
+            if not session:
+                continue
+
+            snippets = []
+            for statement in session.witness_statements:
+                text = " ".join((statement.text or "").split())
+                if not text:
+                    continue
+                snippet = text if len(text) <= 160 else f"{text[:157].rstrip()}..."
+                snippets.append({
+                    "statement_id": statement.id,
+                    "timestamp": statement.timestamp.isoformat() if statement.timestamp else None,
+                    "snippet": snippet,
+                })
+
+            grouped.append({
+                "report_id": session.id,
+                "report_number": getattr(session, "report_number", ""),
+                "report_title": session.title,
+                "source_type": getattr(session, "source_type", "chat"),
+                "snippet_count": len(snippets),
+                "snippets": snippets,
+            })
+
+        return {
+            "case_id": case_id,
+            "case_number": case.case_number,
+            "total_reports": len(case.report_ids),
+            "returned_reports": len(grouped),
+            "limit": limit,
+            "reports": grouped,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting case snippets: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get case snippets")
+
+
 @router.get("/cases/{case_id}/priority")
 async def get_case_priority(case_id: str):
     """Get detailed priority score for a specific case."""
@@ -5061,6 +5692,240 @@ async def get_case_priority(case_id: str):
     except Exception as e:
         logger.error(f"Error getting case priority: {e}")
         raise HTTPException(status_code=500, detail="Failed to get case priority")
+
+
+@router.post("/cases/bulk/status")
+async def bulk_update_case_status(data: CaseBulkStatusRequest, _auth=Depends(require_admin_auth)):
+    case_ids = _normalize_case_ids(data.case_ids)
+    status_value = data.status.strip()
+    if not status_value:
+        raise HTTPException(status_code=400, detail="status is required")
+
+    updated: List[str] = []
+    reasons: List[Dict[str, str]] = []
+    for case_id in case_ids:
+        try:
+            case = await firestore_service.get_case(case_id)
+            if not case:
+                reasons.append({"case_id": case_id, "reason": "Case not found"})
+                continue
+            case.status = status_value
+            case.updated_at = datetime.utcnow()
+            await firestore_service.update_case(case)
+            updated.append(case_id)
+        except Exception as e:
+            reasons.append({"case_id": case_id, "reason": str(e)})
+
+    return _build_bulk_response(updated, reasons)
+
+
+@router.post("/cases/bulk/assign")
+async def bulk_assign_cases(data: CaseBulkAssignRequest, _auth=Depends(require_admin_auth)):
+    case_ids = _normalize_case_ids(data.case_ids)
+    assignee = data.assignee.strip()
+    if not assignee:
+        raise HTTPException(status_code=400, detail="assignee is required")
+
+    updated: List[str] = []
+    reasons: List[Dict[str, str]] = []
+    for case_id in case_ids:
+        try:
+            case = await firestore_service.get_case(case_id)
+            if not case:
+                reasons.append({"case_id": case_id, "reason": "Case not found"})
+                continue
+            metadata = _ensure_case_metadata(case)
+            metadata["assigned_to"] = assignee
+            metadata["assigned_at"] = datetime.utcnow().isoformat()
+            case.updated_at = datetime.utcnow()
+            await firestore_service.update_case(case)
+            updated.append(case_id)
+        except Exception as e:
+            reasons.append({"case_id": case_id, "reason": str(e)})
+
+    return _build_bulk_response(updated, reasons)
+
+
+@router.post("/cases/bulk/priority")
+async def bulk_set_case_priority(data: CaseBulkPriorityRequest, _auth=Depends(require_admin_auth)):
+    case_ids = _normalize_case_ids(data.case_ids)
+    priority_label = data.priority_label.strip() if isinstance(data.priority_label, str) else None
+    if data.priority_label is not None and not priority_label:
+        raise HTTPException(status_code=400, detail="priority_label cannot be blank")
+    if priority_label is None and data.priority_score is None:
+        raise HTTPException(status_code=400, detail="priority_label or priority_score is required")
+
+    updated: List[str] = []
+    reasons: List[Dict[str, str]] = []
+    for case_id in case_ids:
+        try:
+            case = await firestore_service.get_case(case_id)
+            if not case:
+                reasons.append({"case_id": case_id, "reason": "Case not found"})
+                continue
+            metadata = _ensure_case_metadata(case)
+            if priority_label is not None:
+                metadata["manual_priority_label"] = priority_label
+            if data.priority_score is not None:
+                metadata["manual_priority_score"] = data.priority_score
+            metadata["manual_priority_updated_at"] = datetime.utcnow().isoformat()
+            case.updated_at = datetime.utcnow()
+            await firestore_service.update_case(case)
+            updated.append(case_id)
+        except Exception as e:
+            reasons.append({"case_id": case_id, "reason": str(e)})
+
+    return _build_bulk_response(updated, reasons)
+
+
+@router.post("/cases/bulk/tag")
+async def bulk_tag_cases(data: CaseBulkTagRequest, _auth=Depends(require_admin_auth)):
+    case_ids = _normalize_case_ids(data.case_ids)
+    tag_name = data.tag.strip()
+    if not tag_name:
+        raise HTTPException(status_code=400, detail="tag is required")
+    color = data.color.strip() if isinstance(data.color, str) and data.color.strip() else None
+
+    updated: List[str] = []
+    reasons: List[Dict[str, str]] = []
+    for case_id in case_ids:
+        try:
+            case = await firestore_service.get_case(case_id)
+            if not case:
+                reasons.append({"case_id": case_id, "reason": "Case not found"})
+                continue
+            metadata = _ensure_case_metadata(case)
+            tag_payload: Dict[str, str] = {"tag": tag_name}
+            if color:
+                tag_payload["color"] = color
+            metadata["tags"] = _merge_tags(metadata.get("tags"), [tag_payload])
+            metadata["tags_updated_at"] = datetime.utcnow().isoformat()
+            case.updated_at = datetime.utcnow()
+            await firestore_service.update_case(case)
+            updated.append(case_id)
+        except Exception as e:
+            reasons.append({"case_id": case_id, "reason": str(e)})
+
+    return _build_bulk_response(updated, reasons)
+
+
+@router.get("/cases/overdue-deadlines")
+async def list_cases_with_overdue_deadlines(_auth=Depends(require_admin_auth)):
+    now = datetime.now(timezone.utc)
+    cases = await firestore_service.list_cases(limit=ADMIN_CASE_SCAN_LIMIT)
+    overdue_cases: List[Dict[str, Any]] = []
+
+    for case in cases:
+        metadata = case.metadata if isinstance(case.metadata, dict) else {}
+        deadlines = metadata.get("deadlines", [])
+        if not isinstance(deadlines, list):
+            continue
+
+        overdue_deadlines = []
+        for deadline in deadlines:
+            if not isinstance(deadline, dict):
+                continue
+
+            if deadline.get("completed") is True or deadline.get("is_completed") is True:
+                continue
+
+            deadline_status = str(deadline.get("status", "")).strip().lower()
+            if deadline_status in {"completed", "done", "closed", "resolved"}:
+                continue
+
+            due_value = deadline.get("date") or deadline.get("due_at")
+            due_at = _parse_deadline_datetime(due_value)
+            if due_at and due_at < now:
+                overdue_deadlines.append(deadline)
+
+        if overdue_deadlines:
+            overdue_cases.append({
+                "id": case.id,
+                "case_number": case.case_number,
+                "title": case.title,
+                "status": case.status,
+                "overdue_deadlines": overdue_deadlines,
+            })
+
+    return {"cases": overdue_cases, "total": len(overdue_cases)}
+
+
+@router.get("/cases/watchlist")
+async def list_watchlisted_cases(_auth=Depends(require_admin_auth)):
+    cases = await firestore_service.list_cases(limit=ADMIN_CASE_SCAN_LIMIT)
+    watchlisted_cases = []
+
+    for case in cases:
+        metadata = case.metadata if isinstance(case.metadata, dict) else {}
+        if metadata.get("watchlisted") is True:
+            watchlisted_cases.append({
+                "id": case.id,
+                "case_number": case.case_number,
+                "title": case.title,
+                "status": case.status,
+                "watchlisted_at": metadata.get("watchlisted_at") or metadata.get("watchlisted_updated_at"),
+            })
+
+    return {"cases": watchlisted_cases, "total": len(watchlisted_cases)}
+
+
+@router.post("/cases/{case_id}/watchlist")
+async def toggle_case_watchlist(case_id: str, data: CaseWatchlistToggleRequest, _auth=Depends(require_admin_auth)):
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    metadata = _ensure_case_metadata(case)
+    timestamp = datetime.utcnow().isoformat()
+    metadata["watchlisted"] = data.watchlisted
+    metadata["watchlisted_updated_at"] = timestamp
+    if data.watchlisted:
+        metadata["watchlisted_at"] = timestamp
+    else:
+        metadata["watchlisted_removed_at"] = timestamp
+
+    case.updated_at = datetime.utcnow()
+    await firestore_service.update_case(case)
+    return _build_bulk_response([case_id], [])
+
+
+@router.get("/cases/pinned")
+async def list_pinned_cases(_auth=Depends(require_admin_auth)):
+    cases = await firestore_service.list_cases(limit=ADMIN_CASE_SCAN_LIMIT)
+    pinned_cases = []
+
+    for case in cases:
+        metadata = case.metadata if isinstance(case.metadata, dict) else {}
+        if metadata.get("pinned") is True:
+            pinned_cases.append({
+                "id": case.id,
+                "case_number": case.case_number,
+                "title": case.title,
+                "status": case.status,
+                "pinned_at": metadata.get("pinned_at") or metadata.get("pinned_updated_at"),
+            })
+
+    return {"cases": pinned_cases, "total": len(pinned_cases)}
+
+
+@router.post("/cases/{case_id}/pin")
+async def toggle_case_pin(case_id: str, data: CasePinToggleRequest, _auth=Depends(require_admin_auth)):
+    case = await firestore_service.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    metadata = _ensure_case_metadata(case)
+    timestamp = datetime.utcnow().isoformat()
+    metadata["pinned"] = data.pinned
+    metadata["pinned_updated_at"] = timestamp
+    if data.pinned:
+        metadata["pinned_at"] = timestamp
+    else:
+        metadata["pinned_removed_at"] = timestamp
+
+    case.updated_at = datetime.utcnow()
+    await firestore_service.update_case(case)
+    return _build_bulk_response([case_id], [])
 
 
 @router.get("/cases/{case_id}")
@@ -5142,10 +6007,15 @@ async def update_case(case_id: str, updates: dict):
             case.location = updates["location"]
         if "summary" in updates:
             case.summary = updates["summary"]
+        if "metadata" in updates:
+            metadata_updates = updates.get("metadata")
+            if not isinstance(metadata_updates, dict):
+                raise HTTPException(status_code=400, detail="metadata must be an object")
+            case.metadata = _merge_case_metadata(case.metadata, metadata_updates)
 
         case.updated_at = datetime.utcnow()
         await firestore_service.update_case(case)
-        return {"message": "Case updated", "case_id": case_id}
+        return _build_bulk_response([case_id], [])
     except HTTPException:
         raise
     except Exception as e:
@@ -5314,6 +6184,29 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
 
 
 # ── Background Task Status ────────────────────────────────
+
+@router.get("/tasks/recent")
+async def get_recent_tasks(limit: int = 50):
+    """Get recent in-memory background task results."""
+    limit = _guard_limit(limit)
+
+    recent = []
+    for task_id, result in _task_results.items():
+        if not isinstance(result, dict):
+            continue
+        sort_ts = result.get("completed_at") or result.get("started_at") or ""
+        recent.append({"task_id": task_id, "_sort_ts": sort_ts, **result})
+
+    recent.sort(key=lambda item: item.get("_sort_ts") or "", reverse=True)
+    tasks = [{k: v for k, v in item.items() if k != "_sort_ts"} for item in recent[:limit]]
+
+    return {
+        "tasks": tasks,
+        "count": len(tasks),
+        "total_tracked": len(recent),
+        "limit": limit,
+    }
+
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
@@ -5977,6 +6870,41 @@ async def list_report_images(session_id: str):
     return {"report_id": session_id, "images": fs_images, "records": db_images}
 
 
+@router.get("/images/stats")
+async def get_image_stats():
+    """Get image file counts and simple filename breakdown."""
+    images_dir = "/app/data/images"
+    if not os.path.exists(images_dir):
+        dev_dir = os.path.join(os.path.dirname(__file__), "..", "data", "images")
+        if os.path.exists(dev_dir):
+            images_dir = dev_dir
+
+    if not os.path.exists(images_dir):
+        return {
+            "images_dir": images_dir,
+            "total": 0,
+            "breakdown": {"case": 0, "report": 0, "other": 0},
+        }
+
+    files = [
+        name for name in os.listdir(images_dir)
+        if os.path.isfile(os.path.join(images_dir, name))
+    ]
+    case_count = sum(1 for name in files if name.startswith("case_"))
+    report_count = sum(1 for name in files if name.startswith("report_"))
+    other_count = len(files) - case_count - report_count
+
+    return {
+        "images_dir": images_dir,
+        "total": len(files),
+        "breakdown": {
+            "case": case_count,
+            "report": report_count,
+            "other": other_count,
+        },
+    }
+
+
 # ── Image Serving ─────────────────────────────────────────
 
 @router.get("/images/{filename}")
@@ -6196,16 +7124,14 @@ class TTSResponse(BaseModel):
 @router.post("/tts/generate", response_model=TTSResponse)
 async def generate_tts(
     request: TTSRequest,
-    raw_request: Request,
-    _auth: dict = Depends(check_rate_limit),
 ):
     """
     Generate text-to-speech audio from text.
     
-    This endpoint converts text to speech using Google Gemini 2.5 Flash TTS.
+    This endpoint converts text to speech using Gemini 2.5 Flash Native Audio Dialog with fallback to preview TTS.
     Useful for accessibility, allowing visually impaired users to hear AI responses.
     
-    Rate limits: 3 requests per minute, 10 requests per day.
+    Rate limits depend on active TTS model and configured fallback chain.
     
     Args:
         text: The text to convert to speech (max ~8000 characters).
@@ -6271,6 +7197,276 @@ async def get_tts_quota():
         Current usage against rate limits (RPM, RPD).
     """
     return tts_service.get_quota_status()
+
+
+@router.get("/voice/profile")
+async def get_voice_profile():
+    """Get default voice-first profile settings for mobile witness flow."""
+    defaults = dict(VOICE_DEFAULT_PREFERENCES)
+    return {
+        "mobile_voice_first": True,
+        "defaults": defaults,
+        "tts_enabled_default": defaults["tts_enabled"],
+        "auto_listen_default": defaults["auto_listen"],
+        "quick_phrases_enabled": True,
+        "suggested_voice": defaults["voice"],
+        "available_voices": tts_service.get_available_voices(),
+    }
+
+
+@router.get("/sessions/{session_id}/voice/preferences")
+async def get_session_voice_preferences(session_id: str):
+    """Get normalized voice preferences for a session."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    preferences = _normalize_voice_preferences(metadata.get("voice_preferences"))
+    return {
+        "session_id": session_id,
+        "voice_preferences": preferences,
+        "defaults": dict(VOICE_DEFAULT_PREFERENCES),
+    }
+
+
+@router.patch("/sessions/{session_id}/voice/preferences")
+async def update_session_voice_preferences(session_id: str, payload: Optional[Dict[str, Any]] = None):
+    """Validate and persist merged voice preferences in session metadata."""
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="voice preferences payload must be an object")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    current = _normalize_voice_preferences(metadata.get("voice_preferences"))
+    merged = _normalize_voice_preferences(payload, base_preferences=current, strict=True)
+    metadata["voice_preferences"] = merged
+
+    session.metadata = metadata
+    success = await firestore_service.update_session(session)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update voice preferences")
+
+    return {
+        "session_id": session_id,
+        "voice_preferences": merged,
+    }
+
+
+@router.get("/voice/health")
+async def get_voice_health():
+    """Get voice feature health including TTS quota and websocket guidance."""
+    tts_quota = tts_service.get_quota_status()
+    models_available = 0
+    model_total = 0
+    try:
+        from app.services.model_selector import model_selector
+
+        statuses = await model_selector.get_all_models_status()
+        model_total = len(statuses)
+        models_available = sum(1 for item in statuses if item.get("available"))
+    except Exception as e:
+        logger.warning(f"Voice health model status unavailable: {e}")
+
+    services = {
+        "firestore": await firestore_service.health_check(),
+        "tts": tts_service.health_check(),
+        "websocket": True,
+    }
+    return {
+        "status": "healthy" if all(services.values()) and tts_quota.get("available", False) else "degraded",
+        "services": services,
+        "tts_quota": tts_quota,
+        "models_available": models_available,
+        "models_total": model_total,
+        "websocket_guidance": "Connect to /ws/{session_id}; listen for status, call_state, voice_hint, and call_metrics events.",
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.get("/voice/quick-phrases")
+async def get_voice_quick_phrases(limit: int = 8):
+    """Get starter voice chips/prompts for witness intake."""
+    safe_limit = _guard_limit(limit)
+    phrases = VOICE_QUICK_PHRASES[:safe_limit]
+    return {
+        "quick_phrases": phrases,
+        "count": len(phrases),
+        "limit": safe_limit,
+    }
+
+
+@router.get("/sessions/{session_id}/conversation/summary")
+async def get_conversation_summary(session_id: str):
+    """Get a lightweight conversation summary for voice UI."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = list(getattr(session, "witness_statements", []) or [])
+    statement_count = len(statements)
+    agent = get_agent(session_id)
+    history = list(getattr(agent, "conversation_history", []) or [])
+    turns = len([m for m in history if isinstance(m, dict) and m.get("role") == "user"]) or statement_count
+
+    last_user_snippet = ""
+    if statements:
+        latest_statement = statements[-1]
+        last_user_snippet = ((latest_statement.original_text or latest_statement.text or "").strip())[:180]
+    elif history:
+        for item in reversed(history):
+            if isinstance(item, dict) and item.get("role") == "user":
+                last_user_snippet = str(item.get("content", "")).strip()[:180]
+                break
+
+    last_agent_snippet = ""
+    for item in reversed(history):
+        if isinstance(item, dict) and item.get("role") in {"assistant", "agent", "model"}:
+            last_agent_snippet = str(item.get("content", "")).strip()[:180]
+            break
+
+    latest_scene = (session.scene_versions or [])[-1] if (session.scene_versions or []) else None
+    scene_snapshot = {
+        "latest_version": getattr(latest_scene, "version", None),
+        "image_url": getattr(latest_scene, "image_url", None),
+        "description": getattr(latest_scene, "description", None),
+        "timestamp": latest_scene.timestamp.isoformat() if latest_scene and getattr(latest_scene, "timestamp", None) else None,
+    }
+
+    return {
+        "session_id": session_id,
+        "turns": turns,
+        "statement_count": statement_count,
+        "last_user_snippet": last_user_snippet,
+        "last_agent_snippet": last_agent_snippet,
+        "case_id": session.case_id,
+        "scene_version_count": len(session.scene_versions or []),
+        "scene_snapshot": scene_snapshot,
+        "scene_latest_version": scene_snapshot["latest_version"],
+        "scene_latest_image_url": scene_snapshot["image_url"],
+        "scene_latest_description": scene_snapshot["description"],
+    }
+
+
+@router.get("/sessions/{session_id}/scene/preview")
+async def get_scene_preview(session_id: str):
+    """Get latest scene preview metadata for realtime voice UI."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    latest_scene = (session.scene_versions or [])[-1] if (session.scene_versions or []) else None
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    if latest_scene:
+        return {
+            "session_id": session_id,
+            "has_scene": True,
+            "version": getattr(latest_scene, "version", len(session.scene_versions or [])),
+            "image_url": getattr(latest_scene, "image_url", None),
+            "description": getattr(latest_scene, "description", ""),
+            "timestamp": latest_scene.timestamp.isoformat() if getattr(latest_scene, "timestamp", None) else None,
+            "scene_version_count": len(session.scene_versions or []),
+        }
+
+    agent = get_agent(session_id)
+    scene_summary = agent.get_scene_summary()
+    return {
+        "session_id": session_id,
+        "has_scene": False,
+        "version": None,
+        "image_url": metadata.get("report_scene_image_url"),
+        "description": scene_summary.get("description", ""),
+        "timestamp": None,
+        "scene_version_count": 0,
+    }
+
+
+@router.post("/sessions/{session_id}/barge-in")
+async def record_barge_in(session_id: str, payload: Optional[Dict[str, Any]] = None):
+    """Record a barge-in marker in session voice events."""
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="barge-in payload must be an object")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    event = {
+        "type": "barge_in",
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": str(payload.get("source", "client"))[:40],
+    }
+    if payload.get("reason") is not None:
+        event["reason"] = str(payload.get("reason", ""))[:160]
+
+    events = _append_voice_event(metadata, event)
+    session.metadata = metadata
+    success = await firestore_service.update_session(session)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to record barge-in event")
+
+    _log_voice_event_write(session_id, event, len(events))
+    return {
+        "session_id": session_id,
+        "event": event,
+        "voice_events_count": len(events),
+    }
+
+
+@router.post("/sessions/{session_id}/call-event")
+async def record_call_event(session_id: str, payload: Optional[Dict[str, Any]] = None):
+    """Record a generic call event in session metadata."""
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="call-event payload must be an object")
+
+    event_type = str(payload.get("event_type") or payload.get("type") or "").strip()
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+    if len(event_type) > 60:
+        raise HTTPException(status_code=400, detail="event_type must be <= 60 characters")
+
+    event_payload = payload.get("payload")
+    if event_payload is not None and not isinstance(event_payload, dict):
+        raise HTTPException(status_code=400, detail="payload must be an object when provided")
+
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    event = {
+        "type": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    if payload.get("source") is not None:
+        event["source"] = str(payload.get("source", ""))[:40]
+    if payload.get("status") is not None:
+        event["status"] = str(payload.get("status", ""))[:40]
+    if event_payload:
+        event["payload"] = event_payload
+
+    events = _append_voice_event(metadata, event)
+    session.metadata = metadata
+    success = await firestore_service.update_session(session)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to record call event")
+
+    _log_voice_event_write(session_id, event, len(events))
+    return {
+        "session_id": session_id,
+        "event": event,
+        "voice_events_count": len(events),
+    }
 
 
 # ============================================================================
@@ -9594,8 +10790,11 @@ async def get_lead_scores(case_id: str, auth=Depends(require_admin_auth)):
     if not case: raise HTTPException(404, "Case not found")
     report_ids = case.get("report_ids", []) if isinstance(case, dict) else getattr(case, 'report_ids', [])
     if isinstance(report_ids, str):
-        try: report_ids = json.loads(report_ids)
-        except: report_ids = []
+        try:
+            report_ids = json.loads(report_ids)
+        except Exception as e:
+            logger.warning(f"Error parsing report_ids: {e}")
+            report_ids = []
     leads = []
     for rid in report_ids[:10]:
         session = await firestore_service.get_session(rid)
@@ -9637,8 +10836,11 @@ async def export_case_pdf(case_id: str, auth=Depends(require_admin_auth)):
     
     report_ids = c.get("report_ids", [])
     if isinstance(report_ids, str):
-        try: report_ids = json.loads(report_ids)
-        except: report_ids = []
+        try:
+            report_ids = json.loads(report_ids)
+        except Exception as e:
+            logger.warning(f"Error parsing report_ids: {e}")
+            report_ids = []
     
     lines.append(f"WITNESS REPORTS ({len(report_ids)} total)")
     lines.append("-" * 60)
@@ -9675,8 +10877,11 @@ async def notify_case_witnesses(case_id: str, data: dict, auth=Depends(require_a
     
     report_ids = c.get("report_ids", [])
     if isinstance(report_ids, str):
-        try: report_ids = json.loads(report_ids)
-        except: report_ids = []
+        try:
+            report_ids = json.loads(report_ids)
+        except Exception as e:
+            logger.warning(f"Error parsing report_ids: {e}")
+            report_ids = []
     
     notified = []
     for rid in report_ids:

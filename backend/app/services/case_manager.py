@@ -128,10 +128,13 @@ EXISTING CASES:
 
 Determine if this report matches any existing case. If it matches, provide the case_id."""
 
+            analysis_model = await model_selector.get_best_model_for_task("analysis")
+
             # Use multi-model verification for this high-stakes matching decision
             verification = await multi_model_verifier.verify_extraction(
                 prompt=prompt,
                 response_schema=CaseMatchResponse,
+                primary_model=analysis_model,
                 temperature=0.1,
                 comparison_fields=["matches_existing_case", "matched_case_id"],
             )
@@ -246,7 +249,7 @@ Create a comprehensive summary combining all witness perspectives, identify key 
                         response_text, _ = cached
                         logger.info(f"Using cached summary for case {case.case_number}")
                     else:
-                        chat_model = await model_selector.get_best_model_for_chat()
+                        chat_model = await model_selector.get_best_model_for_task("analysis")
                         response = await asyncio.to_thread(
                             self.client.models.generate_content,
                             model=chat_model,
@@ -344,9 +347,11 @@ Determine the type (accident, crime, incident, or other), specific subtype, and 
                 return result.model_dump()
             
             # Use multi-model verification for this high-stakes classification
+            classification_model = await model_selector.get_best_model_for_task("classification")
             verification = await multi_model_verifier.verify_extraction(
                 prompt=prompt,
                 response_schema=IncidentClassificationResponse,
+                primary_model=classification_model,
                 temperature=0.1,
                 comparison_fields=["type", "subtype", "severity"],
             )
