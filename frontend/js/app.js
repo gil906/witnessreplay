@@ -7825,6 +7825,21 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/entities': () => {
             this._showEntityNetwork();
+        },
+        '/themes': () => {
+            this._showThemes();
+        },
+        '/crossex': () => {
+            this._showCrossExam();
+        },
+        '/consistency': () => {
+            this._showConsistency();
+        },
+        '/admissions': () => {
+            this._showAdmissions();
+        },
+        '/duration': () => {
+            this._showDuration();
         }
     };
     
@@ -7945,7 +7960,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/profile', desc: 'Witness profile' },
         { cmd: '/qscore', desc: 'Question effectiveness' },
         { cmd: '/contradmap', desc: 'Contradiction map' },
-        { cmd: '/entities', desc: 'Entity network' }
+        { cmd: '/entities', desc: 'Entity network' },
+        { cmd: '/themes', desc: 'Testimony themes' },
+        { cmd: '/crossex', desc: 'Cross-exam planner' },
+        { cmd: '/consistency', desc: 'Consistency score' },
+        { cmd: '/admissions', desc: 'Admission tracker' },
+        { cmd: '/duration', desc: 'Duration estimator' }
     ];
     
     const filter = val.toLowerCase();
@@ -10963,4 +10983,157 @@ WitnessReplayApp.prototype._showEntityNetwork = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not extract entities.'); }
+};
+
+// ── Testimony Theme Extractor ─────────────────────
+WitnessReplayApp.prototype._showThemes = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🎯 Extracting testimony themes...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/themes`);
+        const data = await resp.json();
+        let html = `<div class="themes-panel"><h4>🎯 Testimony Themes</h4>`;
+        html += `<div class="themes-header"><span class="theme-dominant">Dominant: <strong>${data.dominant_theme}</strong></span> <span class="theme-count">${data.total_themes} themes detected</span></div>`;
+        if (data.themes.length) {
+            html += `<div class="themes-list">`;
+            data.themes.forEach(t => {
+                const barW = Math.min(100, t.strength);
+                html += `<div class="theme-item"><div class="theme-name">${t.theme}</div><div class="theme-bar-wrap"><div class="theme-bar" style="width:${barW}%"></div><span class="theme-mentions">${t.mention_count} mentions</span></div><div class="theme-keywords">${t.keywords_found.map(k => `<span class="theme-kw">${k}</span>`).join('')}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        if (data.top_words.length) {
+            html += `<div class="themes-words"><h5>📊 Top Words</h5><div class="word-cloud-mini">`;
+            data.top_words.slice(0, 15).forEach(w => {
+                const size = Math.min(1.4, 0.7 + w.count * 0.08);
+                html += `<span class="word-item" style="font-size:${size}rem">${w.word}<sup>${w.count}</sup></span> `;
+            });
+            html += `</div></div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract themes.'); }
+};
+
+// ── Cross-Examination Planner ─────────────────────
+WitnessReplayApp.prototype._showCrossExam = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('⚔️ Building cross-examination plan...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/crossex`);
+        const data = await resp.json();
+        let html = `<div class="crossex-panel"><h4>⚔️ Cross-Examination Planner</h4>`;
+        html += `<div class="crossex-summary"><span class="crossex-total">${data.total_questions} questions generated</span>`;
+        html += `<span class="crossex-high">🔴 ${data.priority_breakdown.high || 0} high priority</span>`;
+        html += `<span class="crossex-med">🟡 ${data.priority_breakdown.medium || 0} medium</span></div>`;
+        if (data.strategies_used.length) {
+            html += `<div class="crossex-strategies">Strategies: ${data.strategies_used.map(s => `<span class="strategy-tag">${s}</span>`).join('')}</div>`;
+        }
+        if (data.questions.length) {
+            html += `<div class="crossex-questions">`;
+            data.questions.slice(0, 15).forEach((q, i) => {
+                const prioClass = q.priority === 'high' ? 'prio-high' : 'prio-med';
+                html += `<div class="crossex-q ${prioClass}"><div class="crossex-q-head"><span class="crossex-num">#${i+1}</span> <span class="crossex-type">${q.type}</span> <span class="crossex-prio ${prioClass}">${q.priority}</span></div>`;
+                html += `<div class="crossex-target">📌 "${q.target_statement}"</div>`;
+                html += `<div class="crossex-suggest">💡 ${q.suggested_question}</div></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="crossex-empty">No cross-examination opportunities detected.</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate cross-exam plan.'); }
+};
+
+// ── Witness Consistency Score ─────────────────────
+WitnessReplayApp.prototype._showConsistency = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🔄 Analyzing testimony consistency...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/consistency`);
+        const data = await resp.json();
+        const scoreColor = data.consistency_score >= 80 ? '#44aa44' : data.consistency_score >= 60 ? '#ffaa00' : '#ff4444';
+        let html = `<div class="consistency-panel"><h4>🔄 Witness Consistency Score</h4>`;
+        html += `<div class="consistency-score-ring"><div class="score-circle" style="border-color:${scoreColor}"><span class="score-value">${data.consistency_score}</span><span class="score-label">/ 100</span></div></div>`;
+        html += `<div class="consistency-assessment" style="color:${scoreColor}">${data.assessment}</div>`;
+        html += `<div class="consistency-stats"><span>📝 ${data.statement_count} statements</span> <span>⚠️ ${data.total_issues} issues</span> <span>✅ ${data.positive_indicators} positive</span></div>`;
+        if (data.issues.length) {
+            html += `<div class="consistency-issues">`;
+            data.issues.forEach(issue => {
+                const icon = issue.severity === 'positive' ? '✅' : issue.severity === 'high' ? '🔴' : issue.severity === 'medium' ? '🟡' : '🟠';
+                html += `<div class="consistency-issue sev-${issue.severity}"><span class="issue-icon">${icon}</span><div><strong>${issue.type}</strong><div class="issue-detail">${issue.detail}</div></div><span class="issue-impact">${issue.deduction > 0 ? '-' : '+'}${Math.abs(issue.deduction)}</span></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze consistency.'); }
+};
+
+// ── Key Admission Tracker ─────────────────────────
+WitnessReplayApp.prototype._showAdmissions = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('🎯 Tracking admissions and concessions...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/admissions`);
+        const data = await resp.json();
+        const sigColor = data.significance === 'high' ? '#ff4444' : data.significance === 'medium' ? '#ffaa00' : '#44aa44';
+        let html = `<div class="admissions-panel"><h4>🎯 Key Admission Tracker</h4>`;
+        html += `<div class="admissions-header"><span class="admissions-total">${data.total_admissions} admissions found</span>`;
+        html += `<span class="admissions-weight">Weight: ${data.total_weight}</span>`;
+        html += `<span class="admissions-sig" style="color:${sigColor}">Significance: ${data.significance}</span></div>`;
+        if (Object.keys(data.category_breakdown).length) {
+            html += `<div class="admissions-cats">`;
+            Object.entries(data.category_breakdown).forEach(([cat, ct]) => {
+                html += `<span class="admission-cat-badge">${cat}: ${ct}</span>`;
+            });
+            html += `</div>`;
+        }
+        if (data.admissions.length) {
+            html += `<div class="admissions-list">`;
+            data.admissions.slice(0, 15).forEach(a => {
+                const catIcon = {'Direct Admission': '🔴', 'Concession': '🟡', 'Partial Admission': '🟠', 'Knowledge Admission': '🔵', 'Reluctant Admission': '🟣'}[a.category] || '⚪';
+                html += `<div class="admission-item"><span class="admission-icon">${catIcon}</span><div class="admission-content"><div class="admission-text">"${a.statement}"</div><div class="admission-meta"><span class="admission-type">${a.category}</span> <span class="admission-wt">Weight: ${a.weight}</span></div></div></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="admissions-empty">No admissions or concessions detected.</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not track admissions.'); }
+};
+
+// ── Testimony Duration Estimator ──────────────────
+WitnessReplayApp.prototype._showDuration = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    this.displaySystemMessage('⏱️ Estimating testimony duration...');
+    try {
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/duration`);
+        const data = await resp.json();
+        let html = `<div class="duration-panel"><h4>⏱️ Testimony Duration Estimator</h4>`;
+        html += `<div class="duration-meters">`;
+        html += `<div class="duration-meter"><span class="dur-icon">🗣️</span><span class="dur-val">${data.time_estimates.speaking_minutes} min</span><span class="dur-label">Speaking time</span></div>`;
+        html += `<div class="duration-meter"><span class="dur-icon">📖</span><span class="dur-val">${data.time_estimates.reading_minutes} min</span><span class="dur-label">Reading time</span></div>`;
+        html += `<div class="duration-meter"><span class="dur-icon">⚖️</span><span class="dur-val">${data.time_estimates.deposition_equivalent_minutes} min</span><span class="dur-label">Deposition equiv.</span></div>`;
+        html += `<div class="duration-meter"><span class="dur-icon">📄</span><span class="dur-val">${data.transcript_pages_approx}</span><span class="dur-label">Transcript pages</span></div>`;
+        html += `</div>`;
+        html += `<div class="duration-words"><div class="dur-word-row"><span>Witness words:</span> <strong>${data.word_counts.witness_testimony.toLocaleString()}</strong></div>`;
+        html += `<div class="dur-word-row"><span>Analyst words:</span> <strong>${data.word_counts.analyst_content.toLocaleString()}</strong></div>`;
+        html += `<div class="dur-word-row"><span>Total words:</span> <strong>${data.word_counts.total.toLocaleString()}</strong></div>`;
+        html += `<div class="dur-word-row"><span>Total characters:</span> <strong>${data.char_counts.total.toLocaleString()}</strong></div></div>`;
+        if (data.segments.length > 1) {
+            html += `<div class="duration-segments"><h5>📊 Segment Breakdown (${data.total_segments} segments)</h5>`;
+            const maxWords = Math.max(...data.segments.map(s => s.words));
+            data.segments.slice(0, 20).forEach(seg => {
+                const barW = maxWords > 0 ? Math.round((seg.words / maxWords) * 100) : 0;
+                const color = seg.role === 'witness' ? '#6c63ff' : '#44aa44';
+                html += `<div class="dur-seg"><span class="dur-seg-role">${seg.role === 'witness' ? '🗣️' : '🤖'}</span><div class="dur-seg-bar-wrap"><div class="dur-seg-bar" style="width:${barW}%;background:${color}"></div></div><span class="dur-seg-words">${seg.words}w</span></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not estimate duration.'); }
 };

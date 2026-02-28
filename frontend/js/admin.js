@@ -5855,5 +5855,69 @@ document.addEventListener('DOMContentLoaded', function() {
     const perfRefreshBtn = document.getElementById('perf-refresh');
     if (perfRefreshBtn) perfRefreshBtn.addEventListener('click', loadPerfMetrics);
 
-    setTimeout(() => { loadApiUsage(); loadActiveSessions(); loadErrorLog(); loadPerfMetrics(); }, 1500);
+    setTimeout(() => { loadApiUsage(); loadActiveSessions(); loadErrorLog(); loadPerfMetrics(); loadDataRetention(); loadSystemConfig(); }, 1500);
+
+    // ── Data Retention Manager ────────────────
+    async function loadDataRetention() {
+        try {
+            const resp = await fetch('/api/admin/retention-manager', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') } });
+            const data = await resp.json();
+            const settingsDiv = document.getElementById('retention-settings');
+            const statsDiv = document.getElementById('retention-stats');
+            if (settingsDiv) {
+                const s = data.settings;
+                settingsDiv.innerHTML = `<div class="ret-controls"><div class="ret-toggle"><label class="ret-switch"><input type="checkbox" id="ret-auto-cleanup" ${s.auto_cleanup_enabled ? 'checked' : ''}> <span class="ret-slider"></span></label> <span>Auto-cleanup</span></div><div class="ret-field"><label>Retention days:</label> <input type="number" id="ret-days" value="${s.retention_days}" min="7" max="365" class="ret-input"></div><div class="ret-field"><label>Max sessions:</label> <input type="number" id="ret-max" value="${s.max_sessions}" min="10" max="10000" class="ret-input"></div><div class="ret-toggle"><label class="ret-switch"><input type="checkbox" id="ret-pinned" ${s.cleanup_pinned ? 'checked' : ''}> <span class="ret-slider"></span></label> <span>Include pinned</span></div><button id="ret-save" class="admin-btn-sm">💾 Save</button></div>`;
+                document.getElementById('ret-save').addEventListener('click', async () => {
+                    const body = {
+                        auto_cleanup_enabled: document.getElementById('ret-auto-cleanup').checked,
+                        retention_days: parseInt(document.getElementById('ret-days').value),
+                        max_sessions: parseInt(document.getElementById('ret-max').value),
+                        cleanup_pinned: document.getElementById('ret-pinned').checked,
+                    };
+                    await fetch('/api/admin/retention-manager', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') }, body: JSON.stringify(body) });
+                    loadDataRetention();
+                });
+            }
+            if (statsDiv) {
+                const st = data.statistics;
+                const ageDist = st.age_distribution || {};
+                statsDiv.innerHTML = `<div class="ret-stats-grid"><div class="ret-stat"><span class="ret-stat-val">${st.total_sessions}</span><span class="ret-stat-label">Total Sessions</span></div><div class="ret-stat"><span class="ret-stat-val">${(st.estimated_storage_kb / 1024).toFixed(1)} MB</span><span class="ret-stat-label">Est. Storage</span></div></div><div class="ret-age-dist"><h5>📅 Session Age Distribution</h5>${Object.entries(ageDist).map(([k, v]) => `<div class="ret-age-row"><span>${k}</span><div class="ret-age-bar-bg"><div class="ret-age-bar" style="width:${st.total_sessions > 0 ? Math.round((v / st.total_sessions) * 100) : 0}%"></div></div><span>${v}</span></div>`).join('')}</div>`;
+            }
+        } catch (e) { console.error('Retention load failed:', e); }
+    }
+    const retRefreshBtn = document.getElementById('retention-refresh');
+    if (retRefreshBtn) retRefreshBtn.addEventListener('click', loadDataRetention);
+
+    // ── System Configuration ──────────────────
+    async function loadSystemConfig() {
+        try {
+            const resp = await fetch('/api/admin/system-config', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') } });
+            const data = await resp.json();
+            const contentDiv = document.getElementById('system-config-content');
+            if (contentDiv) {
+                let html = '';
+                const sections = [
+                    { title: '🏗️ Application', data: data.application },
+                    { title: '🤖 AI Provider', data: data.ai },
+                    { title: '📁 Sessions', data: data.sessions },
+                    { title: '🔧 Features', data: data.features },
+                ];
+                sections.forEach(sec => {
+                    html += `<div class="config-section"><h5>${sec.title}</h5>`;
+                    if (sec.data && typeof sec.data === 'object') {
+                        Object.entries(sec.data).forEach(([k, v]) => {
+                            let display = v;
+                            if (typeof v === 'boolean') display = v ? '✅ Yes' : '❌ No';
+                            else if (typeof v === 'object') display = JSON.stringify(v).substring(0, 80);
+                            html += `<div class="config-row"><span class="config-key">${k.replace(/_/g, ' ')}</span><span class="config-val">${display}</span></div>`;
+                        });
+                    }
+                    html += `</div>`;
+                });
+                contentDiv.innerHTML = html;
+            }
+        } catch (e) { console.error('Config load failed:', e); }
+    }
+    const configRefreshBtn = document.getElementById('config-refresh');
+    if (configRefreshBtn) configRefreshBtn.addEventListener('click', loadSystemConfig);
 });

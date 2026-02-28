@@ -15125,3 +15125,506 @@ async def get_performance_metrics(auth=Depends(require_admin_auth)):
         },
         "slowest_endpoints": [{"endpoint": k, "avg_ms": v["avg_ms"], "count": v["count"]} for k, v in sorted_eps[:10]],
     }
+
+
+# ── Testimony Theme Extractor ──────────────────────
+@router.get("/sessions/{session_id}/themes")
+async def extract_themes(session_id: str):
+    _track_usage("themes")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    stmts = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join((getattr(s, 'text', '') or '') for s in stmts).lower()
+    words = re.findall(r'\b[a-z]{4,}\b', full_text)
+
+    # Build word frequency, skip common stop words
+    stop = {"that", "this", "with", "from", "have", "been", "were", "they", "their", "them",
+            "what", "when", "where", "which", "about", "would", "could", "should", "there",
+            "than", "then", "also", "just", "very", "some", "more", "other", "into", "only",
+            "said", "each", "tell", "does", "many", "well", "back", "like", "over", "such",
+            "after", "before", "being", "between", "because", "through", "during", "know",
+            "think", "will", "time", "year", "make", "know", "take", "come", "want", "look"}
+    freq = {}
+    for w in words:
+        if w not in stop:
+            freq[w] = freq.get(w, 0) + 1
+
+    # Theme detection via keyword clusters
+    theme_patterns = {
+        "Financial": ["money", "payment", "dollar", "bank", "account", "fund", "invest", "salary", "cost", "price", "debt", "loan", "finance", "budget", "cash"],
+        "Timeline & Dates": ["date", "time", "morning", "evening", "night", "january", "february", "march", "april", "monday", "tuesday", "week", "month", "year", "hour", "minute", "yesterday", "today", "tomorrow"],
+        "People & Relationships": ["friend", "family", "wife", "husband", "brother", "sister", "boss", "colleague", "employee", "neighbor", "witness", "victim", "defendant", "plaintiff"],
+        "Location & Movement": ["house", "office", "building", "street", "road", "room", "door", "car", "vehicle", "drive", "walk", "location", "place", "area", "home", "apartment"],
+        "Communication": ["call", "phone", "email", "text", "message", "letter", "talk", "conversation", "meeting", "discuss", "told", "asked", "answer", "speak", "voice"],
+        "Legal & Procedural": ["court", "lawyer", "attorney", "judge", "evidence", "document", "contract", "agreement", "lawsuit", "trial", "charge", "guilty", "innocent", "arrest", "police"],
+        "Emotion & State": ["angry", "scared", "afraid", "happy", "upset", "worried", "confused", "surprised", "frustrated", "nervous", "stress", "fear", "anxiety", "relief", "shock"],
+        "Physical & Medical": ["injury", "hospital", "doctor", "pain", "blood", "wound", "medical", "health", "treatment", "surgery", "broken", "hurt", "damage", "physical"],
+    }
+
+    detected_themes = []
+    for theme, keywords in theme_patterns.items():
+        matches = [kw for kw in keywords if kw in freq]
+        total_mentions = sum(freq.get(kw, 0) for kw in matches)
+        if matches:
+            detected_themes.append({
+                "theme": theme,
+                "keywords_found": matches,
+                "mention_count": total_mentions,
+                "strength": min(100, total_mentions * 10),
+            })
+
+    detected_themes.sort(key=lambda x: x["mention_count"], reverse=True)
+
+    # Top recurring words
+    top_words = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:20]
+
+    return {
+        "session_id": session_id,
+        "themes": detected_themes,
+        "top_words": [{"word": w, "count": c} for w, c in top_words],
+        "total_themes": len(detected_themes),
+        "dominant_theme": detected_themes[0]["theme"] if detected_themes else "None detected",
+    }
+
+
+# ── Cross-Examination Planner ──────────────────────
+@router.get("/sessions/{session_id}/crossex")
+async def plan_cross_examination(session_id: str):
+    _track_usage("crossex")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    stmts = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join((getattr(s, 'text', '') or '') for s in stmts)
+    sentences = re.split(r'[.!?]+', full_text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+
+    questions = []
+
+    # Strategy 1: Vague statements → Pin down specifics
+    vague_markers = ["sometime", "around", "about", "maybe", "probably", "might have", "i think", "i guess", "not sure", "don't remember", "can't recall"]
+    for sent in sentences:
+        low = sent.lower()
+        for marker in vague_markers:
+            if marker in low:
+                questions.append({
+                    "type": "Pin Down Specifics",
+                    "strategy": "Challenge vague language with precise follow-ups",
+                    "target_statement": sent[:120],
+                    "suggested_question": f"You said '{marker}' — can you be more specific about exactly what happened?",
+                    "priority": "high",
+                })
+                break
+
+    # Strategy 2: Absolute statements → Test extremes
+    absolute_markers = ["always", "never", "every time", "not once", "absolutely", "definitely", "100%", "without a doubt"]
+    for sent in sentences:
+        low = sent.lower()
+        for marker in absolute_markers:
+            if marker in low:
+                questions.append({
+                    "type": "Test Absolutes",
+                    "strategy": "Challenge absolute claims that are hard to sustain",
+                    "target_statement": sent[:120],
+                    "suggested_question": f"You said '{marker}' — are you certain there was never an exception?",
+                    "priority": "high",
+                })
+                break
+
+    # Strategy 3: Time references → Establish timeline holes
+    time_refs = re.findall(r'\b(\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|o\'clock))\b', full_text, re.I)
+    if len(time_refs) >= 2:
+        questions.append({
+            "type": "Timeline Gaps",
+            "strategy": "Identify unaccounted time between mentioned events",
+            "target_statement": f"Witness mentioned times: {', '.join(time_refs[:5])}",
+            "suggested_question": "What were you doing between those times?",
+            "priority": "medium",
+        })
+
+    # Strategy 4: Emotional claims → Probe consistency
+    emotion_words = ["scared", "angry", "afraid", "happy", "relieved", "shocked", "confused", "surprised"]
+    for sent in sentences:
+        low = sent.lower()
+        for ew in emotion_words:
+            if ew in low:
+                questions.append({
+                    "type": "Emotional Consistency",
+                    "strategy": "Test if emotional claims match described actions",
+                    "target_statement": sent[:120],
+                    "suggested_question": f"You said you felt {ew} — what did you do immediately after feeling that way?",
+                    "priority": "medium",
+                })
+                break
+
+    # Strategy 5: Hearsay detection → Challenge source
+    hearsay_markers = ["someone told me", "i heard that", "they said", "he told me", "she told me", "people say", "everyone knows"]
+    for sent in sentences:
+        low = sent.lower()
+        for marker in hearsay_markers:
+            if marker in low:
+                questions.append({
+                    "type": "Challenge Hearsay",
+                    "strategy": "Identify secondhand information and challenge its reliability",
+                    "target_statement": sent[:120],
+                    "suggested_question": "Did you personally witness this, or are you relying on what someone else told you?",
+                    "priority": "high",
+                })
+                break
+
+    # Limit and sort
+    questions = questions[:25]
+    high_ct = sum(1 for q in questions if q["priority"] == "high")
+    med_ct = sum(1 for q in questions if q["priority"] == "medium")
+
+    return {
+        "session_id": session_id,
+        "questions": questions,
+        "total_questions": len(questions),
+        "priority_breakdown": {"high": high_ct, "medium": med_ct},
+        "strategies_used": list(set(q["type"] for q in questions)),
+    }
+
+
+# ── Witness Consistency Score ──────────────────────
+@router.get("/sessions/{session_id}/consistency")
+async def measure_consistency(session_id: str):
+    _track_usage("consistency")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    stmts = getattr(session, 'witness_statements', []) or []
+    stmt_texts = [(getattr(s, 'text', '') or '') for s in stmts]
+
+    if len(stmt_texts) < 2:
+        return {"session_id": session_id, "consistency_score": 100, "issues": [], "assessment": "Insufficient data for consistency analysis", "total_issues": 0, "positive_indicators": 0, "statement_count": len(stmt_texts)}
+
+    full_text = " ".join(stmt_texts)
+    sentences = re.split(r'[.!?]+', full_text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+
+    issues = []
+    score = 100
+
+    # Check 1: Self-contradiction via negation patterns
+    neg_pairs = [
+        ("i did", "i didn't"), ("i was", "i wasn't"), ("i saw", "i didn't see"),
+        ("i went", "i never went"), ("i called", "i didn't call"), ("i knew", "i didn't know"),
+        ("i told", "i never told"), ("i heard", "i didn't hear"), ("he was", "he wasn't"),
+        ("she was", "she wasn't"), ("they were", "they weren't"), ("it was", "it wasn't"),
+    ]
+    low = full_text.lower()
+    for pos, neg in neg_pairs:
+        if pos in low and neg in low:
+            issues.append({
+                "type": "Contradiction",
+                "detail": f"Both '{pos}' and '{neg}' appear in testimony",
+                "severity": "high",
+                "deduction": 8,
+            })
+            score -= 8
+
+    # Check 2: Certainty shifts (certain → uncertain about same topic)
+    certain_markers = ["i'm sure", "i definitely", "i clearly", "i remember exactly", "absolutely"]
+    uncertain_markers = ["i'm not sure", "i think", "maybe", "i can't remember", "i don't recall", "possibly"]
+    found_certain = any(m in low for m in certain_markers)
+    found_uncertain = any(m in low for m in uncertain_markers)
+    if found_certain and found_uncertain:
+        issues.append({
+            "type": "Certainty Shift",
+            "detail": "Witness shifts between certainty and uncertainty",
+            "severity": "medium",
+            "deduction": 5,
+        })
+        score -= 5
+
+    # Check 3: Number consistency
+    numbers = re.findall(r'\b(\d+)\b', full_text)
+    num_counts = {}
+    for n in numbers:
+        num_counts[n] = num_counts.get(n, 0) + 1
+    repeated_numbers = {k: v for k, v in num_counts.items() if v > 1 and int(k) > 0 and int(k) < 10000}
+    if repeated_numbers:
+        score += 3  # Bonus for consistent number usage
+        issues.append({
+            "type": "Consistent Detail",
+            "detail": f"Repeated consistent numbers: {', '.join(list(repeated_numbers.keys())[:5])}",
+            "severity": "positive",
+            "deduction": -3,
+        })
+
+    # Check 4: Temporal consistency
+    time_words = re.findall(r'\b(before|after|then|later|earlier|first|next|finally|meanwhile)\b', low)
+    if len(time_words) >= 3:
+        score += 2
+        issues.append({
+            "type": "Temporal Coherence",
+            "detail": f"Good use of temporal markers ({len(time_words)} found)",
+            "severity": "positive",
+            "deduction": -2,
+        })
+
+    # Check 5: Detail level variance
+    sent_lengths = [len(s.split()) for s in sentences]
+    if sent_lengths:
+        avg_len = sum(sent_lengths) / len(sent_lengths)
+        variance = sum((l - avg_len) ** 2 for l in sent_lengths) / len(sent_lengths)
+        if variance > 200:
+            issues.append({
+                "type": "Detail Variance",
+                "detail": "Significant variation in detail level across statements",
+                "severity": "low",
+                "deduction": 3,
+            })
+            score -= 3
+
+    score = max(0, min(100, score))
+    if score >= 80:
+        assessment = "Highly consistent testimony"
+    elif score >= 60:
+        assessment = "Moderately consistent with minor concerns"
+    elif score >= 40:
+        assessment = "Notable inconsistencies detected"
+    else:
+        assessment = "Significant consistency issues"
+
+    return {
+        "session_id": session_id,
+        "consistency_score": score,
+        "assessment": assessment,
+        "issues": issues,
+        "total_issues": len([i for i in issues if i["severity"] != "positive"]),
+        "positive_indicators": len([i for i in issues if i["severity"] == "positive"]),
+        "statement_count": len(stmt_texts),
+    }
+
+
+# ── Key Admission Tracker ──────────────────────────
+@router.get("/sessions/{session_id}/admissions")
+async def track_admissions(session_id: str):
+    _track_usage("admissions")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    stmts = getattr(session, 'witness_statements', []) or []
+    full_text = " ".join((getattr(s, 'text', '') or '') for s in stmts)
+    sentences = re.split(r'[.!?]+', full_text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+
+    admission_patterns = {
+        "Direct Admission": [
+            r"i did\b", r"i was the one", r"i admit", r"yes,? i", r"that's? true",
+            r"i acknowledge", r"i confess", r"i was wrong", r"it was me", r"i'm responsible",
+        ],
+        "Concession": [
+            r"i suppose", r"i guess (?:so|you're right)", r"fair point", r"you're right",
+            r"i can see (?:that|how)", r"i understand (?:that|why)", r"i'll give you that",
+            r"i can't deny", r"that's fair",
+        ],
+        "Partial Admission": [
+            r"i may have", r"it's possible (?:that i|i)", r"i might have",
+            r"i could have", r"perhaps i", r"i don't deny",
+        ],
+        "Knowledge Admission": [
+            r"i knew (?:that|about)", r"i was aware", r"i found out",
+            r"i realized", r"i discovered", r"i learned (?:that|about)",
+        ],
+        "Reluctant Admission": [
+            r"i have to admit", r"honestly", r"to be honest", r"truthfully",
+            r"i hate to say", r"unfortunately,? i", r"i reluctantly",
+        ],
+    }
+
+    admissions = []
+    for sent in sentences:
+        low = sent.lower()
+        for category, patterns in admission_patterns.items():
+            for pat in patterns:
+                if re.search(pat, low):
+                    weight = {"Direct Admission": 5, "Concession": 3, "Partial Admission": 4, "Knowledge Admission": 3, "Reluctant Admission": 4}.get(category, 3)
+                    admissions.append({
+                        "statement": sent[:150],
+                        "category": category,
+                        "weight": weight,
+                    })
+                    break
+            else:
+                continue
+            break
+
+    cat_counts = {}
+    for a in admissions:
+        cat_counts[a["category"]] = cat_counts.get(a["category"], 0) + 1
+
+    total_weight = sum(a["weight"] for a in admissions)
+    significance = "low"
+    if total_weight > 30:
+        significance = "high"
+    elif total_weight > 15:
+        significance = "medium"
+
+    return {
+        "session_id": session_id,
+        "admissions": admissions[:30],
+        "total_admissions": len(admissions),
+        "category_breakdown": cat_counts,
+        "total_weight": total_weight,
+        "significance": significance,
+    }
+
+
+# ── Testimony Duration Estimator ───────────────────
+@router.get("/sessions/{session_id}/duration")
+async def estimate_duration(session_id: str):
+    _track_usage("duration")
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    user_words = 0
+    ai_words = 0
+    user_chars = 0
+    ai_chars = 0
+    segments = []
+
+    stmts = getattr(session, 'witness_statements', []) or []
+    for i, stmt in enumerate(stmts):
+        content = getattr(stmt, 'text', '') or ''
+        if not content:
+            continue
+        wc = len(content.split())
+        cc = len(content)
+        user_words += wc
+        user_chars += cc
+        segments.append({"index": i, "role": "witness", "words": wc, "est_speaking_sec": round(wc / 2.5)})
+
+    total_words = user_words + ai_words
+    speaking_min = round(user_words / 150, 1)  # avg speaking speed
+    reading_min = round(ai_words / 250, 1)  # avg reading speed
+    depo_est_min = round(total_words / 150, 1)
+
+    page_count_approx = round(total_words / 250, 1)  # transcript pages
+
+    return {
+        "session_id": session_id,
+        "word_counts": {
+            "witness_testimony": user_words,
+            "analyst_content": ai_words,
+            "total": total_words,
+        },
+        "char_counts": {
+            "witness": user_chars,
+            "analyst": ai_chars,
+            "total": user_chars + ai_chars,
+        },
+        "time_estimates": {
+            "speaking_minutes": speaking_min,
+            "reading_minutes": reading_min,
+            "deposition_equivalent_minutes": depo_est_min,
+        },
+        "transcript_pages_approx": page_count_approx,
+        "segments": segments[:30],
+        "total_segments": len(segments),
+    }
+
+
+# ── Admin Data Retention Manager ───────────────────
+_retention_settings = {
+    "auto_cleanup_enabled": False,
+    "retention_days": 90,
+    "max_sessions": 1000,
+    "cleanup_pinned": False,
+}
+
+@router.get("/admin/retention-manager")
+async def get_retention_manager(auth=Depends(require_admin_auth)):
+    _log_admin_action("view_retention", "Viewed data retention settings")
+    sessions = await firestore_service.list_sessions(limit=1000)
+    total = len(sessions)
+
+    now = datetime.now(timezone.utc)
+    age_buckets = {"< 1 day": 0, "1-7 days": 0, "7-30 days": 0, "30-90 days": 0, "> 90 days": 0}
+    for s in sessions:
+        created = getattr(s, "created_at", None)
+        if created:
+            try:
+                if isinstance(created, str):
+                    created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                age_days = (now - created).days
+            except Exception:
+                age_days = 0
+        else:
+            age_days = 0
+
+        if age_days < 1:
+            age_buckets["< 1 day"] += 1
+        elif age_days < 7:
+            age_buckets["1-7 days"] += 1
+        elif age_days < 30:
+            age_buckets["7-30 days"] += 1
+        elif age_days < 90:
+            age_buckets["30-90 days"] += 1
+        else:
+            age_buckets["> 90 days"] += 1
+
+    storage_est_kb = total * 15  # rough estimate
+
+    return {
+        "settings": _retention_settings,
+        "statistics": {
+            "total_sessions": total,
+            "age_distribution": age_buckets,
+            "estimated_storage_kb": storage_est_kb,
+        },
+    }
+
+
+@router.post("/admin/retention-manager")
+async def update_retention_manager(data: dict, auth=Depends(require_admin_auth)):
+    global _retention_settings
+    allowed = ["auto_cleanup_enabled", "retention_days", "max_sessions", "cleanup_pinned"]
+    updated = []
+    for key in allowed:
+        if key in data:
+            _retention_settings[key] = data[key]
+            updated.append(key)
+    _log_admin_action("update_retention", f"Updated: {', '.join(updated)}")
+    return {"status": "updated", "settings": _retention_settings, "updated_fields": updated}
+
+
+# ── Admin System Configuration ─────────────────────
+@router.get("/admin/system-config")
+async def get_system_config(auth=Depends(require_admin_auth)):
+    _log_admin_action("view_config", "Viewed system configuration")
+
+    import os as _os
+
+    return {
+        "application": {
+            "name": "Witness Replay",
+            "version": "1.0.0",
+            "environment": _os.environ.get("ENVIRONMENT", "production"),
+            "debug_mode": _os.environ.get("DEBUG", "false").lower() == "true",
+            "port": int(_os.environ.get("PORT", 8080)),
+        },
+        "ai": {
+            "provider": "Google Gemini",
+            "model": _os.environ.get("GEMINI_MODEL", "gemini-pro"),
+            "api_key_configured": bool(_os.environ.get("GEMINI_API_KEY") or _os.environ.get("GOOGLE_API_KEY")),
+            "max_tokens": int(_os.environ.get("MAX_TOKENS", 4096)),
+        },
+        "sessions": {
+            "total_active": len(await firestore_service.list_sessions(limit=1000)),
+            "retention_settings": _retention_settings,
+        },
+        "features": {
+            "total_endpoints": 50,
+            "admin_endpoints": 14,
+            "analysis_features": 30,
+        },
+    }

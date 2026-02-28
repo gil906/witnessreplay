@@ -12834,3 +12834,96 @@ textarea:disabled {
 .ent-count { font-size: 0.78rem; opacity: 0.5; }
 .entities-connections { padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
 .ent-connection { font-size: 0.85rem; padding: 2px 0; }
+
+/* ── Testimony Themes ─────────────────────── */
+.themes-panel { padding: 12px; }
+.themes-header { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.theme-dominant { font-size: 1rem; padding: 4px 10px; background: rgba(108,99,255,0.12); border-radius: 8px; }
+.theme-count { font-size: 0.85rem; opacity: 0.5; }
+.themes-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.theme-item { padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid #6c63ff; }
+.theme-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
+.theme-bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.theme-bar { height: 6px; background: linear-gradient(90deg, #6c63ff, #a78bfa); border-radius: 3px; min-width: 4px; transition: width 0.3s; }
+.theme-mentions { font-size: 0.78rem; opacity: 0.5; white-space: nowrap; }
+.theme-keywords { display: flex; flex-wrap: wrap; gap: 4px; }
+.theme-kw { font-size: 0.75rem; padding: 2px 6px; background: rgba(108,99,255,0.08); border-radius: 4px; }
+.themes-words { margin-top: 10px; }
+.themes-words h5 { margin: 0 0 6px; font-size: 0.9rem; }
+.word-cloud-mini { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.word-cloud-mini .word-item { opacity: 0.8; }
+.word-cloud-mini .word-item sup { font-size: 0.6em; opacity: 0.5; }
+
+/* ── Cross-Examination Planner ────────────── */
+.crossex-panel { padding: 12px; }
+.crossex-summary { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.crossex-total { font-weight: 600; }
+.crossex-high { color: #ff4444; font-size: 0.85rem; }
+.crossex-med { color: #ffaa00; font-size: 0.85rem; }
+.crossex-strategies { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.strategy-tag { font-size: 0.78rem; padding: 2px 8px; background: rgba(108,99,255,0.1); border-radius: 6px; }
+.crossex-questions { display: flex; flex-direction: column; gap: 8px; }
+.crossex-q { padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid #888; }
+.crossex-q.prio-high { border-left-color: #ff4444; }
+.crossex-q.prio-med { border-left-color: #ffaa00; }
+.crossex-q-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.crossex-num { font-weight: 700; font-size: 0.85rem; opacity: 0.4; }
+.crossex-type { font-weight: 600; font-size: 0.88rem; }
+.crossex-prio { font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
+.crossex-prio.prio-high { background: rgba(255,68,68,0.15); color: #ff4444; }
+.crossex-prio.prio-med { background: rgba(255,170,0,0.15); color: #ffaa00; }
+.crossex-target { font-size: 0.85rem; opacity: 0.6; font-style: italic; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; }
+.crossex-suggest { font-size: 0.9rem; color: #6c63ff; font-weight: 500; }
+.crossex-empty { opacity: 0.5; text-align: center; padding: 16px; }
+
+/* ── Witness Consistency Score ────────────── */
+.consistency-panel { padding: 12px; }
+.consistency-score-ring { display: flex; justify-content: center; margin-bottom: 10px; }
+.score-circle { width: 80px; height: 80px; border-radius: 50%; border: 4px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.score-value { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+.score-label { font-size: 0.7rem; opacity: 0.5; }
+.consistency-assessment { text-align: center; font-weight: 600; font-size: 1rem; margin-bottom: 10px; }
+.consistency-stats { display: flex; gap: 12px; justify-content: center; margin-bottom: 12px; font-size: 0.85rem; flex-wrap: wrap; }
+.consistency-issues { display: flex; flex-direction: column; gap: 6px; }
+.consistency-issue { display: flex; gap: 8px; align-items: flex-start; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.consistency-issue.sev-high { border-left: 3px solid #ff4444; }
+.consistency-issue.sev-medium { border-left: 3px solid #ffaa00; }
+.consistency-issue.sev-low { border-left: 3px solid #ff8800; }
+.consistency-issue.sev-positive { border-left: 3px solid #44aa44; }
+.issue-icon { font-size: 1.1rem; }
+.issue-detail { font-size: 0.85rem; opacity: 0.6; }
+.issue-impact { font-weight: 700; font-size: 0.85rem; margin-left: auto; white-space: nowrap; }
+
+/* ── Key Admission Tracker ────────────────── */
+.admissions-panel { padding: 12px; }
+.admissions-header { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.admissions-total { font-weight: 600; }
+.admissions-weight { font-size: 0.85rem; opacity: 0.5; }
+.admissions-sig { font-weight: 600; font-size: 0.9rem; }
+.admissions-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.admission-cat-badge { font-size: 0.78rem; padding: 3px 8px; background: rgba(108,99,255,0.1); border-radius: 6px; }
+.admissions-list { display: flex; flex-direction: column; gap: 6px; }
+.admission-item { display: flex; gap: 8px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid #6c63ff; }
+.admission-icon { font-size: 1.1rem; flex-shrink: 0; }
+.admission-content { flex: 1; min-width: 0; }
+.admission-text { font-size: 0.88rem; font-style: italic; opacity: 0.8; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; }
+.admission-meta { display: flex; gap: 8px; font-size: 0.78rem; }
+.admission-type { font-weight: 600; }
+.admission-wt { opacity: 0.5; }
+.admissions-empty { opacity: 0.5; text-align: center; padding: 16px; }
+
+/* ── Testimony Duration Estimator ─────────── */
+.duration-panel { padding: 12px; }
+.duration-meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.duration-meter { display: flex; flex-direction: column; align-items: center; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 10px; }
+.dur-icon { font-size: 1.5rem; }
+.dur-val { font-size: 1.3rem; font-weight: 800; color: #6c63ff; }
+.dur-label { font-size: 0.75rem; opacity: 0.5; text-align: center; }
+.duration-words { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.dur-word-row { display: flex; justify-content: space-between; font-size: 0.88rem; }
+.duration-segments h5 { margin: 0 0 6px; font-size: 0.9rem; }
+.dur-seg { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.dur-seg-role { font-size: 0.9rem; }
+.dur-seg-bar-wrap { flex: 1; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+.dur-seg-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.dur-seg-words { font-size: 0.75rem; opacity: 0.5; width: 40px; text-align: right; }
