@@ -5992,3 +5992,80 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('admin-search-input');
     if (searchInput) searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchSessions(); });
 });
+
+// ── Data Export ───────────────────────────────────────────────
+async function exportData() {
+    const exportType = document.getElementById('export-type-select')?.value || 'sessions';
+    const fmt = document.getElementById('export-format-select')?.value || 'json';
+    const resultDiv = document.getElementById('export-result');
+    if (!resultDiv) return;
+    resultDiv.innerHTML = '<p>Exporting...</p>';
+    try {
+        const resp = await fetch(`/api/admin/data-export?export_type=${exportType}&fmt=${fmt}`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') }
+        });
+        if (!resp.ok) throw new Error('Export failed');
+        const data = await resp.json();
+        resultDiv.innerHTML = `<div class="export-info"><strong>${data.rows}</strong> rows exported as ${data.format.toUpperCase()}</div>`;
+        if (data.format === 'csv' && data.content) {
+            const blob = new Blob([data.content], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${exportType}_export.csv`; a.textContent = '💾 Download CSV';
+            a.className = 'export-download-link';
+            resultDiv.appendChild(a);
+        } else if (data.data) {
+            const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${exportType}_export.json`; a.textContent = '💾 Download JSON';
+            a.className = 'export-download-link';
+            resultDiv.appendChild(a);
+        }
+    } catch (e) {
+        resultDiv.innerHTML = '<p class="error-text">❌ Export failed</p>';
+    }
+}
+
+// ── Rate Limiter ──────────────────────────────────────────────
+async function loadRateLimiter() {
+    const div = document.getElementById('rate-limiter-content');
+    if (!div) return;
+    try {
+        const resp = await fetch('/api/admin/rate-limiter', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wr_admin_token') }
+        });
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        const c = data.config;
+        const s = data.status;
+        let html = `<div class="rl-status">`;
+        html += `<div class="rl-stat"><span class="rl-label">Enabled</span><span class="rl-val ${c.enabled ? 'rl-on' : 'rl-off'}">${c.enabled ? 'ON' : 'OFF'}</span></div>`;
+        html += `<div class="rl-stat"><span class="rl-label">Default RPM</span><span class="rl-val">${c.default_rpm}</span></div>`;
+        html += `<div class="rl-stat"><span class="rl-label">Active Clients</span><span class="rl-val">${s.active_clients}</span></div>`;
+        html += `<div class="rl-stat"><span class="rl-label">Throttled</span><span class="rl-val ${s.throttled_clients > 0 ? 'rl-warn' : ''}">${s.throttled_clients}</span></div>`;
+        html += `<div class="rl-stat"><span class="rl-label">Tracking</span><span class="rl-val">${s.tracking_entries}</span></div>`;
+        html += `</div>`;
+        if (Object.keys(c.endpoint_limits).length) {
+            html += `<div class="rl-endpoints"><strong>Endpoint Limits:</strong><ul>`;
+            Object.entries(c.endpoint_limits).forEach(([ep, lim]) => {
+                html += `<li><code>${ep}</code>: ${lim} RPM</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (c.blocked_ips.length) {
+            html += `<div class="rl-blocked"><strong>Blocked IPs:</strong> ${c.blocked_ips.join(', ')}</div>`;
+        }
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load rate limiter</p>';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const exportBtn = document.getElementById('export-btn');
+    if (exportBtn) exportBtn.addEventListener('click', exportData);
+    const rlRefresh = document.getElementById('rate-limiter-refresh');
+    if (rlRefresh) rlRefresh.addEventListener('click', loadRateLimiter);
+    loadRateLimiter();
+});

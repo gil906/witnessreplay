@@ -13019,3 +13019,74 @@ textarea:disabled {
 .kd-seq { margin-bottom: 10px; }
 .kd-seq-list { display: flex; gap: 6px; flex-wrap: wrap; }
 .kd-seq-tag { padding: 4px 10px; background: rgba(67,170,139,0.12); border-radius: 10px; font-size: 0.82rem; }
+
+/* ── Sentiment Timeline ──────────────────────────────────── */
+.sentiment-timeline-result h3 { margin: 0 0 12px; color: #7c4dff; }
+.sentiment-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.sentiment-stat { background: rgba(124,77,255,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; }
+.sentiment-chart { display: flex; align-items: flex-end; gap: 3px; padding: 10px 0; min-height: 60px; border-bottom: 2px solid rgba(124,77,255,0.2); margin-bottom: 10px; }
+.sentiment-bar-wrap { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.sentiment-bar { width: 100%; min-width: 8px; border-radius: 3px 3px 0 0; transition: height 0.3s; }
+.sentiment-label { font-size: 0.65em; color: #999; margin-top: 2px; }
+.sentiment-dist { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.mood-badge { padding: 3px 8px; border-radius: 12px; font-size: 0.85em; }
+.mood-badge.mood-positive { background: rgba(76,175,80,0.15); color: #4CAF50; }
+.mood-badge.mood-negative { background: rgba(244,67,54,0.15); color: #f44336; }
+.mood-badge.mood-hedging { background: rgba(255,152,0,0.15); color: #FF9800; }
+.mood-badge.mood-neutral { background: rgba(158,158,158,0.15); color: #9E9E9E; }
+
+/* ── Objection Analyzer ──────────────────────────────────── */
+.objections-result h3 { margin: 0 0 12px; color: #5c6bc0; }
+.obj-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.obj-stat { background: rgba(92,107,192,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; }
+.obj-rulings { display: flex; gap: 12px; margin-bottom: 12px; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 8px; }
+.ruling { padding: 3px 8px; border-radius: 6px; font-size: 0.9em; }
+.ruling.sustained { color: #4CAF50; }
+.ruling.overruled { color: #f44336; }
+.ruling.rate { color: #FF9800; font-weight: 600; }
+.obj-types { display: flex; flex-direction: column; gap: 4px; }
+.obj-type-row { display: flex; justify-content: space-between; padding: 6px 10px; background: rgba(92,107,192,0.06); border-radius: 6px; text-transform: capitalize; }
+.obj-type-count { font-weight: 700; color: #5c6bc0; }
+.obj-none { color: #999; font-style: italic; }
+
+/* ── Impeachment Finder ──────────────────────────────────── */
+.impeach-result h3 { margin: 0 0 12px; color: #e53935; }
+.impeach-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.impeach-stat { background: rgba(229,57,53,0.08); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; }
+.potential-strong { color: #e53935; font-weight: 700; }
+.potential-moderate { color: #FF9800; font-weight: 600; }
+.potential-weak { color: #4CAF50; }
+.impeach-types { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.impeach-type-badge { padding: 4px 10px; border-radius: 12px; background: rgba(229,57,53,0.08); font-size: 0.85em; }
+.impeach-items { display: flex; flex-direction: column; gap: 6px; }
+.impeach-item { padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,0.02); border-left: 3px solid #FF9800; font-size: 0.9em; }
+.impeach-item.high { border-left-color: #e53935; }
+.impeach-sev { margin-right: 4px; }
+.impeach-cat { font-weight: 600; text-transform: capitalize; }
+.impeach-none { color: #999; font-style: italic; }
+
+/* ── Legal Citation Extractor ────────────────────────────── */
+.citations-result h3 { margin: 0 0 12px; color: #00897b; }
+.cit-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.cit-stat { background: rgba(0,137,123,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; }
+.cit-breakdown { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.cit-type-badge { padding: 4px 10px; border-radius: 12px; background: rgba(0,137,123,0.08); font-size: 0.85em; text-transform: capitalize; }
+.cit-list { display: flex; flex-direction: column; gap: 5px; }
+.cit-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 6px; }
+.cit-type { font-size: 0.75em; text-transform: uppercase; color: #00897b; font-weight: 600; min-width: 100px; }
+.cit-item code { font-size: 0.9em; color: #333; background: rgba(0,137,123,0.06); padding: 2px 6px; border-radius: 4px; }
+.cit-none { color: #999; font-style: italic; }
+
+/* ── Testimony Comparison ────────────────────────────────── */
+.compare-result h3 { margin: 0 0 12px; color: #1565c0; }
+.compare-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.compare-side { flex: 1; padding: 8px 12px; background: rgba(21,101,192,0.06); border-radius: 8px; font-size: 0.9em; }
+.compare-vs { font-weight: 700; color: #1565c0; font-size: 1.1em; }
+.compare-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.compare-stat { background: rgba(21,101,192,0.08); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; }
+.compare-entities { margin-bottom: 10px; }
+.entity-tag { display: inline-block; padding: 2px 8px; margin: 2px; background: rgba(21,101,192,0.1); border-radius: 10px; font-size: 0.85em; }
+.compare-contradictions h4 { margin: 8px 0 6px; color: #e53935; }
+.contradiction-item { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; background: rgba(229,57,53,0.04); border-left: 3px solid #e53935; }
+.contradiction-topic { font-weight: 600; margin-bottom: 4px; }
+.contradiction-a, .contradiction-b { font-size: 0.88em; color: #555; margin: 2px 0; }

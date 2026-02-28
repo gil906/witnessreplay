@@ -1,7 +1,7 @@
 import logging
 import re
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
 from fastapi.responses import FileResponse, StreamingResponse
@@ -16196,3 +16196,492 @@ async def admin_session_search(q: str = "", auth=Depends(require_admin_auth)):
         "total_results": len(results),
         "results": results[:50],
     }
+
+
+# ── Sentiment Timeline (Enhanced) ──────────────────────────────
+@router.get("/sessions/{session_id}/sentiment-analysis")
+async def sentiment_analysis(session_id: str):
+    """Analyze emotional sentiment shifts across testimony segments."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    positive_words = {"yes", "agree", "correct", "absolutely", "certainly", "sure", "clearly", "good",
+                      "happy", "pleased", "willing", "cooperative", "truthful", "honest", "fair",
+                      "comfortable", "confident", "positive", "helpful", "remember", "exactly"}
+    negative_words = {"no", "disagree", "wrong", "never", "not", "deny", "refuse", "hostile",
+                      "angry", "upset", "confused", "scared", "afraid", "worried", "nervous",
+                      "uncomfortable", "reluctant", "unsure", "uncertain", "forget", "mistake",
+                      "lie", "false", "misrepresent", "mislead", "threat", "harm"}
+    hedging_words = {"maybe", "perhaps", "possibly", "might", "could", "somewhat", "kind of",
+                     "sort of", "i think", "i believe", "i guess", "not sure", "probably",
+                     "approximately", "around", "about", "roughly", "generally"}
+
+    timeline_segments = []
+    for idx, stmt in enumerate(statements):
+        words = stmt.lower().split()
+        word_set = set(words)
+        text_lower = stmt.lower()
+
+        pos_count = len(word_set & positive_words)
+        neg_count = len(word_set & negative_words)
+        hedge_count = sum(1 for h in hedging_words if h in text_lower)
+        total = pos_count + neg_count + hedge_count or 1
+
+        pos_pct = round(pos_count / total * 100)
+        neg_pct = round(neg_count / total * 100)
+        hedge_pct = round(hedge_count / total * 100)
+
+        if pos_pct > neg_pct and pos_pct > hedge_pct:
+            mood = "positive"
+        elif neg_pct > pos_pct and neg_pct > hedge_pct:
+            mood = "negative"
+        elif hedge_pct > pos_pct and hedge_pct > neg_pct:
+            mood = "hedging"
+        else:
+            mood = "neutral"
+
+        score = round((pos_count - neg_count) / total * 100)
+
+        timeline_segments.append({
+            "segment": idx + 1,
+            "mood": mood,
+            "score": score,
+            "positive": pos_count,
+            "negative": neg_count,
+            "hedging": hedge_count,
+            "word_count": len(words),
+            "preview": stmt[:80] + ("..." if len(stmt) > 80 else "")
+        })
+
+    moods = [s["mood"] for s in timeline_segments]
+    shifts = sum(1 for i in range(1, len(moods)) if moods[i] != moods[i - 1])
+    avg_score = round(sum(s["score"] for s in timeline_segments) / max(len(timeline_segments), 1))
+    dominant = max(set(moods), key=moods.count) if moods else "none"
+
+    return {
+        "segments": timeline_segments,
+        "summary": {
+            "total_segments": len(timeline_segments),
+            "mood_shifts": shifts,
+            "average_score": avg_score,
+            "dominant_mood": dominant,
+            "mood_distribution": {m: moods.count(m) for m in set(moods)} if moods else {}
+        }
+    }
+
+
+# ── Objection Pattern Analyzer ─────────────────────────────────
+@router.get("/sessions/{session_id}/objections")
+async def analyze_objections(session_id: str):
+    """Detect and categorize objection patterns in deposition text."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if len(content) > 5:
+                statements.append(content)
+
+    text = " ".join(statements)
+    text_lower = text.lower()
+
+    objection_types = {
+        "relevance": [r'\bobjection[,:]?\s*relevan', r'\bnot relevant\b', r'\birrelevant\b'],
+        "hearsay": [r'\bobjection[,:]?\s*hearsay\b', r'\bhearsay\b', r'\bout[- ]of[- ]court statement\b'],
+        "leading": [r'\bobjection[,:]?\s*leading\b', r'\bleading question\b', r'\bleads the witness\b'],
+        "speculation": [r'\bobjection[,:]?\s*speculat', r'\bcalls for speculation\b', r'\bspeculative\b'],
+        "foundation": [r'\bobjection[,:]?\s*foundation\b', r'\blacks foundation\b', r'\bno foundation\b'],
+        "compound": [r'\bobjection[,:]?\s*compound\b', r'\bcompound question\b'],
+        "argumentative": [r'\bobjection[,:]?\s*argumentative\b', r'\bargumentative\b'],
+        "asked_and_answered": [r'\basked and answered\b', r'\balready answered\b'],
+        "vague": [r'\bobjection[,:]?\s*vague\b', r'\bvague and ambiguous\b'],
+        "form": [r'\bobjection[,:]?\s*form\b', r'\bobjection as to form\b']
+    }
+
+    objections_found = []
+    for obj_type, patterns in objection_types.items():
+        count = 0
+        for pat in patterns:
+            count += len(re.findall(pat, text_lower))
+        if count > 0:
+            objections_found.append({"type": obj_type, "count": count})
+
+    sustained = len(re.findall(r'\bsustained\b', text_lower))
+    overruled = len(re.findall(r'\boverruled\b', text_lower))
+    total_obj = sum(o["count"] for o in objections_found)
+
+    objections_found.sort(key=lambda x: x["count"], reverse=True)
+
+    return {
+        "objections": objections_found,
+        "rulings": {
+            "sustained": sustained,
+            "overruled": overruled,
+            "success_rate": round(sustained / max(sustained + overruled, 1) * 100)
+        },
+        "total_objections": total_obj,
+        "most_common": objections_found[0]["type"] if objections_found else "none",
+        "contentiousness": "high" if total_obj > 10 else "moderate" if total_obj > 3 else "low"
+    }
+
+
+# ── Impeachment Material Finder ────────────────────────────────
+@router.get("/sessions/{session_id}/impeachment")
+async def find_impeachment_material(session_id: str):
+    """Identify potential impeachment points in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    text_lower = " ".join(statements).lower()
+
+    materials = []
+
+    # Prior inconsistent statements
+    inconsistency_markers = [
+        (r'\bi (?:previously|earlier|before) (?:said|stated|testified|mentioned)\b', "prior_statement"),
+        (r'\bthat\'?s not (?:what|how) i (?:said|meant|stated)\b', "correction"),
+        (r'\bi (?:don\'?t|do not) recall (?:saying|stating)\b', "memory_gap"),
+        (r'\bi (?:may have|might have|could have) (?:said|stated)\b', "hedged_prior"),
+        (r'\bcontrary to (?:what|my)\b', "contradiction_admission"),
+        (r'\bi (?:was wrong|was mistaken|misspoke)\b', "self_correction")
+    ]
+    for pat, cat in inconsistency_markers:
+        for match in re.finditer(pat, text_lower):
+            materials.append({
+                "type": "inconsistency",
+                "category": cat,
+                "text": match.group(0),
+                "severity": "high"
+            })
+
+    # Bias indicators
+    bias_markers = [
+        (r'\bi (?:hate|despise|can\'?t stand|dislike)\b', "personal_animosity"),
+        (r'\b(?:they|he|she) (?:always|never)\b', "absolute_bias"),
+        (r'\bi (?:was told|was asked) to (?:say|testify|state)\b', "coached"),
+        (r'\bfinancial (?:interest|stake|incentive|benefit)\b', "financial_motive"),
+        (r'\blawsuit|compensation|settlement|payment\b', "litigation_interest"),
+        (r'\b(?:friend|relative|family|related to)\b', "relationship_bias")
+    ]
+    for pat, cat in bias_markers:
+        for match in re.finditer(pat, text_lower):
+            materials.append({
+                "type": "bias",
+                "category": cat,
+                "text": match.group(0),
+                "severity": "medium"
+            })
+
+    # Memory/perception issues
+    perception_markers = [
+        (r'\bi (?:couldn\'?t|could not|can\'?t|cannot) (?:see|hear|tell|remember)\b', "perception_limit"),
+        (r'\bit was (?:dark|foggy|raining|loud|noisy|far away)\b', "environmental"),
+        (r'\bi (?:was|had been) (?:drinking|intoxicated|medicated|tired|sleepy)\b', "impairment"),
+        (r'\bi\'?m not (?:sure|certain|positive|100)\b', "uncertainty"),
+        (r'\beverything happened (?:so fast|quickly|in a blur)\b', "temporal_distortion")
+    ]
+    for pat, cat in perception_markers:
+        for match in re.finditer(pat, text_lower):
+            materials.append({
+                "type": "perception",
+                "category": cat,
+                "text": match.group(0),
+                "severity": "medium"
+            })
+
+    by_type = {}
+    for m in materials:
+        by_type.setdefault(m["type"], []).append(m)
+    high_count = sum(1 for m in materials if m["severity"] == "high")
+
+    return {
+        "materials": materials[:50],
+        "by_type": {k: len(v) for k, v in by_type.items()},
+        "total_findings": len(materials),
+        "high_severity_count": high_count,
+        "impeachment_potential": "strong" if high_count > 3 else "moderate" if len(materials) > 3 else "weak"
+    }
+
+
+# ── Legal Citation Extractor ───────────────────────────────────
+@router.get("/sessions/{session_id}/legal-citations")
+async def extract_legal_citations(session_id: str):
+    """Extract references to laws, cases, statutes, and regulations."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if len(content) > 5:
+                statements.append(content)
+
+    text = " ".join(statements)
+
+    citations = []
+
+    # Case citations: Smith v. Jones, Roe v. Wade style
+    for match in re.finditer(r'\b([A-Z][a-zA-Z\']+(?:\s+(?:et al\.?)?)?)\s+v\.?\s+([A-Z][a-zA-Z\']+(?:\s+(?:et al\.?)?)?)(?:,?\s*(\d{2,4}\s*[A-Z][a-zA-Z.]*\s*\d+))?\b', text):
+        citations.append({
+            "type": "case_law",
+            "citation": match.group(0).strip(),
+            "parties": f"{match.group(1).strip()} v. {match.group(2).strip()}"
+        })
+
+    # U.S. Code: 42 U.S.C. § 1983
+    for match in re.finditer(r'\b(\d+)\s*(U\.?S\.?C\.?|USC)\s*[§]?\s*(\d+[a-z]?(?:\(\w+\))*)\b', text):
+        citations.append({
+            "type": "federal_statute",
+            "citation": match.group(0).strip(),
+            "title": match.group(1),
+            "section": match.group(3)
+        })
+
+    # State statutes
+    for match in re.finditer(r'\b(?:Section|§|sec\.?)\s*(\d+[\w.-]*)\b', text, re.IGNORECASE):
+        citations.append({
+            "type": "statute_section",
+            "citation": match.group(0).strip(),
+            "section": match.group(1)
+        })
+
+    # Federal Rules references
+    for match in re.finditer(r'\b(?:Rule|FRE|FRCP|FRCrP)\s*(\d+(?:\.\d+)?(?:\([a-z]\))*)\b', text, re.IGNORECASE):
+        citations.append({
+            "type": "rule",
+            "citation": match.group(0).strip(),
+            "rule_number": match.group(1)
+        })
+
+    # Regulation references: CFR
+    for match in re.finditer(r'\b(\d+)\s*(?:C\.?F\.?R\.?|CFR)\s*(?:Part|§)?\s*(\d+[\w.]*)\b', text):
+        citations.append({
+            "type": "regulation",
+            "citation": match.group(0).strip(),
+            "title": match.group(1),
+            "part": match.group(2)
+        })
+
+    # Amendment references
+    for match in re.finditer(r'\b(?:First|Second|Third|Fourth|Fifth|Sixth|Seventh|Eighth|Ninth|Tenth|Fourteenth|\d+(?:st|nd|rd|th))\s+Amendment\b', text, re.IGNORECASE):
+        citations.append({
+            "type": "constitutional",
+            "citation": match.group(0).strip()
+        })
+
+    # Dedup by citation text
+    seen = set()
+    unique = []
+    for c in citations:
+        key = c["citation"].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+
+    by_type = {}
+    for c in unique:
+        by_type.setdefault(c["type"], []).append(c)
+
+    return {
+        "citations": unique[:50],
+        "by_type": {k: len(v) for k, v in by_type.items()},
+        "total_citations": len(unique),
+        "most_cited_type": max(by_type.keys(), key=lambda k: len(by_type[k])) if by_type else "none"
+    }
+
+
+# ── Testimony Comparison ───────────────────────────────────────
+@router.get("/sessions/{session_id}/compare/{other_id}")
+async def compare_testimonies(session_id: str, other_id: str):
+    """Compare two testimony sessions for overlaps and contradictions."""
+    session_a = await firestore_service.get_session(session_id)
+    if not session_a:
+        raise HTTPException(status_code=404, detail="Session A not found")
+    session_b = await firestore_service.get_session(other_id)
+    if not session_b:
+        raise HTTPException(status_code=404, detail="Session B not found")
+
+    def extract_statements(session):
+        stmts = []
+        if hasattr(session, "messages"):
+            for m in session.messages:
+                role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+                content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+                if role == "user" and len(content) > 10:
+                    stmts.append(content)
+        return stmts
+
+    stmts_a = extract_statements(session_a)
+    stmts_b = extract_statements(session_b)
+    text_a = " ".join(stmts_a).lower()
+    text_b = " ".join(stmts_b).lower()
+
+    words_a = set(re.findall(r'\b[a-z]{3,}\b', text_a))
+    words_b = set(re.findall(r'\b[a-z]{3,}\b', text_b))
+    stop = {"the", "and", "was", "that", "this", "with", "for", "are", "but", "not", "you",
+            "all", "can", "had", "her", "his", "one", "our", "out", "has", "have", "from",
+            "they", "been", "said", "each", "she", "which", "their", "will", "other", "about",
+            "them", "then", "than", "into", "could", "would", "there", "what", "when", "your"}
+    words_a -= stop
+    words_b -= stop
+
+    shared = words_a & words_b
+    unique_a = words_a - words_b
+    unique_b = words_b - words_a
+    overlap_pct = round(len(shared) / max(len(words_a | words_b), 1) * 100)
+
+    # Key entity overlap
+    def extract_caps(text):
+        return set(re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text))
+    entities_a = extract_caps(" ".join(stmts_a))
+    entities_b = extract_caps(" ".join(stmts_b))
+    shared_entities = entities_a & entities_b
+
+    # Potential contradictions (opposite sentiments on same topics)
+    contradictions = []
+    topics = list(shared)[:20]
+    for topic in topics:
+        in_a = any(topic in s.lower() for s in stmts_a)
+        in_b = any(topic in s.lower() for s in stmts_b)
+        if in_a and in_b:
+            context_a = next((s[:100] for s in stmts_a if topic in s.lower()), "")
+            context_b = next((s[:100] for s in stmts_b if topic in s.lower()), "")
+            if context_a and context_b:
+                a_neg = any(w in context_a.lower() for w in ["not", "never", "no", "didn't", "deny"])
+                b_neg = any(w in context_b.lower() for w in ["not", "never", "no", "didn't", "deny"])
+                if a_neg != b_neg:
+                    contradictions.append({
+                        "topic": topic,
+                        "session_a": context_a,
+                        "session_b": context_b
+                    })
+
+    title_a = getattr(session_a, "title", session_id[:8])
+    title_b = getattr(session_b, "title", other_id[:8])
+
+    return {
+        "session_a": {"id": session_id, "title": title_a, "statements": len(stmts_a)},
+        "session_b": {"id": other_id, "title": title_b, "statements": len(stmts_b)},
+        "vocabulary_overlap": f"{overlap_pct}%",
+        "shared_words": len(shared),
+        "unique_to_a": len(unique_a),
+        "unique_to_b": len(unique_b),
+        "shared_entities": list(shared_entities)[:20],
+        "potential_contradictions": contradictions[:10],
+        "agreement_level": "high" if overlap_pct > 60 else "moderate" if overlap_pct > 30 else "low"
+    }
+
+
+# ── Admin Data Export ──────────────────────────────────────────
+@router.get("/admin/data-export")
+async def admin_data_export(export_type: str = "sessions", fmt: str = "json", auth=Depends(require_admin_auth)):
+    """Export admin data as JSON or CSV."""
+    import csv
+    import io
+
+    if export_type == "sessions":
+        sessions = await firestore_service.list_sessions()
+        data = []
+        for s in sessions:
+            data.append({
+                "id": s.id,
+                "title": getattr(s, "title", "Untitled"),
+                "created_at": str(getattr(s, "created_at", "")),
+                "message_count": len(getattr(s, "messages", []))
+            })
+    elif export_type == "errors":
+        data = list(_error_log) if "_error_log" in dir() else []
+        if not data:
+            try:
+                data = list(globals().get("_error_log", []))
+            except:
+                data = []
+    elif export_type == "usage":
+        data = []
+        uh = globals().get("_usage_history", [])
+        for entry in uh:
+            data.append({"endpoint": entry.get("endpoint", ""), "timestamp": entry.get("timestamp", "")})
+    else:
+        raise HTTPException(status_code=400, detail="Invalid export_type. Use: sessions, errors, usage")
+
+    if fmt == "csv" and data:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=data[0].keys() if data else [])
+        writer.writeheader()
+        for row in data:
+            writer.writerow(row)
+        return {"format": "csv", "content": output.getvalue(), "rows": len(data), "export_type": export_type}
+
+    return {"format": "json", "data": data, "rows": len(data), "export_type": export_type}
+
+
+# ── Admin Rate Limiter ─────────────────────────────────────────
+_rate_limit_config = {
+    "enabled": True,
+    "default_rpm": 60,
+    "endpoint_limits": {},
+    "blocked_ips": []
+}
+_rate_tracker = {}
+
+@router.get("/admin/rate-limiter")
+async def get_rate_limiter(auth=Depends(require_admin_auth)):
+    """Get rate limiter configuration and current status."""
+    now = datetime.now()
+    window = now - timedelta(minutes=1)
+
+    active_clients = 0
+    throttled = 0
+    for key, timestamps in _rate_tracker.items():
+        recent = [t for t in timestamps if t > window]
+        if recent:
+            active_clients += 1
+            limit = _rate_limit_config["endpoint_limits"].get(key.split(":")[0], _rate_limit_config["default_rpm"])
+            if len(recent) >= limit:
+                throttled += 1
+
+    return {
+        "config": _rate_limit_config,
+        "status": {
+            "active_clients": active_clients,
+            "throttled_clients": throttled,
+            "tracking_entries": len(_rate_tracker)
+        }
+    }
+
+@router.post("/admin/rate-limiter")
+async def update_rate_limiter(data: dict, auth=Depends(require_admin_auth)):
+    """Update rate limiter configuration."""
+    if "enabled" in data:
+        _rate_limit_config["enabled"] = bool(data["enabled"])
+    if "default_rpm" in data:
+        _rate_limit_config["default_rpm"] = max(1, min(1000, int(data["default_rpm"])))
+    if "endpoint_limits" in data and isinstance(data["endpoint_limits"], dict):
+        _rate_limit_config["endpoint_limits"].update(data["endpoint_limits"])
+    if "blocked_ips" in data and isinstance(data["blocked_ips"], list):
+        _rate_limit_config["blocked_ips"] = data["blocked_ips"]
+
+    return {"status": "updated", "config": _rate_limit_config}

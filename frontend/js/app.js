@@ -7605,6 +7605,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/qscore</code> — Question effectiveness<br>' +
                 '<code>/contradmap</code> — Contradiction map<br>' +
                 '<code>/entities</code> — Entity network<br>' +
+                '<code>/sentimenttl</code> — Sentiment timeline<br>' +
+                '<code>/objections</code> — Objection analysis<br>' +
+                '<code>/impeach</code> — Impeachment finder<br>' +
+                '<code>/citations</code> — Legal citation extractor<br>' +
+                '<code>/compareto [id]</code> — Compare testimonies<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7855,6 +7860,27 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/keydates': () => {
             this._showKeyDates();
+        },
+        '/sentimenttl': () => {
+            this._showSentimentTimeline();
+        },
+        '/objections': () => {
+            this._showObjections();
+        },
+        '/impeach': () => {
+            this._showImpeachment();
+        },
+        '/citations': () => {
+            this._showLegalCitations();
+        },
+        '/compareto': () => {
+            const parts = this.textInput.value.trim().split(/\s+/);
+            const otherId = parts[1] || '';
+            if (!otherId) {
+                this.displaySystemMessage('⚠️ Usage: <code>/compareto [session_id]</code>');
+                return;
+            }
+            this._showCompareTo(otherId);
         }
     };
     
@@ -7985,7 +8011,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/wordcloud', desc: 'Word cloud data' },
         { cmd: '/depocost', desc: 'Deposition cost estimate' },
         { cmd: '/readability', desc: 'Readability scores' },
-        { cmd: '/keydates', desc: 'Key date extractor' }
+        { cmd: '/keydates', desc: 'Key date extractor' },
+        { cmd: '/sentimenttl', desc: 'Sentiment timeline' },
+        { cmd: '/objections', desc: 'Objection analysis' },
+        { cmd: '/impeach', desc: 'Impeachment material finder' },
+        { cmd: '/citations', desc: 'Legal citation extractor' },
+        { cmd: '/compareto', desc: 'Compare two testimonies' }
     ];
     
     const filter = val.toLowerCase();
@@ -11339,4 +11370,193 @@ WitnessReplayApp.prototype._showKeyDates = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not extract key dates.'); }
+};
+
+// ── Sentiment Timeline ────────────────────────────────────────
+WitnessReplayApp.prototype._showSentimentTimeline = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⏳ Analyzing sentiment across testimony...');
+        const resp = await fetch(`/api/sessions/${this.sessionId}/sentiment-analysis`);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        const s = data.summary;
+        let html = `<div class="sentiment-timeline-result">`;
+        html += `<h3>📊 Sentiment Timeline</h3>`;
+        html += `<div class="sentiment-summary">`;
+        html += `<span class="sentiment-stat"><strong>${s.total_segments}</strong> segments</span>`;
+        html += `<span class="sentiment-stat"><strong>${s.mood_shifts}</strong> mood shifts</span>`;
+        html += `<span class="sentiment-stat">Avg score: <strong>${s.average_score}</strong></span>`;
+        html += `<span class="sentiment-stat">Dominant: <strong>${s.dominant_mood}</strong></span>`;
+        html += `</div>`;
+        html += `<div class="sentiment-chart">`;
+        data.segments.forEach(seg => {
+            const barH = Math.max(8, Math.abs(seg.score) + 10);
+            const color = seg.mood === 'positive' ? '#4CAF50' : seg.mood === 'negative' ? '#f44336' : seg.mood === 'hedging' ? '#FF9800' : '#9E9E9E';
+            html += `<div class="sentiment-bar-wrap" title="Seg ${seg.segment}: ${seg.mood} (${seg.score})">`;
+            html += `<div class="sentiment-bar" style="height:${barH}px;background:${color}"></div>`;
+            html += `<span class="sentiment-label">${seg.segment}</span>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+        if (s.mood_distribution) {
+            html += `<div class="sentiment-dist">`;
+            Object.entries(s.mood_distribution).forEach(([mood, count]) => {
+                const emoji = mood === 'positive' ? '😊' : mood === 'negative' ? '😟' : mood === 'hedging' ? '🤔' : '😐';
+                html += `<span class="mood-badge mood-${mood}">${emoji} ${mood}: ${count}</span> `;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze sentiment.'); }
+};
+
+// ── Objection Pattern Analyzer ────────────────────────────────
+WitnessReplayApp.prototype._showObjections = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⏳ Analyzing objection patterns...');
+        const resp = await fetch(`/api/sessions/${this.sessionId}/objections`);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        let html = `<div class="objections-result">`;
+        html += `<h3>⚖️ Objection Analysis</h3>`;
+        html += `<div class="obj-summary">`;
+        html += `<span class="obj-stat">Total: <strong>${data.total_objections}</strong></span>`;
+        html += `<span class="obj-stat">Most common: <strong>${data.most_common}</strong></span>`;
+        html += `<span class="obj-stat">Contentiousness: <strong>${data.contentiousness}</strong></span>`;
+        html += `</div>`;
+        if (data.rulings.sustained + data.rulings.overruled > 0) {
+            html += `<div class="obj-rulings">`;
+            html += `<span class="ruling sustained">✅ Sustained: ${data.rulings.sustained}</span>`;
+            html += `<span class="ruling overruled">❌ Overruled: ${data.rulings.overruled}</span>`;
+            html += `<span class="ruling rate">Success rate: ${data.rulings.success_rate}%</span>`;
+            html += `</div>`;
+        }
+        if (data.objections.length) {
+            html += `<div class="obj-types">`;
+            data.objections.forEach(o => {
+                html += `<div class="obj-type-row"><span class="obj-type-name">${o.type.replace(/_/g, ' ')}</span><span class="obj-type-count">${o.count}</span></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p class="obj-none">No objections detected in testimony.</p>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze objections.'); }
+};
+
+// ── Impeachment Material Finder ───────────────────────────────
+WitnessReplayApp.prototype._showImpeachment = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⏳ Searching for impeachment material...');
+        const resp = await fetch(`/api/sessions/${this.sessionId}/impeachment`);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        let html = `<div class="impeach-result">`;
+        html += `<h3>🎯 Impeachment Material</h3>`;
+        html += `<div class="impeach-summary">`;
+        html += `<span class="impeach-stat">Findings: <strong>${data.total_findings}</strong></span>`;
+        html += `<span class="impeach-stat">High severity: <strong>${data.high_severity_count}</strong></span>`;
+        html += `<span class="impeach-stat">Potential: <strong class="potential-${data.impeachment_potential}">${data.impeachment_potential}</strong></span>`;
+        html += `</div>`;
+        if (Object.keys(data.by_type).length) {
+            html += `<div class="impeach-types">`;
+            Object.entries(data.by_type).forEach(([type, count]) => {
+                const icon = type === 'inconsistency' ? '🔀' : type === 'bias' ? '⚠️' : '👁️';
+                html += `<span class="impeach-type-badge">${icon} ${type}: ${count}</span>`;
+            });
+            html += `</div>`;
+        }
+        if (data.materials.length) {
+            html += `<div class="impeach-items">`;
+            data.materials.slice(0, 15).forEach(m => {
+                const sev = m.severity === 'high' ? '🔴' : '🟡';
+                html += `<div class="impeach-item ${m.severity}"><span class="impeach-sev">${sev}</span> <span class="impeach-cat">${m.category.replace(/_/g, ' ')}</span>: <em>"${m.text}"</em></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p class="impeach-none">No impeachment material detected.</p>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not find impeachment material.'); }
+};
+
+// ── Legal Citation Extractor ──────────────────────────────────
+WitnessReplayApp.prototype._showLegalCitations = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⏳ Extracting legal citations...');
+        const resp = await fetch(`/api/sessions/${this.sessionId}/legal-citations`);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        let html = `<div class="citations-result">`;
+        html += `<h3>📜 Legal Citations</h3>`;
+        html += `<div class="cit-summary">`;
+        html += `<span class="cit-stat">Total: <strong>${data.total_citations}</strong></span>`;
+        html += `<span class="cit-stat">Most cited type: <strong>${data.most_cited_type.replace(/_/g, ' ')}</strong></span>`;
+        html += `</div>`;
+        if (Object.keys(data.by_type).length) {
+            html += `<div class="cit-breakdown">`;
+            const icons = {case_law:'⚖️', federal_statute:'📘', statute_section:'§', rule:'📋', regulation:'📑', constitutional:'🏛️'};
+            Object.entries(data.by_type).forEach(([type, count]) => {
+                html += `<span class="cit-type-badge">${icons[type]||'📄'} ${type.replace(/_/g, ' ')}: ${count}</span>`;
+            });
+            html += `</div>`;
+        }
+        if (data.citations.length) {
+            html += `<div class="cit-list">`;
+            data.citations.slice(0, 20).forEach(c => {
+                html += `<div class="cit-item"><span class="cit-type">${c.type.replace(/_/g, ' ')}</span><code>${c.citation}</code></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p class="cit-none">No legal citations found in testimony.</p>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not extract citations.'); }
+};
+
+// ── Testimony Comparison ──────────────────────────────────────
+WitnessReplayApp.prototype._showCompareTo = async function(otherId) {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⏳ Comparing testimonies...');
+        const resp = await fetch(`/api/sessions/${this.sessionId}/compare/${otherId}`);
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        let html = `<div class="compare-result">`;
+        html += `<h3>🔄 Testimony Comparison</h3>`;
+        html += `<div class="compare-header">`;
+        html += `<div class="compare-side"><strong>A:</strong> ${data.session_a.title} (${data.session_a.statements} stmts)</div>`;
+        html += `<div class="compare-vs">VS</div>`;
+        html += `<div class="compare-side"><strong>B:</strong> ${data.session_b.title} (${data.session_b.statements} stmts)</div>`;
+        html += `</div>`;
+        html += `<div class="compare-stats">`;
+        html += `<span class="compare-stat">Overlap: <strong>${data.vocabulary_overlap}</strong></span>`;
+        html += `<span class="compare-stat">Shared words: <strong>${data.shared_words}</strong></span>`;
+        html += `<span class="compare-stat">Agreement: <strong>${data.agreement_level}</strong></span>`;
+        html += `</div>`;
+        if (data.shared_entities.length) {
+            html += `<div class="compare-entities"><strong>Shared entities:</strong> ${data.shared_entities.map(e => `<span class="entity-tag">${e}</span>`).join(' ')}</div>`;
+        }
+        if (data.potential_contradictions.length) {
+            html += `<div class="compare-contradictions"><h4>⚠️ Potential Contradictions</h4>`;
+            data.potential_contradictions.forEach(c => {
+                html += `<div class="contradiction-item">`;
+                html += `<div class="contradiction-topic">Topic: <strong>${c.topic}</strong></div>`;
+                html += `<div class="contradiction-a">A: <em>${c.session_a}</em></div>`;
+                html += `<div class="contradiction-b">B: <em>${c.session_b}</em></div>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not compare testimonies.'); }
 };

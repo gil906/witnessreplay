@@ -6264,3 +6264,25 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .search-match-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 0.72rem; margin-left: 6px; }
 .search-match-badge.title { background: rgba(76,175,80,0.15); color: #4caf50; }
 .search-match-badge.content { background: rgba(108,99,255,0.15); color: #6c63ff; }
+
+/* ── Data Export Panel ───────────────────────────────────── */
+.data-export-panel .export-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.export-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9em; }
+.export-btn { padding: 6px 16px; background: #5c6bc0; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9em; }
+.export-btn:hover { background: #3f51b5; }
+.export-info { padding: 8px 12px; background: rgba(92,107,192,0.08); border-radius: 6px; margin-bottom: 8px; }
+.export-download-link { display: inline-block; margin-top: 8px; padding: 6px 14px; background: #4CAF50; color: #fff; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+.export-download-link:hover { background: #43A047; }
+
+/* ── Rate Limiter Panel ──────────────────────────────────── */
+.rate-limiter-panel { }
+.rl-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.rl-stat { display: flex; flex-direction: column; align-items: center; padding: 10px; background: rgba(0,0,0,0.03); border-radius: 8px; }
+.rl-label { font-size: 0.78em; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+.rl-val { font-size: 1.2em; font-weight: 700; }
+.rl-on { color: #4CAF50; }
+.rl-off { color: #f44336; }
+.rl-warn { color: #FF9800; }
+.rl-endpoints ul { list-style: none; padding: 0; margin: 4px 0; }
+.rl-endpoints li { padding: 3px 0; font-size: 0.9em; }
+.rl-blocked { margin-top: 8px; color: #e53935; font-size: 0.9em; }

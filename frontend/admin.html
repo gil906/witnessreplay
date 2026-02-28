@@ -474,6 +474,29 @@
                 <div id="session-search-results"></div>
             </section>
 
+            <section class="admin-panel data-export-panel" id="data-export-section">
+                <h3>📦 Data Export</h3>
+                <div class="export-controls">
+                    <select id="export-type-select" class="export-select">
+                        <option value="sessions">Sessions</option>
+                        <option value="errors">Error Log</option>
+                        <option value="usage">Usage Data</option>
+                    </select>
+                    <select id="export-format-select" class="export-select">
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV</option>
+                    </select>
+                    <button id="export-btn" class="export-btn">Export</button>
+                </div>
+                <div id="export-result"></div>
+            </section>
+
+            <section class="admin-panel rate-limiter-panel" id="rate-limiter-section">
+                <h3>🚦 Rate Limiter</h3>
+                <div id="rate-limiter-content"><p>Loading...</p></div>
+                <button id="rate-limiter-refresh" class="refresh-btn">↻ Refresh</button>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">
