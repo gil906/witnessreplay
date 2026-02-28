@@ -12596,7 +12596,8 @@ async def extract_evidence_links(session_id: str):
 @router.get("/admin/case-analytics")
 async def get_case_analytics(auth=Depends(require_admin_auth)):
     """Aggregated analytics for cases and sessions."""
-    all_sessions = await firestore_service.get_all_sessions()
+    all_sessions_raw = await firestore_service.list_sessions()
+    all_sessions = all_sessions_raw if isinstance(all_sessions_raw, list) else []
     now = datetime.now(timezone.utc)
 
     total = len(all_sessions)
@@ -12606,9 +12607,9 @@ async def get_case_analytics(auth=Depends(require_admin_auth)):
     status_dist = {}
 
     for s in all_sessions:
-        stmts = s.witness_statements if hasattr(s, "witness_statements") else []
+        stmts = getattr(s, 'witness_statements', []) or []
         stmt_counts.append(len(stmts))
-        wc = sum(len(st.text.split()) for st in stmts)
+        wc = sum(len((getattr(st2, 'text', '') or '').split()) for st2 in stmts)
         word_counts.append(wc)
 
         created = getattr(s, "created_at", None)
@@ -13840,7 +13841,7 @@ async def get_session_report(auth=Depends(require_admin_auth)):
     sessions = all_sessions if isinstance(all_sessions, list) else []
 
     total = len(sessions)
-    now = datetime.datetime.now()
+    now = datetime.now(timezone.utc)
 
     statuses = {}
     word_counts = []
@@ -13927,7 +13928,7 @@ async def get_system_alerts(auth=Depends(require_admin_auth)):
         "total": len(alerts),
         "has_critical": any(a["level"] == "critical" for a in alerts),
         "has_warning": any(a["level"] == "warning" for a in alerts),
-        "checked_at": datetime.datetime.now().isoformat(),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
