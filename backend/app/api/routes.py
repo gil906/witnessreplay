@@ -11390,3 +11390,54 @@ async def get_interview_analytics(auth=Depends(require_admin_auth)):
     except Exception as e:
         logger.error(f"Error computing interview analytics: {e}")
         return {"total_sessions": 0, "avg_statements": 0, "incident_types": {}, "hourly_distribution": {}}
+
+
+# ==================== Session Keyword Extraction ====================
+
+@router.get("/sessions/{session_id}/keywords")
+async def get_session_keywords(session_id: str):
+    """Extract key terms and stats from a session's conversation."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    sd = session if isinstance(session, dict) else session.model_dump()
+
+    statements = sd.get("statements", []) or []
+    stop_words = {"the","a","an","is","was","are","were","i","you","he","she","it","we","they",
+                  "my","your","his","her","its","our","their","and","or","but","in","on","at",
+                  "to","for","of","with","that","this","from","by","as","not","have","has","had",
+                  "do","does","did","be","been","being","will","would","could","should","can",
+                  "may","might","just","so","very","also","about","up","out","if","no","when",
+                  "what","where","who","how","than","then","there","here","all","some","any",
+                  "each","every","more","most","other","into","over","after","before","between"}
+
+    word_freq = {}
+    total_words = 0
+    witness_words = 0
+    agent_words = 0
+
+    for stmt in statements:
+        text = stmt.get("text", "") if isinstance(stmt, dict) else str(stmt)
+        speaker = stmt.get("speaker", "unknown") if isinstance(stmt, dict) else "unknown"
+        words = re.findall(r'[a-zA-Z]+', text.lower())
+        total_words += len(words)
+
+        if speaker in ("user", "witness"):
+            witness_words += len(words)
+            for w in words:
+                if len(w) > 2 and w not in stop_words:
+                    word_freq[w] = word_freq.get(w, 0) + 1
+        else:
+            agent_words += len(words)
+
+    top_keywords = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:15]
+    reading_time = max(1, round(total_words / 200))
+
+    return {
+        "total_words": total_words,
+        "witness_words": witness_words,
+        "agent_words": agent_words,
+        "reading_time_minutes": reading_time,
+        "total_statements": len(statements),
+        "top_keywords": [{"word": w, "count": c} for w, c in top_keywords]
+    }

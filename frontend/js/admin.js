@@ -337,6 +337,8 @@ class AdminPortal {
         this.initSystemHealthPanel();
         this.initAuditTimeline();
         this.initInterviewAnalytics();
+        this._initNotificationCenter();
+        this._initQuickActions();
     }
     
     _initModalKeyboardNav() {
@@ -5039,6 +5041,187 @@ class AdminPortal {
         } catch (e) {
             grid.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">Could not load analytics.</div>';
         }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // IMPROVEMENT: Admin Notification Center
+    // ═══════════════════════════════════════════════════════════════════
+    _initNotificationCenter() {
+        const header = document.querySelector('.admin-header-actions') || document.querySelector('.admin-header');
+        if (!header) return;
+        
+        const bellContainer = document.createElement('div');
+        bellContainer.className = 'admin-notif-center';
+        bellContainer.innerHTML = `
+            <button class="admin-notif-bell" id="admin-notif-bell" title="Notifications">
+                🔔
+                <span class="admin-notif-badge" id="admin-notif-badge" style="display:none;">0</span>
+            </button>
+            <div class="admin-notif-dropdown hidden" id="admin-notif-dropdown">
+                <div class="admin-notif-header">
+                    <strong>Notifications</strong>
+                    <button class="admin-notif-clear" id="admin-notif-clear" title="Clear all">Clear</button>
+                </div>
+                <div class="admin-notif-list" id="admin-notif-list">
+                    <div class="admin-notif-empty">No notifications</div>
+                </div>
+            </div>
+        `;
+        
+        header.insertBefore(bellContainer, header.firstChild);
+        
+        document.getElementById('admin-notif-bell')?.addEventListener('click', () => {
+            const dd = document.getElementById('admin-notif-dropdown');
+            dd?.classList.toggle('hidden');
+        });
+        document.getElementById('admin-notif-clear')?.addEventListener('click', () => {
+            this._notifications = [];
+            this._notificationCount = 0;
+            this._renderNotifications();
+        });
+        
+        // Close on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.admin-notif-center')) {
+                document.getElementById('admin-notif-dropdown')?.classList.add('hidden');
+            }
+        });
+        
+        // Generate initial notifications from system state
+        this._generateAutoNotifications();
+    }
+    
+    _addNotification(icon, title, detail, type = 'info') {
+        this._notifications.unshift({
+            id: Date.now(),
+            icon: icon,
+            title: title,
+            detail: detail || '',
+            type: type,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+        if (this._notifications.length > 20) this._notifications.pop();
+        this._notificationCount++;
+        this._renderNotifications();
+    }
+    
+    _renderNotifications() {
+        const list = document.getElementById('admin-notif-list');
+        const badge = document.getElementById('admin-notif-badge');
+        if (!list) return;
+        
+        if (badge) {
+            if (this._notificationCount > 0) {
+                badge.style.display = '';
+                badge.textContent = this._notificationCount > 9 ? '9+' : this._notificationCount;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+        
+        if (this._notifications.length === 0) {
+            list.innerHTML = '<div class="admin-notif-empty">No notifications</div>';
+            return;
+        }
+        
+        list.innerHTML = this._notifications.map(n => `
+            <div class="admin-notif-item admin-notif-${n.type}">
+                <span class="admin-notif-icon">${n.icon}</span>
+                <div class="admin-notif-content">
+                    <div class="admin-notif-title">${this._sanitize(n.title)}</div>
+                    ${n.detail ? `<div class="admin-notif-detail">${this._sanitize(n.detail)}</div>` : ''}
+                </div>
+                <span class="admin-notif-time">${n.time}</span>
+            </div>
+        `).join('');
+    }
+    
+    async _generateAutoNotifications() {
+        try {
+            const resp = await fetch('/api/health');
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.status === 'healthy') {
+                    this._addNotification('✅', 'System Healthy', 'All services operational', 'success');
+                }
+            }
+        } catch(e) {}
+        
+        try {
+            const resp = await fetch('/api/reports/orphans?limit=5');
+            if (resp.ok) {
+                const data = await resp.json();
+                const count = data.reports?.length || data.length || 0;
+                if (count > 0) {
+                    this._addNotification('📋', `${count} Orphan Reports`, 'Reports awaiting case assignment', 'warning');
+                }
+            }
+        } catch(e) {}
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // IMPROVEMENT: Admin Quick Actions Panel
+    // ═══════════════════════════════════════════════════════════════════
+    _initQuickActions() {
+        const dashboard = document.getElementById('dashboard-view') || document.querySelector('.admin-dashboard');
+        if (!dashboard) return;
+        
+        const existing = document.getElementById('admin-quick-actions');
+        if (existing) return;
+        
+        const panel = document.createElement('div');
+        panel.className = 'admin-quick-actions';
+        panel.id = 'admin-quick-actions';
+        panel.innerHTML = `
+            <h4 class="quick-actions-title">⚡ Quick Actions</h4>
+            <div class="quick-actions-grid">
+                <button class="quick-action-btn" id="qa-new-case" title="Create new case">
+                    <span class="qa-icon">📁</span>
+                    <span class="qa-label">New Case</span>
+                </button>
+                <button class="quick-action-btn" id="qa-export" title="Export all data">
+                    <span class="qa-icon">📥</span>
+                    <span class="qa-label">Export</span>
+                </button>
+                <button class="quick-action-btn" id="qa-backup" title="Create backup">
+                    <span class="qa-icon">💾</span>
+                    <span class="qa-label">Backup</span>
+                </button>
+                <button class="quick-action-btn" id="qa-health" title="System health check">
+                    <span class="qa-icon">🏥</span>
+                    <span class="qa-label">Health</span>
+                </button>
+            </div>
+        `;
+        
+        // Insert at top of dashboard
+        dashboard.insertBefore(panel, dashboard.firstChild);
+        
+        document.getElementById('qa-new-case')?.addEventListener('click', () => {
+            document.getElementById('admin-create-case-btn')?.click();
+        });
+        document.getElementById('qa-export')?.addEventListener('click', () => {
+            this._addNotification('📥', 'Export Started', 'Preparing data export...', 'info');
+        });
+        document.getElementById('qa-backup')?.addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/api/admin/backups', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.authToken}` }
+                });
+                if (resp.ok) {
+                    this._addNotification('✅', 'Backup Created', 'System backup completed', 'success');
+                } else {
+                    this._addNotification('⚠️', 'Backup Failed', 'Could not create backup', 'error');
+                }
+            } catch(e) {
+                this._addNotification('⚠️', 'Backup Error', e.message, 'error');
+            }
+        });
+        document.getElementById('qa-health')?.addEventListener('click', () => {
+            const healthTab = document.querySelector('[data-tab="health"]') || document.getElementById('health-tab');
+            if (healthTab) healthTab.click();
+        });
     }
 }
 

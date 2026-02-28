@@ -122,6 +122,10 @@ class WitnessReplayApp {
         this._initInterviewStatsBadge(); // Interview stats badge in header
         this._initExportChatBtn(); // Export chat transcript button
         this._initFocusMode(); // Focus mode indicator
+        this._initChatSearch(); // Chat message search overlay
+        this._initMessagePinning(); // Pin/bookmark important messages
+        this._initAutoSaveIndicator(); // Save state indicator
+        this._initMessageDoubleClickCopy(); // Double-click to copy messages
         
         // Show onboarding for first-time users
         this.checkOnboarding();
@@ -3309,6 +3313,7 @@ class WitnessReplayApp {
                 data: messageData
             }));
             
+            this._showSaveState?.('saving');
             this.displayMessage(text, 'user');
             this.textInput.value = '';
             this._updateCharCounter();
@@ -3330,6 +3335,7 @@ class WitnessReplayApp {
         
         // Hide typing indicator
         this._hideTyping();
+        if (speaker === 'agent') this._showSaveState?.('saved');
         
         const messageDiv = document.createElement('div');
         messageDiv.className = `message message-${speaker}`;
@@ -3353,11 +3359,15 @@ class WitnessReplayApp {
         if (speaker === 'agent') {
             this._addAssistantCopyButton(messageDiv, text);
             this._addMessageReactions(messageDiv, text);
+            this._addPinButton?.(messageDiv, text, speaker);
             this.lastAgentMessage = text;
             if (!this._isSpeakingResponse && !this.isRecording) {
                 this._setConversationState('ready');
                 this._showRayListeningCue();
             }
+        }
+        if (speaker === 'user') {
+            this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
@@ -3444,11 +3454,15 @@ class WitnessReplayApp {
         if (speaker === 'agent') {
             this._addAssistantCopyButton(messageDiv, text);
             this._addMessageReactions(messageDiv, text);
+            this._addPinButton?.(messageDiv, text, speaker);
             this.lastAgentMessage = text;
             if (!this._isSpeakingResponse && !this.isRecording) {
                 this._setConversationState('ready');
                 this._showRayListeningCue();
             }
+        }
+        if (speaker === 'user') {
+            this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
@@ -7521,6 +7535,9 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/shortcuts</code> — Show keyboard shortcuts<br>' +
                 '<code>/focus</code> — Toggle focus mode<br>' +
                 '<code>/notes</code> — Open session notes<br>' +
+                '<code>/search</code> — Search chat messages<br>' +
+                '<code>/pins</code> — View pinned messages<br>' +
+                '<code>/stats</code> — Interview word stats<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7530,6 +7547,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 this.displayMessage('/summary', 'user');
                 this.setStatus('Generating summary...');
                 this._setConversationState('thinking');
+                setTimeout(() => this._showContextualFollowUps?.('summary'), 500);
             } else {
                 this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
             }
@@ -7540,6 +7558,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 this.displayMessage('/timeline', 'user');
                 this.setStatus('Building timeline...');
                 this._setConversationState('thinking');
+                setTimeout(() => this._showContextualFollowUps?.('timeline'), 500);
             } else {
                 this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
             }
@@ -7586,6 +7605,15 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         },
         '/export': () => {
             this._exportChatTranscript();
+        },
+        '/search': () => {
+            this._openChatSearch();
+        },
+        '/pins': () => {
+            this._showPinnedMessages();
+        },
+        '/stats': () => {
+            this._showInterviewWordStats();
         }
     };
     
@@ -7659,7 +7687,10 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/status', desc: 'Connection info' },
         { cmd: '/shortcuts', desc: 'Keyboard shortcuts' },
         { cmd: '/focus', desc: 'Toggle focus mode' },
-        { cmd: '/notes', desc: 'Session notes' }
+        { cmd: '/notes', desc: 'Session notes' },
+        { cmd: '/search', desc: 'Search chat messages' },
+        { cmd: '/pins', desc: 'View pinned messages' },
+        { cmd: '/stats', desc: 'Interview word stats' }
     ];
     
     const filter = val.toLowerCase();
@@ -8123,4 +8154,346 @@ WitnessReplayApp.prototype._toggleFocusMode = function() {
         
         this.ui?.showToast('Focus Mode OFF', 'info', 1500);
     }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 8: Chat Message Search Overlay
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initChatSearch = function() {
+    // Ctrl+F override for chat search
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            const transcript = document.getElementById('chat-transcript');
+            if (transcript && transcript.querySelectorAll('.message').length > 0) {
+                e.preventDefault();
+                this._openChatSearch();
+            }
+        }
+    });
+};
+
+WitnessReplayApp.prototype._openChatSearch = function() {
+    let overlay = document.getElementById('chat-search-overlay');
+    if (overlay) { overlay.querySelector('.chat-search-input')?.focus(); return; }
+    
+    overlay = document.createElement('div');
+    overlay.id = 'chat-search-overlay';
+    overlay.className = 'chat-search-overlay';
+    overlay.innerHTML = `
+        <div class="chat-search-bar">
+            <span class="chat-search-icon">🔍</span>
+            <input type="text" class="chat-search-input" placeholder="Search messages..." autofocus>
+            <span class="chat-search-count" id="chat-search-count"></span>
+            <button class="chat-search-nav" id="chat-search-prev" title="Previous">▲</button>
+            <button class="chat-search-nav" id="chat-search-next" title="Next">▼</button>
+            <button class="chat-search-close" title="Close">&times;</button>
+        </div>
+    `;
+    
+    const chatPanel = document.querySelector('.chat-panel') || document.body;
+    chatPanel.appendChild(overlay);
+    
+    const input = overlay.querySelector('.chat-search-input');
+    const countEl = overlay.querySelector('#chat-search-count');
+    let matches = [];
+    let currentIdx = -1;
+    
+    const clearHighlights = () => {
+        document.querySelectorAll('.chat-search-highlight').forEach(el => {
+            el.classList.remove('chat-search-highlight', 'chat-search-active');
+        });
+    };
+    
+    const doSearch = (query) => {
+        clearHighlights();
+        matches = [];
+        currentIdx = -1;
+        if (!query || query.length < 2) { countEl.textContent = ''; return; }
+        
+        const q = query.toLowerCase();
+        const msgs = document.querySelectorAll('#chat-transcript .message');
+        msgs.forEach(msg => {
+            if (msg.textContent.toLowerCase().includes(q)) {
+                msg.classList.add('chat-search-highlight');
+                matches.push(msg);
+            }
+        });
+        
+        countEl.textContent = matches.length ? `${matches.length} found` : 'No results';
+        if (matches.length) { currentIdx = 0; goTo(0); }
+    };
+    
+    const goTo = (idx) => {
+        matches.forEach(m => m.classList.remove('chat-search-active'));
+        if (idx >= 0 && idx < matches.length) {
+            currentIdx = idx;
+            matches[idx].classList.add('chat-search-active');
+            matches[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            countEl.textContent = `${idx + 1} / ${matches.length}`;
+        }
+    };
+    
+    input.addEventListener('input', () => doSearch(input.value));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { goTo(e.shiftKey ? currentIdx - 1 : currentIdx + 1); }
+        if (e.key === 'Escape') { clearHighlights(); overlay.remove(); }
+    });
+    overlay.querySelector('#chat-search-prev').addEventListener('click', () => goTo(currentIdx > 0 ? currentIdx - 1 : matches.length - 1));
+    overlay.querySelector('#chat-search-next').addEventListener('click', () => goTo(currentIdx < matches.length - 1 ? currentIdx + 1 : 0));
+    overlay.querySelector('.chat-search-close').addEventListener('click', () => { clearHighlights(); overlay.remove(); });
+    
+    input.focus();
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 9: Message Pinning / Bookmarking
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initMessagePinning = function() {
+    this._pinnedMessages = JSON.parse(localStorage.getItem('wr_pinned_' + (this.sessionId || 'default')) || '[]');
+};
+
+WitnessReplayApp.prototype._addPinButton = function(messageDiv, text, speaker) {
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'msg-pin-btn';
+    pinBtn.innerHTML = '📌';
+    pinBtn.title = 'Pin this message';
+    pinBtn.setAttribute('aria-label', 'Pin message');
+    
+    const msgId = Date.now() + Math.random();
+    pinBtn.addEventListener('click', () => {
+        const isPinned = pinBtn.classList.contains('pinned');
+        if (isPinned) {
+            this._pinnedMessages = this._pinnedMessages.filter(p => p.text !== text);
+            pinBtn.classList.remove('pinned');
+            pinBtn.title = 'Pin this message';
+            this.ui?.showToast('📌 Unpinned', 'info', 1500);
+        } else {
+            this._pinnedMessages.push({
+                id: msgId,
+                text: text,
+                speaker: speaker,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toLocaleDateString()
+            });
+            pinBtn.classList.add('pinned');
+            pinBtn.title = 'Unpin this message';
+            this.ui?.showToast('📌 Message pinned!', 'success', 1500);
+        }
+        localStorage.setItem('wr_pinned_' + (this.sessionId || 'default'), JSON.stringify(this._pinnedMessages));
+    });
+    
+    // Check if already pinned
+    if (this._pinnedMessages.some(p => p.text === text)) {
+        pinBtn.classList.add('pinned');
+        pinBtn.title = 'Unpin this message';
+    }
+    
+    messageDiv.appendChild(pinBtn);
+};
+
+WitnessReplayApp.prototype._showPinnedMessages = function() {
+    if (!this._pinnedMessages || this._pinnedMessages.length === 0) {
+        this.displaySystemMessage('📌 No pinned messages yet. Click the 📌 button on any message to pin it.');
+        return;
+    }
+    
+    let html = '📌 <b>Pinned Messages</b> (' + this._pinnedMessages.length + ')<br><br>';
+    this._pinnedMessages.forEach((p, i) => {
+        const speaker = p.speaker === 'user' ? '👤 You' : '🔍 Detective Ray';
+        const preview = (p.text || '').substring(0, 120) + ((p.text || '').length > 120 ? '...' : '');
+        html += `<div style="margin-bottom:8px;padding:6px 10px;background:rgba(96,165,250,0.08);border-radius:8px;border-left:3px solid var(--accent-blue);">
+            <strong>${speaker}</strong> <span style="opacity:0.6;font-size:0.78rem;">${p.time || ''}</span><br>
+            <span style="font-size:0.88rem;">${this._escapeHtml(preview)}</span>
+        </div>`;
+    });
+    this.displaySystemMessage(html);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 10: Interview Word Stats (/stats command)
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showInterviewWordStats = function() {
+    const messages = this.chatTranscript?.querySelectorAll('.message');
+    if (!messages || messages.length === 0) {
+        this.displaySystemMessage('📊 No messages yet. Start the interview first.');
+        return;
+    }
+    
+    let userWords = 0, agentWords = 0, userMsgs = 0, agentMsgs = 0;
+    const wordFreq = {};
+    const stopWords = new Set(['the','a','an','is','was','are','were','i','you','he','she','it','we','they','my','your','his','her','its','our','their','and','or','but','in','on','at','to','for','of','with','that','this','from','by','as','not','have','has','had','do','does','did','be','been','being','will','would','could','should','can','may','might','just','so','very','also','about','up','out','if','no','when','what','where','who','how','than','then','there','here','all','some','any','each','every','more','most','other','into','over','after','before','between','under','again','once','during','while','now','only','me','him','them','us','am','which']);
+    
+    messages.forEach(msg => {
+        const isUser = msg.classList.contains('message-user');
+        const isAgent = msg.classList.contains('message-agent');
+        if (!isUser && !isAgent) return;
+        
+        const clone = msg.cloneNode(true);
+        clone.querySelectorAll('.msg-reactions, .msg-reaction-btn, .quick-reply-container, .copy-btn, .msg-avatar, .emotion-badge, .msg-pin-btn, .message-actions').forEach(el => el.remove());
+        const text = clone.textContent.replace(/\s+/g, ' ').trim();
+        const words = text.split(/\s+/).filter(w => w.length > 0);
+        
+        if (isUser) { userWords += words.length; userMsgs++; }
+        else { agentWords += words.length; agentMsgs++; }
+        
+        // Count meaningful words from user
+        if (isUser) {
+            words.forEach(w => {
+                const clean = w.toLowerCase().replace(/[^a-z']/g, '');
+                if (clean.length > 2 && !stopWords.has(clean)) {
+                    wordFreq[clean] = (wordFreq[clean] || 0) + 1;
+                }
+            });
+        }
+    });
+    
+    // Top keywords
+    const topWords = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const totalWords = userWords + agentWords;
+    const readingTime = Math.max(1, Math.ceil(totalWords / 200));
+    
+    let html = '📊 <b>Interview Statistics</b><br><br>';
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="padding:8px;background:rgba(96,165,250,0.08);border-radius:8px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${totalWords}</div>
+            <div style="font-size:0.75rem;opacity:0.7;">Total Words</div>
+        </div>
+        <div style="padding:8px;background:rgba(74,222,128,0.08);border-radius:8px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${readingTime} min</div>
+            <div style="font-size:0.75rem;opacity:0.7;">Reading Time</div>
+        </div>
+        <div style="padding:8px;background:rgba(167,139,250,0.08);border-radius:8px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${userMsgs}</div>
+            <div style="font-size:0.75rem;opacity:0.7;">Witness Msgs</div>
+        </div>
+        <div style="padding:8px;background:rgba(251,191,36,0.08);border-radius:8px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${agentMsgs}</div>
+            <div style="font-size:0.75rem;opacity:0.7;">Ray Msgs</div>
+        </div>
+    </div>`;
+    
+    if (topWords.length > 0) {
+        html += '<b>🔑 Key Terms:</b><br>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">';
+        topWords.forEach(([word, count]) => {
+            const size = Math.min(1.1, 0.75 + count * 0.05);
+            html += `<span style="padding:3px 8px;background:rgba(96,165,250,0.12);border-radius:12px;font-size:${size}rem;">${this._escapeHtml(word)} <sup style="opacity:0.5">${count}</sup></span>`;
+        });
+        html += '</div>';
+    }
+    
+    this.displaySystemMessage(html);
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 11: Auto-Save Indicator
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initAutoSaveIndicator = function() {
+    const sessionInfo = document.querySelector('.session-info');
+    if (!sessionInfo) return;
+    
+    const indicator = document.createElement('div');
+    indicator.className = 'auto-save-indicator';
+    indicator.id = 'auto-save-indicator';
+    indicator.innerHTML = '<span class="save-icon">💾</span><span class="save-text">Saved</span>';
+    
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        sessionInfo.insertBefore(indicator, themeToggle);
+    } else {
+        sessionInfo.appendChild(indicator);
+    }
+    
+    this._saveState = 'saved';
+};
+
+WitnessReplayApp.prototype._showSaveState = function(state) {
+    const el = document.getElementById('auto-save-indicator');
+    if (!el) return;
+    this._saveState = state;
+    el.className = 'auto-save-indicator ' + state;
+    const icon = el.querySelector('.save-icon');
+    const text = el.querySelector('.save-text');
+    if (state === 'saving') {
+        if (icon) icon.textContent = '⏳';
+        if (text) text.textContent = 'Saving...';
+    } else if (state === 'saved') {
+        if (icon) icon.textContent = '✅';
+        if (text) text.textContent = 'Saved';
+        setTimeout(() => { if (this._saveState === 'saved' && el) el.classList.add('fade'); }, 3000);
+    } else if (state === 'error') {
+        if (icon) icon.textContent = '⚠️';
+        if (text) text.textContent = 'Save error';
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 12: Double-Click to Copy Messages
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._initMessageDoubleClickCopy = function() {
+    const transcript = document.getElementById('chat-transcript');
+    if (!transcript) return;
+    
+    transcript.addEventListener('dblclick', (e) => {
+        const msg = e.target.closest('.message');
+        if (!msg) return;
+        
+        // Get clean text
+        const clone = msg.cloneNode(true);
+        clone.querySelectorAll('.msg-reactions, .msg-reaction-btn, .quick-reply-container, .copy-btn, .msg-avatar, .emotion-badge, .msg-pin-btn, .message-actions').forEach(el => el.remove());
+        const text = clone.textContent.replace(/\s+/g, ' ').trim();
+        
+        this._copyToClipboard(text).then(ok => {
+            if (ok) {
+                msg.classList.add('copy-flash');
+                setTimeout(() => msg.classList.remove('copy-flash'), 600);
+                this.ui?.showToast('📋 Copied to clipboard', 'success', 1500);
+            }
+        });
+    });
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPROVEMENT 13: Enhanced /summary & /timeline Follow-up Actions
+// ═══════════════════════════════════════════════════════════════════
+WitnessReplayApp.prototype._showContextualFollowUps = function(commandType) {
+    const existing = document.querySelector('.followup-actions');
+    if (existing) existing.remove();
+    
+    const actions = [];
+    if (commandType === 'summary') {
+        actions.push(
+            { icon: '🎬', text: 'Generate scene from summary', cmd: '/scene' },
+            { icon: '⏱️', text: 'Build timeline', cmd: '/timeline' },
+            { icon: '📥', text: 'Export transcript', cmd: '/export' },
+            { icon: '📌', text: 'View pinned messages', cmd: '/pins' }
+        );
+    } else if (commandType === 'timeline') {
+        actions.push(
+            { icon: '🎬', text: 'Generate scene image', cmd: '/scene' },
+            { icon: '📋', text: 'Get full summary', cmd: '/summary' },
+            { icon: '📊', text: 'Interview stats', cmd: '/stats' },
+            { icon: '📥', text: 'Export transcript', cmd: '/export' }
+        );
+    }
+    
+    if (actions.length === 0) return;
+    
+    const container = document.createElement('div');
+    container.className = 'followup-actions';
+    container.innerHTML = '<span class="followup-label">Next steps:</span>';
+    
+    actions.forEach(a => {
+        const btn = document.createElement('button');
+        btn.className = 'followup-btn';
+        btn.innerHTML = `${a.icon} ${a.text}`;
+        btn.addEventListener('click', () => {
+            container.remove();
+            this._handleSlashCommand(a.cmd);
+        });
+        container.appendChild(btn);
+    });
+    
+    this.chatTranscript.appendChild(container);
+    this._scrollChatToBottom();
 };
