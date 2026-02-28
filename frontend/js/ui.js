@@ -206,8 +206,16 @@ class UIManager {
     showModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) {
+            this._previousFocus = document.activeElement;
             modal.classList.remove('hidden');
             modal.style.display = 'flex';
+            modal.setAttribute('aria-hidden', 'false');
+            // Focus the modal content for keyboard users
+            const focusTarget = modal.querySelector('.modal-content, [tabindex="-1"]') || modal;
+            requestAnimationFrame(() => focusTarget.focus?.());
+            // Trap focus inside modal
+            this._trapFocusHandler = (e) => this._trapFocus(e, modal);
+            modal.addEventListener('keydown', this._trapFocusHandler);
         }
     }
     
@@ -215,17 +223,49 @@ class UIManager {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            if (this._trapFocusHandler) {
+                modal.removeEventListener('keydown', this._trapFocusHandler);
+                this._trapFocusHandler = null;
+            }
+            // Restore focus to previous element
+            if (this._previousFocus && this._previousFocus.focus) {
+                this._previousFocus.focus();
+                this._previousFocus = null;
+            }
             setTimeout(() => {
                 modal.style.display = 'none';
             }, 300);
         }
     }
     
+    _trapFocus(e, modal) {
+        if (e.key !== 'Tab') return;
+        const focusable = modal.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+
     closeAllModals() {
         document.querySelectorAll('.modal').forEach(modal => {
             modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
             modal.style.display = 'none';
         });
+        if (this._previousFocus && this._previousFocus.focus) {
+            this._previousFocus.focus();
+            this._previousFocus = null;
+        }
     }
     
     // ==================== LOADING STATES ====================

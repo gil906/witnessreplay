@@ -1382,6 +1382,20 @@
     
     <!-- Particle Background Canvas -->
     <canvas id="particle-canvas" class="particle-canvas"></canvas>
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js').catch(()=>{});</script>
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
+    navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data?.type === 'SW_UPDATED') {
+            const banner = document.createElement('div');
+            banner.className = 'update-banner';
+            banner.innerHTML = '🔄 A new version is available. <button onclick="location.reload()">Refresh</button>';
+            banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1e40af;color:#fff;padding:10px 16px;text-align:center;z-index:99999;font-size:0.9rem;display:flex;align-items:center;justify-content:center;gap:8px;';
+            banner.querySelector('button').style.cssText = 'background:#fff;color:#1e40af;border:none;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;';
+            document.body.appendChild(banner);
+        }
+    });
+}
+</script>
 </body>
 </html>

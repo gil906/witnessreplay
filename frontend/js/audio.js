@@ -212,8 +212,8 @@ class EnhancedAudioVisualizer {
         if (this.animationId) {
             cancelAnimationFrame(this.animationId);
         }
-        if (this.audioContext) {
-            this.audioContext.close();
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            this.audioContext.close().catch(() => {});
         }
         if (this.canvas) {
             this.canvas.classList.remove('active');
@@ -420,14 +420,22 @@ class TTSPlayer {
     }
     
     async _playAudioBase64(base64Data, mimeType = 'audio/wav') {
-        // Create audio context if needed
-        if (!this.audioContext) {
+        // Create audio context if needed (or recreate if closed)
+        if (!this.audioContext || this.audioContext.state === 'closed') {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         
-        // Resume audio context if suspended (browser autoplay policy)
+        // Resume audio context if suspended (browser autoplay policy) — retry up to 3 times
         if (this.audioContext.state === 'suspended') {
-            await this.audioContext.resume();
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    await this.audioContext.resume();
+                    if (this.audioContext.state === 'running') break;
+                } catch (e) {
+                    if (attempt === 2) console.warn('AudioContext resume failed after retries');
+                }
+                await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
+            }
         }
         
         return new Promise((resolve, reject) => {

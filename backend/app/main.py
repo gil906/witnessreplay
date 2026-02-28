@@ -658,12 +658,19 @@ async def add_cache_headers(request: Request, call_next):
 # Request timeout middleware - prevent indefinite hanging
 @app.middleware("http")
 async def timeout_middleware(request: Request, call_next):
-    """Timeout protection for all requests."""
+    """Timeout protection with endpoint-specific limits."""
+    path = request.url.path
+    # Longer timeouts for AI/streaming/image-generation endpoints
+    if any(p in path for p in ['/ws', '/stream', '/generate', '/tts', '/scene', '/image', '/interview']):
+        timeout_seconds = 180.0
+    elif any(p in path for p in ['/health', '/status', '/ping']):
+        timeout_seconds = 10.0
+    else:
+        timeout_seconds = 60.0
     try:
-        # Set timeout to 60 seconds for all requests
-        return await asyncio.wait_for(call_next(request), timeout=60.0)
+        return await asyncio.wait_for(call_next(request), timeout=timeout_seconds)
     except asyncio.TimeoutError:
-        logger.error(f"Request timeout: {request.method} {request.url}")
+        logger.error(f"Request timeout ({timeout_seconds}s): {request.method} {request.url}")
         return JSONResponse(
             status_code=504,
             content={

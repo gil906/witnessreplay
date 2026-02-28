@@ -261,7 +261,8 @@ class SceneReconstructionAgent:
             # Add context if this is a correction
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
-            statement_for_model = self._truncate_statement_for_model(statement)
+            # Wrap user input in structured boundary to prevent prompt injection
+            statement_for_model = f"<witness_statement>\n{self._truncate_statement_for_model(statement)}\n</witness_statement>"
             
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
@@ -487,7 +488,8 @@ class SceneReconstructionAgent:
             
             if is_correction:
                 statement = f"[CORRECTION] {statement}"
-            statement_for_model = self._truncate_statement_for_model(statement)
+            # Wrap user input in structured boundary to prevent prompt injection
+            statement_for_model = f"<witness_statement>\n{self._truncate_statement_for_model(statement)}\n</witness_statement>"
             
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)

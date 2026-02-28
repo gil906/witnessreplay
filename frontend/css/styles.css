@@ -1454,11 +1454,22 @@ body.compact-chat .msg-time {
 }
 
 /* Mic connecting state — loading spinner feel */
-.mic-btn.connecting {
+.mic-btn.connecting,
+.mic-btn.processing {
     opacity: 0.6;
     cursor: wait;
     border-color: rgba(251, 191, 36, 0.4);
     animation: micConnectingPulse 2s ease-in-out infinite;
+}
+
+.mic-btn.processing {
+    border-color: rgba(59, 130, 246, 0.5);
+    animation: micProcessingPulse 1s ease-in-out infinite;
+}
+
+@keyframes micProcessingPulse {
+    0%, 100% { opacity: 0.5; border-color: rgba(59, 130, 246, 0.3); }
+    50% { opacity: 0.8; border-color: rgba(59, 130, 246, 0.7); }
 }
 
 @keyframes micConnectingPulse {
@@ -4818,6 +4829,72 @@ body.compact-chat .msg-time {
 
 [data-theme="light"] .message-agent {
     background: rgba(34, 197, 94, 0.06);
+}
+
+[data-theme="light"] .chat-panel,
+[data-theme="light"] .scene-panel {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .chat-transcript::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .chat-transcript::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] .mobile-call-header {
+    background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .quick-phrase-btn,
+[data-theme="light"] .suggested-action-btn {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+    color: #1e40af;
+}
+
+[data-theme="light"] .quick-phrase-btn:hover,
+[data-theme="light"] .suggested-action-btn:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="light"] #voice-dock {
+    background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .text-input-container input,
+[data-theme="light"] .text-input-container textarea {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #1e293b;
+}
+
+[data-theme="light"] .connection-popup {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .mobile-menu-dropdown {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .mobile-menu-item:hover {
+    background: rgba(59, 130, 246, 0.06);
+}
+
+[data-theme="light"] .toast {
+    background: #ffffff;
+    color: #1e293b;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* Theme toggle button */
@@ -10391,4 +10468,137 @@ body.light-mode input, body.light-mode textarea, body.light-mode select {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     border-color: var(--border);
+}
+
+/* =========================================================
+   PERFORMANCE: will-change for heavy scroll/animation areas
+   ========================================================= */
+.chat-transcript {
+    will-change: scroll-position;
+    contain: layout style;
+}
+
+.chat-message {
+    will-change: transform, opacity;
+    contain: content;
+}
+
+/* =========================================================
+   ACCESSIBILITY: focus-visible for keyboard navigation
+   ========================================================= */
+:focus-visible {
+    outline: 2px solid var(--accent-primary, #3b82f6);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* =========================================================
+   MODAL: focus trap & backdrop improvements
+   ========================================================= */
+.modal[aria-hidden="false"],
+.modal:not(.hidden) {
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+.modal.hidden {
+    animation: modalFadeOut 0.2s ease-in;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.modal-content:focus {
+    outline: none;
+}
+
+/* =========================================================
+   LOADING: skeleton pulse for lazy images & async states
+   ========================================================= */
+.skeleton-pulse {
+    background: linear-gradient(90deg,
+        var(--bg-surface, #2a2a3e) 25%,
+        var(--bg-surface-alt, #3a3a4e) 50%,
+        var(--bg-surface, #2a2a3e) 75%);
+    background-size: 200% 100%;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+    border-radius: var(--card-radius, 8px);
+}
+
+@keyframes skeletonPulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+img[loading="lazy"] {
+    background: var(--bg-surface, #2a2a3e);
+    transition: opacity 0.3s ease;
+}
+
+/* =========================================================
+   BUTTONS: consistent disabled state
+   ========================================================= */
+button:disabled,
+.btn:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* =========================================================
+   TOAST: improved visibility on mobile
+   ========================================================= */
+@media (max-width: 480px) {
+    .toast-container,
+    .toast {
+        max-width: calc(100vw - 32px);
+        font-size: 0.82rem;
+    }
+}
+
+/* =========================================================
+   TINY PHONES (< 375px) — iPhone SE, Galaxy S small
+   ========================================================= */
+@media (max-width: 375px) {
+    body { font-size: 12px; }
+
+    .logo-text h1 { font-size: 0.78rem; }
+    .logo-icon { font-size: 1.2rem; }
+    .tagline, .tagline-sub, .challenge-badge { display: none; }
+
+    .mobile-call-title { font-size: 0.72rem; }
+    .mobile-call-chip { font-size: 0.58rem; padding: 1px 4px; }
+
+    .quick-phrase-rail { padding: 4px 6px; gap: 4px; }
+    .quick-phrase-btn { font-size: 0.65rem; padding: 3px 6px; }
+
+    .suggested-actions { padding: 4px 6px; }
+    .suggested-action-btn { font-size: 0.65rem; padding: 3px 6px; }
+
+    #voice-dock { padding: 6px; gap: 4px; }
+    #voice-dock .voice-dock-mic-btn { min-height: 52px; }
+
+    .text-input-container input { font-size: 13px; }
+
+    .main-content {
+        height: calc(100vh - 40px - 8px);
+        height: calc(100dvh - 40px - 8px);
+    }
+
+    .mobile-menu-dropdown { font-size: 0.78rem; }
+    .mobile-menu-item { padding: 8px 12px; }
 }

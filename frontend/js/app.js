@@ -2908,6 +2908,14 @@ class WitnessReplayApp {
                 this.stopVADListening();
             }
             
+            // Show "initializing" state on mic button
+            if (this.micBtn && trigger !== 'auto_listen') {
+                this.micBtn.classList.add('processing');
+                this.micBtn.setAttribute('aria-busy', 'true');
+                const btnText = this.micBtn.querySelector('.btn-text');
+                if (btnText) btnText.textContent = 'Starting mic...';
+            }
+
             // Request permission explicitly — this triggers the browser popup
             try {
                 const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2915,6 +2923,10 @@ class WitnessReplayApp {
                 this._micPermissionGranted = true;
             } catch (permErr) {
                 console.error('Microphone permission denied:', permErr);
+                if (this.micBtn) {
+                    this.micBtn.classList.remove('processing');
+                    this.micBtn.removeAttribute('aria-busy');
+                }
                 // Distinguish between "never asked" (no user gesture) vs actually denied
                 if (!this._micPermissionGranted && trigger === 'auto_listen') {
                     // Auto-listen tried without prior permission — silently skip
@@ -2967,6 +2979,8 @@ class WitnessReplayApp {
                 const voiceControls = document.getElementById('voice-controls');
                 if (voiceControls) voiceControls.classList.add('expanded');
                 
+                this.micBtn.classList.remove('processing');
+                this.micBtn.removeAttribute('aria-busy');
                 this.micBtn.classList.add('recording');
                 const btnText = this.micBtn.querySelector('.btn-text');
                 if (btnText) btnText.textContent = 'Listening...';
