@@ -8036,7 +8036,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/bullets', desc: 'Testimony summary bullets' },
         { cmd: '/experteval', desc: 'Expert witness evaluator' },
         { cmd: '/privileges', desc: 'Privilege log detector' },
-        { cmd: '/strength', desc: 'Testimony strength meter' }
+        { cmd: '/strength', desc: 'Testimony strength meter' },
+        { cmd: '/behavior', desc: 'Witness behavioral cues' },
+        { cmd: '/brief', desc: 'Case brief generator' },
+        { cmd: '/pacing', desc: 'Testimony pacing analysis' },
+        { cmd: '/narrative', desc: 'Narrative arc detector' },
+        { cmd: '/credcompare', desc: 'Credibility comparison' }
     ];
     
     const filter = val.toLowerCase();
@@ -11757,4 +11762,182 @@ WitnessReplayApp.prototype._showStrength = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch (e) { this.displaySystemMessage('❌ Could not measure testimony strength.'); }
+};
+
+// ── Behavioral Cues Handler ──────────────────────
+commands['/behavior'] = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/behavioral-cues`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="behavior-container">`;
+        html += `<div class="behavior-header"><span class="behavior-icon">🧠</span> Witness Behavioral Cues</div>`;
+        html += `<div class="behavior-summary">`;
+        html += `<span class="behavior-stat"><strong>${data.total_cues_found}</strong> cues found</span>`;
+        html += `<span class="behavior-stat">Dominant: <strong>${data.dominant_behavior}</strong></span>`;
+        html += `<span class="behavior-stat impact-${data.credibility_impact}">Impact: ${data.credibility_impact}</span>`;
+        html += `</div>`;
+        html += `<div class="behavior-totals">`;
+        const typeIcons = {hesitation: '😰', evasion: '🙈', confidence: '💪', deception_indicator: '🚩'};
+        const typeColors = {hesitation: '#ff9800', evasion: '#e53935', confidence: '#4caf50', deception_indicator: '#c62828'};
+        Object.entries(data.totals).forEach(([type, count]) => {
+            const pct = data.total_cues_found ? Math.round(count / data.total_cues_found * 100) : 0;
+            html += `<div class="behavior-type-bar"><span>${typeIcons[type] || '•'} ${type.replace('_', ' ')}</span><div class="beh-bar-track"><div class="beh-bar-fill" style="width:${pct}%;background:${typeColors[type]||'#666'}"></div></div><span class="beh-count">${count}</span></div>`;
+        });
+        html += `</div>`;
+        if (data.cues.length) {
+            html += `<div class="behavior-details">`;
+            data.cues.slice(0, 12).forEach(c => {
+                html += `<div class="behavior-cue-item"><span class="beh-seg">Seg ${c.segment}</span>`;
+                c.cues.forEach(cu => {
+                    html += `<span class="beh-tag beh-${cu.type}">${cu.marker}</span>`;
+                });
+                html += `<div class="beh-preview">${c.text_preview}</div></div>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze behavioral cues.'); }
+};
+
+// ── Case Brief Handler ──────────────────────
+commands['/brief'] = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/case-brief`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="brief-container">`;
+        html += `<div class="brief-header"><span class="brief-icon">📋</span> ${data.title}</div>`;
+        html += `<div class="brief-meta"><span>Created: ${data.created}</span><span>Words: ${data.word_count}</span><span class="brief-complexity brief-${data.complexity}">${data.complexity}</span></div>`;
+        html += `<div class="brief-section"><h4>📝 Overview</h4><p>${data.sections.overview}</p></div>`;
+        if (data.sections.key_facts.length) {
+            html += `<div class="brief-section"><h4>📌 Key Facts</h4>`;
+            data.sections.key_facts.forEach((f, i) => { html += `<div class="brief-fact"><span class="brief-num">${i+1}</span>${f}</div>`; });
+            html += `</div>`;
+        }
+        if (data.sections.parties_mentioned.length) {
+            html += `<div class="brief-section"><h4>👥 Parties Mentioned</h4><div class="brief-tags">`;
+            data.sections.parties_mentioned.forEach(p => { html += `<span class="brief-party">${p}</span>`; });
+            html += `</div></div>`;
+        }
+        if (data.sections.timeline_references.length) {
+            html += `<div class="brief-section"><h4>🕐 Timeline References</h4><div class="brief-tags">`;
+            data.sections.timeline_references.forEach(t => { html += `<span class="brief-time">${t}</span>`; });
+            html += `</div></div>`;
+        }
+        html += `<div class="brief-footer">Statements: ${data.sections.total_statements} | Exchanges: ${data.sections.total_exchanges}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not generate case brief.'); }
+};
+
+// ── Pacing Analysis Handler ──────────────────────
+commands['/pacing'] = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/pacing`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="pacing-container">`;
+        html += `<div class="pacing-header"><span class="pacing-icon">⏱️</span> Testimony Pacing Analysis</div>`;
+        const s = data.summary;
+        html += `<div class="pacing-summary">`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.average_word_count}</span><span class="pacing-label">Avg Words</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.pace_shifts}</span><span class="pacing-label">Pace Shifts</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.verbose_percentage}%</span><span class="pacing-label">Verbose</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val">${s.terse_percentage}%</span><span class="pacing-label">Terse</span></div>`;
+        html += `<div class="pacing-stat"><span class="pacing-val pace-${s.overall_pace}">${s.overall_pace}</span><span class="pacing-label">Overall</span></div>`;
+        html += `</div>`;
+        html += `<div class="pacing-chart">`;
+        const maxWc = Math.max(...data.segments.map(sg => sg.word_count), 1);
+        data.segments.slice(0, 30).forEach(sg => {
+            const pct = Math.round(sg.word_count / maxWc * 100);
+            const color = sg.pace === 'verbose' ? '#1565c0' : sg.pace === 'terse' ? '#e53935' : '#ff9800';
+            html += `<div class="pacing-bar" style="height:${pct}%;background:${color}" title="Seg ${sg.segment}: ${sg.word_count} words (${sg.pace})"></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="pacing-legend"><span class="pacing-leg-item" style="color:#1565c0">■ Verbose</span><span class="pacing-leg-item" style="color:#ff9800">■ Moderate</span><span class="pacing-leg-item" style="color:#e53935">■ Terse</span></div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze testimony pacing.'); }
+};
+
+// ── Narrative Arc Handler ──────────────────────
+commands['/narrative'] = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/narrative-arc`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="narrative-container">`;
+        html += `<div class="narrative-header"><span class="narrative-icon">📖</span> Narrative Arc Analysis</div>`;
+        html += `<div class="narrative-meta">`;
+        html += `<span>Climax at segment <strong>${data.climax_segment}</strong></span>`;
+        html += `<span>Peak intensity: <strong>${data.peak_intensity}</strong></span>`;
+        html += `<span>Completeness: <strong>${Math.round(data.narrative_completeness)}%</strong></span>`;
+        html += `</div>`;
+        // Phase distribution
+        html += `<div class="narrative-phases">`;
+        const phaseIcons = {exposition:'📜',rising_action:'📈',climax:'🔥',falling_action:'📉',resolution:'✅'};
+        const phaseColors = {exposition:'#78909c',rising_action:'#ff9800',climax:'#e53935',falling_action:'#7b1fa2',resolution:'#2e7d32'};
+        Object.entries(data.phase_distribution).forEach(([phase, count]) => {
+            html += `<div class="narrative-phase"><span class="narr-phase-icon">${phaseIcons[phase]||'•'}</span><span class="narr-phase-name">${phase.replace('_',' ')}</span><span class="narr-phase-count" style="background:${phaseColors[phase]||'#666'}">${count}</span></div>`;
+        });
+        html += `</div>`;
+        // Arc visualization
+        html += `<div class="narrative-arc-chart">`;
+        const maxI = Math.max(...data.arc_points.map(p => p.intensity), 1);
+        data.arc_points.slice(0, 25).forEach(pt => {
+            const h = Math.round(pt.intensity / maxI * 100);
+            const col = phaseColors[pt.phase] || '#666';
+            html += `<div class="narr-bar" style="height:${Math.max(h,5)}%;background:${col}" title="Seg ${pt.segment}: ${pt.phase} (${pt.intensity})"></div>`;
+        });
+        html += `</div>`;
+        if (data.turning_points.length) {
+            html += `<div class="narrative-turns"><strong>🔄 Turning Points:</strong>`;
+            data.turning_points.forEach(tp => {
+                const dir = tp.shift > 0 ? '↑' : '↓';
+                html += `<span class="narr-turn">Seg ${tp.segment} ${dir}${Math.abs(tp.shift)}</span>`;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not analyze narrative arc.'); }
+};
+
+// ── Credibility Comparison Handler ──────────────────────
+commands['/credcompare'] = async function(args) {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const otherId = (args || '').trim();
+    if (!otherId) { this.displaySystemMessage('⚠️ Usage: /credcompare [other-session-id]'); return; }
+    try {
+        const res = await fetch(`/api/sessions/${this.currentSessionId}/cred-compare/${otherId}`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = `<div class="credcomp-container">`;
+        html += `<div class="credcomp-header"><span class="credcomp-icon">⚖️</span> Credibility Comparison</div>`;
+        html += `<div class="credcomp-sessions">`;
+        [data.session_a, data.session_b].forEach((s, i) => {
+            const label = i === 0 ? 'A' : 'B';
+            html += `<div class="credcomp-session"><div class="credcomp-label">Witness ${label}</div>`;
+            html += `<div class="credcomp-title">${s.title}</div>`;
+            html += `<div class="credcomp-overall">${s.scores.overall}<span>/10</span></div>`;
+            Object.entries(s.scores).filter(([k]) => k !== 'overall').forEach(([k, v]) => {
+                const pct = v * 10;
+                const color = k === 'hedging' ? (v > 5 ? '#e53935' : '#ff9800') : (v >= 7 ? '#4caf50' : v >= 4 ? '#ff9800' : '#e53935');
+                html += `<div class="credcomp-metric"><span class="credcomp-metric-name">${k}</span><div class="credcomp-bar-track"><div class="credcomp-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="credcomp-metric-val">${v}</span></div>`;
+            });
+            html += `</div>`;
+        });
+        html += `</div>`;
+        const c = data.comparison;
+        const winner = c.more_credible === 'session_a' ? data.session_a.title : c.more_credible === 'session_b' ? data.session_b.title : 'Similar';
+        html += `<div class="credcomp-verdict"><strong>Verdict:</strong> ${winner} ${c.more_credible !== 'similar' ? `(+${c.overall_difference} overall)` : '— roughly equal credibility'}</div>`;
+        html += `</div>`;
+        this.displaySystemMessage(html);
+    } catch (e) { this.displaySystemMessage('❌ Could not compare credibility. Check session ID.'); }
 };

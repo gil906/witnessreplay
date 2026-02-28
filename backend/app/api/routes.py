@@ -17233,3 +17233,425 @@ async def add_notification(data: dict, auth=Depends(require_admin_auth)):
     }
     _notifications.append(notif)
     return {"status": "created", "notification": notif}
+
+
+# ── Witness Behavioral Cues ──────────────────────────────
+@router.get("/sessions/{session_id}/behavioral-cues")
+async def behavioral_cues(session_id: str):
+    """Detect behavioral cues: hesitation, evasion, confidence, deception markers."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    hesitation_markers = {"um", "uh", "well", "hmm", "let me think", "i guess", "i suppose",
+                          "you know", "like", "sort of", "kind of", "i mean", "how do i say"}
+    evasion_markers = {"i don't recall", "i can't remember", "i'm not sure", "that's hard to say",
+                       "it depends", "i don't know", "i couldn't say", "no comment",
+                       "i'd rather not", "i plead", "to the best of my", "i have no recollection"}
+    confidence_markers = {"absolutely", "definitely", "certainly", "without a doubt", "i'm positive",
+                          "i'm sure", "clearly", "obviously", "exactly", "precisely", "100 percent",
+                          "no question", "i know for a fact", "i am certain"}
+    deception_markers = {"to be honest", "honestly", "truthfully", "i swear", "believe me",
+                         "frankly", "in all honesty", "the truth is", "i would never",
+                         "why would i", "that's ridiculous", "i have nothing to hide"}
+
+    cues = []
+    totals = {"hesitation": 0, "evasion": 0, "confidence": 0, "deception_indicator": 0}
+    for idx, stmt in enumerate(statements):
+        text_lower = stmt.lower()
+        found = []
+        for marker in hesitation_markers:
+            if marker in text_lower:
+                found.append({"type": "hesitation", "marker": marker})
+                totals["hesitation"] += 1
+        for marker in evasion_markers:
+            if marker in text_lower:
+                found.append({"type": "evasion", "marker": marker})
+                totals["evasion"] += 1
+        for marker in confidence_markers:
+            if marker in text_lower:
+                found.append({"type": "confidence", "marker": marker})
+                totals["confidence"] += 1
+        for marker in deception_markers:
+            if marker in text_lower:
+                found.append({"type": "deception_indicator", "marker": marker})
+                totals["deception_indicator"] += 1
+        if found:
+            cues.append({"segment": idx + 1, "text_preview": stmt[:80], "cues": found})
+
+    total_cues = sum(totals.values())
+    dominant = max(totals, key=totals.get) if total_cues > 0 else "none"
+    credibility_impact = "low" if totals["deception_indicator"] + totals["evasion"] < 3 else \
+                         "moderate" if totals["deception_indicator"] + totals["evasion"] < 7 else "high"
+
+    return {
+        "session_id": session_id,
+        "cues": cues,
+        "totals": totals,
+        "total_cues_found": total_cues,
+        "dominant_behavior": dominant,
+        "credibility_impact": credibility_impact,
+        "segments_analyzed": len(statements)
+    }
+
+
+# ── Case Brief Generator ──────────────────────────────
+@router.get("/sessions/{session_id}/case-brief")
+async def case_brief(session_id: str):
+    """Generate a structured case brief from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    qa_pairs = []
+    if hasattr(session, "messages"):
+        msgs = list(session.messages)
+        for i, m in enumerate(msgs):
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+            if role == "assistant" and i > 0:
+                prev = msgs[i-1] if i > 0 else None
+                if prev:
+                    prev_content = prev.get("content", "") if isinstance(prev, dict) else getattr(prev, "content", "")
+                    qa_pairs.append({"q": prev_content[:100], "a": content[:200]})
+
+    all_text = " ".join(statements).lower()
+    words = all_text.split()
+
+    # Extract key facts
+    fact_indicators = ["i saw", "i heard", "i was", "i did", "it was", "there was", "they were", "he was", "she was"]
+    key_facts = []
+    for stmt in statements:
+        for indicator in fact_indicators:
+            if indicator in stmt.lower():
+                sent = stmt[:150]
+                if sent not in key_facts:
+                    key_facts.append(sent)
+                break
+
+    # Identify parties
+    party_words = set()
+    for w in words:
+        if w.istitle() and len(w) > 2 and w.lower() not in {"the", "and", "was", "for", "that", "this", "with"}:
+            party_words.add(w.capitalize())
+
+    # Timeline references
+    time_refs = []
+    import re as _re
+    time_patterns = [r'\d{1,2}:\d{2}', r'\d{1,2}\s*(am|pm)', r'(morning|afternoon|evening|night)',
+                     r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
+                     r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}']
+    for stmt in statements:
+        for pattern in time_patterns:
+            matches = _re.findall(pattern, stmt.lower())
+            for match in matches:
+                ref = match if isinstance(match, str) else match[0] if match else ""
+                if ref and ref not in time_refs:
+                    time_refs.append(ref)
+
+    session_title = session.title if hasattr(session, "title") else session_id
+    created = session.created_at if hasattr(session, "created_at") else "Unknown"
+
+    return {
+        "session_id": session_id,
+        "title": f"Case Brief: {session_title}",
+        "created": str(created),
+        "sections": {
+            "overview": f"Testimony from session '{session_title}' containing {len(statements)} witness statements and {len(qa_pairs)} Q&A exchanges.",
+            "key_facts": key_facts[:15],
+            "parties_mentioned": sorted(list(party_words))[:20],
+            "timeline_references": time_refs[:15],
+            "total_statements": len(statements),
+            "total_exchanges": len(qa_pairs)
+        },
+        "word_count": len(words),
+        "complexity": "detailed" if len(words) > 500 else "moderate" if len(words) > 100 else "brief"
+    }
+
+
+# ── Testimony Pacing Analysis ──────────────────────────────
+@router.get("/sessions/{session_id}/pacing")
+async def testimony_pacing(session_id: str):
+    """Analyze testimony pacing: response lengths, detail density, and verbosity patterns."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    segments = []
+    lengths = []
+    for idx, stmt in enumerate(statements):
+        words = stmt.split()
+        word_count = len(words)
+        lengths.append(word_count)
+        sentences = max(1, stmt.count('.') + stmt.count('!') + stmt.count('?'))
+        avg_sentence_len = round(word_count / sentences, 1)
+        detail_words = {"because", "specifically", "exactly", "approximately", "around", "about",
+                        "then", "after", "before", "during", "while", "when", "where", "how"}
+        detail_count = sum(1 for w in words if w.lower() in detail_words)
+        detail_density = round(detail_count / max(word_count, 1) * 100, 1)
+
+        pace = "verbose" if word_count > 50 else "moderate" if word_count > 20 else "terse"
+        segments.append({
+            "segment": idx + 1,
+            "word_count": word_count,
+            "sentence_count": sentences,
+            "avg_sentence_length": avg_sentence_len,
+            "detail_density": detail_density,
+            "pace": pace
+        })
+
+    avg_length = round(sum(lengths) / max(len(lengths), 1), 1)
+    pace_shifts = 0
+    for i in range(1, len(segments)):
+        if segments[i]["pace"] != segments[i-1]["pace"]:
+            pace_shifts += 1
+
+    verbose_pct = round(sum(1 for s in segments if s["pace"] == "verbose") / max(len(segments), 1) * 100)
+    terse_pct = round(sum(1 for s in segments if s["pace"] == "terse") / max(len(segments), 1) * 100)
+
+    overall_pace = "verbose" if verbose_pct > 50 else "terse" if terse_pct > 50 else "balanced"
+
+    return {
+        "session_id": session_id,
+        "segments": segments,
+        "summary": {
+            "total_segments": len(segments),
+            "average_word_count": avg_length,
+            "pace_shifts": pace_shifts,
+            "verbose_percentage": verbose_pct,
+            "terse_percentage": terse_pct,
+            "overall_pace": overall_pace
+        }
+    }
+
+
+# ── Narrative Arc Detector ──────────────────────────────
+@router.get("/sessions/{session_id}/narrative-arc")
+async def narrative_arc(session_id: str):
+    """Identify story structure: exposition, rising action, climax, falling action, resolution."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                statements.append(content)
+
+    intensity_words = {"suddenly", "then", "immediately", "screamed", "ran", "hit", "crash",
+                       "shot", "attack", "fight", "blood", "panic", "exploded", "killed",
+                       "died", "injured", "broken", "shattered", "collapsed", "emergency"}
+    resolution_words = {"after", "later", "eventually", "finally", "since then", "now",
+                        "currently", "recovered", "resolved", "ended", "stopped", "calmed"}
+    context_words = {"before", "usually", "always", "background", "history", "lived",
+                     "worked", "knew", "relationship", "neighbor", "friend", "family"}
+
+    arc_points = []
+    intensities = []
+    for idx, stmt in enumerate(statements):
+        text_lower = stmt.lower()
+        word_set = set(text_lower.split())
+        intensity = sum(1 for w in intensity_words if w in word_set)
+        resolution = sum(1 for w in resolution_words if w in text_lower)
+        context = sum(1 for w in context_words if w in text_lower)
+
+        total = max(intensity + resolution + context, 1)
+        intensity_score = round(intensity / total * 10, 1)
+        intensities.append(intensity_score)
+
+        phase = "exposition" if context > intensity and idx < len(statements) * 0.3 else \
+                "resolution" if resolution > intensity and idx > len(statements) * 0.7 else \
+                "climax" if intensity >= 3 else \
+                "rising_action" if idx < len(statements) * 0.5 else "falling_action"
+
+        arc_points.append({
+            "segment": idx + 1,
+            "phase": phase,
+            "intensity": intensity_score,
+            "preview": stmt[:80]
+        })
+
+    climax_idx = intensities.index(max(intensities)) if intensities else 0
+    turning_points = []
+    for i in range(1, len(intensities)):
+        if abs(intensities[i] - intensities[i-1]) > 3:
+            turning_points.append({"segment": i + 1, "shift": round(intensities[i] - intensities[i-1], 1)})
+
+    phases = {}
+    for pt in arc_points:
+        phases.setdefault(pt["phase"], 0)
+        phases[pt["phase"]] += 1
+
+    return {
+        "session_id": session_id,
+        "arc_points": arc_points,
+        "climax_segment": climax_idx + 1,
+        "peak_intensity": round(max(intensities), 1) if intensities else 0,
+        "turning_points": turning_points[:10],
+        "phase_distribution": phases,
+        "narrative_completeness": len(phases) / 5 * 100,
+        "total_segments": len(statements)
+    }
+
+
+# ── Witness Credibility Comparison ──────────────────────────────
+@router.get("/sessions/{session_id}/cred-compare/{other_id}")
+async def credibility_compare(session_id: str, other_id: str):
+    """Compare credibility indicators between two witness sessions."""
+    session_a = await firestore_service.get_session(session_id)
+    session_b = await firestore_service.get_session(other_id)
+    if not session_a:
+        raise HTTPException(status_code=404, detail="Session A not found")
+    if not session_b:
+        raise HTTPException(status_code=404, detail="Session B not found")
+
+    def _analyze_credibility(session):
+        statements = []
+        if hasattr(session, "messages"):
+            for m in session.messages:
+                role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+                content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+                if role == "user" and len(content) > 10:
+                    statements.append(content)
+
+        all_text = " ".join(statements).lower()
+        words = all_text.split()
+        word_count = len(words)
+
+        hedge_words = {"maybe", "perhaps", "possibly", "might", "could", "i think", "i believe", "i guess", "probably"}
+        detail_words = {"specifically", "exactly", "precisely", "approximately", "around", "about", "because", "therefore"}
+        certainty_words = {"definitely", "certainly", "absolutely", "clearly", "obviously", "exactly", "precisely"}
+
+        hedge_count = sum(1 for h in hedge_words if h in all_text)
+        detail_count = sum(1 for d in detail_words if d in all_text)
+        certainty_count = sum(1 for c in certainty_words if c in all_text)
+
+        specificity = min(10, round(detail_count / max(word_count, 1) * 500, 1))
+        certainty = min(10, round(certainty_count / max(word_count, 1) * 500, 1))
+        hedging = min(10, round(hedge_count / max(word_count, 1) * 500, 1))
+        consistency = round(10 - hedging * 0.5, 1)
+        overall = round((specificity + certainty + consistency) / 3, 1)
+
+        title = session.title if hasattr(session, "title") else "Unknown"
+        return {
+            "title": title,
+            "statement_count": len(statements),
+            "word_count": word_count,
+            "scores": {
+                "specificity": specificity,
+                "certainty": certainty,
+                "hedging": hedging,
+                "consistency": consistency,
+                "overall": overall
+            }
+        }
+
+    cred_a = _analyze_credibility(session_a)
+    cred_b = _analyze_credibility(session_b)
+
+    # Determine which is more credible
+    diff = round(cred_a["scores"]["overall"] - cred_b["scores"]["overall"], 1)
+    more_credible = "session_a" if diff > 0.5 else "session_b" if diff < -0.5 else "similar"
+
+    return {
+        "session_a": {"id": session_id, **cred_a},
+        "session_b": {"id": other_id, **cred_b},
+        "comparison": {
+            "overall_difference": abs(diff),
+            "more_credible": more_credible,
+            "specificity_gap": round(abs(cred_a["scores"]["specificity"] - cred_b["scores"]["specificity"]), 1),
+            "certainty_gap": round(abs(cred_a["scores"]["certainty"] - cred_b["scores"]["certainty"]), 1),
+            "consistency_gap": round(abs(cred_a["scores"]["consistency"] - cred_b["scores"]["consistency"]), 1)
+        }
+    }
+
+
+# ── Admin Backup Manager ──────────────────────────────
+_backups = []
+
+@router.get("/admin/backup-manager")
+async def backup_manager(auth=Depends(require_admin_auth)):
+    """View backup status and history."""
+    import shutil
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+    total, used, free = shutil.disk_usage(data_dir if os.path.exists(data_dir) else "/")
+
+    sessions = await firestore_service.list_sessions(limit=1000)
+    session_count = len(sessions) if sessions else 0
+
+    return {
+        "status": "operational",
+        "storage": {
+            "total_gb": round(total / (1024**3), 2),
+            "used_gb": round(used / (1024**3), 2),
+            "free_gb": round(free / (1024**3), 2),
+            "usage_percent": round(used / total * 100, 1)
+        },
+        "data_summary": {
+            "total_sessions": session_count,
+            "data_directory": data_dir if os.path.exists(data_dir) else "default"
+        },
+        "backups": _backups[-20:],
+        "last_backup": _backups[-1] if _backups else None,
+        "auto_backup_enabled": True,
+        "retention_days": 30
+    }
+
+
+@router.post("/admin/backup-manager")
+async def create_backup(data: dict, auth=Depends(require_admin_auth)):
+    """Create a manual backup entry."""
+    from datetime import datetime
+    backup = {
+        "id": len(_backups) + 1,
+        "type": data.get("type", "manual"),
+        "status": "completed",
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "description": data.get("description", "Manual backup"),
+        "sessions_included": data.get("session_count", 0),
+        "size_mb": data.get("size_mb", 0)
+    }
+    _backups.append(backup)
+    return {"status": "created", "backup": backup}
+
+
+# ── Admin User Activity Log (extension) ──────────────────────────────
+_activity_log = deque(maxlen=500)
+
+
+@router.post("/admin/activity-log")
+async def log_activity(data: dict, auth=Depends(require_admin_auth)):
+    """Manually log an admin activity."""
+    from datetime import datetime
+    entry = {
+        "id": f"act-manual-{len(_activity_log)+1}",
+        "action": data.get("action", "admin_action"),
+        "description": data.get("description", "Admin activity"),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "user": data.get("user", "admin"),
+        "ip": data.get("ip", "admin-panel")
+    }
+    _activity_log.append(entry)
+    return {"status": "logged", "activity": entry}

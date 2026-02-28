@@ -6317,3 +6317,25 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .nc-msg { font-size: 0.85em; color: #666; margin-top: 2px; }
 .nc-time { font-size: 0.75em; color: #999; margin-top: 4px; }
 .nc-empty { color: #999; font-style: italic; }
+
+/* ── Backup Manager ─────────────────────── */
+.backup-manager-panel { border-left: 3px solid #00897b; }
+.bkp-storage { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.bkp-storage-stat { padding: 8px 14px; background: rgba(0,137,123,0.06); border-radius: 8px; text-align: center; }
+.bkp-storage-stat strong { display: block; font-size: 1.2em; color: #00897b; }
+.bkp-storage-stat span { font-size: 0.78em; color: #888; }
+.bkp-usage-bar { height: 10px; background: rgba(0,0,0,0.06); border-radius: 5px; overflow: hidden; margin-bottom: 12px; }
+.bkp-usage-fill { height: 100%; border-radius: 5px; background: #00897b; transition: width 0.3s; }
+.bkp-list { display: flex; flex-direction: column; gap: 6px; }
+.bkp-entry { display: flex; justify-content: space-between; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 6px; font-size: 0.88em; }
+.bkp-entry .bkp-status { color: #2e7d32; font-weight: 600; }
+
+/* ── Activity Log ─────────────────────── */
+.activity-log-panel { border-left: 3px solid #5e35b1; }
+.act-summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.act-type-badge { padding: 3px 10px; background: rgba(94,53,177,0.08); border-radius: 10px; font-size: 0.82em; color: #5e35b1; }
+.act-list { display: flex; flex-direction: column; gap: 6px; }
+.act-entry { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(0,0,0,0.02); border-radius: 6px; font-size: 0.88em; }
+.act-action { font-weight: 600; color: #5e35b1; min-width: 120px; }
+.act-desc { flex: 1; margin: 0 8px; }
+.act-time { font-size: 0.8em; color: #888; min-width: 80px; text-align: right; }

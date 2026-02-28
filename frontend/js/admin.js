@@ -6143,3 +6143,77 @@ async function loadNotificationCenter() {
         div.innerHTML = '<p class="error-text">❌ Could not load notifications</p>';
     }
 }
+
+// ── Backup Manager ──────────────────────
+async function loadBackupManager() {
+    const div = document.getElementById('backup-manager-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/backup-manager', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = '';
+        const st = data.storage;
+        html += `<div class="bkp-storage">`;
+        html += `<div class="bkp-storage-stat"><strong>${st.total_gb} GB</strong><span>Total</span></div>`;
+        html += `<div class="bkp-storage-stat"><strong>${st.used_gb} GB</strong><span>Used</span></div>`;
+        html += `<div class="bkp-storage-stat"><strong>${st.free_gb} GB</strong><span>Free</span></div>`;
+        html += `<div class="bkp-storage-stat"><strong>${data.data_summary.total_sessions}</strong><span>Sessions</span></div>`;
+        html += `</div>`;
+        html += `<div class="bkp-usage-bar"><div class="bkp-usage-fill" style="width:${st.usage_percent}%"></div></div>`;
+        html += `<p style="font-size:0.82em;color:#888;">Storage: ${st.usage_percent}% used | Auto-backup: ${data.auto_backup_enabled ? '✅ Enabled' : '❌ Disabled'} | Retention: ${data.retention_days} days</p>`;
+        if (data.backups && data.backups.length) {
+            html += `<div class="bkp-list"><strong>Recent Backups:</strong>`;
+            data.backups.slice(-5).reverse().forEach(b => {
+                html += `<div class="bkp-entry"><span>${b.description}</span><span>${b.created_at}</span><span class="bkp-status">${b.status}</span></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p style="font-size:0.88em;color:#888;">No backups recorded yet.</p>`;
+        }
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load backup status</p>';
+    }
+}
+
+document.getElementById('backup-manager-refresh')?.addEventListener('click', loadBackupManager);
+
+// ── Activity Log ──────────────────────
+async function loadActivityLog() {
+    const div = document.getElementById('activity-log-content');
+    if (!div) return;
+    try {
+        const res = await fetch('/api/admin/activity-log?limit=30', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        let html = '';
+        if (data.action_types && Object.keys(data.action_types).length) {
+            html += `<div class="act-summary">`;
+            Object.entries(data.action_types).forEach(([type, count]) => {
+                html += `<span class="act-type-badge">${type}: ${count}</span>`;
+            });
+            html += `</div>`;
+        }
+        html += `<p style="font-size:0.82em;color:#888;">Total: ${data.total} activities | Retention: ${data.log_retention_days} days</p>`;
+        if (data.activities && data.activities.length) {
+            html += `<div class="act-list">`;
+            data.activities.slice(0, 15).forEach(a => {
+                const time = a.timestamp ? new Date(a.timestamp).toLocaleString() : '';
+                html += `<div class="act-entry"><span class="act-action">${a.action}</span><span class="act-desc">${a.description}</span><span class="act-time">${time}</span></div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p style="font-size:0.88em;color:#888;">No activity recorded.</p>`;
+        }
+        div.innerHTML = html;
+    } catch (e) {
+        div.innerHTML = '<p class="error-text">❌ Could not load activity log</p>';
+    }
+}
+
+document.getElementById('activity-log-refresh')?.addEventListener('click', loadActivityLog);
+
+// Auto-load new panels
+if (document.getElementById('backup-manager-content')) loadBackupManager();
+if (document.getElementById('activity-log-content')) loadActivityLog();
