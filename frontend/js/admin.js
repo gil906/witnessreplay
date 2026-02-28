@@ -341,6 +341,7 @@ class AdminPortal {
         this._initQuickActions();
         this._initActivityHeatmap();
         this._initDataRetention();
+        this._loadDataRetention();
     }
     
     _initModalKeyboardNav() {
