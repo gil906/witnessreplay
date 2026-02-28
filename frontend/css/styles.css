@@ -4413,7 +4413,15 @@ body.compact-chat .msg-time {
     }
 
     .quick-phrase-rail {
-        display: flex;
+        display: none !important;
+    }
+
+    /* Suggested actions & mode toggles — all in hamburger menu on mobile */
+    .suggested-actions {
+        display: none !important;
+    }
+    .mode-toggles {
+        display: none !important;
     }
 
     .voice-dock {
