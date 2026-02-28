@@ -1201,6 +1201,14 @@ class WitnessReplayApp {
             { id: 'comfort-break-btn', label: '☕ Take a break' },
             { id: 'comfort-support-btn', label: '💚 Get support' },
             { type: 'separator' },
+            { type: 'label', text: 'Panels' },
+            { type: 'toggle-panel', label: '📊 Report Progress', selector: '#investigation-progress' },
+            { type: 'toggle-panel', label: '📈 Scene Stats', selector: '.scene-stats' },
+            { type: 'toggle-panel', label: '🌤️ Environment', selector: '#environmental-conditions-panel' },
+            { type: 'toggle-panel', label: '🎨 Scene Elements', selector: '#scene-editor-container' },
+            { type: 'toggle-panel', label: '📋 Evidence Board', selector: '#evidence-board' },
+            { type: 'toggle-panel', label: '📜 Version History', selector: '.timeline-panel' },
+            { type: 'separator' },
             { type: 'label', text: 'Settings' },
             { id: 'auto-scroll-toggle', label: this.autoScrollEnabled ? '⇣ Auto-scroll: On' : '⏸ Auto-scroll: Off' },
             { id: 'compact-mode-toggle', label: this.compactMode ? '▤ Compact mode: On' : '▤ Compact mode: Off' },
@@ -1222,6 +1230,21 @@ class WitnessReplayApp {
                 lbl.className = 'dropdown-section-label';
                 lbl.textContent = entry.text;
                 menu.appendChild(lbl);
+                return;
+            }
+            if (entry.type === 'toggle-panel') {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'modern-dropdown-item';
+                const el = document.querySelector(entry.selector);
+                const isShown = el?.classList.contains('panel-shown');
+                item.textContent = entry.label + (isShown ? ' ✓' : '');
+                item.addEventListener('click', () => {
+                    const target = document.querySelector(entry.selector);
+                    if (target) target.classList.toggle('panel-shown');
+                    this._syncTextToolsMenu();
+                });
+                menu.appendChild(item);
                 return;
             }
             const { id, label, action } = entry;
