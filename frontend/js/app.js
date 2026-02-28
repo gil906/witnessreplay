@@ -1190,6 +1190,13 @@ class WitnessReplayApp {
             { id: 'upload-sketch-btn', label: '✏️ Upload sketch' },
             { id: 'camera-btn', label: '📸 Take photo now' },
             { id: 'retry-last-btn', label: '↻ Retry last message' },
+            { type: 'separator' },
+            { type: 'label', text: 'Quick Actions' },
+            { id: '__suggest_correct', label: '✏️ Correct something', action: 'correct' },
+            { id: '__suggest_generate', label: '🎬 Generate scene', action: 'generate' },
+            { id: '__suggest_details', label: '➕ Add more details', action: 'details' },
+            { type: 'separator' },
+            { type: 'label', text: 'Settings' },
             { id: 'auto-scroll-toggle', label: this.autoScrollEnabled ? '⇣ Auto-scroll: On' : '⏸ Auto-scroll: Off' },
             { id: 'compact-mode-toggle', label: this.compactMode ? '▤ Compact mode: On' : '▤ Compact mode: Off' },
             { id: 'guided-mode-btn', label: '📋 Guided mode' },
@@ -1198,7 +1205,42 @@ class WitnessReplayApp {
         ];
 
         menu.innerHTML = '';
-        items.forEach(({ id, label }) => {
+        items.forEach((entry) => {
+            if (entry.type === 'separator') {
+                const hr = document.createElement('hr');
+                hr.className = 'dropdown-separator';
+                menu.appendChild(hr);
+                return;
+            }
+            if (entry.type === 'label') {
+                const lbl = document.createElement('div');
+                lbl.className = 'dropdown-section-label';
+                lbl.textContent = entry.text;
+                menu.appendChild(lbl);
+                return;
+            }
+            const { id, label, action } = entry;
+            // Suggestion actions don't have a source element
+            if (action) {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'modern-dropdown-item';
+                item.textContent = label;
+                item.disabled = !this.ws || this.ws.readyState !== WebSocket.OPEN;
+                item.addEventListener('click', () => {
+                    const textMap = { correct: 'I want to correct something about the scene.', generate: 'Please generate the scene image now.', details: 'I have more details to add about what I saw.' };
+                    const text = textMap[action];
+                    if (text && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ type: 'text', data: { text } }));
+                        this.displayMessage(text, 'user');
+                    }
+                    const dropdown = document.getElementById('text-tools-dropdown');
+                    dropdown?.classList.remove('open');
+                    dropdown?.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+                });
+                menu.appendChild(item);
+                return;
+            }
             const source = document.getElementById(id);
             if (!source) return;
             source.classList.add('menu-hidden-source');

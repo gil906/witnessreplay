@@ -4505,8 +4505,17 @@ body.compact-chat .msg-time {
     
     /* Ensure suggested actions don't take too much space */
     .suggested-actions {
-        padding: var(--spacing-xs) var(--spacing-sm);
-        flex-shrink: 0;
+        display: none !important;
+    }
+
+    /* Mode toggles hidden — in hamburger menu */
+    .mode-toggles {
+        display: none !important;
+    }
+
+    /* Quick phrases hidden on mobile — cleaner interface */
+    .quick-phrase-rail {
+        display: none !important;
     }
 
     /* Modal adjustments - near fullscreen */
@@ -10219,11 +10228,36 @@ img.loaded,
     cursor: not-allowed;
 }
 
+.dropdown-separator {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 4px 12px;
+}
+.dropdown-section-label {
+    padding: 8px 16px 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+/* On desktop: hide raw suggested-actions and mode-toggles — they're in Tools dropdown */
 @media (min-width: 769px) {
     .menu-hidden-source {
         display: none !important;
     }
     body.modern-simplified-ui .mode-toggles {
+        display: none !important;
+    }
+    .suggested-actions {
+        display: none !important;
+    }
+    .mode-toggles {
+        display: none !important;
+    }
+    .quick-phrase-rail {
         display: none !important;
     }
 }
@@ -10367,6 +10401,9 @@ img.loaded,
         -webkit-backdrop-filter: var(--glass-blur-heavy) var(--glass-saturate);
         transform: translateY(100%);
         transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        max-height: 70vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
     
     /* Drag handle indicator */
@@ -10414,6 +10451,15 @@ img.loaded,
         border: none;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
         margin: var(--spacing-xs) var(--spacing-md);
+    }
+    .mobile-menu-section-label {
+        padding: 8px 20px 4px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        pointer-events: none;
     }
 
     /* Fix main content height for slimmer header */
@@ -10580,6 +10626,14 @@ body.light-mode input, body.light-mode textarea, body.light-mode select {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     border-color: var(--border);
+}
+
+body.light-mode .dropdown-separator {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+body.light-mode .dropdown-section-label,
+body.light-mode .mobile-menu-section-label {
+    color: var(--text-secondary);
 }
 
 /* =========================================================
