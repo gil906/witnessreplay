@@ -217,6 +217,66 @@
                 </div>
             </section>
 
+            <!-- Activity Sparkline Chart -->
+            <section class="activity-chart-panel" id="activity-chart-panel">
+                <div class="activity-chart-header">
+                    <span class="activity-chart-title">📈 Activity (Last 7 Days)</span>
+                    <span class="activity-chart-total" id="activity-chart-total">-- reports</span>
+                </div>
+                <div class="activity-chart-container">
+                    <svg id="activity-sparkline" viewBox="0 0 300 60" preserveAspectRatio="none" class="activity-sparkline">
+                        <defs>
+                            <linearGradient id="sparkline-gradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="rgba(96,165,250,0.3)"/>
+                                <stop offset="100%" stop-color="rgba(96,165,250,0)"/>
+                            </linearGradient>
+                        </defs>
+                        <path id="sparkline-area" fill="url(#sparkline-gradient)" d="M0,60 L300,60"/>
+                        <path id="sparkline-line" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M0,60 L300,60"/>
+                    </svg>
+                    <div class="activity-chart-labels" id="activity-chart-labels"></div>
+                </div>
+            </section>
+
+            <!-- System Health Monitor -->
+            <section class="system-health-panel" id="system-health-panel">
+                <button class="quota-toggle" id="health-toggle" type="button">
+                    <span class="quota-toggle-icon">▸</span> 💻 System Health
+                    <span class="health-status-badge" id="health-status-badge">Checking...</span>
+                </button>
+                <div class="health-content" id="health-content" style="display: none;">
+                    <div class="health-grid">
+                        <div class="health-metric">
+                            <div class="health-metric-label">CPU</div>
+                            <div class="health-bar"><div class="health-bar-fill" id="health-cpu-bar" style="width:0%"></div></div>
+                            <div class="health-metric-value" id="health-cpu">--%</div>
+                        </div>
+                        <div class="health-metric">
+                            <div class="health-metric-label">Memory</div>
+                            <div class="health-bar"><div class="health-bar-fill" id="health-mem-bar" style="width:0%"></div></div>
+                            <div class="health-metric-value" id="health-mem">--%</div>
+                        </div>
+                        <div class="health-metric">
+                            <div class="health-metric-label">Disk</div>
+                            <div class="health-bar"><div class="health-bar-fill" id="health-disk-bar" style="width:0%"></div></div>
+                            <div class="health-metric-value" id="health-disk">--%</div>
+                        </div>
+                        <div class="health-metric">
+                            <div class="health-metric-label">Uptime</div>
+                            <div class="health-metric-value" id="health-uptime">--</div>
+                        </div>
+                        <div class="health-metric">
+                            <div class="health-metric-label">Avg Response</div>
+                            <div class="health-metric-value" id="health-response">-- ms</div>
+                        </div>
+                        <div class="health-metric">
+                            <div class="health-metric-label">WebSockets</div>
+                            <div class="health-metric-value" id="health-ws">--</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Compact Quota Widget -->
             <section class="quota-compact" id="quota-dashboard">
                 <button class="quota-toggle" id="quota-toggle" type="button">

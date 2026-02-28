@@ -464,7 +464,7 @@ class WitnessReplayApp {
             }
             this.sendTextMessage();
         });
-        this.textInput.addEventListener('input', () => this._updateCharCounter());
+        this.textInput.addEventListener('input', () => { this._updateCharCounter(); this._showSlashHint(); });
         this.newSessionBtn.addEventListener('click', () => this.createNewSession());
         this.sessionsListBtn.addEventListener('click', () => this.showSessionsList());
         this.helpBtn.addEventListener('click', () => this.ui.showOnboarding());
@@ -2544,17 +2544,45 @@ class WitnessReplayApp {
             this.updateConnectionStatus('disconnected');
             this._updateMicState('disconnected');
             this.ui.setStatus('Connection lost - Please reload', 'default');
+            // Show inline reconnect banner
+            this._showReconnectBanner();
             return;
         }
         const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempt), this._maxReconnectDelay);
         this._reconnectAttempt++;
         console.debug(`WebSocket reconnect attempt ${this._reconnectAttempt} in ${delay}ms`);
-        this.ui.showToast(
-            `🔄 Reconnecting in ${Math.floor(delay/1000)}s (attempt ${this._reconnectAttempt}/10)`,
-            'warning',
-            delay
-        );
+        
+        // Show countdown in status bar
+        const secs = Math.ceil(delay / 1000);
+        this.ui.setStatus(`Reconnecting in ${secs}s (attempt ${this._reconnectAttempt}/10)...`, 'processing');
+        
+        // Live countdown
+        let remaining = secs;
+        if (this._reconnectCountdown) clearInterval(this._reconnectCountdown);
+        this._reconnectCountdown = setInterval(() => {
+            remaining--;
+            if (remaining > 0) {
+                this.ui.setStatus(`Reconnecting in ${remaining}s (attempt ${this._reconnectAttempt}/10)...`, 'processing');
+            } else {
+                clearInterval(this._reconnectCountdown);
+                this._reconnectCountdown = null;
+            }
+        }, 1000);
+        
         this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);
+    }
+
+    _showReconnectBanner() {
+        if (document.getElementById('reconnect-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'reconnect-banner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#1e40af,#7c3aed);color:#fff;padding:12px 20px;text-align:center;z-index:99999;font-size:0.9rem;display:flex;align-items:center;justify-content:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+        banner.innerHTML = `
+            <span>📡 Connection to Detective Ray was lost</span>
+            <button onclick="location.reload()" style="background:#fff;color:#1e40af;border:none;padding:6px 16px;border-radius:8px;font-weight:600;cursor:pointer;">Reconnect</button>
+            <button onclick="this.parentElement.remove()" style="background:transparent;color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.3);padding:6px 12px;border-radius:8px;cursor:pointer;">Dismiss</button>
+        `;
+        document.body.appendChild(banner);
     }
     
     updateConnectionStatus(status) {
@@ -3222,6 +3250,13 @@ class WitnessReplayApp {
     sendTextMessage() {
         const text = this.textInput.value.trim();
         if (!text) return;
+        
+        // Slash command support
+        if (text.startsWith('/')) {
+            this._handleSlashCommand(text);
+            return;
+        }
+        
         this._autoListenPausedUntilManual = false;
         this._syncAutoListenButtonState();
         this.lastUserMessage = text;
@@ -3426,14 +3461,36 @@ class WitnessReplayApp {
     
     _showTyping() {
         const el = document.getElementById('typing-indicator');
-        if (el) el.classList.remove('hidden');
-        // Scroll
+        if (el) {
+            el.classList.remove('hidden');
+            // Cycle through contextual thinking messages
+            const label = el.querySelector('.typing-label');
+            if (label) {
+                const messages = [
+                    'Detective Ray is analyzing...',
+                    'Reviewing your statement...',
+                    'Reconstructing the scene...',
+                    'Processing details...',
+                    'Thinking carefully...'
+                ];
+                label.textContent = messages[0];
+                let idx = 0;
+                this._typingMsgInterval = setInterval(() => {
+                    idx = (idx + 1) % messages.length;
+                    label.textContent = messages[idx];
+                }, 3000);
+            }
+        }
         this._scrollChatToBottom();
     }
     
     _hideTyping() {
         const el = document.getElementById('typing-indicator');
         if (el) el.classList.add('hidden');
+        if (this._typingMsgInterval) {
+            clearInterval(this._typingMsgInterval);
+            this._typingMsgInterval = null;
+        }
     }
     
     updateScene(data) {
@@ -5613,11 +5670,7 @@ class WitnessReplayApp {
     // ======================================
     
     showShortcuts() {
-        const overlay = document.getElementById('shortcuts-overlay');
-        if (overlay) {
-            overlay.classList.remove('hidden');
-            this.playSound('click');
-        }
+        this._showKeyboardShortcutsHelp();
     }
     
     hideShortcuts() {
@@ -7416,3 +7469,194 @@ function toggleAerialView() {
     container.style.position = 'relative';
     container.appendChild(svg);
 }
+
+// ── Slash Commands — Quick actions from chat input ─────────────────
+WitnessReplayApp.prototype._handleSlashCommand = function(text) {
+    const cmd = text.split(/\s+/)[0].toLowerCase();
+    const arg = text.slice(cmd.length).trim();
+    
+    const commands = {
+        '/help': () => {
+            this.displaySystemMessage(
+                '📋 <b>Available Commands</b><br>' +
+                '<code>/summary</code> — Get a summary of the current interview<br>' +
+                '<code>/timeline</code> — Show event timeline<br>' +
+                '<code>/export</code> — Export this session<br>' +
+                '<code>/scene</code> — Generate a scene reconstruction<br>' +
+                '<code>/new</code> — Start a new report<br>' +
+                '<code>/clear</code> — Clear chat display<br>' +
+                '<code>/status</code> — Show connection status<br>' +
+                '<code>/shortcuts</code> — Show keyboard shortcuts<br>' +
+                '<code>/help</code> — Show this help'
+            );
+        },
+        '/summary': () => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'text', data: { text: 'Please provide a concise summary of everything discussed so far.' } }));
+                this.displayMessage('/summary', 'user');
+                this.setStatus('Generating summary...');
+                this._setConversationState('thinking');
+            } else {
+                this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
+            }
+        },
+        '/timeline': () => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'text', data: { text: 'Please reconstruct a detailed timeline of events based on everything described so far.' } }));
+                this.displayMessage('/timeline', 'user');
+                this.setStatus('Building timeline...');
+                this._setConversationState('thinking');
+            } else {
+                this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
+            }
+        },
+        '/scene': () => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'text', data: { text: 'Generate a detailed scene reconstruction image based on everything described.' } }));
+                this.displayMessage('/scene', 'user');
+                this.setStatus('Generating scene...');
+                this._setConversationState('thinking');
+            } else {
+                this.displaySystemMessage('⚠️ Not connected. Please wait for connection.');
+            }
+        },
+        '/export': () => {
+            if (this.sessionId) {
+                window.open(`/api/sessions/${this.sessionId}/export/evidence?format=pdf`, '_blank');
+                this.displaySystemMessage('📄 Exporting session...');
+            } else {
+                this.displaySystemMessage('⚠️ No active session to export.');
+            }
+        },
+        '/new': () => {
+            this.createNewSession();
+        },
+        '/clear': () => {
+            const transcript = document.getElementById('chat-transcript');
+            if (transcript) {
+                const empty = transcript.querySelector('.empty-state');
+                transcript.innerHTML = '';
+                if (empty) transcript.appendChild(empty);
+            }
+            this.displaySystemMessage('🧹 Chat display cleared. Session data is preserved.');
+        },
+        '/status': () => {
+            const wsState = this.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][this.ws.readyState] : 'NONE';
+            this.displaySystemMessage(
+                `🔗 <b>Connection Status</b><br>` +
+                `WebSocket: ${wsState}<br>` +
+                `Session: ${this.sessionId || 'none'}<br>` +
+                `Messages: ${this.statementCount || 0}`
+            );
+        },
+        '/shortcuts': () => {
+            this._showKeyboardShortcutsHelp();
+        }
+    };
+    
+    const handler = commands[cmd];
+    if (handler) {
+        handler();
+    } else {
+        this.displaySystemMessage(`❓ Unknown command: <code>${cmd}</code>. Type <code>/help</code> for available commands.`);
+    }
+    this.textInput.value = '';
+    this._updateCharCounter();
+};
+
+// ── Keyboard Shortcuts Help Panel ─────────────────
+WitnessReplayApp.prototype._showKeyboardShortcutsHelp = function() {
+    let overlay = document.getElementById('shortcuts-overlay');
+    if (overlay) { overlay.remove(); return; }
+    
+    overlay = document.createElement('div');
+    overlay.id = 'shortcuts-overlay';
+    overlay.className = 'shortcuts-overlay';
+    overlay.innerHTML = `
+        <div class="shortcuts-panel">
+            <div class="shortcuts-header">
+                <h3>⌨️ Keyboard Shortcuts</h3>
+                <button class="shortcuts-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="shortcuts-grid">
+                <div class="shortcut-group">
+                    <h4>General</h4>
+                    <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd> <span>Command palette</span></div>
+                    <div class="shortcut-row"><kbd>?</kbd> <span>This help panel</span></div>
+                    <div class="shortcut-row"><kbd>Esc</kbd> <span>Close dialogs</span></div>
+                    <div class="shortcut-row"><kbd>Enter</kbd> <span>Send message</span></div>
+                </div>
+                <div class="shortcut-group">
+                    <h4>Chat Commands</h4>
+                    <div class="shortcut-row"><kbd>/help</kbd> <span>Show all commands</span></div>
+                    <div class="shortcut-row"><kbd>/summary</kbd> <span>Get interview summary</span></div>
+                    <div class="shortcut-row"><kbd>/timeline</kbd> <span>Reconstruct timeline</span></div>
+                    <div class="shortcut-row"><kbd>/scene</kbd> <span>Generate scene image</span></div>
+                    <div class="shortcut-row"><kbd>/export</kbd> <span>Export session</span></div>
+                    <div class="shortcut-row"><kbd>/new</kbd> <span>New report</span></div>
+                    <div class="shortcut-row"><kbd>/status</kbd> <span>Connection info</span></div>
+                </div>
+            </div>
+        </div>
+    `;
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay || e.target.classList.contains('shortcuts-close')) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+};
+
+// ── Slash Command Autocomplete Hint ─────────────────
+WitnessReplayApp.prototype._showSlashHint = function() {
+    const existing = document.getElementById('slash-hint');
+    if (existing) existing.remove();
+    
+    const val = this.textInput.value;
+    if (!val.startsWith('/') || val.includes(' ')) return;
+    
+    const cmds = [
+        { cmd: '/help', desc: 'Show all commands' },
+        { cmd: '/summary', desc: 'Interview summary' },
+        { cmd: '/timeline', desc: 'Reconstruct timeline' },
+        { cmd: '/scene', desc: 'Generate scene image' },
+        { cmd: '/export', desc: 'Export session' },
+        { cmd: '/new', desc: 'New report' },
+        { cmd: '/clear', desc: 'Clear chat display' },
+        { cmd: '/status', desc: 'Connection info' },
+        { cmd: '/shortcuts', desc: 'Keyboard shortcuts' }
+    ];
+    
+    const filter = val.toLowerCase();
+    const matches = cmds.filter(c => c.cmd.startsWith(filter));
+    if (!matches.length) return;
+    
+    const hint = document.createElement('div');
+    hint.id = 'slash-hint';
+    hint.className = 'slash-hint';
+    matches.forEach((m, i) => {
+        const item = document.createElement('div');
+        item.className = 'slash-hint-item' + (i === 0 ? ' active' : '');
+        item.innerHTML = `<span class="slash-hint-cmd">${m.cmd}</span><span class="slash-hint-desc">${m.desc}</span>`;
+        item.addEventListener('click', () => {
+            this.textInput.value = m.cmd;
+            this.textInput.focus();
+            hint.remove();
+        });
+        hint.appendChild(item);
+    });
+    
+    // Position relative to text input area
+    const inputBar = this.textInput.closest('.text-input-row') || this.textInput.parentElement;
+    if (inputBar) {
+        inputBar.style.position = 'relative';
+        inputBar.appendChild(hint);
+    }
+    
+    // Close when clicking outside
+    const closeOnClick = (e) => {
+        if (!hint.contains(e.target) && e.target !== this.textInput) {
+            hint.remove();
+            document.removeEventListener('click', closeOnClick);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeOnClick), 50);
+};

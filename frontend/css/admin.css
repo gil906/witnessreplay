@@ -5506,3 +5506,116 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .filter-panel-header {
     display: none !important;
 }
+
+/* ── System Health Monitor ─────────────────── */
+.system-health-panel {
+    background: var(--glass-bg, rgba(16, 22, 32, 0.55));
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+.health-status-badge {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: rgba(74, 222, 128, 0.12);
+    color: #4ade80;
+}
+.health-status-badge.degraded {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+}
+.health-status-badge.critical {
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+}
+.health-content {
+    padding: 12px 16px;
+}
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+@media (max-width: 640px) {
+    .health-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.health-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.health-metric-label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+.health-metric-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    font-family: 'JetBrains Mono', monospace;
+}
+.health-bar {
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.health-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #4ade80, #60a5fa);
+    transition: width 0.5s ease;
+}
+.health-bar-fill.warn {
+    background: linear-gradient(90deg, #fbbf24, #f97316);
+}
+.health-bar-fill.danger {
+    background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+/* ── Activity Sparkline Chart ─────────────────── */
+.activity-chart-panel {
+    background: var(--glass-bg, rgba(16, 22, 32, 0.55));
+    border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+.activity-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.activity-chart-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+.activity-chart-total {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+}
+.activity-chart-container {
+    position: relative;
+}
+.activity-sparkline {
+    width: 100%;
+    height: 60px;
+    display: block;
+}
+.activity-chart-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 0.65rem;
+    color: #64748b;
+}

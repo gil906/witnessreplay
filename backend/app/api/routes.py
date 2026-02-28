@@ -11147,6 +11147,83 @@ async def delete_webhook(webhook_id: str, auth=Depends(require_admin_auth)):
     return {"status": "deleted"}
 
 
+# ── System Health Monitoring ───────────────────
+
+@router.get("/admin/system-health")
+async def get_system_health(auth=Depends(require_admin_auth)):
+    """Get comprehensive system health information for admin dashboard."""
+    import psutil
+    import platform
+
+    try:
+        # CPU and memory
+        cpu_percent = psutil.cpu_percent(interval=0.5)
+        mem = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+
+        # Process-specific info
+        proc = psutil.Process()
+        proc_mem = proc.memory_info()
+        proc_create_time = datetime.fromtimestamp(proc.create_time(), tz=timezone.utc)
+        uptime_seconds = (datetime.now(timezone.utc) - proc_create_time).total_seconds()
+
+        # Response time from metrics
+        avg_response_ms = None
+        try:
+            from app.services.metrics import metrics_collector
+            stats = metrics_collector.get_stats()
+            avg_response_ms = stats.get("response_time", {}).get("avg_ms")
+        except Exception:
+            pass
+
+        # Active WebSocket connections
+        active_ws = 0
+        try:
+            from app.api.websocket import active_connections
+            active_ws = len(active_connections) if hasattr(active_connections, '__len__') else 0
+        except Exception:
+            pass
+
+        return {
+            "system": {
+                "platform": platform.platform(),
+                "python": platform.python_version(),
+                "cpu_percent": cpu_percent,
+                "cpu_count": psutil.cpu_count(),
+                "memory_total_mb": round(mem.total / 1048576),
+                "memory_used_mb": round(mem.used / 1048576),
+                "memory_percent": mem.percent,
+                "disk_total_gb": round(disk.total / 1073741824, 1),
+                "disk_used_gb": round(disk.used / 1073741824, 1),
+                "disk_percent": round(disk.percent, 1),
+            },
+            "process": {
+                "pid": proc.pid,
+                "memory_rss_mb": round(proc_mem.rss / 1048576, 1),
+                "uptime_seconds": round(uptime_seconds),
+                "uptime_human": f"{int(uptime_seconds // 3600)}h {int((uptime_seconds % 3600) // 60)}m",
+                "threads": proc.num_threads(),
+            },
+            "app": {
+                "avg_response_ms": round(avg_response_ms, 1) if avg_response_ms else None,
+                "active_websockets": active_ws,
+                "environment": settings.environment,
+                "debug": settings.debug,
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except ImportError:
+        return {
+            "error": "psutil not installed",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+
 # ── Feature 35: Data Backup and Restore ───────────────────
 
 @router.get("/admin/backup")

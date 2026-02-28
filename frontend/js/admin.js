@@ -334,6 +334,7 @@ class AdminPortal {
         this.fetchAndDisplayVersion();
         this.loadQuotaDashboard();
         this.startQuotaRefresh();
+        this.initSystemHealthPanel();
     }
     
     _initModalKeyboardNav() {
@@ -692,6 +693,9 @@ class AdminPortal {
         document.getElementById('unassigned-reports').textContent = unassigned;
         document.getElementById('active-today').textContent = activeToday;
         document.getElementById('total-scenes').textContent = totalScenes;
+        
+        // Render activity sparkline
+        this.renderActivitySparkline();
         
         this.updateNotifications();
         this.renderRecentActions();
@@ -4788,6 +4792,130 @@ class AdminPortal {
                 this._startSessionTimer();
             }
         } catch(e) { console.error(e); }
+    }
+
+    // ── Activity Sparkline Chart ─────────────────
+    renderActivitySparkline() {
+        if (!this.cases?.length) return;
+        
+        // Calculate reports per day for last 7 days
+        const days = 7;
+        const now = new Date();
+        const counts = new Array(days).fill(0);
+        const labels = [];
+        
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const key = d.toDateString();
+            labels.push(d.toLocaleDateString('en', { weekday: 'short' }));
+            
+            this.cases.forEach(c => {
+                const cDate = new Date(c.created_at || c.updated_at);
+                if (cDate.toDateString() === key) counts[days - 1 - i]++;
+            });
+        }
+        
+        const total = counts.reduce((a, b) => a + b, 0);
+        const totalEl = document.getElementById('activity-chart-total');
+        if (totalEl) totalEl.textContent = `${total} reports`;
+        
+        // Render sparkline SVG
+        const max = Math.max(...counts, 1);
+        const w = 300, h = 55, pad = 5;
+        const points = counts.map((v, i) => {
+            const x = (i / (counts.length - 1)) * w;
+            const y = h - pad - ((v / max) * (h - pad * 2));
+            return `${x},${y}`;
+        });
+        
+        const lineEl = document.getElementById('sparkline-line');
+        const areaEl = document.getElementById('sparkline-area');
+        if (lineEl) lineEl.setAttribute('d', `M${points.join(' L')}`);
+        if (areaEl) areaEl.setAttribute('d', `M0,${h} L${points.join(' L')} L${w},${h} Z`);
+        
+        // Labels
+        const labelsEl = document.getElementById('activity-chart-labels');
+        if (labelsEl) labelsEl.innerHTML = labels.map(l => `<span>${l}</span>`).join('');
+    }
+
+    // ── System Health Panel ─────────────────
+    initSystemHealthPanel() {
+        const toggle = document.getElementById('health-toggle');
+        const content = document.getElementById('health-content');
+        if (toggle && content) {
+            toggle.addEventListener('click', () => {
+                const isOpen = content.style.display !== 'none';
+                content.style.display = isOpen ? 'none' : 'block';
+                toggle.querySelector('.quota-toggle-icon').textContent = isOpen ? '▸' : '▾';
+            });
+        }
+        this.fetchSystemHealth();
+        this._healthInterval = setInterval(() => this.fetchSystemHealth(), 30000);
+    }
+
+    async fetchSystemHealth() {
+        try {
+            const resp = await fetch('/api/admin/system-health', {
+                headers: { 'Authorization': `Bearer ${this.authToken}` }
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            this.renderSystemHealth(data);
+        } catch(e) {
+            console.warn('Health fetch failed:', e);
+        }
+    }
+
+    renderSystemHealth(data) {
+        const badge = document.getElementById('health-status-badge');
+        if (data.error) {
+            if (badge) { badge.textContent = 'Error'; badge.className = 'health-status-badge critical'; }
+            return;
+        }
+
+        const sys = data.system || {};
+        const proc = data.process || {};
+        const app = data.app || {};
+
+        // Update badge
+        if (badge) {
+            const maxUsage = Math.max(sys.cpu_percent || 0, sys.memory_percent || 0, sys.disk_percent || 0);
+            if (maxUsage > 90) {
+                badge.textContent = 'Critical';
+                badge.className = 'health-status-badge critical';
+            } else if (maxUsage > 70) {
+                badge.textContent = 'Warning';
+                badge.className = 'health-status-badge degraded';
+            } else {
+                badge.textContent = 'Healthy';
+                badge.className = 'health-status-badge';
+            }
+        }
+
+        // Update bars and values
+        this._setHealthBar('health-cpu-bar', 'health-cpu', sys.cpu_percent, '%');
+        this._setHealthBar('health-mem-bar', 'health-mem', sys.memory_percent, `% (${sys.memory_used_mb || 0}MB)`);
+        this._setHealthBar('health-disk-bar', 'health-disk', sys.disk_percent, `% (${sys.disk_used_gb || 0}GB)`);
+
+        const uptimeEl = document.getElementById('health-uptime');
+        if (uptimeEl) uptimeEl.textContent = proc.uptime_human || '--';
+
+        const respEl = document.getElementById('health-response');
+        if (respEl) respEl.textContent = app.avg_response_ms ? `${app.avg_response_ms} ms` : '-- ms';
+
+        const wsEl = document.getElementById('health-ws');
+        if (wsEl) wsEl.textContent = app.active_websockets ?? '--';
+    }
+
+    _setHealthBar(barId, valueId, percent, suffix) {
+        const bar = document.getElementById(barId);
+        const val = document.getElementById(valueId);
+        if (bar) {
+            bar.style.width = `${percent || 0}%`;
+            bar.className = 'health-bar-fill' + (percent > 90 ? ' danger' : percent > 70 ? ' warn' : '');
+        }
+        if (val) val.textContent = `${percent || 0}${suffix}`;
     }
 }
 
