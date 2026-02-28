@@ -5470,3 +5470,39 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .settings-card {
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+
+/* ─── 22. FILTER EXPAND ANIMATION ────────────────────────── */
+.filters-panel .filter-controls,
+.filters-panel .filter-presets-row {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease;
+    margin-top: 0;
+}
+
+.filters-panel.show-advanced .filter-controls {
+    display: flex !important;
+    max-height: 200px;
+    opacity: 1;
+    margin-top: 0.5rem;
+}
+
+.filters-panel.show-advanced .filter-presets-row {
+    display: flex !important;
+    max-height: 100px;
+    opacity: 1;
+    margin-top: 0.35rem;
+}
+
+/* ─── 23. HEADER: Search fills center space ──────────────── */
+.admin-header .global-search-wrap {
+    flex: 1;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* ─── 24. REMOVED: filter-panel-header no longer in HTML ─── */
+.filter-panel-header {
+    display: none !important;
+}

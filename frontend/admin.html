@@ -132,47 +132,45 @@
                     <div class="logo-icon">🛡️</div>
                     <div class="logo-text">
                         <h1>Law Enforcement Dashboard</h1>
-                        <p class="tagline">View and manage witness reports</p>
                     </div>
                 </div>
                 
+                <div class="global-search-wrap" style="position:relative;">
+                    <input type="text" id="global-search-input" placeholder="🔍 Search cases, sessions..." class="global-search-input" oninput="window.adminPortal?.handleGlobalSearch(this.value)" aria-label="Search cases and sessions">
+                    <div id="global-search-results" class="global-search-results" style="display:none;"></div>
+                </div>
+
                 <div class="admin-user-info">
                     <div class="user-badge">
                         <div class="user-avatar">👮</div>
                         <div class="user-details">
                             <h3 id="admin-user-name">Officer Admin</h3>
                             <span id="user-display" class="user-display" style="display:none;"></span>
-                            <p>Administrator</p>
                         </div>
                     </div>
-                </div>
-                
-                <div class="notification-bell" id="notification-bell" title="Recent activity">
-                    🔔 <span class="notification-count" id="notification-count" style="display:none">0</span>
                 </div>
                 
                 <button class="header-btn" onclick="window.adminPortal?.showNotificationCenter()" title="Notifications" aria-label="Open notifications">
                     🔔 <span id="notif-badge" class="notif-badge" style="display:none">0</span>
                 </button>
-                <button id="notification-mute-toggle" class="header-btn" title="Mute notifications" aria-label="Toggle notification mute">🔔 Alerts On</button>
-
-                <div class="global-search-wrap" style="position:relative;">
-                    <input type="text" id="global-search-input" placeholder="🔍 Search cases, sessions..." class="global-search-input" oninput="window.adminPortal?.handleGlobalSearch(this.value)" aria-label="Search cases and sessions">
-                    <div id="global-search-results" class="global-search-results" style="display:none;"></div>
+                <!-- Hidden: kept for JS references -->
+                <div class="notification-bell" id="notification-bell" style="display:none;">
+                    🔔 <span class="notification-count" id="notification-count" style="display:none">0</span>
                 </div>
+                <button id="notification-mute-toggle" class="header-btn" style="display:none;">🔔 Alerts On</button>
 
                 <div class="admin-actions">
-                    <button id="seed-data-btn" class="btn btn-secondary" data-tooltip="Seed demo data" aria-label="Seed demo data">
-                        🌱 Seed Demo Data
+                    <button id="seed-data-btn" class="btn btn-secondary" style="display:none;" aria-label="Seed demo data">
+                        🌱 Seed
                     </button>
                     <button id="refresh-btn" class="btn btn-secondary" data-tooltip="Refresh data" aria-label="Refresh data">
-                        🔄 Refresh
+                        🔄
+                    </button>
+                    <button id="witness-view-btn" class="btn btn-primary" data-tooltip="Witness view" aria-label="Switch to witness view">
+                        🎙️ Witness
                     </button>
                     <button id="logout-btn" class="btn btn-secondary" data-tooltip="Logout" aria-label="Logout">
-                        🚪 Logout
-                    </button>
-                    <button id="witness-view-btn" class="btn btn-primary" data-tooltip="Switch to witness view" aria-label="Switch to witness view">
-                        🎙️ Witness View
+                        🚪
                     </button>
                 </div>
             </div>
@@ -244,66 +242,58 @@
             <section class="admin-controls">
                 <div class="search-bar">
                     <input type="text" id="case-search" placeholder="Search by case ID, type, or location..." class="search-input">
-                    <button id="search-btn" class="btn btn-primary">🔍 Search</button>
-                </div>
-                <div class="filter-panel-header">
-                    <button id="filters-panel-toggle" class="btn btn-secondary btn-sm" aria-expanded="true">▾ Filters</button>
+                    <button id="search-btn" class="btn btn-primary">🔍</button>
                 </div>
                 <div id="filters-panel" class="filters-panel">
+                    <div class="quick-filter-chips" id="quick-filter-chips">
+                        <button type="button" class="quick-filter-chip active" data-quick-filter="">All</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="open">Open</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="under_review">Review</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="closed">Closed</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="high_priority">Priority</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="has_scene">Has Scene</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="mine">Mine</button>
+                        <button type="button" class="quick-filter-chip" data-quick-filter="unassigned">Unassigned</button>
+                        <button type="button" id="filters-panel-toggle" class="quick-filter-chip" onclick="document.getElementById('filters-panel').classList.toggle('show-advanced'); this.textContent = document.getElementById('filters-panel').classList.contains('show-advanced') ? '▴ Less' : '▾ More';" aria-expanded="false">▾ More</button>
+                    </div>
                     <div class="filter-controls">
                         <select id="filter-type" class="filter-select">
-                            <option value="">All Case Types</option>
+                            <option value="">All Types</option>
                             <option value="accident">Accident</option>
                             <option value="crime">Crime</option>
                             <option value="incident">Incident</option>
                             <option value="other">Other</option>
                         </select>
-                        
                         <select id="filter-status" class="filter-select">
-                            <option value="">All Statuses</option>
+                            <option value="">All Status</option>
                             <option value="active">Active</option>
                             <option value="complete">Complete</option>
                             <option value="review">Under Review</option>
                         </select>
-                        
                         <select id="sort-by" class="filter-select">
                             <option value="date-desc">Newest</option>
                             <option value="date-asc">Oldest</option>
                             <option value="reports-desc">Most Reports</option>
-                            <option value="priority-desc">Priority Desc</option>
+                            <option value="priority-desc">Priority</option>
                         </select>
-
-                        <select id="auto-refresh-interval" class="filter-select auto-refresh-select" aria-label="Auto refresh interval">
-                            <option value="0">⏸ Auto-refresh: Off</option>
-                            <option value="30">⏱ Auto-refresh: 30s</option>
-                            <option value="60">⏱ Auto-refresh: 60s</option>
-                            <option value="120">⏱ Auto-refresh: 120s</option>
+                        <select id="auto-refresh-interval" class="filter-select" aria-label="Auto refresh">
+                            <option value="0">Auto-refresh: Off</option>
+                            <option value="30">30s</option>
+                            <option value="60">60s</option>
                         </select>
-                        <button id="auto-assign-orphans-btn" class="btn btn-secondary">🧩 Auto-Assign Orphans</button>
-                        <button id="clear-filters-btn" class="btn btn-secondary">Clear Filters</button>
-                    </div>
-                    <div class="quick-filter-chips" id="quick-filter-chips">
-                        <button type="button" class="quick-filter-chip active" data-quick-filter="">All</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="open">Open</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="under_review">Under Review</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="closed">Closed</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="high_priority">High Priority</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="has_scene">Has Scene</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="due_soon">Due Soon</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="overdue">Overdue</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="mine">Mine</button>
-                        <button type="button" class="quick-filter-chip" data-quick-filter="unassigned">Unassigned</button>
+                        <button id="clear-filters-btn" class="btn btn-secondary btn-sm">Clear</button>
+                        <button id="auto-assign-orphans-btn" class="btn btn-secondary btn-sm">Auto-Assign</button>
                     </div>
                     <div class="filter-presets-row">
-                        <input type="text" id="filter-preset-name" class="assign-input" placeholder="Preset name" maxlength="60">
                         <select id="filter-preset-select" class="filter-select" aria-label="Saved filter presets">
-                            <option value="">Saved presets…</option>
+                            <option value="">Presets…</option>
                         </select>
-                        <button id="filter-preset-save" class="btn btn-secondary btn-sm">💾 Save</button>
-                        <button id="filter-preset-load" class="btn btn-secondary btn-sm">📂 Load</button>
-                        <button id="filter-preset-delete" class="btn btn-secondary btn-sm">🗑 Delete</button>
-                        <button id="filter-preset-export" class="btn btn-secondary btn-sm">⬇ Export</button>
-                        <label for="filter-preset-import" class="btn btn-secondary btn-sm">⬆ Import</label>
+                        <input type="text" id="filter-preset-name" class="assign-input" placeholder="Name" maxlength="60">
+                        <button id="filter-preset-save" class="btn btn-secondary btn-sm">💾</button>
+                        <button id="filter-preset-load" class="btn btn-secondary btn-sm">📂</button>
+                        <button id="filter-preset-delete" class="btn btn-secondary btn-sm">🗑</button>
+                        <button id="filter-preset-export" class="btn btn-secondary btn-sm">⬇</button>
+                        <label for="filter-preset-import" class="btn btn-secondary btn-sm">⬆</label>
                         <input type="file" id="filter-preset-import" accept="application/json" style="display:none;">
                     </div>
                 </div>
@@ -351,55 +341,47 @@
             <div id="bulk-toolbar" class="bulk-toolbar" style="display:none;">
                 <span id="selected-count">0 selected</span>
                 <div class="bulk-inline-group">
-                    <button onclick="window.adminPortal?.selectAllFilteredCases()" class="bulk-btn">☑️ Select Filtered</button>
-                    <button onclick="window.adminPortal?.deselectAllCases()" class="bulk-btn">◻ Deselect</button>
-                    <button onclick="window.adminPortal?.invertCaseSelection()" class="bulk-btn">🔁 Invert</button>
-                </div>
-                <div class="bulk-inline-group">
-                    <button onclick="window.adminPortal?.bulkUpdateStatus('under_review')" class="bulk-btn">📋 Set Under Review</button>
-                    <button onclick="window.adminPortal?.bulkUpdateStatus('closed')" class="bulk-btn">✅ Close Cases</button>
-                    <button onclick="window.adminPortal?.bulkExport()" class="bulk-btn">📥 Export Selected CSV</button>
-                    <button onclick="window.adminPortal?.clearSelection()" class="bulk-btn danger">✖ Clear</button>
+                    <button onclick="window.adminPortal?.bulkUpdateStatus('under_review')" class="bulk-btn">Review</button>
+                    <button onclick="window.adminPortal?.bulkUpdateStatus('closed')" class="bulk-btn">Close</button>
+                    <button onclick="window.adminPortal?.bulkExport()" class="bulk-btn">Export</button>
                 </div>
                 <div class="bulk-inline-group bulk-control-group">
-                    <select id="bulk-assign-investigator" class="filter-select" aria-label="Bulk assign investigator">
-                        <option value="">Assign investigator…</option>
+                    <select id="bulk-assign-investigator" class="filter-select" aria-label="Assign investigator">
+                        <option value="">Assign to…</option>
                     </select>
-                    <button onclick="window.adminPortal?.bulkAssignSelected()" class="bulk-btn">👮 Assign</button>
+                    <button onclick="window.adminPortal?.bulkAssignSelected()" class="bulk-btn">Assign</button>
                 </div>
                 <div class="bulk-inline-group bulk-control-group">
-                    <select id="bulk-priority-label" class="filter-select" aria-label="Bulk priority label">
-                        <option value="">Priority label…</option>
+                    <select id="bulk-priority-label" class="filter-select" aria-label="Priority">
+                        <option value="">Priority…</option>
                         <option value="critical">Critical</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
-                        <option value="normal">Normal</option>
                         <option value="low">Low</option>
                     </select>
-                    <input id="bulk-priority-score" class="assign-input" type="number" min="0" max="100" step="1" placeholder="Score (optional)">
-                    <button onclick="window.adminPortal?.bulkSetPrioritySelected()" class="bulk-btn">🎯 Priority</button>
-                </div>
-                <div class="bulk-inline-group bulk-control-group">
-                    <input id="bulk-tag-text" class="assign-input" type="text" placeholder="Tag name">
-                    <input id="bulk-tag-color" type="color" value="#60a5fa" title="Tag color">
-                    <button onclick="window.adminPortal?.bulkAddTagSelected()" class="bulk-btn">🏷 Tag</button>
+                    <input id="bulk-priority-score" class="assign-input" type="number" min="0" max="100" step="1" placeholder="Score">
+                    <button onclick="window.adminPortal?.bulkSetPrioritySelected()" class="bulk-btn">Set</button>
                 </div>
                 <div class="bulk-inline-group">
-                    <button onclick="window.adminPortal?.bulkTogglePinned(true)" class="bulk-btn">📌 Pin</button>
-                    <button onclick="window.adminPortal?.bulkToggleWatchlisted(true)" class="bulk-btn">👁 Watch</button>
+                    <button onclick="window.adminPortal?.bulkTogglePinned(true)" class="bulk-btn">Pin</button>
+                    <button onclick="window.adminPortal?.bulkToggleWatchlisted(true)" class="bulk-btn">Watch</button>
+                    <input id="bulk-tag-text" class="assign-input" type="text" placeholder="Tag">
+                    <input id="bulk-tag-color" type="color" value="#60a5fa" title="Tag color">
+                    <button onclick="window.adminPortal?.bulkAddTagSelected()" class="bulk-btn">Tag</button>
                 </div>
+                <button onclick="window.adminPortal?.clearSelection()" class="bulk-btn danger">✖ Clear</button>
             </div>
 
             <!-- View Toggle Tabs -->
             <section class="view-toggle" role="tablist" aria-label="Dashboard views">
-                <button class="view-tab active" data-view="cases" role="tab" aria-selected="true">📁 Cases View</button>
-                <button class="view-tab" data-view="pinned" role="tab" aria-selected="false">📌 Pinned</button>
-                <button class="view-tab" data-view="watchlist" role="tab" aria-selected="false">👁 Watchlist</button>
-                <button class="view-tab" data-view="reports" role="tab" aria-selected="false">📝 Reports View</button>
-                <button class="view-tab" data-view="workload" role="tab" aria-selected="false">👮 Workload</button>
-                <button class="view-tab" data-view="dashboard" role="tab" aria-selected="false">📊 Dashboard</button>
-                <button class="view-tab" data-view="map" role="tab" aria-selected="false">🗺️ Map</button>
-                <button class="view-tab" data-view="settings" role="tab" aria-selected="false">⚙️ Settings</button>
+                <button class="view-tab active" data-view="cases" role="tab" aria-selected="true">Cases</button>
+                <button class="view-tab" data-view="pinned" role="tab" aria-selected="false">Pinned</button>
+                <button class="view-tab" data-view="watchlist" role="tab" aria-selected="false">Watchlist</button>
+                <button class="view-tab" data-view="reports" role="tab" aria-selected="false">Reports</button>
+                <button class="view-tab" data-view="workload" role="tab" aria-selected="false">Workload</button>
+                <button class="view-tab" data-view="dashboard" role="tab" aria-selected="false">Analytics</button>
+                <button class="view-tab" data-view="map" role="tab" aria-selected="false">Map</button>
+                <button class="view-tab" data-view="settings" role="tab" aria-selected="false">Settings</button>
             </section>
 
             <aside id="admin-side-panel" class="admin-side-panel">
@@ -437,11 +419,6 @@
             <section class="cases-section" id="cases-section" role="tabpanel" aria-label="Cases view">
                 <div class="section-header">
                     <h2>Cases <span class="section-subtitle" id="cases-count-subtitle"></span></h2>
-                    <div class="case-selection-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.selectAllFilteredCases()">☑️ Select Filtered</button>
-                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.deselectAllCases()">◻ Deselect</button>
-                        <button class="btn btn-secondary btn-sm" onclick="window.adminPortal?.invertCaseSelection()">🔁 Invert</button>
-                    </div>
                     <div class="cases-view-mode">
                         <button class="view-mode-btn active" data-mode="compact" title="Compact View" aria-label="Compact view">▦</button>
                         <button class="view-mode-btn" data-mode="expanded" title="Expanded View" aria-label="Expanded view">▣</button>
