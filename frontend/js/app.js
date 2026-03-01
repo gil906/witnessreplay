@@ -7937,7 +7937,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/argument': async () => { await this._showLegalArguments(); },
         '/gapanalysis': async () => { await this._showTestimonyGaps(); },
         '/matrixcompare': async () => { await this._showWitnessComparisonMatrix(); },
-        '/reliability': async () => { await this._showReliabilityTimeline(); },
+        '/reliabilitytl': async () => { await this._showReliabilityTimelineDetailed(); },
         '/stress': async () => { await this._showStressDetection(); },
         '/evidencelink': async () => { await this._showEvidenceLinker(); },
         '/patternmatch': async () => { await this._showPatternMatch(); },
@@ -8097,7 +8097,7 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/argument', desc: 'Legal argument builder' },
         { cmd: '/gapanalysis', desc: 'Testimony gap detector' },
         { cmd: '/matrixcompare', desc: 'Witness comparison matrix' },
-        { cmd: '/reliability', desc: 'Witness reliability timeline' },
+        { cmd: '/reliabilitytl', desc: 'Witness reliability timeline (detailed)' },
         { cmd: '/stress', desc: 'Testimony stress detector' },
         { cmd: '/evidencelink', desc: 'Key evidence linker' },
         { cmd: '/patternmatch', desc: 'Rehearsal & pattern matcher' },
@@ -12879,7 +12879,7 @@ WitnessReplayApp.prototype._showWitnessComparisonMatrix = async function() {
 // ============================================================
 // Feature: Witness Reliability Timeline
 // ============================================================
-WitnessReplayApp.prototype._showReliabilityTimeline = async function() {
+WitnessReplayApp.prototype._showReliabilityTimelineDetailed = async function() {
     if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
         this.displaySystemMessage('📈 Building reliability timeline...');

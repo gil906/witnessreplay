@@ -12359,9 +12359,9 @@ async def delete_bookmark(session_id: str, bookmark_id: str):
 # ═══════════════════════════════════════════════════════════════════
 # IMPROVEMENT 42: AI Contradiction Detector
 # ═══════════════════════════════════════════════════════════════════
-@router.get("/sessions/{session_id}/contradictions")
+@router.get("/sessions/{session_id}/contradiction-analysis")
 async def detect_contradictions(session_id: str):
-    """Detect contradictions and inconsistencies in witness statements."""
+    """Detect contradictions and inconsistencies in witness statements (detailed analysis)."""
     session = await firestore_service.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
