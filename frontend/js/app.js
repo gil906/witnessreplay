@@ -7620,6 +7620,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/volatility</code> — Emotional volatility index<br>' +
                 '<code>/prepared</code> — Witness preparation detector<br>' +
                 '<code>/admissions</code> — Key admission extractor<br>' +
+                '<code>/anxiety</code> — Witness anxiety monitor<br>' +
+                '<code>/impeachrisk</code> — Impeachment risk assessment<br>' +
+                '<code>/themes</code> — Legal theme extractor<br>' +
+                '<code>/readability</code> — Testimony readability score<br>' +
+                '<code>/coopindex</code> — Cooperation index<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7951,7 +7956,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/responsetime': async () => { await this._showResponseTiming(); },
         '/precedent': async () => { await this._showPrecedentMap(); },
         '/completeness': async () => { await this._showCompletenessCheck(); },
-        '/comparereport': async () => { await this._showComparisonReport(); }
+        '/comparereport': async () => { await this._showComparisonReport(); },
+        '/anxiety': async () => { await this._showAnxietyMonitor(); },
+        '/impeachrisk': async () => { await this._showImpeachmentRisk(); },
+        '/themes': async () => { await this._showLegalThemes(); },
+        '/readability': async () => { await this._showReadabilityScore(); },
+        '/coopindex': async () => { await this._showCooperationIndex(); }
     };
     
     const handler = commands[cmd];
@@ -13406,4 +13416,150 @@ WitnessReplayApp.prototype._showComparisonReport = async function() {
         html += `<div class="compreport-rec">${d.recommendation}</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not generate comparison report.'); }
+};
+
+// ── Witness Anxiety Monitor ─────────────────────────
+WitnessReplayApp.prototype._showAnxietyMonitor = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/anxiety-monitor`);
+        const d = await r.json();
+        const lvlColors = {minimal:'#22c55e',low:'#3b82f6',moderate:'#eab308',high:'#ef4444'};
+        const clr = lvlColors[d.anxiety_level] || '#666';
+        let html = '<div class="anxiety-container"><h3>😰 Witness Anxiety Monitor</h3>';
+        html += `<div class="anxiety-score" style="border-color:${clr}"><span class="anxiety-num">${d.anxiety_score}</span><span class="anxiety-lvl" style="color:${clr}">${d.anxiety_level.toUpperCase()}</span></div>`;
+        html += `<div class="anxiety-assess">${d.assessment}</div>`;
+        html += '<div class="anxiety-markers">';
+        const mkrs = d.markers;
+        [{k:'hedging',l:'Hedging',i:'💭'},{k:'qualifiers',l:'Qualifiers',i:'🔤'},{k:'fillers',l:'Fillers',i:'💬'},{k:'self_corrections',l:'Self-Corrections',i:'✏️'}].forEach(m => {
+            const v = mkrs[m.k];
+            html += `<div class="anxiety-mkr"><span class="anxiety-mkr-icon">${m.i}</span><span class="anxiety-mkr-name">${m.l}</span><span class="anxiety-mkr-cnt">${v.count}</span><span class="anxiety-mkr-rate">${v.rate_pct}%</span></div>`;
+        });
+        html += '</div>';
+        if (d.top_markers.length > 0) {
+            html += '<div class="anxiety-top"><h4>📊 Top Marker Categories</h4>';
+            d.top_markers.forEach(t => {
+                html += `<div class="anxiety-topitem"><strong>${t.category}</strong> (${t.count}x, ${t.rate_pct}%): ${t.examples.map(e=>`<code>${e}</code>`).join(', ')}</div>`;
+            });
+            html += '</div>';
+        }
+        if (d.timeline.length > 0) {
+            html += '<div class="anxiety-tl"><h4>📈 Anxiety Timeline</h4>';
+            d.timeline.forEach(t => {
+                const w = Math.min(t.anxiety_score, 100);
+                const bc = w > 60 ? '#ef4444' : w > 30 ? '#eab308' : '#22c55e';
+                html += `<div class="anxiety-tl-item"><div class="anxiety-tl-bar"><div style="width:${w}%;background:${bc};height:100%;border-radius:3px;transition:width .3s"></div></div><span class="anxiety-tl-score">${t.anxiety_score}</span></div>`;
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze anxiety markers.'); }
+};
+
+// ── Impeachment Risk Assessment ─────────────────────
+WitnessReplayApp.prototype._showImpeachmentRisk = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/impeachment-risk`);
+        const d = await r.json();
+        const vColors = {low_risk:'#22c55e',moderate_risk:'#eab308',high_risk:'#ef4444'};
+        const clr = vColors[d.verdict] || '#666';
+        let html = '<div class="imprisk-container"><h3>⚔️ Impeachment Risk Assessment</h3>';
+        html += `<div class="imprisk-score" style="border-color:${clr}"><span class="imprisk-num">${d.overall_risk_score}</span><span class="imprisk-verdict" style="color:${clr}">${d.verdict.replace(/_/g,' ').toUpperCase()}</span></div>`;
+        html += `<div class="imprisk-rec">${d.recommendation}</div>`;
+        html += `<div class="imprisk-summary"><span>🔴 High: ${d.summary.high_risk_count}</span><span>🟡 Medium: ${d.summary.medium_risk_count}</span><span>🟢 Low: ${d.summary.low_risk_count}</span><span>Total markers: ${d.summary.total_markers}</span></div>`;
+        html += '<div class="imprisk-areas">';
+        d.risk_areas.forEach(ra => {
+            const sevClr = ra.severity === 'high' ? '#ef4444' : ra.severity === 'medium' ? '#eab308' : '#22c55e';
+            html += `<div class="imprisk-area"><div class="imprisk-area-head"><span>${ra.icon} ${ra.category}</span><span class="imprisk-area-score" style="color:${sevClr}">${ra.risk_score}%</span></div>`;
+            html += `<div class="imprisk-area-bar"><div style="width:${ra.risk_score}%;background:${sevClr};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="imprisk-area-desc">${ra.description} (${ra.count} found)</div></div>`;
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess impeachment risk.'); }
+};
+
+// ── Legal Theme Extractor ───────────────────────────
+WitnessReplayApp.prototype._showLegalThemes = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/legal-themes`);
+        const d = await r.json();
+        let html = '<div class="lthemes-container"><h3>📚 Legal Theme Extractor</h3>';
+        html += `<div class="lthemes-primary"><span class="lthemes-plbl">Primary Theme:</span> <strong>${d.primary_theme}</strong></div>`;
+        html += `<div class="lthemes-coverage"><span>Themes Found: <strong>${d.total_themes_found}</strong></span><span>Coverage: <strong>${d.coverage_score}%</strong></span></div>`;
+        if (d.strong_themes.length > 0) {
+            html += `<div class="lthemes-strong">Strong Themes: ${d.strong_themes.map(t=>`<span class="lthemes-tag">${t}</span>`).join('')}</div>`;
+        }
+        html += '<div class="lthemes-list">';
+        d.themes.forEach(t => {
+            const strClr = t.strength === 'strong' ? '#22c55e' : t.strength === 'moderate' ? '#eab308' : '#94a3b8';
+            html += `<div class="lthemes-item"><div class="lthemes-item-head"><span>${t.icon} ${t.theme}</span><span class="lthemes-item-score" style="color:${strClr}">${t.relevance_score}% ${t.strength}</span></div>`;
+            html += `<div class="lthemes-item-bar"><div style="width:${t.relevance_score}%;background:${strClr};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="lthemes-item-desc">${t.description}</div>`;
+            if (t.matched_keywords.length > 0) {
+                html += `<div class="lthemes-item-kw">${t.matched_keywords.map(k=>`<code>${k}</code>`).join(' ')}</div>`;
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+        html += `<div class="lthemes-summ">${d.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not extract legal themes.'); }
+};
+
+// ── Testimony Readability Score ─────────────────────
+WitnessReplayApp.prototype._showReadabilityScore = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/readability-score`);
+        const d = await r.json();
+        const rtColors = {easy:'#22c55e',moderate:'#3b82f6',difficult:'#eab308',very_difficult:'#ef4444'};
+        const clr = rtColors[d.rating] || '#666';
+        let html = '<div class="readab-container"><h3>📖 Testimony Readability Score</h3>';
+        html += `<div class="readab-scores"><div class="readab-flesch" style="border-color:${clr}"><span class="readab-num">${d.flesch_reading_ease}</span><span class="readab-lbl">Flesch Ease</span></div>`;
+        html += `<div class="readab-grade"><span class="readab-num">${d.flesch_kincaid_grade}</span><span class="readab-lbl">Grade Level</span></div></div>`;
+        html += `<div class="readab-rating" style="color:${clr}">${d.rating.replace(/_/g,' ').toUpperCase()}</div>`;
+        html += `<div class="readab-desc">${d.description}</div>`;
+        html += `<div class="readab-edu">📎 Education Level: <strong>${d.education_level}</strong></div>`;
+        html += '<div class="readab-metrics">';
+        const m = d.metrics;
+        [{l:'Words',v:m.word_count},{l:'Sentences',v:m.sentence_count},{l:'Avg Sentence Len',v:m.avg_sentence_length},{l:'Avg Syllables/Word',v:m.avg_syllables_per_word},{l:'Complex Words',v:m.complex_word_ratio_pct+'%'},{l:'Passive Voice',v:m.passive_voice_pct+'%'},{l:'Long Sentences',v:m.long_sentence_pct+'%'}].forEach(x => {
+            html += `<div class="readab-metric"><span class="readab-metric-lbl">${x.l}</span><span class="readab-metric-val">${x.v}</span></div>`;
+        });
+        html += '</div>';
+        if (d.details.complex_word_examples.length > 0) {
+            html += `<div class="readab-complex">Complex words: ${d.details.complex_word_examples.map(w=>`<code>${w}</code>`).join(', ')}</div>`;
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate readability score.'); }
+};
+
+// ── Witness Cooperation Index ───────────────────────
+WitnessReplayApp.prototype._showCooperationIndex = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/cooperation-index`);
+        const d = await r.json();
+        const lvlColors = {highly_cooperative:'#22c55e',cooperative:'#3b82f6',neutral:'#eab308',uncooperative:'#f97316',hostile:'#ef4444'};
+        const clr = lvlColors[d.cooperation_level] || '#666';
+        let html = '<div class="coopidx-container"><h3>🤝 Witness Cooperation Index</h3>';
+        html += `<div class="coopidx-score" style="border-color:${clr}"><span class="coopidx-num">${d.cooperation_score}</span><span class="coopidx-lvl" style="color:${clr}">${d.cooperation_level.replace(/_/g,' ').toUpperCase()}</span></div>`;
+        html += `<div class="coopidx-assess">${d.assessment}</div>`;
+        html += '<div class="coopidx-dims">';
+        d.dimensions.forEach(dim => {
+            const dc = dim.score > 70 ? '#22c55e' : dim.score > 40 ? '#eab308' : '#ef4444';
+            html += `<div class="coopidx-dim"><div class="coopidx-dim-head"><span>${dim.icon} ${dim.name}</span><span style="color:${dc}">${dim.score}%</span></div>`;
+            html += `<div class="coopidx-dim-bar"><div style="width:${dim.score}%;background:${dc};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="coopidx-dim-detail">${dim.detail}</div></div>`;
+        });
+        html += '</div>';
+        const s = d.stats;
+        html += `<div class="coopidx-stats"><span>Responses: ${s.total_responses}</span><span>Avg Length: ${s.avg_response_length} words</span><span>Short: ${s.short_response_pct}%</span></div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate cooperation index.'); }
 };

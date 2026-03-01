@@ -6676,3 +6676,52 @@ document.getElementById('sys-notif-add')?.addEventListener('click', async () => 
     } catch(e) { console.error('Add notification error:', e); }
 });
 setTimeout(loadSysNotifPanel, 3600);
+
+// ── Audit Log Panel ─────────────────────────
+async function loadAuditLogPanel() {
+    try {
+        const r = await fetch('/api/admin/audit-log', {headers:{'Authorization':'Bearer '+adminToken,'X-Admin-Token':adminToken}});
+        if (!r.ok) return;
+        const d = await r.json();
+        const el = document.getElementById('audit-log-content');
+        if (!el) return;
+        const sevIcons = {info:'ℹ️',warning:'⚠️',error:'❌',critical:'🚨'};
+        let html = `<div class="audit-summary"><span>ℹ️ Info: ${d.summary.info_count}</span><span>⚠️ Warn: ${d.summary.warning_count}</span><span>❌ Error: ${d.summary.error_count}</span><span>🚨 Critical: ${d.summary.critical_count}</span></div>`;
+        html += '<div class="audit-events">';
+        (d.events || []).slice(0, 15).forEach(e => {
+            html += `<div class="audit-event audit-${e.severity}"><span class="audit-icon">${sevIcons[e.severity]||'📝'}</span><span class="audit-time">${new Date(e.timestamp).toLocaleTimeString()}</span><span class="audit-action">${e.action}</span><span class="audit-detail">${e.detail}</span></div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Audit log error:', e); }
+}
+document.getElementById('audit-log-refresh')?.addEventListener('click', loadAuditLogPanel);
+setTimeout(loadAuditLogPanel, 2400);
+
+// ── System Health Dashboard Panel ────────────────
+async function loadSysHealthPanel() {
+    try {
+        const r = await fetch('/api/admin/system-health-dashboard', {headers:{'Authorization':'Bearer '+adminToken,'X-Admin-Token':adminToken}});
+        if (!r.ok) return;
+        const d = await r.json();
+        const el = document.getElementById('sys-health-content');
+        if (!el) return;
+        const statusColors = {healthy:'#22c55e',degraded:'#eab308',critical:'#ef4444'};
+        const sc = statusColors[d.status] || '#666';
+        let html = `<div class="shealth-status" style="border-left:4px solid ${sc};padding:8px 12px;margin-bottom:10px;background:rgba(0,0,0,.2);border-radius:4px"><strong style="color:${sc}">${d.status.toUpperCase()}</strong> — Uptime: ${d.uptime.human}</div>`;
+        if (d.warnings.length > 0) {
+            html += `<div class="shealth-warnings">${d.warnings.map(w=>`<span class="shealth-warn">⚠️ ${w}</span>`).join('')}</div>`;
+        }
+        html += '<div class="shealth-grid">';
+        html += `<div class="shealth-card"><div class="shealth-card-title">🖥️ CPU</div><div class="shealth-card-val">${d.cpu.usage_pct}%</div><div class="shealth-card-sub">${d.cpu.cores} cores</div></div>`;
+        html += `<div class="shealth-card"><div class="shealth-card-title">🧠 Memory</div><div class="shealth-card-val">${d.memory.usage_pct}%</div><div class="shealth-card-sub">${d.memory.used_mb}/${d.memory.total_mb} MB</div></div>`;
+        html += `<div class="shealth-card"><div class="shealth-card-title">💾 Disk</div><div class="shealth-card-val">${d.disk.usage_pct}%</div><div class="shealth-card-sub">${d.disk.free_gb} GB free</div></div>`;
+        html += `<div class="shealth-card"><div class="shealth-card-title">🌐 Network</div><div class="shealth-card-val">${d.network.recv_mb} MB</div><div class="shealth-card-sub">↑ ${d.network.sent_mb} MB sent</div></div>`;
+        html += `<div class="shealth-card"><div class="shealth-card-title">📂 Sessions</div><div class="shealth-card-val">${d.application.active_sessions}</div><div class="shealth-card-sub">active</div></div>`;
+        html += `<div class="shealth-card"><div class="shealth-card-title">🔧 Process</div><div class="shealth-card-val">${d.memory.process_mb} MB</div><div class="shealth-card-sub">RSS memory</div></div>`;
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('System health error:', e); }
+}
+document.getElementById('sys-health-refresh')?.addEventListener('click', loadSysHealthPanel);
+setTimeout(loadSysHealthPanel, 2600);

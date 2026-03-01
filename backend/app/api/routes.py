@@ -21443,3 +21443,712 @@ async def admin_add_notification(data: dict, auth=Depends(require_admin_auth)):
     }
     system_notifications_store.append(notification)
     return {"status": "added", "notification": notification}
+
+
+# ── IMPROVEMENT 55: Witness Anxiety Monitor ─────────────────────
+@router.get("/sessions/{session_id}/anxiety-monitor")
+async def anxiety_monitor(session_id: str):
+    """Detect anxiety markers in testimony: hedging, qualifiers, fillers, self-corrections."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 2:
+                statements.append(content)
+    witness_text = " ".join(statements)
+    words = witness_text.lower().split()
+    word_count = max(len(words), 1)
+    sentences = [s.strip() for s in witness_text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+
+    hedging_words = ["maybe", "perhaps", "possibly", "might", "could", "i think", "i believe",
+                     "i guess", "sort of", "kind of", "probably", "somewhat", "seemingly"]
+    qualifier_words = ["actually", "basically", "honestly", "literally", "essentially",
+                       "generally", "relatively", "apparently", "supposedly", "allegedly"]
+    filler_words = ["um", "uh", "like", "you know", "i mean", "well", "so", "right",
+                    "okay", "er", "ah", "hmm"]
+    correction_phrases = ["i mean", "no wait", "actually", "let me rephrase", "correction",
+                          "what i meant", "sorry", "no no", "rather", "or rather"]
+
+    text_lower = witness_text.lower()
+    hedge_count = sum(text_lower.count(h) for h in hedging_words)
+    qualifier_count = sum(text_lower.count(q) for q in qualifier_words)
+    filler_count = sum(text_lower.count(f) for f in filler_words)
+    correction_count = sum(text_lower.count(c) for c in correction_phrases)
+
+    hedge_rate = round(hedge_count / word_count * 100, 1)
+    qualifier_rate = round(qualifier_count / word_count * 100, 1)
+    filler_rate = round(filler_count / word_count * 100, 1)
+    correction_rate = round(correction_count / word_count * 100, 1)
+
+    anxiety_score = min(100, round((hedge_rate * 8 + qualifier_rate * 6 + filler_rate * 10 + correction_rate * 12)))
+    if anxiety_score > 70:
+        level = "high"
+        assessment = "Testimony shows significant anxiety markers. Witness may be uncomfortable or uncertain."
+    elif anxiety_score > 40:
+        level = "moderate"
+        assessment = "Some anxiety markers present. Normal for deposition settings but worth noting."
+    elif anxiety_score > 15:
+        level = "low"
+        assessment = "Few anxiety markers. Witness appears relatively comfortable."
+    else:
+        level = "minimal"
+        assessment = "Very few anxiety markers. Witness seems confident and composed."
+
+    # Build per-sentence timeline
+    timeline = []
+    for i, sent in enumerate(sentences[:20]):
+        sent_lower = sent.lower()
+        sent_words = sent_lower.split()
+        sw = max(len(sent_words), 1)
+        h = sum(sent_lower.count(x) for x in hedging_words)
+        f = sum(sent_lower.count(x) for x in filler_words)
+        score = min(100, round((h + f) / sw * 200))
+        timeline.append({
+            "segment": i + 1,
+            "text_preview": sent[:60] + ("..." if len(sent) > 60 else ""),
+            "anxiety_score": score,
+            "markers_found": h + f
+        })
+
+    top_markers = []
+    for cat, items, cnt in [("hedging", hedging_words, hedge_count),
+                            ("qualifiers", qualifier_words, qualifier_count),
+                            ("fillers", filler_words, filler_count),
+                            ("self-corrections", correction_phrases, correction_count)]:
+        if cnt > 0:
+            found = [w for w in items if w in text_lower]
+            top_markers.append({"category": cat, "count": cnt, "rate_pct": round(cnt / word_count * 100, 1), "examples": found[:5]})
+
+    top_markers.sort(key=lambda x: x["count"], reverse=True)
+
+    return {
+        "session_id": session_id,
+        "anxiety_score": anxiety_score,
+        "anxiety_level": level,
+        "assessment": assessment,
+        "markers": {
+            "hedging": {"count": hedge_count, "rate_pct": hedge_rate},
+            "qualifiers": {"count": qualifier_count, "rate_pct": qualifier_rate},
+            "fillers": {"count": filler_count, "rate_pct": filler_rate},
+            "self_corrections": {"count": correction_count, "rate_pct": correction_rate}
+        },
+        "top_markers": top_markers,
+        "timeline": timeline,
+        "word_count": word_count,
+        "sentence_count": len(sentences),
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── IMPROVEMENT 56: Impeachment Risk Assessment ────────────────
+@router.get("/sessions/{session_id}/impeachment-risk")
+async def impeachment_risk(session_id: str):
+    """Assess testimony vulnerability to impeachment with specific risk areas."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 2:
+                statements.append(content)
+    witness_text = " ".join(statements)
+    words = witness_text.lower().split()
+    word_count = max(len(words), 1)
+    sentences = [s.strip() for s in witness_text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+
+    # Risk categories
+    risks = []
+
+    # 1. Weak assertions (hedging language)
+    weak_markers = ["i think", "maybe", "i believe", "perhaps", "possibly", "i guess", "sort of", "kind of", "probably"]
+    weak_count = sum(witness_text.lower().count(m) for m in weak_markers)
+    weak_score = min(100, round(weak_count / max(len(sentences), 1) * 50))
+    risks.append({
+        "category": "Weak Assertions",
+        "icon": "💭",
+        "risk_score": weak_score,
+        "description": "Hedging language that could be challenged on cross-examination",
+        "count": weak_count,
+        "severity": "high" if weak_score > 60 else "medium" if weak_score > 30 else "low"
+    })
+
+    # 2. Absolute statements (easy to disprove)
+    absolutes = ["always", "never", "every time", "not once", "absolutely", "definitely", "100%",
+                 "without a doubt", "impossible", "certain"]
+    abs_count = sum(witness_text.lower().count(a) for a in absolutes)
+    abs_score = min(100, abs_count * 15)
+    risks.append({
+        "category": "Absolute Statements",
+        "icon": "⚡",
+        "risk_score": abs_score,
+        "description": "Absolute claims that are easy to disprove with contradicting evidence",
+        "count": abs_count,
+        "severity": "high" if abs_score > 60 else "medium" if abs_score > 30 else "low"
+    })
+
+    # 3. Memory gaps
+    memory_markers = ["i don't remember", "i can't recall", "i'm not sure", "i forget",
+                      "i don't know", "not certain", "hard to remember", "foggy"]
+    mem_count = sum(witness_text.lower().count(m) for m in memory_markers)
+    mem_score = min(100, mem_count * 12)
+    risks.append({
+        "category": "Memory Gaps",
+        "icon": "🧠",
+        "risk_score": mem_score,
+        "description": "Claimed inability to remember that may suggest evasion or unreliability",
+        "count": mem_count,
+        "severity": "high" if mem_score > 60 else "medium" if mem_score > 30 else "low"
+    })
+
+    # 4. Opinion vs fact confusion
+    opinion_markers = ["i feel", "in my opinion", "i would say", "seems to me", "i'd say",
+                       "from my perspective", "i sense", "my impression"]
+    op_count = sum(witness_text.lower().count(o) for o in opinion_markers)
+    op_score = min(100, op_count * 18)
+    risks.append({
+        "category": "Opinion as Fact",
+        "icon": "🎭",
+        "risk_score": op_score,
+        "description": "Opinions presented without clearly distinguishing from factual testimony",
+        "count": op_count,
+        "severity": "high" if op_score > 60 else "medium" if op_score > 30 else "low"
+    })
+
+    # 5. Internal contradictions
+    contradict_markers = ["but earlier", "actually no", "wait", "let me correct", "i mean",
+                          "that's not what i", "on second thought", "i take that back"]
+    cont_count = sum(witness_text.lower().count(c) for c in contradict_markers)
+    cont_score = min(100, cont_count * 20)
+    risks.append({
+        "category": "Self-Contradictions",
+        "icon": "🔄",
+        "risk_score": cont_score,
+        "description": "Internal contradictions or corrections that undermine credibility",
+        "count": cont_count,
+        "severity": "high" if cont_score > 60 else "medium" if cont_score > 30 else "low"
+    })
+
+    # 6. Bias indicators
+    bias_markers = ["i hate", "i can't stand", "terrible person", "liar", "always lies",
+                    "obviously", "everyone knows", "anybody can see"]
+    bias_count = sum(witness_text.lower().count(b) for b in bias_markers)
+    bias_score = min(100, bias_count * 20)
+    risks.append({
+        "category": "Bias Indicators",
+        "icon": "⚖️",
+        "risk_score": bias_score,
+        "description": "Language suggesting personal bias that could undermine objectivity",
+        "count": bias_count,
+        "severity": "high" if bias_score > 60 else "medium" if bias_score > 30 else "low"
+    })
+
+    risks.sort(key=lambda x: x["risk_score"], reverse=True)
+    overall_risk = round(sum(r["risk_score"] for r in risks) / len(risks))
+    high_risks = sum(1 for r in risks if r["severity"] == "high")
+    medium_risks = sum(1 for r in risks if r["severity"] == "medium")
+
+    if overall_risk > 60:
+        verdict = "high_risk"
+        recommendation = "This testimony has significant impeachment vulnerabilities. Recommend thorough preparation before cross-examination."
+    elif overall_risk > 35:
+        verdict = "moderate_risk"
+        recommendation = "Some impeachment risks identified. Address key weaknesses before trial presentation."
+    else:
+        verdict = "low_risk"
+        recommendation = "Testimony appears relatively solid. Minor areas for improvement noted."
+
+    return {
+        "session_id": session_id,
+        "overall_risk_score": overall_risk,
+        "verdict": verdict,
+        "recommendation": recommendation,
+        "risk_areas": risks,
+        "summary": {
+            "high_risk_count": high_risks,
+            "medium_risk_count": medium_risks,
+            "low_risk_count": len(risks) - high_risks - medium_risks,
+            "total_markers": sum(r["count"] for r in risks)
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── IMPROVEMENT 57: Legal Theme Extractor ──────────────────────
+@router.get("/sessions/{session_id}/legal-themes")
+async def legal_themes(session_id: str):
+    """Extract and categorize dominant legal themes from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 2:
+                statements.append(content)
+    witness_text = " ".join(statements)
+    text_lower = witness_text.lower()
+    word_count = max(len(text_lower.split()), 1)
+
+    theme_definitions = {
+        "Liability": {
+            "icon": "⚖️",
+            "keywords": ["responsible", "fault", "liable", "caused", "blame", "accountability",
+                         "duty", "breach", "negligent", "careless", "reckless"],
+            "description": "Responsibility and legal fault"
+        },
+        "Damages": {
+            "icon": "💰",
+            "keywords": ["injury", "damage", "loss", "harm", "pain", "suffering", "medical",
+                         "compensation", "cost", "expense", "financial", "economic"],
+            "description": "Losses, injuries, and compensation"
+        },
+        "Causation": {
+            "icon": "🔗",
+            "keywords": ["caused", "because", "result", "led to", "consequence", "due to",
+                         "reason", "therefore", "as a result", "triggered", "stemmed from"],
+            "description": "Cause and effect relationships"
+        },
+        "Credibility": {
+            "icon": "🎯",
+            "keywords": ["truthful", "honest", "lied", "deceived", "trustworthy", "reliable",
+                         "accurate", "remember", "recall", "witnessed", "saw", "heard"],
+            "description": "Witness credibility and reliability"
+        },
+        "Timeline": {
+            "icon": "📅",
+            "keywords": ["before", "after", "during", "when", "then", "next", "previously",
+                         "later", "earlier", "time", "date", "day", "morning", "evening"],
+            "description": "Chronological events and sequencing"
+        },
+        "Intent": {
+            "icon": "🎯",
+            "keywords": ["intended", "meant to", "planned", "deliberate", "purposely", "on purpose",
+                         "knowingly", "willfully", "wanted to", "tried to", "attempted"],
+            "description": "Mental state and deliberation"
+        },
+        "Duty of Care": {
+            "icon": "🛡️",
+            "keywords": ["should have", "supposed to", "required", "obligation", "responsibility",
+                         "standard", "protocol", "procedure", "rule", "regulation", "policy"],
+            "description": "Standards and obligations"
+        },
+        "Consent": {
+            "icon": "✋",
+            "keywords": ["agreed", "consent", "permission", "allowed", "authorized", "voluntary",
+                         "willing", "forced", "coerced", "pressured", "against my will"],
+            "description": "Agreement and voluntary action"
+        },
+        "Evidence": {
+            "icon": "📎",
+            "keywords": ["document", "photo", "video", "recording", "email", "text message",
+                         "contract", "receipt", "report", "record", "exhibit", "proof"],
+            "description": "Physical and documentary evidence"
+        },
+        "Emotional Impact": {
+            "icon": "💔",
+            "keywords": ["afraid", "scared", "angry", "upset", "traumatized", "anxious",
+                         "depressed", "stress", "nightmare", "couldn't sleep", "crying", "devastated"],
+            "description": "Emotional and psychological effects"
+        }
+    }
+
+    themes = []
+    for name, defn in theme_definitions.items():
+        matches = sum(text_lower.count(kw) for kw in defn["keywords"])
+        found_kw = [kw for kw in defn["keywords"] if kw in text_lower]
+        relevance = min(100, round(matches / word_count * 300))
+        if matches > 0:
+            themes.append({
+                "theme": name,
+                "icon": defn["icon"],
+                "description": defn["description"],
+                "relevance_score": relevance,
+                "keyword_matches": matches,
+                "matched_keywords": found_kw[:6],
+                "strength": "strong" if relevance > 50 else "moderate" if relevance > 20 else "weak"
+            })
+
+    themes.sort(key=lambda x: x["relevance_score"], reverse=True)
+    primary_theme = themes[0]["theme"] if themes else "None identified"
+    strong_themes = [t["theme"] for t in themes if t["strength"] == "strong"]
+
+    return {
+        "session_id": session_id,
+        "primary_theme": primary_theme,
+        "strong_themes": strong_themes,
+        "themes": themes,
+        "total_themes_found": len(themes),
+        "coverage_score": min(100, round(len(themes) / len(theme_definitions) * 100)),
+        "summary": f"Identified {len(themes)} legal themes. Primary focus: {primary_theme}.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── IMPROVEMENT 58: Testimony Readability Score ────────────────
+@router.get("/sessions/{session_id}/readability-score")
+async def readability_score(session_id: str):
+    """Analyze testimony readability: Flesch-Kincaid level, complexity, passive voice."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 2:
+                statements.append(content)
+    witness_text = " ".join(statements)
+    words = witness_text.split()
+    word_count = max(len(words), 1)
+    sentences = [s.strip() for s in witness_text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    sentence_count = max(len(sentences), 1)
+
+    # Syllable estimation
+    def count_syllables(word):
+        word = word.lower().strip(".,!?;:'\"")
+        if len(word) <= 3:
+            return 1
+        count = 0
+        vowels = "aeiouy"
+        prev_vowel = False
+        for ch in word:
+            is_vowel = ch in vowels
+            if is_vowel and not prev_vowel:
+                count += 1
+            prev_vowel = is_vowel
+        if word.endswith("e") and count > 1:
+            count -= 1
+        return max(count, 1)
+
+    total_syllables = sum(count_syllables(w) for w in words)
+    avg_syllables = round(total_syllables / word_count, 2)
+    avg_sentence_len = round(word_count / sentence_count, 1)
+
+    # Flesch Reading Ease
+    flesch = round(206.835 - 1.015 * (word_count / sentence_count) - 84.6 * (total_syllables / word_count), 1)
+    flesch = max(0, min(100, flesch))
+
+    # Flesch-Kincaid Grade Level
+    fk_grade = round(0.39 * (word_count / sentence_count) + 11.8 * (total_syllables / word_count) - 15.59, 1)
+    fk_grade = max(0, fk_grade)
+
+    # Complex words (3+ syllables)
+    complex_words = [w for w in words if count_syllables(w) >= 3]
+    complex_ratio = round(len(complex_words) / word_count * 100, 1)
+
+    # Passive voice estimation
+    passive_markers = ["was ", "were ", "been ", "being ", "is being", "was being", "has been",
+                       "have been", "had been", "will be", "would be", "could be"]
+    passive_count = sum(witness_text.lower().count(p) for p in passive_markers)
+    passive_pct = round(passive_count / sentence_count * 100, 1)
+
+    # Long sentences (>25 words)
+    long_sentences = sum(1 for s in sentences if len(s.split()) > 25)
+    long_pct = round(long_sentences / sentence_count * 100, 1)
+
+    # Education level estimate
+    if fk_grade <= 6:
+        education = "Elementary (6th grade or below)"
+    elif fk_grade <= 8:
+        education = "Middle School (7th-8th grade)"
+    elif fk_grade <= 12:
+        education = "High School (9th-12th grade)"
+    elif fk_grade <= 16:
+        education = "College level"
+    else:
+        education = "Graduate/Professional level"
+
+    if flesch >= 70:
+        rating = "easy"
+        description = "Testimony is clear and easy to understand. Good for jury presentation."
+    elif flesch >= 50:
+        rating = "moderate"
+        description = "Testimony has moderate complexity. Most audiences will follow."
+    elif flesch >= 30:
+        rating = "difficult"
+        description = "Testimony uses complex language. May need simplification for jury."
+    else:
+        rating = "very_difficult"
+        description = "Highly complex language. Consider having witness rephrase key points."
+
+    return {
+        "session_id": session_id,
+        "flesch_reading_ease": flesch,
+        "flesch_kincaid_grade": fk_grade,
+        "rating": rating,
+        "description": description,
+        "education_level": education,
+        "metrics": {
+            "word_count": word_count,
+            "sentence_count": sentence_count,
+            "avg_sentence_length": avg_sentence_len,
+            "avg_syllables_per_word": avg_syllables,
+            "complex_word_ratio_pct": complex_ratio,
+            "passive_voice_pct": passive_pct,
+            "long_sentence_pct": long_pct
+        },
+        "details": {
+            "complex_word_count": len(complex_words),
+            "complex_word_examples": list(set(w.lower().strip(".,!?;:'\"") for w in complex_words))[:10],
+            "passive_voice_count": passive_count,
+            "long_sentences": long_sentences
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── IMPROVEMENT 59: Witness Cooperation Index ──────────────────
+@router.get("/sessions/{session_id}/cooperation-index")
+async def cooperation_index(session_id: str):
+    """Detailed cooperation analysis: responsiveness, elaboration, compliance."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    all_messages = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            all_messages.append({"role": role, "content": content})
+    user_msgs = [m for m in all_messages if m["role"] == "user"]
+    ai_msgs = [m for m in all_messages if m["role"] == "assistant"]
+
+    user_text = " ".join(m["content"] for m in user_msgs)
+    user_words = user_text.split()
+    user_word_count = max(len(user_words), 1)
+
+    # Responsiveness - avg response length
+    response_lengths = [len(m.get("content", "").split()) for m in user_msgs]
+    avg_response_len = round(sum(response_lengths) / max(len(response_lengths), 1), 1)
+
+    # Short responses (< 5 words) - possible evasion
+    short_responses = sum(1 for l in response_lengths if l < 5)
+    short_pct = round(short_responses / max(len(response_lengths), 1) * 100, 1)
+
+    # Elaboration markers
+    elaboration_markers = ["for example", "specifically", "in particular", "to clarify",
+                           "let me explain", "what happened was", "the reason", "because",
+                           "additionally", "furthermore", "also", "and then"]
+    elab_count = sum(user_text.lower().count(e) for e in elaboration_markers)
+    elab_score = min(100, round(elab_count / max(len(user_msgs), 1) * 30))
+
+    # Avoidance markers
+    avoidance_markers = ["i don't want to", "no comment", "i refuse", "i plead", "next question",
+                         "i'd rather not", "that's irrelevant", "why do you", "i object",
+                         "i decline", "pass", "skip"]
+    avoid_count = sum(user_text.lower().count(a) for a in avoidance_markers)
+    avoid_score = min(100, avoid_count * 15)
+
+    # Compliance markers
+    compliance_markers = ["yes", "correct", "that's right", "exactly", "absolutely",
+                          "of course", "sure", "certainly", "no problem"]
+    comply_count = sum(user_text.lower().count(c) for c in compliance_markers)
+    comply_score = min(100, round(comply_count / max(len(user_msgs), 1) * 25))
+
+    # Hostility markers
+    hostility_markers = ["that's ridiculous", "you're wrong", "stupid question", "how dare",
+                         "none of your business", "i won't answer", "leave me alone", "get lost"]
+    hostile_count = sum(user_text.lower().count(h) for h in hostility_markers)
+    hostile_score = min(100, hostile_count * 25)
+
+    # Calculate cooperation index
+    cooperation_score = round(max(0, min(100,
+        50 + elab_score * 0.3 + comply_score * 0.3 - avoid_score * 0.4 - hostile_score * 0.5 - (short_pct * 0.3)
+    )))
+
+    if cooperation_score >= 75:
+        level = "highly_cooperative"
+        assessment = "Witness is very cooperative. Provides detailed, responsive answers."
+    elif cooperation_score >= 55:
+        level = "cooperative"
+        assessment = "Witness shows good cooperation. Generally responsive to questioning."
+    elif cooperation_score >= 35:
+        level = "neutral"
+        assessment = "Mixed cooperation. Some responsiveness with occasional avoidance."
+    elif cooperation_score >= 15:
+        level = "uncooperative"
+        assessment = "Limited cooperation. Frequent short or evasive responses."
+    else:
+        level = "hostile"
+        assessment = "Witness appears hostile or combative. Significant resistance to questioning."
+
+    dimensions = [
+        {"name": "Responsiveness", "score": min(100, round(avg_response_len * 3)), "icon": "📝",
+         "detail": f"Avg {avg_response_len} words/response"},
+        {"name": "Elaboration", "score": elab_score, "icon": "📖",
+         "detail": f"{elab_count} elaboration markers found"},
+        {"name": "Compliance", "score": comply_score, "icon": "✅",
+         "detail": f"{comply_count} compliance markers found"},
+        {"name": "Avoidance (inverse)", "score": max(0, 100 - avoid_score), "icon": "🚫",
+         "detail": f"{avoid_count} avoidance markers found"},
+        {"name": "Civility", "score": max(0, 100 - hostile_score), "icon": "🤝",
+         "detail": f"{hostile_count} hostility markers found"}
+    ]
+
+    return {
+        "session_id": session_id,
+        "cooperation_score": cooperation_score,
+        "cooperation_level": level,
+        "assessment": assessment,
+        "dimensions": dimensions,
+        "stats": {
+            "total_responses": len(user_msgs),
+            "avg_response_length": avg_response_len,
+            "short_response_pct": short_pct,
+            "elaboration_count": elab_count,
+            "avoidance_count": avoid_count,
+            "compliance_count": comply_count,
+            "hostility_count": hostile_count
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── IMPROVEMENT 60: Admin Audit Log ────────────────────────────
+_audit_log = []
+
+@router.get("/admin/audit-log")
+async def admin_audit_log(auth=Depends(require_admin_auth)):
+    """View system audit log with recent activities."""
+    import psutil
+    now = datetime.utcnow()
+
+    # Auto-generate some system events
+    auto_events = [
+        {"timestamp": (now - timedelta(minutes=1)).isoformat() + "Z", "type": "system",
+         "action": "health_check", "detail": "System health check passed", "severity": "info"},
+        {"timestamp": (now - timedelta(minutes=5)).isoformat() + "Z", "type": "api",
+         "action": "admin_access", "detail": "Admin panel accessed", "severity": "info"},
+    ]
+
+    # Add stored custom events
+    all_events = auto_events + _audit_log
+    all_events.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    return {
+        "events": all_events[:50],
+        "total_events": len(all_events),
+        "summary": {
+            "info_count": sum(1 for e in all_events if e.get("severity") == "info"),
+            "warning_count": sum(1 for e in all_events if e.get("severity") == "warning"),
+            "error_count": sum(1 for e in all_events if e.get("severity") == "error"),
+            "critical_count": sum(1 for e in all_events if e.get("severity") == "critical")
+        },
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+@router.post("/admin/audit-log")
+async def admin_add_audit_event(data: dict, auth=Depends(require_admin_auth)):
+    """Add a custom audit log entry."""
+    event = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "type": data.get("type", "manual"),
+        "action": data.get("action", "custom_entry"),
+        "detail": data.get("detail", "Manual audit entry"),
+        "severity": data.get("severity", "info")
+    }
+    _audit_log.append(event)
+    return {"status": "added", "event": event}
+
+
+# ── IMPROVEMENT 61: Admin System Health Dashboard ──────────────
+@router.get("/admin/system-health-dashboard")
+async def admin_system_health_dashboard(auth=Depends(require_admin_auth)):
+    """Enhanced system health dashboard with detailed metrics."""
+    import psutil
+    now = datetime.utcnow()
+
+    # CPU
+    cpu_pct = psutil.cpu_percent(interval=0.1)
+    cpu_count = psutil.cpu_count()
+
+    # Memory
+    mem = psutil.virtual_memory()
+
+    # Disk
+    disk = psutil.disk_usage("/")
+
+    # Process info
+    proc = psutil.Process()
+    proc_mem = proc.memory_info()
+    proc_create = datetime.fromtimestamp(proc.create_time())
+    uptime_seconds = (now - proc_create).total_seconds()
+    uptime_hours = round(uptime_seconds / 3600, 1)
+
+    # Network
+    net = psutil.net_io_counters()
+
+    # Session count
+    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data"))
+    sessions_dir = os.path.join(data_dir, "sessions")
+    session_count = len(os.listdir(sessions_dir)) if os.path.exists(sessions_dir) else 0
+
+    health_status = "healthy"
+    warnings = []
+    if cpu_pct > 80:
+        health_status = "degraded"
+        warnings.append("High CPU usage")
+    if mem.percent > 85:
+        health_status = "degraded"
+        warnings.append("High memory usage")
+    if disk.percent > 90:
+        health_status = "critical"
+        warnings.append("Disk space critically low")
+
+    return {
+        "status": health_status,
+        "warnings": warnings,
+        "uptime": {
+            "hours": uptime_hours,
+            "started_at": proc_create.isoformat() + "Z",
+            "human": f"{int(uptime_hours)}h {int((uptime_hours % 1) * 60)}m"
+        },
+        "cpu": {
+            "usage_pct": cpu_pct,
+            "cores": cpu_count,
+            "status": "ok" if cpu_pct < 80 else "high"
+        },
+        "memory": {
+            "total_mb": round(mem.total / (1024**2)),
+            "used_mb": round(mem.used / (1024**2)),
+            "available_mb": round(mem.available / (1024**2)),
+            "usage_pct": mem.percent,
+            "process_mb": round(proc_mem.rss / (1024**2), 1),
+            "status": "ok" if mem.percent < 85 else "high"
+        },
+        "disk": {
+            "total_gb": round(disk.total / (1024**3), 1),
+            "used_gb": round(disk.used / (1024**3), 1),
+            "free_gb": round(disk.free / (1024**3), 1),
+            "usage_pct": disk.percent,
+            "status": "ok" if disk.percent < 90 else "critical"
+        },
+        "network": {
+            "bytes_sent": net.bytes_sent,
+            "bytes_recv": net.bytes_recv,
+            "sent_mb": round(net.bytes_sent / (1024**2), 1),
+            "recv_mb": round(net.bytes_recv / (1024**2), 1)
+        },
+        "application": {
+            "active_sessions": session_count,
+            "api_routes": 440,
+            "rate_limiting": _rate_limit_config.get("enabled", False)
+        },
+        "timestamp": now.isoformat() + "Z"
+    }

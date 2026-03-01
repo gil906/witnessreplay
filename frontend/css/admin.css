@@ -6506,3 +6506,30 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .sys-notif-body strong { display: block; font-size: 0.9em; color: #eee; }
 .sys-notif-msg { font-size: 0.8em; color: #aaa; }
 .sys-notif-time { font-size: 0.72em; color: #666; white-space: nowrap; }
+
+/* ── Audit Log Panel ─────────────── */
+.audit-log-panel{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:16px;margin-bottom:16px}
+.audit-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:.85em}
+.audit-summary span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px;color:var(--text-secondary,#94a3b8)}
+.audit-events{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto}
+.audit-event{display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.audit-event.audit-warning{border-left:3px solid #eab308}
+.audit-event.audit-error{border-left:3px solid #ef4444}
+.audit-event.audit-critical{border-left:3px solid #dc2626}
+.audit-icon{font-size:1.1em}
+.audit-time{min-width:70px;color:var(--text-secondary,#64748b);font-size:.8em}
+.audit-action{font-weight:600;color:var(--text-primary,#e2e8f0);min-width:90px}
+.audit-detail{flex:1}
+.audit-log-actions{margin-top:10px;display:flex;gap:8px}
+
+/* ── System Health Panel ─────────── */
+.sys-health-panel{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:16px;margin-bottom:16px}
+.shealth-status{font-size:.9em}
+.shealth-warnings{margin-bottom:10px}
+.shealth-warn{display:inline-block;padding:3px 8px;background:rgba(234,179,8,.15);color:#eab308;border-radius:6px;font-size:.82em;margin-right:6px}
+.shealth-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.shealth-card{padding:10px;background:rgba(255,255,255,.04);border-radius:8px;text-align:center}
+.shealth-card-title{font-size:.75em;color:var(--text-secondary,#94a3b8);margin-bottom:4px}
+.shealth-card-val{font-size:1.3em;font-weight:700;color:var(--text-primary,#e2e8f0)}
+.shealth-card-sub{font-size:.7em;color:var(--text-secondary,#64748b)}
+.sys-health-actions{margin-top:10px;display:flex;gap:8px}

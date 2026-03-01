@@ -14300,3 +14300,91 @@ textarea:disabled {
 .compreport-mnote { font-size: 0.78em; color: var(--text-secondary, #888); }
 .compreport-assessment { margin-top: 16px; padding: 12px; background: rgba(59,130,246,0.1); border-radius: 8px; font-size: 0.88em; color: #93c5fd; }
 .compreport-rec { margin-top: 8px; padding: 12px; background: rgba(108,99,255,0.08); border-radius: 8px; font-size: 0.85em; color: var(--text-secondary, #aaa); }
+
+/* ── Anxiety Monitor ─────────────────────── */
+.anxiety-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.anxiety-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.anxiety-score{display:flex;flex-direction:column;align-items:center;padding:16px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.anxiety-num{font-size:2.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.anxiety-lvl{font-size:1em;font-weight:700;text-transform:uppercase;margin-top:4px}
+.anxiety-assess{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.anxiety-markers{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+.anxiety-mkr{display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,.05);border-radius:8px}
+.anxiety-mkr-icon{font-size:1.3em}
+.anxiety-mkr-name{flex:1;color:var(--text-secondary,#94a3b8);font-size:.85em}
+.anxiety-mkr-cnt{font-weight:700;color:var(--text-primary,#e2e8f0)}
+.anxiety-mkr-rate{color:var(--text-secondary,#94a3b8);font-size:.8em}
+.anxiety-top{margin-bottom:14px}
+.anxiety-top h4{margin:0 0 8px;color:var(--text-secondary,#94a3b8);font-size:.9em}
+.anxiety-topitem{padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;color:var(--text-secondary,#94a3b8);font-size:.85em}
+.anxiety-topitem code{background:rgba(139,92,246,.2);padding:1px 5px;border-radius:3px;font-size:.85em}
+.anxiety-tl h4{margin:0 0 8px;color:var(--text-secondary,#94a3b8);font-size:.9em}
+.anxiety-tl-item{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.anxiety-tl-bar{flex:1;height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+.anxiety-tl-score{font-size:.75em;color:var(--text-secondary,#94a3b8);min-width:28px;text-align:right}
+
+/* ── Impeachment Risk ────────────────────── */
+.imprisk-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.imprisk-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.imprisk-score{display:flex;flex-direction:column;align-items:center;padding:16px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.imprisk-num{font-size:2.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.imprisk-verdict{font-size:1em;font-weight:700;margin-top:4px}
+.imprisk-rec{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.imprisk-summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.imprisk-summary span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
+.imprisk-areas{display:flex;flex-direction:column;gap:10px}
+.imprisk-area{padding:12px;background:rgba(255,255,255,.04);border-radius:8px}
+.imprisk-area-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.imprisk-area-score{font-weight:700;font-size:1.1em}
+.imprisk-area-bar{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:6px}
+.imprisk-area-desc{font-size:.82em;color:var(--text-secondary,#94a3b8)}
+
+/* ── Legal Themes ────────────────────────── */
+.lthemes-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.lthemes-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.lthemes-primary{padding:10px 14px;background:rgba(139,92,246,.15);border-radius:8px;margin-bottom:12px;color:var(--text-primary,#e2e8f0)}
+.lthemes-plbl{color:var(--text-secondary,#94a3b8);font-size:.85em}
+.lthemes-coverage{display:flex;gap:16px;margin-bottom:12px;color:var(--text-secondary,#94a3b8);font-size:.9em}
+.lthemes-strong{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.lthemes-tag{padding:3px 10px;background:rgba(34,197,94,.2);color:#22c55e;border-radius:12px;font-size:.8em;font-weight:600}
+.lthemes-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.lthemes-item{padding:12px;background:rgba(255,255,255,.04);border-radius:8px}
+.lthemes-item-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.lthemes-item-score{font-weight:600;font-size:.85em}
+.lthemes-item-bar{height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:6px}
+.lthemes-item-desc{font-size:.82em;color:var(--text-secondary,#94a3b8);margin-bottom:4px}
+.lthemes-item-kw code{background:rgba(139,92,246,.15);padding:1px 5px;border-radius:3px;font-size:.8em;margin-right:4px}
+.lthemes-summ{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;color:var(--text-secondary,#94a3b8);font-style:italic}
+
+/* ── Readability Score ───────────────────── */
+.readab-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.readab-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.readab-scores{display:flex;gap:16px;justify-content:center;margin-bottom:12px}
+.readab-flesch,.readab-grade{display:flex;flex-direction:column;align-items:center;padding:14px 24px;border:2px solid rgba(139,92,246,.3);border-radius:12px;background:rgba(0,0,0,.2);min-width:100px}
+.readab-flesch{border-color:inherit}
+.readab-num{font-size:2em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.readab-lbl{font-size:.8em;color:var(--text-secondary,#94a3b8);margin-top:2px}
+.readab-rating{text-align:center;font-size:1.1em;font-weight:700;margin-bottom:8px}
+.readab-desc{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:12px;color:var(--text-secondary,#94a3b8);text-align:center}
+.readab-edu{text-align:center;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-size:.9em}
+.readab-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:12px}
+.readab-metric{display:flex;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,.04);border-radius:6px}
+.readab-metric-lbl{color:var(--text-secondary,#94a3b8);font-size:.82em}
+.readab-metric-val{font-weight:700;color:var(--text-primary,#e2e8f0);font-size:.85em}
+.readab-complex{padding:8px 12px;background:rgba(255,255,255,.03);border-radius:6px;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.readab-complex code{background:rgba(234,179,8,.15);padding:1px 5px;border-radius:3px}
+
+/* ── Cooperation Index ───────────────────── */
+.coopidx-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.coopidx-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.coopidx-score{display:flex;flex-direction:column;align-items:center;padding:16px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.coopidx-num{font-size:2.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.coopidx-lvl{font-size:1em;font-weight:700;margin-top:4px}
+.coopidx-assess{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.coopidx-dims{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.coopidx-dim{padding:10px;background:rgba(255,255,255,.04);border-radius:8px}
+.coopidx-dim-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.coopidx-dim-bar{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.coopidx-dim-detail{font-size:.8em;color:var(--text-secondary,#94a3b8)}
+.coopidx-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.coopidx-stats span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
