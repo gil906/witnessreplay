@@ -6802,7 +6802,7 @@ async function loadFeatureUsagePanel() {
     const el = document.getElementById('feature-usage-content');
     if (!el) return;
     try {
-        const r = await fetch('/api/admin/feature-usage-stats', {headers:{'Authorization':'Basic '+btoa(getAdminCreds())}});
+        const r = await fetch('/api/admin/feature-usage-stats', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
         const d = await r.json();
         let html = '<div class="featusage-grid">';
         html += `<div class="featusage-stat"><span class="featusage-num">${d.total_features}</span><span class="featusage-lbl">Features</span></div>`;
@@ -6826,7 +6826,7 @@ async function loadErrorTrackerPanel() {
     const el = document.getElementById('error-tracker-content');
     if (!el) return;
     try {
-        const r = await fetch('/api/admin/error-tracker', {headers:{'Authorization':'Basic '+btoa(getAdminCreds())}});
+        const r = await fetch('/api/admin/error-tracker', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
         const d = await r.json();
         const hColors = {healthy:'#22c55e',degraded:'#eab308',unhealthy:'#ef4444'};
         const hc = hColors[d.health] || '#666';
