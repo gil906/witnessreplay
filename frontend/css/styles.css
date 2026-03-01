@@ -10271,6 +10271,8 @@ img.loaded,
 
 .text-tools-dropdown {
     margin-right: 6px;
+    position: relative;
+    overflow: visible;
 }
 
 .text-tools-trigger {
@@ -10289,10 +10291,14 @@ img.loaded,
 .modern-dropdown-menu {
     position: absolute;
     bottom: calc(100% + 10px);
-    left: 0;
-    min-width: 200px;
+    left: auto;
+    right: 0;
+    width: max-content;
+    min-width: 230px;
+    max-width: 280px;
     max-height: 50vh;
     overflow-y: auto;
+    overflow-x: hidden;
     display: none;
     flex-direction: column;
     gap: 1px;
@@ -10337,7 +10343,10 @@ img.loaded,
     font-size: 0.82rem;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .modern-dropdown-item:hover:not(:disabled) {
@@ -11016,6 +11025,8 @@ textarea:disabled {
         -webkit-backdrop-filter: blur(20px);
         flex-shrink: 0;
         order: 10;
+        overflow: visible;
+        position: relative;
     }
 
     /* Show inline mic button */
@@ -11103,9 +11114,11 @@ textarea:disabled {
 
     /* Dropdown menu — glass panel */
     .modern-dropdown-menu {
-        min-width: 220px;
+        min-width: 230px;
+        max-width: 280px;
         max-height: 50vh;
         overflow-y: auto;
+        overflow-x: hidden;
         border-radius: 14px;
         padding: 6px;
     }
@@ -11113,6 +11126,7 @@ textarea:disabled {
         border-radius: 8px;
         padding: 7px 12px;
         font-size: 0.82rem;
+        white-space: normal;
     }
     .dropdown-separator {
         margin: 3px 8px;

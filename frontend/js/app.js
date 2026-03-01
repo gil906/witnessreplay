@@ -1100,10 +1100,24 @@ class WitnessReplayApp {
         const shouldOpen = !dropdown.classList.contains('open');
         document.querySelectorAll('.modern-dropdown.open').forEach((el) => {
             el.classList.remove('open');
+            const m = el.querySelector('.modern-dropdown-menu');
+            if (m) m.style.cssText = '';
             el.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
         });
         dropdown.classList.toggle('open', shouldOpen);
         dropdown.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', String(shouldOpen));
+
+        if (shouldOpen) {
+            const menu = dropdown.querySelector('.modern-dropdown-menu');
+            const trigger = dropdown.querySelector('.modern-dropdown-trigger');
+            if (menu && trigger) {
+                const rect = trigger.getBoundingClientRect();
+                menu.style.position = 'fixed';
+                menu.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+                menu.style.right = (window.innerWidth - rect.right) + 'px';
+                menu.style.left = 'auto';
+            }
+        }
     }
 
     _mountVoiceSettingsMenu() {
