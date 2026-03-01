@@ -1085,9 +1085,17 @@ class WitnessReplayApp {
         this._modernMenuDismissHandler = (event) => {
             const openMenus = document.querySelectorAll('.modern-dropdown.open');
             openMenus.forEach((menuEl) => {
-                if (!menuEl.contains(event.target)) {
+                // Also check if click is inside a portaled menu
+                const portaledMenu = document.querySelector('.modern-dropdown-menu.portaled[data-portal-parent="' + menuEl.id + '"]');
+                if (!menuEl.contains(event.target) && (!portaledMenu || !portaledMenu.contains(event.target))) {
                     menuEl.classList.remove('open');
                     menuEl.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
+                    // Return portaled menu
+                    if (portaledMenu) {
+                        menuEl.appendChild(portaledMenu);
+                        portaledMenu.classList.remove('portaled');
+                        portaledMenu.style.cssText = '';
+                    }
                 }
             });
         };
@@ -1098,12 +1106,19 @@ class WitnessReplayApp {
         const dropdown = document.getElementById(dropdownId);
         if (!dropdown) return;
         const shouldOpen = !dropdown.classList.contains('open');
+
+        // Close all open dropdowns and return portaled menus
         document.querySelectorAll('.modern-dropdown.open').forEach((el) => {
             el.classList.remove('open');
-            const m = el.querySelector('.modern-dropdown-menu');
-            if (m) m.style.cssText = '';
             el.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
         });
+        document.querySelectorAll('.modern-dropdown-menu.portaled').forEach((m) => {
+            const origParent = document.getElementById(m.dataset.portalParent);
+            if (origParent) origParent.appendChild(m);
+            m.classList.remove('portaled');
+            m.style.cssText = '';
+        });
+
         dropdown.classList.toggle('open', shouldOpen);
         dropdown.querySelector('.modern-dropdown-trigger')?.setAttribute('aria-expanded', String(shouldOpen));
 
@@ -1112,10 +1127,16 @@ class WitnessReplayApp {
             const trigger = dropdown.querySelector('.modern-dropdown-trigger');
             if (menu && trigger) {
                 const rect = trigger.getBoundingClientRect();
+                // Portal menu to body to escape all overflow/backdrop-filter clipping
+                menu.dataset.portalParent = dropdownId;
+                menu.classList.add('portaled');
+                document.body.appendChild(menu);
                 menu.style.position = 'fixed';
                 menu.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
-                menu.style.right = (window.innerWidth - rect.right) + 'px';
+                menu.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
                 menu.style.left = 'auto';
+                menu.style.display = 'flex';
+                menu.style.zIndex = '10000';
             }
         }
     }
