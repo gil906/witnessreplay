@@ -6614,3 +6614,65 @@ async function loadRateLimitsPanel() {
 }
 document.getElementById('rate-limits-refresh')?.addEventListener('click', loadRateLimitsPanel);
 setTimeout(loadRateLimitsPanel, 3200);
+
+// ── Database Stats Panel ────────────────────────────────
+async function loadDbStatsPanel() {
+    try {
+        const r = await fetch('/api/admin/database-stats', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const d = await r.json();
+        const el = document.getElementById('db-stats-content');
+        if (!el) return;
+        let html = '<div class="db-stats-grid">';
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.database.total_sessions}</span><span class="db-stat-lbl">Sessions</span></div>`;
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.memory.session_store_entries}</span><span class="db-stat-lbl">Store Entries</span></div>`;
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.memory.api_keys_count}</span><span class="db-stat-lbl">API Keys</span></div>`;
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.storage.total_size_mb} MB</span><span class="db-stat-lbl">Storage Used</span></div>`;
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.storage.total_files}</span><span class="db-stat-lbl">Data Files</span></div>`;
+        html += `<div class="db-stat-card"><span class="db-stat-val">${d.memory.rate_limit_entries}</span><span class="db-stat-lbl">Rate Entries</span></div>`;
+        html += '</div>';
+        html += `<div class="db-stat-health"><span class="db-stat-badge db-stat-${d.health.status}">● ${d.health.status.toUpperCase()}</span></div>`;
+        el.innerHTML = html;
+    } catch(e) { console.error('DB stats load error:', e); }
+}
+document.getElementById('db-stats-refresh')?.addEventListener('click', loadDbStatsPanel);
+setTimeout(loadDbStatsPanel, 3400);
+
+// ── System Notifications Panel ──────────────────────────
+async function loadSysNotifPanel() {
+    try {
+        const r = await fetch('/api/admin/system-notifications', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const d = await r.json();
+        const el = document.getElementById('sys-notif-content');
+        if (!el) return;
+        let html = '<div class="sys-notif-counts">';
+        html += `<span class="sys-notif-sev sys-notif-critical">🔴 Critical: ${d.severity_counts.critical}</span>`;
+        html += `<span class="sys-notif-sev sys-notif-warning">🟡 Warning: ${d.severity_counts.warning}</span>`;
+        html += `<span class="sys-notif-sev sys-notif-info">🔵 Info: ${d.severity_counts.info}</span>`;
+        html += `<span class="sys-notif-total">Total: ${d.total}</span></div>`;
+        html += '<div class="sys-notif-list">';
+        (d.notifications || []).slice(0, 10).forEach(n => {
+            const sevIcon = n.severity === 'critical' ? '🔴' : n.severity === 'warning' ? '🟡' : '🔵';
+            html += `<div class="sys-notif-item sys-notif-item-${n.severity}"><span class="sys-notif-icon">${sevIcon}</span>`;
+            html += `<div class="sys-notif-body"><strong>${n.title}</strong><span class="sys-notif-msg">${n.message}</span></div>`;
+            html += `<span class="sys-notif-time">${n.auto ? 'Auto' : 'Custom'}</span></div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Sys notif load error:', e); }
+}
+document.getElementById('sys-notif-refresh')?.addEventListener('click', loadSysNotifPanel);
+document.getElementById('sys-notif-add')?.addEventListener('click', async () => {
+    const title = prompt('Notification title:');
+    if (!title) return;
+    const message = prompt('Message:') || '';
+    const severity = prompt('Severity (info/warning/critical):', 'info') || 'info';
+    try {
+        await fetch('/api/admin/system-notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') },
+            body: JSON.stringify({ title, message, severity })
+        });
+        loadSysNotifPanel();
+    } catch(e) { console.error('Add notification error:', e); }
+});
+setTimeout(loadSysNotifPanel, 3600);

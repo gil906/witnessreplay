@@ -6480,3 +6480,29 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .rate-limits-panel { background: var(--glass-bg, rgba(15,23,42,0.85)); border-radius: 12px; padding: 16px; border: 1px solid rgba(239,68,68,0.15); }
 .rate-limits-panel h3 { color: #f59e0b; margin: 0 0 12px; font-size: 1.1rem; }
 .rate-limits-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* ── Database Stats Panel ──────────────────────────── */
+.db-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.db-stat-card { background: rgba(108,99,255,0.08); border-radius: 8px; padding: 12px; text-align: center; }
+.db-stat-val { display: block; font-size: 1.3em; font-weight: 700; color: #6c63ff; }
+.db-stat-lbl { display: block; font-size: 0.75em; color: #888; margin-top: 2px; }
+.db-stat-health { text-align: center; margin-top: 8px; }
+.db-stat-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+.db-stat-healthy { background: rgba(34,197,94,0.2); color: #4ade80; }
+.db-stat-degraded { background: rgba(234,179,8,0.2); color: #fbbf24; }
+.db-stat-unhealthy { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+/* ── System Notifications Panel ────────────────────── */
+.sys-notif-counts { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.sys-notif-sev { font-size: 0.82em; }
+.sys-notif-total { font-size: 0.82em; color: #888; margin-left: auto; }
+.sys-notif-list { display: flex; flex-direction: column; gap: 6px; }
+.sys-notif-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.85em; }
+.sys-notif-item-critical { background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444; }
+.sys-notif-item-warning { background: rgba(234,179,8,0.1); border-left: 3px solid #eab308; }
+.sys-notif-item-info { background: rgba(59,130,246,0.1); border-left: 3px solid #3b82f6; }
+.sys-notif-icon { font-size: 1em; }
+.sys-notif-body { flex: 1; }
+.sys-notif-body strong { display: block; font-size: 0.9em; color: #eee; }
+.sys-notif-msg { font-size: 0.8em; color: #aaa; }
+.sys-notif-time { font-size: 0.72em; color: #666; white-space: nowrap; }

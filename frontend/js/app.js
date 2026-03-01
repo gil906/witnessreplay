@@ -7946,7 +7946,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/questioneffect': async () => { await this._showQuestionEffectiveness(); },
         '/authenticity': async () => { await this._showAuthenticityCheck(); },
         '/fingerprint': async () => { await this._showBehavioralFingerprint(); },
-        '/narrativeflow': async () => { await this._showNarrativeFlow(); }
+        '/narrativeflow': async () => { await this._showNarrativeFlow(); },
+        '/keyterms': async () => { await this._showKeyTerms(); },
+        '/responsetime': async () => { await this._showResponseTiming(); },
+        '/precedent': async () => { await this._showPrecedentMap(); },
+        '/completeness': async () => { await this._showCompletenessCheck(); },
+        '/comparereport': async () => { await this._showComparisonReport(); }
     };
     
     const handler = commands[cmd];
@@ -8111,7 +8116,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/questioneffect', desc: 'Question effectiveness analyzer' },
         { cmd: '/authenticity', desc: 'Testimony authenticity verifier' },
         { cmd: '/fingerprint', desc: 'Witness behavioral fingerprint' },
-        { cmd: '/narrativeflow', desc: 'Narrative flow & coherence' }
+        { cmd: '/narrativeflow', desc: 'Narrative flow & coherence' },
+        { cmd: '/keyterms', desc: 'Key term extraction & categorization' },
+        { cmd: '/responsetime', desc: 'Response timing analysis' },
+        { cmd: '/precedent', desc: 'Legal precedent mapping' },
+        { cmd: '/completeness', desc: 'Testimony completeness check' },
+        { cmd: '/comparereport', desc: 'Witness comparison report' }
     ];
     
     const filter = val.toLowerCase();
@@ -13246,4 +13256,154 @@ WitnessReplayApp.prototype._showNarrativeFlow = async function() {
         html += `<div class="nflow-rec">${data.recommendation}</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not analyze narrative flow.'); }
+};
+
+// ── Key Terms Extractor ─────────────────────────────────
+WitnessReplayApp.prototype._showKeyTerms = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/key-terms`);
+        const d = await r.json();
+        let html = '<div class="kterm-container"><h3>🔤 Key Term Extractor</h3>';
+        html += `<div class="kterm-summary"><div class="kterm-stat"><span class="kterm-val">${d.summary.total_unique_terms}</span><span class="kterm-lbl">Unique Terms</span></div>`;
+        html += `<div class="kterm-stat"><span class="kterm-val">${d.summary.vocabulary_richness}%</span><span class="kterm-lbl">Vocab Richness</span></div>`;
+        html += `<div class="kterm-stat"><span class="kterm-val">${d.summary.dominant_category}</span><span class="kterm-lbl">Dominant Category</span></div></div>`;
+        html += '<div class="kterm-top"><h4>Top Terms</h4><div class="kterm-bars">';
+        const maxFreq = d.top_terms.length > 0 ? d.top_terms[0].frequency : 1;
+        d.top_terms.slice(0, 15).forEach(t => {
+            const pct = Math.round(t.frequency / maxFreq * 100);
+            html += `<div class="kterm-bar-row"><span class="kterm-word">${t.term}</span><div class="kterm-bar" style="width:${pct}%"></div><span class="kterm-freq">${t.frequency}</span></div>`;
+        });
+        html += '</div></div>';
+        ['legal','emotional','temporal','descriptive'].forEach(cat => {
+            const items = d.categories[cat] || [];
+            if (items.length > 0) {
+                const icons = {legal:'⚖️',emotional:'💭',temporal:'⏰',descriptive:'📝'};
+                html += `<div class="kterm-cat"><h4>${icons[cat]||''} ${cat.charAt(0).toUpperCase()+cat.slice(1)} Terms</h4><div class="kterm-tags">`;
+                items.slice(0, 8).forEach(t => { html += `<span class="kterm-tag kterm-tag-${cat}">${t.term} (${t.frequency})</span>`; });
+                html += '</div></div>';
+            }
+        });
+        if (d.key_phrases && d.key_phrases.length > 0) {
+            html += '<div class="kterm-phrases"><h4>Key Phrases</h4>';
+            d.key_phrases.slice(0, 10).forEach(p => { html += `<span class="kterm-phrase">"${p.phrase}" ×${p.frequency}</span>`; });
+            html += '</div>';
+        }
+        html += `<div class="kterm-rec">${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not extract key terms.'); }
+};
+
+// ── Response Timing Analyzer ────────────────────────────
+WitnessReplayApp.prototype._showResponseTiming = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/response-timing`);
+        const d = await r.json();
+        let html = '<div class="rtiming-container"><h3>⏱️ Response Timing Analyzer</h3>';
+        html += '<div class="rtiming-stats">';
+        html += `<div class="rtiming-stat"><span class="rtiming-val">${d.summary.average_response_time}s</span><span class="rtiming-lbl">Avg Response</span></div>`;
+        html += `<div class="rtiming-stat"><span class="rtiming-val">${d.summary.consistency_score}%</span><span class="rtiming-lbl">Consistency</span></div>`;
+        html += `<div class="rtiming-stat rtiming-quick"><span class="rtiming-val">${d.summary.quick_answers}</span><span class="rtiming-lbl">Quick</span></div>`;
+        html += `<div class="rtiming-stat rtiming-delayed"><span class="rtiming-val">${d.summary.delayed_answers}</span><span class="rtiming-lbl">Delayed</span></div>`;
+        html += `<div class="rtiming-stat"><span class="rtiming-val">${d.summary.normal_answers}</span><span class="rtiming-lbl">Normal</span></div></div>`;
+        html += '<div class="rtiming-timeline"><h4>Timing Timeline</h4>';
+        const maxTime = d.summary.slowest_response || 5;
+        d.timing_data.slice(0, 20).forEach(t => {
+            const pct = Math.min(Math.round(t.response_time_sec / maxTime * 100), 100);
+            const cls = t.timing_class === 'quick' ? 'rtiming-bar-quick' : t.timing_class === 'delayed' ? 'rtiming-bar-delayed' : 'rtiming-bar-normal';
+            html += `<div class="rtiming-row"><span class="rtiming-seg">S${t.segment}</span><div class="rtiming-barwrap"><div class="rtiming-bar ${cls}" style="width:${pct}%"></div></div><span class="rtiming-time">${t.response_time_sec}s</span></div>`;
+        });
+        html += '</div>';
+        if (d.anomalies && d.anomalies.length > 0) {
+            html += '<div class="rtiming-anomalies"><h4>⚠️ Anomalies</h4>';
+            d.anomalies.slice(0, 5).forEach(a => {
+                html += `<div class="rtiming-anomaly"><span class="rtiming-atype">${a.timing_class}</span><span class="rtiming-aflag">${a.flag}</span><span class="rtiming-atext">${a.excerpt}</span></div>`;
+            });
+            html += '</div>';
+        }
+        html += `<div class="rtiming-rec">${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze response timing.'); }
+};
+
+// ── Legal Precedent Mapper ──────────────────────────────
+WitnessReplayApp.prototype._showPrecedentMap = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/precedent-map`);
+        const d = await r.json();
+        let html = '<div class="precmap-container"><h3>⚖️ Legal Precedent Mapper</h3>';
+        html += `<div class="precmap-primary"><div class="precmap-badge">${d.primary_category}</div><div class="precmap-area">${d.primary_legal_area}</div></div>`;
+        html += `<div class="precmap-stats"><span>Categories Matched: <strong>${d.summary.categories_matched}</strong></span><span>Keyword Hits: <strong>${d.summary.total_keyword_hits}</strong></span><span>Coverage: <strong>${d.summary.coverage_score}%</strong></span></div>`;
+        if (d.precedent_matches.length > 0) {
+            html += '<div class="precmap-matches">';
+            d.precedent_matches.forEach(p => {
+                const color = p.relevance_score > 5 ? '#22c55e' : p.relevance_score > 2 ? '#eab308' : '#94a3b8';
+                html += `<div class="precmap-match"><div class="precmap-mhead"><span class="precmap-mcat">${p.category}</span><span class="precmap-marea">${p.legal_area}</span><span class="precmap-mscore" style="color:${color}">${p.relevance_score}%</span></div>`;
+                html += `<div class="precmap-mdesc">${p.description}</div>`;
+                html += `<div class="precmap-mkw">${p.keyword_matches.map(k=>`<span class="precmap-kw">${k.keyword} (${k.occurrences})</span>`).join('')}</div></div>`;
+            });
+            html += '</div>';
+        }
+        html += `<div class="precmap-rec">${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not map legal precedents.'); }
+};
+
+// ── Testimony Completeness Checker ──────────────────────
+WitnessReplayApp.prototype._showCompletenessCheck = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/completeness-check`);
+        const d = await r.json();
+        const verdictColors = {comprehensive:'#22c55e',adequate:'#3b82f6',incomplete:'#eab308',insufficient:'#ef4444'};
+        let html = '<div class="compcheck-container"><h3>📋 Testimony Completeness Check</h3>';
+        html += `<div class="compcheck-score" style="border-color:${verdictColors[d.verdict]||'#666'}"><span class="compcheck-pct">${d.overall_score}%</span><span class="compcheck-verdict" style="color:${verdictColors[d.verdict]||'#666'}">${d.verdict.toUpperCase()}</span><span class="compcheck-desc">${d.verdict_description}</span></div>`;
+        html += `<div class="compcheck-summary"><span>Covered: <strong>${d.summary.topics_covered}/${d.summary.topics_total}</strong></span><span>Strongest: <strong>${d.summary.strongest_area}</strong></span><span>Weakest: <strong>${d.summary.weakest_area}</strong></span></div>`;
+        html += '<div class="compcheck-topics">';
+        d.topics.forEach(t => {
+            const barColor = t.is_covered ? '#22c55e' : '#ef4444';
+            html += `<div class="compcheck-topic"><div class="compcheck-thead"><span>${t.is_covered?'✅':'❌'} ${t.topic}</span><span class="compcheck-tpct">${t.coverage_pct}%</span></div>`;
+            html += `<div class="compcheck-tbar"><div style="width:${t.coverage_pct}%;background:${barColor};height:100%;border-radius:4px"></div></div>`;
+            if (t.matched_keywords.length > 0) {
+                html += `<div class="compcheck-tkw">${t.matched_keywords.map(k=>`<span class="compcheck-kw">${k}</span>`).join('')}</div>`;
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+        if (d.gaps.length > 0) {
+            html += '<div class="compcheck-gaps"><h4>🔍 Gaps Identified</h4>';
+            d.gaps.forEach(g => { html += `<span class="compcheck-gap">⚠️ ${g}</span>`; });
+            html += '</div>';
+        }
+        html += `<div class="compcheck-rec">${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not check completeness.'); }
+};
+
+// ── Witness Comparison Report ───────────────────────────
+WitnessReplayApp.prototype._showComparisonReport = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/comparison-report`);
+        const d = await r.json();
+        let html = '<div class="compreport-container"><h3>📊 Witness Comparison Report</h3>';
+        html += `<div class="compreport-overall"><span class="compreport-pct">${d.overall_typicality}%</span><span class="compreport-lbl">Typicality Score</span></div>`;
+        html += `<div class="compreport-counts"><span class="compreport-within">✅ Within: ${d.summary.within_typical}</span><span class="compreport-above">🔼 Above: ${d.summary.above_typical}</span><span class="compreport-below">🔽 Below: ${d.summary.below_typical}</span></div>`;
+        html += '<div class="compreport-metrics">';
+        d.comparisons.forEach(c => {
+            const statusIcon = c.status === 'within_typical' ? '✅' : c.status === 'above_typical' ? '🔼' : '🔽';
+            const statusCls = c.status === 'within_typical' ? 'compreport-ok' : c.status === 'above_typical' ? 'compreport-high' : 'compreport-low';
+            const rangePct = c.typical_high - c.typical_low;
+            const valPos = Math.min(Math.max((c.witness_value - c.typical_low) / (rangePct || 1) * 100, 0), 100);
+            html += `<div class="compreport-metric ${statusCls}"><div class="compreport-mhead"><span>${statusIcon} ${c.metric}</span><span class="compreport-mval">${c.witness_value}</span></div>`;
+            html += `<div class="compreport-range"><div class="compreport-rangebar"><div class="compreport-typzone" style="left:0;width:100%"></div><div class="compreport-marker" style="left:${valPos}%"></div></div><div class="compreport-rangelbl"><span>${c.typical_low}</span><span>${c.typical_high}</span></div></div>`;
+            html += `<div class="compreport-mnote">${c.note}</div></div>`;
+        });
+        html += '</div>';
+        html += `<div class="compreport-assessment">${d.assessment}</div>`;
+        html += `<div class="compreport-rec">${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate comparison report.'); }
 };
