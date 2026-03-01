@@ -6305,7 +6305,7 @@ async function loadApiKeyManager() {
     const el = document.getElementById('api-key-manager-content');
     if (!el) return;
     try {
-        const r = await fetch('/api/admin/api-key-manager', { headers: { 'X-Admin-Token': localStorage.getItem('adminToken') || '' } });
+        const r = await fetch('/api/admin/api-key-manager', { headers: { 'Authorization': 'Bearer ' + (window.adminPortal?.authToken || sessionStorage.getItem('admin_token') || '') } });
         const d = await r.json();
         const statusColor = d.status === 'active' ? '#4caf50' : '#f44336';
         el.innerHTML = `
@@ -6329,7 +6329,7 @@ async function loadScheduledTasks() {
     const el = document.getElementById('scheduled-tasks-content');
     if (!el) return;
     try {
-        const r = await fetch('/api/admin/scheduled-tasks', { headers: { 'X-Admin-Token': localStorage.getItem('adminToken') || '' } });
+        const r = await fetch('/api/admin/scheduled-tasks', { headers: { 'Authorization': 'Bearer ' + (window.adminPortal?.authToken || sessionStorage.getItem('admin_token') || '') } });
         const d = await r.json();
         let html = `<div class="st-stats"><span class="st-stat-badge st-active">${d.active_count} Active</span><span class="st-stat-badge st-paused">${d.paused_count} Paused</span></div>`;
         html += '<div class="st-list">';
