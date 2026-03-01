@@ -7872,7 +7872,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
             this._showKeyDates();
         },
         '/sentimenttl': () => {
-            this._showSentimentTimeline();
+            this._showSentimentAnalysis();
         },
         '/objections': () => {
             this._showObjections();
@@ -7926,17 +7926,17 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/power': async () => { await this._showPowerDynamics(); },
         '/volatility': async () => { await this._showVolatility(); },
         '/prepared': async () => { await this._showPreparationDetector(); },
-        '/admissions': async () => { await this._showAdmissions(); },
+        '/keyadmissions': async () => { await this._showKeyAdmissions(); },
         '/strategy': async () => { await this._showQuestioningStrategy(); },
         '/confidence': async () => { await this._showConfidenceMap(); },
-        '/witnessprofile': async () => { await this._showWitnessProfile(); },
+        '/witnessprofile': async () => { await this._showWitnessDossier(); },
         '/segments': async () => { await this._showTopicSegments(); },
         '/weakpoints': async () => { await this._showCrossExamWeaknesses(); },
         '/deception': async () => { await this._showDeceptionIndicators(); },
-        '/consistency': async () => { await this._showConsistencyScore(); },
+        '/cscore': async () => { await this._showConsistencyScore(); },
         '/argument': async () => { await this._showLegalArguments(); },
         '/gapanalysis': async () => { await this._showTestimonyGaps(); },
-        '/matrixcompare': async () => { await this._showComparisonMatrix(); }
+        '/matrixcompare': async () => { await this._showWitnessComparisonMatrix(); }
     };
     
     const handler = commands[cmd];
@@ -8088,7 +8088,7 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/issues', desc: 'Legal issue spotter' },
         { cmd: '/redline', desc: 'Self-contradiction finder' },
         { cmd: '/deception', desc: 'Deception indicator analysis' },
-        { cmd: '/consistency', desc: 'Witness consistency score' },
+        { cmd: '/cscore', desc: 'Witness consistency score' },
         { cmd: '/argument', desc: 'Legal argument builder' },
         { cmd: '/gapanalysis', desc: 'Testimony gap detector' },
         { cmd: '/matrixcompare', desc: 'Witness comparison matrix' }
@@ -10804,10 +10804,10 @@ WitnessReplayApp.prototype._showEmotionalArc = async function() {
 
 // ── IMPROVEMENT 72: Response Pattern Analyzer ──
 WitnessReplayApp.prototype._showResponsePatterns = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🔍 Analyzing response patterns...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/patterns`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/patterns`);
         const data = await resp.json();
         const icons = { rehearsed: '🎭', evasion: '🙈', deflection: '↩️', hedging: '🌫️', repetition: '🔁' };
         const levelColors = { high: '#ff4444', medium: '#ff8800', low: '#44aa44' };
@@ -10837,10 +10837,10 @@ WitnessReplayApp.prototype._showResponsePatterns = async function() {
 
 // ── IMPROVEMENT 73: Power Phrases ──
 WitnessReplayApp.prototype._showPowerPhrases = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('⚡ Extracting power phrases...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/power-phrases`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/power-phrases`);
         const data = await resp.json();
         let html = `<div class="power-panel">`;
         html += `<div class="power-header">⚡ Power Phrases (${data.total})</div>`;
@@ -10868,10 +10868,10 @@ WitnessReplayApp.prototype._showPowerPhrases = async function() {
 
 // ── IMPROVEMENT 74: Deposition Prep Checklist ──
 WitnessReplayApp.prototype._showPrepChecklist = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('📋 Generating prep checklist...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/prep-checklist`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/prep-checklist`);
         const data = await resp.json();
         const statusIcons = { covered: '✅', needed: '❌', flagged: '⚠️', clear: '✔️' };
         const statusColors = { covered: '#44aa44', needed: '#ff4444', flagged: '#ff8800', clear: '#6C63FF' };
@@ -10896,10 +10896,10 @@ WitnessReplayApp.prototype._showPrepChecklist = async function() {
 
 // ── IMPROVEMENT 75: Corroboration Finder ──
 WitnessReplayApp.prototype._showCorroboration = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🔗 Searching for corroboration...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/corroborate`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/corroborate`);
         const data = await resp.json();
         const strengthIcons = { strong: '💪', moderate: '🤝', weak: '🔍' };
         let html = `<div class="corrob-panel">`;
@@ -10926,10 +10926,10 @@ WitnessReplayApp.prototype._showCorroboration = async function() {
 
 // ── IMPROVEMENT 76: Testimony Heatmap ──
 WitnessReplayApp.prototype._showTestimonyHeatmap = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🌡️ Generating testimony heatmap...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/heatmap`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/heatmap`);
         const data = await resp.json();
         let html = `<div class="heatmap-panel">`;
         html += `<div class="heatmap-header">🌡️ Testimony Intensity Heatmap</div>`;
@@ -10955,10 +10955,10 @@ WitnessReplayApp.prototype._showTestimonyHeatmap = async function() {
 
 // ── Fact Extractor (/facts) ─────────────────
 WitnessReplayApp.prototype._showFactExtractor = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🔍 Extracting factual claims...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/facts`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/facts`);
         const data = await resp.json();
         let html = `<div class="facts-panel"><h4>📋 Testimony Facts</h4>`;
         html += `<div class="facts-summary"><span class="fact-badge">📊 ${data.total_facts} facts</span> <span class="fact-badge">📅 ${data.dates.length} dates</span> <span class="fact-badge">💰 ${data.amounts.length} amounts</span> <span class="fact-badge">📍 ${data.locations.length} locations</span> <span class="fact-badge">👤 ${data.names.length} names</span></div>`;
@@ -10984,10 +10984,10 @@ WitnessReplayApp.prototype._showFactExtractor = async function() {
 
 // ── Witness Profile (/profile) ─────────────────
 WitnessReplayApp.prototype._showWitnessProfile = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🧠 Building witness profile...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/witness-profile`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/witness-profile`);
         const data = await resp.json();
         const p = data.profile;
         let html = `<div class="profile-panel"><h4>🧠 Witness Profile</h4>`;
@@ -11018,10 +11018,10 @@ WitnessReplayApp.prototype._showWitnessProfile = async function() {
 
 // ── Question Effectiveness (/qscore) ─────────────────
 WitnessReplayApp.prototype._showQuestionScore = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('📊 Scoring question effectiveness...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/question-score`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/question-score`);
         const data = await resp.json();
         const scoreColor = data.overall_score >= 70 ? '#44aa44' : (data.overall_score >= 40 ? '#ff8800' : '#ff4444');
         let html = `<div class="qscore-panel"><h4>📊 Question Effectiveness</h4>`;
@@ -11054,10 +11054,10 @@ WitnessReplayApp.prototype._showQuestionScore = async function() {
 
 // ── Contradiction Map (/contradmap) ─────────────────
 WitnessReplayApp.prototype._showContradictionMap = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🗺️ Building contradiction map...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/contradiction-map`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/contradiction-map`);
         const data = await resp.json();
         let html = `<div class="contradmap-panel"><h4>🗺️ Contradiction Map</h4>`;
         const sev = data.severity_summary;
@@ -11083,10 +11083,10 @@ WitnessReplayApp.prototype._showContradictionMap = async function() {
 
 // ── Entity Network (/entities) ─────────────────
 WitnessReplayApp.prototype._showEntityNetwork = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🌐 Extracting entity network...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/entities`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/entities`);
         const data = await resp.json();
         const s = data.summary;
         let html = `<div class="entities-panel"><h4>🌐 Entity Network</h4>`;
@@ -11113,10 +11113,10 @@ WitnessReplayApp.prototype._showEntityNetwork = async function() {
 
 // ── Testimony Theme Extractor ─────────────────────
 WitnessReplayApp.prototype._showThemes = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🎯 Extracting testimony themes...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/themes`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/themes`);
         const data = await resp.json();
         let html = `<div class="themes-panel"><h4>🎯 Testimony Themes</h4>`;
         html += `<div class="themes-header"><span class="theme-dominant">Dominant: <strong>${data.dominant_theme}</strong></span> <span class="theme-count">${data.total_themes} themes detected</span></div>`;
@@ -11143,10 +11143,10 @@ WitnessReplayApp.prototype._showThemes = async function() {
 
 // ── Cross-Examination Planner ─────────────────────
 WitnessReplayApp.prototype._showCrossExam = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('⚔️ Building cross-examination plan...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/crossex`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/crossex`);
         const data = await resp.json();
         let html = `<div class="crossex-panel"><h4>⚔️ Cross-Examination Planner</h4>`;
         html += `<div class="crossex-summary"><span class="crossex-total">${data.total_questions} questions generated</span>`;
@@ -11174,10 +11174,10 @@ WitnessReplayApp.prototype._showCrossExam = async function() {
 
 // ── Witness Consistency Score ─────────────────────
 WitnessReplayApp.prototype._showConsistency = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🔄 Analyzing testimony consistency...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/consistency`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/consistency`);
         const data = await resp.json();
         const scoreColor = data.consistency_score >= 80 ? '#44aa44' : data.consistency_score >= 60 ? '#ffaa00' : '#ff4444';
         let html = `<div class="consistency-panel"><h4>🔄 Witness Consistency Score</h4>`;
@@ -11199,10 +11199,10 @@ WitnessReplayApp.prototype._showConsistency = async function() {
 
 // ── Key Admission Tracker ─────────────────────────
 WitnessReplayApp.prototype._showAdmissions = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🎯 Tracking admissions and concessions...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/admissions`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/admissions`);
         const data = await resp.json();
         const sigColor = data.significance === 'high' ? '#ff4444' : data.significance === 'medium' ? '#ffaa00' : '#44aa44';
         let html = `<div class="admissions-panel"><h4>🎯 Key Admission Tracker</h4>`;
@@ -11233,10 +11233,10 @@ WitnessReplayApp.prototype._showAdmissions = async function() {
 
 // ── Testimony Duration Estimator ──────────────────
 WitnessReplayApp.prototype._showDuration = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('⏱️ Estimating testimony duration...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/duration`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/duration`);
         const data = await resp.json();
         let html = `<div class="duration-panel"><h4>⏱️ Testimony Duration Estimator</h4>`;
         html += `<div class="duration-meters">`;
@@ -11266,10 +11266,10 @@ WitnessReplayApp.prototype._showDuration = async function() {
 
 // ── Credibility Report ───────────────────
 WitnessReplayApp.prototype._showCredibilityReport = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('🔍 Building credibility scorecard...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/credibility-report`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/credibility-report`);
         const data = await resp.json();
         let html = `<div class="credibility-panel"><h4>🛡️ Witness Credibility Scorecard</h4>`;
         html += `<div class="cred-overall"><div class="cred-score-ring" style="--score:${data.overall_score}">${data.overall_score}/100</div>`;
@@ -11299,10 +11299,10 @@ WitnessReplayApp.prototype._showCredibilityReport = async function() {
 
 // ── Word Cloud Data ───────────────────
 WitnessReplayApp.prototype._showWordCloudData = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('☁️ Generating word cloud...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/wordcloud-data`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/wordcloud-data`);
         const data = await resp.json();
         let html = `<div class="wordcloud-panel"><h4>☁️ Testimony Word Cloud</h4>`;
         html += `<div class="wc-cloud">`;
@@ -11335,10 +11335,10 @@ WitnessReplayApp.prototype._showWordCloudData = async function() {
 
 // ── Deposition Cost Calculator ───────────────────
 WitnessReplayApp.prototype._showDepoCost = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('💰 Calculating deposition costs...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/depo-cost`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/depo-cost`);
         const data = await resp.json();
         let html = `<div class="depocost-panel"><h4>💰 Deposition Cost Estimator</h4>`;
         html += `<div class="dc-total"><span class="dc-total-label">Estimated Total</span><span class="dc-total-val">$${data.estimated_total.toLocaleString()}</span></div>`;
@@ -11370,10 +11370,10 @@ WitnessReplayApp.prototype._showDepoCost = async function() {
 
 // ── Readability Score ───────────────────
 WitnessReplayApp.prototype._showReadability = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('📖 Analyzing readability...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/readability`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/readability`);
         const data = await resp.json();
         let html = `<div class="readability-panel"><h4>📖 Testimony Readability Analysis</h4>`;
         html += `<div class="read-summary"><div class="read-level">${data.interpretation.reading_level}</div>`;
@@ -11407,10 +11407,10 @@ WitnessReplayApp.prototype._showReadability = async function() {
 
 // ── Key Dates Extractor ───────────────────
 WitnessReplayApp.prototype._showKeyDates = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     this.displaySystemMessage('📅 Extracting key dates...');
     try {
-        const resp = await this.fetchWithTimeout(`/api/sessions/${this.currentSessionId}/keydates`);
+        const resp = await this.fetchWithTimeout(`/api/sessions/${this.sessionId}/keydates`);
         const data = await resp.json();
         let html = `<div class="keydates-panel"><h4>📅 Key Date Extractor</h4>`;
         html += `<div class="kd-summary">`;
@@ -11447,8 +11447,8 @@ WitnessReplayApp.prototype._showKeyDates = async function() {
     } catch (e) { this.displaySystemMessage('❌ Could not extract key dates.'); }
 };
 
-// ── Sentiment Timeline ────────────────────────────────────────
-WitnessReplayApp.prototype._showSentimentTimeline = async function() {
+// ── Sentiment Analysis ────────────────────────────────────────
+WitnessReplayApp.prototype._showSentimentAnalysis = async function() {
     if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
         this.displaySystemMessage('⏳ Analyzing sentiment across testimony...');
@@ -11638,9 +11638,9 @@ WitnessReplayApp.prototype._showCompareTo = async function(otherId) {
 
 // ── Witness Stance Tracker ────────────────────────────────
 WitnessReplayApp.prototype._showStanceTracker = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/stance`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/stance`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="stance-result">`;
@@ -11673,9 +11673,9 @@ WitnessReplayApp.prototype._showStanceTracker = async function() {
 
 // ── Testimony Summary Bullets ─────────────────────────────
 WitnessReplayApp.prototype._showBullets = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/bullets`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/bullets`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="bullets-result">`;
@@ -11704,9 +11704,9 @@ WitnessReplayApp.prototype._showBullets = async function() {
 
 // ── Expert Witness Evaluator ──────────────────────────────
 WitnessReplayApp.prototype._showExpertEval = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/expert-eval`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/expert-eval`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         const ds = data.daubert_scores;
@@ -11739,9 +11739,9 @@ WitnessReplayApp.prototype._showExpertEval = async function() {
 
 // ── Privilege Log Detector ────────────────────────────────
 WitnessReplayApp.prototype._showPrivileges = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/privileges`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/privileges`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="priv-result">`;
@@ -11778,9 +11778,9 @@ WitnessReplayApp.prototype._showPrivileges = async function() {
 
 // ── Testimony Strength Meter ──────────────────────────────
 WitnessReplayApp.prototype._showStrength = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/strength`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/strength`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         const sc = data.scores;
@@ -11816,9 +11816,9 @@ WitnessReplayApp.prototype._showStrength = async function() {
 
 // ── Behavioral Cues Handler ──────────────────────
 commands['/behavior'] = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/behavioral-cues`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/behavioral-cues`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="behavior-container">`;
@@ -11854,9 +11854,9 @@ commands['/behavior'] = async function() {
 
 // ── Case Brief Handler ──────────────────────
 commands['/brief'] = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/case-brief`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/case-brief`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="brief-container">`;
@@ -11886,9 +11886,9 @@ commands['/brief'] = async function() {
 
 // ── Pacing Analysis Handler ──────────────────────
 commands['/pacing'] = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/pacing`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/pacing`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="pacing-container">`;
@@ -11917,9 +11917,9 @@ commands['/pacing'] = async function() {
 
 // ── Narrative Arc Handler ──────────────────────
 commands['/narrative'] = async function() {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/narrative-arc`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/narrative-arc`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="narrative-container">`;
@@ -11961,11 +11961,11 @@ commands['/narrative'] = async function() {
 
 // ── Credibility Comparison Handler ──────────────────────
 commands['/credcompare'] = async function(args) {
-    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     const otherId = (args || '').trim();
     if (!otherId) { this.displaySystemMessage('⚠️ Usage: /credcompare [other-session-id]'); return; }
     try {
-        const res = await fetch(`/api/sessions/${this.currentSessionId}/cred-compare/${otherId}`);
+        const res = await fetch(`/api/sessions/${this.sessionId}/cred-compare/${otherId}`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         let html = `<div class="credcomp-container">`;
@@ -11994,8 +11994,8 @@ commands['/credcompare'] = async function(args) {
 
 // ── Behavioral Cues (re-wired to prototype) ──────────────────────
 WitnessReplayApp.prototype._showBehavioralCuesCmd = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/behavioral-cues`);
         if (!res.ok) throw new Error();
@@ -12031,8 +12031,8 @@ WitnessReplayApp.prototype._showBehavioralCuesCmd = async function() {
 
 // ── Case Brief (re-wired) ──────────────────────
 WitnessReplayApp.prototype._showCaseBriefCmd = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/case-brief`);
         if (!res.ok) throw new Error();
@@ -12058,8 +12058,8 @@ WitnessReplayApp.prototype._showCaseBriefCmd = async function() {
 
 // ── Pacing (re-wired) ──────────────────────
 WitnessReplayApp.prototype._showPacingCmd = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/pacing`);
         if (!res.ok) throw new Error();
@@ -12078,8 +12078,8 @@ WitnessReplayApp.prototype._showPacingCmd = async function() {
 
 // ── Narrative Arc (re-wired) ──────────────────────
 WitnessReplayApp.prototype._showNarrativeCmd = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/narrative-arc`);
         if (!res.ok) throw new Error();
@@ -12094,8 +12094,8 @@ WitnessReplayApp.prototype._showNarrativeCmd = async function() {
 
 // ── Credibility Comparison (re-wired) ──────────────────────
 WitnessReplayApp.prototype._showCredCompareCmd = async function(otherId) {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/cred-compare/${otherId}`);
         if (!res.ok) throw new Error();
@@ -12112,8 +12112,8 @@ WitnessReplayApp.prototype._showCredCompareCmd = async function(otherId) {
 
 // ── Oath Analysis Handler ──────────────────────
 WitnessReplayApp.prototype._showOathAnalysis = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/oath-analysis`);
         if (!res.ok) throw new Error();
@@ -12157,8 +12157,8 @@ WitnessReplayApp.prototype._showOathAnalysis = async function() {
 
 // ── Exhibit Tracker Handler ──────────────────────
 WitnessReplayApp.prototype._showExhibitTracker = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/exhibits`);
         if (!res.ok) throw new Error();
@@ -12196,8 +12196,8 @@ WitnessReplayApp.prototype._showExhibitTracker = async function() {
 
 // ── Memory Quality Handler ──────────────────────
 WitnessReplayApp.prototype._showMemoryQuality = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/memory-quality`);
         if (!res.ok) throw new Error();
@@ -12239,8 +12239,8 @@ WitnessReplayApp.prototype._showMemoryQuality = async function() {
 
 // ── Legal Issues Handler ──────────────────────
 WitnessReplayApp.prototype._showLegalIssues = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/legal-issues`);
         if (!res.ok) throw new Error();
@@ -12281,8 +12281,8 @@ WitnessReplayApp.prototype._showLegalIssues = async function() {
 
 // ── Testimony Redline Handler ──────────────────────
 WitnessReplayApp.prototype._showRedline = async function() {
-    if (!this.currentSessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
-    const sid = this.currentSessionId || this.sessionId;
+    if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const sid = this.sessionId || this.sessionId;
     try {
         const res = await fetch(`/api/sessions/${sid}/redline`);
         if (!res.ok) throw new Error();
@@ -12458,7 +12458,7 @@ WitnessReplayApp.prototype._showPreparationDetector = async function() {
 };
 
 // ── Key Admission Extractor ──
-WitnessReplayApp.prototype._showAdmissions = async function() {
+WitnessReplayApp.prototype._showKeyAdmissions = async function() {
     if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
         this.displaySystemMessage('✋ Extracting key admissions...');
@@ -12560,7 +12560,7 @@ WitnessReplayApp.prototype._showConfidenceMap = async function() {
 };
 
 // ── Witness Profile Builder ──
-WitnessReplayApp.prototype._showWitnessProfile = async function() {
+WitnessReplayApp.prototype._showWitnessDossier = async function() {
     if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     try {
         this.displaySystemMessage('👤 Building witness profile...');
@@ -12830,7 +12830,7 @@ WitnessReplayApp.prototype._showTestimonyGaps = async function() {
 // ============================================================
 // Feature: Witness Comparison Matrix
 // ============================================================
-WitnessReplayApp.prototype._showComparisonMatrix = async function() {
+WitnessReplayApp.prototype._showWitnessComparisonMatrix = async function() {
     if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     const otherId = prompt('Enter the other session ID to compare:');
     if (!otherId) { this.displaySystemMessage('⚠️ Comparison cancelled.'); return; }
