@@ -18153,3 +18153,527 @@ async def system_health(auth=Depends(require_admin_auth)):
         "processes": proc_count,
         "python_version": __import__("sys").version.split()[0]
     }
+
+
+# ── Witness Evasion Pattern Detector ────────────────────────────────────
+@router.get("/sessions/{session_id}/evasion-patterns")
+async def get_evasion_patterns(session_id: str):
+    """Detect non-answer patterns, deflection, topic changes, and vagueness in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    evasion_markers = {
+        "deflection": [
+            "that's not the point", "let me explain", "what I meant was",
+            "you need to understand", "the real question is", "more importantly",
+            "but what about", "that's irrelevant", "let's focus on"
+        ],
+        "non_answer": [
+            "I don't recall", "I'm not sure", "I can't remember",
+            "I don't know", "I wouldn't say", "it depends",
+            "that's hard to say", "I couldn't tell you", "not that I know of",
+            "I have no idea", "I plead the fifth", "no comment"
+        ],
+        "vagueness": [
+            "sort of", "kind of", "more or less", "I guess",
+            "I suppose", "maybe", "perhaps", "possibly",
+            "something like", "around that time", "approximately",
+            "I think so", "probably", "in a way"
+        ],
+        "topic_change": [
+            "anyway", "by the way", "speaking of", "that reminds me",
+            "on another note", "but going back", "as I was saying",
+            "can we move on", "let's talk about", "the thing is"
+        ]
+    }
+
+    patterns = []
+    totals = {k: 0 for k in evasion_markers}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for category, markers in evasion_markers.items():
+            for marker in markers:
+                if marker in lower:
+                    patterns.append({
+                        "segment": idx + 1,
+                        "category": category,
+                        "marker": marker,
+                        "excerpt": stmt[:120]
+                    })
+                    totals[category] += 1
+                    break
+
+    total_evasions = sum(totals.values())
+    evasion_rate = round(total_evasions / max(len(statements), 1) * 100, 1)
+    dominant = max(totals, key=totals.get) if total_evasions > 0 else "none"
+
+    if evasion_rate > 40:
+        risk = "high"
+    elif evasion_rate > 20:
+        risk = "moderate"
+    elif evasion_rate > 5:
+        risk = "low"
+    else:
+        risk = "minimal"
+
+    return {
+        "session_id": session_id,
+        "patterns": patterns[:50],
+        "totals": totals,
+        "total_evasions": total_evasions,
+        "evasion_rate_pct": evasion_rate,
+        "dominant_pattern": dominant,
+        "risk_level": risk,
+        "segments_analyzed": len(statements),
+        "recommendation": f"Witness shows {risk} evasion risk ({evasion_rate}%). Dominant pattern: {dominant}."
+    }
+
+
+# ── Power Dynamics Analyzer ─────────────────────────────────────────────
+@router.get("/sessions/{session_id}/power-dynamics")
+async def get_power_dynamics(session_id: str):
+    """Analyze power dynamics between questioner and witness."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    user_msgs = []
+    ai_msgs = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 10:
+                user_msgs.append(content)
+            elif role in ("assistant", "model") and len(content) > 10:
+                ai_msgs.append(content)
+
+    dominance_markers = [
+        "I insist", "let me be clear", "I refuse", "absolutely not",
+        "that's final", "I won't", "make no mistake", "period",
+        "I demand", "you must understand"
+    ]
+    submission_markers = [
+        "yes sir", "yes ma'am", "of course", "whatever you say",
+        "I understand", "you're right", "I agree", "certainly",
+        "absolutely", "if you say so"
+    ]
+    resistance_markers = [
+        "I object", "that's misleading", "that's not what I said",
+        "you're twisting", "asked and answered", "I already told you",
+        "I disagree", "that's not accurate", "with all due respect",
+        "I take issue"
+    ]
+
+    dom_count = sub_count = res_count = 0
+    exchanges = []
+
+    for idx, stmt in enumerate(user_msgs):
+        lower = stmt.lower()
+        exchange_type = "neutral"
+        matched = ""
+
+        for marker in dominance_markers:
+            if marker.lower() in lower:
+                dom_count += 1
+                exchange_type = "dominance"
+                matched = marker
+                break
+        if exchange_type == "neutral":
+            for marker in submission_markers:
+                if marker.lower() in lower:
+                    sub_count += 1
+                    exchange_type = "submission"
+                    matched = marker
+                    break
+        if exchange_type == "neutral":
+            for marker in resistance_markers:
+                if marker.lower() in lower:
+                    res_count += 1
+                    exchange_type = "resistance"
+                    matched = marker
+                    break
+
+        if exchange_type != "neutral":
+            exchanges.append({
+                "segment": idx + 1,
+                "type": exchange_type,
+                "marker": matched,
+                "excerpt": stmt[:120]
+            })
+
+    total = dom_count + sub_count + res_count
+    if dom_count >= sub_count and dom_count >= res_count:
+        overall = "witness-dominant"
+    elif res_count >= sub_count:
+        overall = "resistant"
+    elif sub_count > 0:
+        overall = "compliant"
+    else:
+        overall = "balanced"
+
+    return {
+        "session_id": session_id,
+        "exchanges": exchanges[:40],
+        "dominance_count": dom_count,
+        "submission_count": sub_count,
+        "resistance_count": res_count,
+        "total_dynamic_markers": total,
+        "overall_dynamic": overall,
+        "segments_analyzed": len(user_msgs),
+        "questioner_exchanges": len(ai_msgs),
+        "balance_ratio": round(sub_count / max(dom_count + res_count, 1), 2),
+        "recommendation": f"Witness exhibits {overall} dynamics across {total} markers."
+    }
+
+
+# ── Emotional Volatility Index ──────────────────────────────────────────
+@router.get("/sessions/{session_id}/volatility")
+async def get_emotional_volatility(session_id: str):
+    """Measure emotional stability/volatility across testimony segments."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    emotion_lexicon = {
+        "anger": ["angry", "furious", "outraged", "hostile", "frustrated", "annoyed", "mad", "enraged", "livid", "irate"],
+        "fear": ["afraid", "scared", "terrified", "anxious", "worried", "nervous", "frightened", "panicked", "fearful", "dread"],
+        "sadness": ["sad", "depressed", "heartbroken", "devastated", "miserable", "grief", "crying", "tears", "upset", "sorrowful"],
+        "joy": ["happy", "glad", "relieved", "grateful", "pleased", "thankful", "excited", "delighted", "joyful", "cheerful"],
+        "surprise": ["shocked", "surprised", "amazed", "stunned", "astonished", "unexpected", "startled", "unbelievable", "bewildered"],
+        "disgust": ["disgusted", "revolting", "sickening", "appalling", "repulsive", "vile", "horrible", "awful", "despicable"]
+    }
+
+    segment_emotions = []
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        emotion_scores = {}
+        for emotion, words in emotion_lexicon.items():
+            score = sum(1 for w in words if w in lower)
+            if score > 0:
+                emotion_scores[emotion] = score
+
+        dominant = max(emotion_scores, key=emotion_scores.get) if emotion_scores else "neutral"
+        intensity = sum(emotion_scores.values())
+        segment_emotions.append({
+            "segment": idx + 1,
+            "dominant_emotion": dominant,
+            "intensity": intensity,
+            "emotions": emotion_scores
+        })
+
+    # Compute volatility as changes between consecutive segments
+    shifts = []
+    for i in range(1, len(segment_emotions)):
+        prev = segment_emotions[i - 1]["dominant_emotion"]
+        curr = segment_emotions[i]["dominant_emotion"]
+        if prev != curr:
+            shifts.append({
+                "from_segment": i,
+                "to_segment": i + 1,
+                "from_emotion": prev,
+                "to_emotion": curr,
+                "intensity_change": abs(segment_emotions[i]["intensity"] - segment_emotions[i - 1]["intensity"])
+            })
+
+    shift_rate = round(len(shifts) / max(len(segment_emotions) - 1, 1) * 100, 1)
+    if shift_rate > 60:
+        volatility_level = "high"
+    elif shift_rate > 30:
+        volatility_level = "moderate"
+    elif shift_rate > 10:
+        volatility_level = "low"
+    else:
+        volatility_level = "stable"
+
+    emotion_distribution = {}
+    for seg in segment_emotions:
+        e = seg["dominant_emotion"]
+        emotion_distribution[e] = emotion_distribution.get(e, 0) + 1
+
+    return {
+        "session_id": session_id,
+        "segments": segment_emotions[:60],
+        "shifts": shifts[:30],
+        "total_shifts": len(shifts),
+        "shift_rate_pct": shift_rate,
+        "volatility_level": volatility_level,
+        "emotion_distribution": emotion_distribution,
+        "segments_analyzed": len(statements),
+        "recommendation": f"Emotional volatility is {volatility_level} ({shift_rate}% shift rate across {len(shifts)} transitions)."
+    }
+
+
+# ── Witness Preparation Detector ────────────────────────────────────────
+@router.get("/sessions/{session_id}/preparation")
+async def get_preparation_detection(session_id: str):
+    """Detect signs of coached/rehearsed testimony vs spontaneous responses."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    coached_markers = {
+        "scripted_phrases": [
+            "to the best of my recollection", "as I recall", "at this point in time",
+            "to my knowledge", "I have no independent recollection",
+            "I don't recall the specifics", "I cannot confirm or deny",
+            "as previously stated", "consistent with my earlier testimony",
+            "I stand by my prior statement"
+        ],
+        "legal_hedging": [
+            "allegedly", "purportedly", "I was advised", "counsel has informed",
+            "without admitting", "to the extent", "subject to", "notwithstanding",
+            "in my capacity", "in the ordinary course"
+        ],
+        "over_precision": [
+            "at exactly", "precisely at", "at approximately",
+            "the specific", "to be precise", "specifically", "in particular"
+        ],
+        "rehearsed_narrative": [
+            "let me start from the beginning", "the sequence of events was",
+            "first... then... finally", "step by step", "in chronological order",
+            "the chain of events", "what happened next was"
+        ]
+    }
+
+    spontaneous_markers = [
+        "um", "uh", "well", "I mean", "you know", "like",
+        "let me think", "actually", "wait", "hmm",
+        "I'm not sure but", "I think maybe", "it's hard to explain"
+    ]
+
+    coached_signals = []
+    spontaneous_count = 0
+    totals = {k: 0 for k in coached_markers}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for category, markers in coached_markers.items():
+            for marker in markers:
+                if marker in lower:
+                    coached_signals.append({
+                        "segment": idx + 1,
+                        "category": category,
+                        "marker": marker,
+                        "excerpt": stmt[:120]
+                    })
+                    totals[category] += 1
+                    break
+
+        for marker in spontaneous_markers:
+            if marker in lower:
+                spontaneous_count += 1
+                break
+
+    coached_score = sum(totals.values())
+    total_analyzed = max(len(statements), 1)
+    prep_ratio = round(coached_score / total_analyzed * 100, 1)
+    spont_ratio = round(spontaneous_count / total_analyzed * 100, 1)
+
+    if prep_ratio > 40:
+        assessment = "highly_prepared"
+    elif prep_ratio > 20:
+        assessment = "moderately_prepared"
+    elif spont_ratio > 50:
+        assessment = "spontaneous"
+    else:
+        assessment = "mixed"
+
+    return {
+        "session_id": session_id,
+        "coached_signals": coached_signals[:40],
+        "totals": totals,
+        "coached_marker_count": coached_score,
+        "spontaneous_marker_count": spontaneous_count,
+        "preparation_ratio_pct": prep_ratio,
+        "spontaneity_ratio_pct": spont_ratio,
+        "assessment": assessment,
+        "segments_analyzed": len(statements),
+        "recommendation": f"Witness assessed as {assessment} (prep: {prep_ratio}%, spontaneous: {spont_ratio}%)."
+    }
+
+
+# ── Key Admission Extractor ─────────────────────────────────────────────
+@router.get("/sessions/{session_id}/key-admissions")
+async def get_key_admissions(session_id: str):
+    """Extract statements where witness admits, concedes, or acknowledges key points."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    admission_phrases = {
+        "direct_admission": [
+            "I admit", "I confess", "I acknowledge", "yes, I did",
+            "I was responsible", "I caused", "it was my fault",
+            "I was wrong", "I made a mistake", "I take responsibility"
+        ],
+        "concession": [
+            "I suppose", "I guess so", "I have to agree", "fair point",
+            "you're right", "I concede", "that's true", "I can't deny",
+            "I accept that", "I won't dispute"
+        ],
+        "reluctant_admission": [
+            "well, yes", "I mean, technically", "in a sense",
+            "to be honest", "if I'm being honest", "truthfully",
+            "I have to admit", "I shouldn't have", "looking back",
+            "in hindsight", "I regret"
+        ],
+        "against_interest": [
+            "against my interest", "even though it hurts", "I know this looks bad",
+            "this doesn't help my case", "I realize", "unfortunately for me",
+            "I was aware", "I knew at the time", "I should have known"
+        ]
+    }
+
+    admissions = []
+    totals = {k: 0 for k in admission_phrases}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for category, phrases in admission_phrases.items():
+            for phrase in phrases:
+                if phrase in lower:
+                    admissions.append({
+                        "segment": idx + 1,
+                        "category": category,
+                        "trigger_phrase": phrase,
+                        "full_text": stmt[:200],
+                        "significance": "high" if category in ("direct_admission", "against_interest") else "medium"
+                    })
+                    totals[category] += 1
+                    break
+
+    total_admissions = sum(totals.values())
+    high_significance = sum(1 for a in admissions if a["significance"] == "high")
+
+    return {
+        "session_id": session_id,
+        "admissions": admissions[:50],
+        "totals": totals,
+        "total_admissions": total_admissions,
+        "high_significance_count": high_significance,
+        "admission_rate_pct": round(total_admissions / max(len(statements), 1) * 100, 1),
+        "segments_analyzed": len(statements),
+        "most_common_type": max(totals, key=totals.get) if total_admissions > 0 else "none",
+        "recommendation": f"Found {total_admissions} admissions ({high_significance} high significance) across {len(statements)} segments."
+    }
+
+
+# ── Admin API Key Manager ───────────────────────────────────────────────
+_api_key_info = {
+    "last_rotated": datetime.utcnow().isoformat() + "Z",
+    "rotation_count": 0,
+    "usage_today": 0,
+    "usage_limit": 1000
+}
+
+@router.get("/admin/api-key-manager")
+async def get_api_key_manager_status(auth=Depends(require_admin_auth)):
+    """View API key status and usage stats (admin only)."""
+
+    # Check if GOOGLE_API_KEY is configured
+    key_env = os.environ.get("GOOGLE_API_KEY", "")
+    key_configured = len(key_env) > 4
+    key_masked = f"{key_env[:4]}...{key_env[-4:]}" if len(key_env) > 8 else ("***" if key_env else "NOT SET")
+
+    return {
+        "key_configured": key_configured,
+        "key_masked": key_masked,
+        "provider": "Google Gemini",
+        "last_rotated": _api_key_info["last_rotated"],
+        "rotation_count": _api_key_info["rotation_count"],
+        "usage_today": _api_key_info["usage_today"],
+        "usage_limit": _api_key_info["usage_limit"],
+        "usage_pct": round(_api_key_info["usage_today"] / max(_api_key_info["usage_limit"], 1) * 100, 1),
+        "status": "active" if key_configured else "missing",
+        "environment_keys": {
+            "GOOGLE_API_KEY": "configured" if key_configured else "missing",
+            "GOOGLE_PROJECT_ID": "configured" if os.environ.get("GOOGLE_PROJECT_ID") else "not set",
+            "GOOGLE_REGION": os.environ.get("GOOGLE_REGION", "not set")
+        }
+    }
+
+
+@router.post("/admin/api-key-manager")
+async def rotate_api_key_log(auth=Depends(require_admin_auth)):
+    """Log an API key rotation event (admin only)."""
+    _api_key_info["last_rotated"] = datetime.utcnow().isoformat() + "Z"
+    _api_key_info["rotation_count"] += 1
+    _api_key_info["usage_today"] = 0
+    return {"status": "rotation_logged", "rotation_count": _api_key_info["rotation_count"]}
+
+
+# ── Admin Scheduled Tasks Dashboard ─────────────────────────────────────
+_scheduled_tasks = [
+    {"id": "auto-backup", "name": "Automatic Backup", "schedule": "daily 02:00 UTC", "status": "active", "last_run": None, "next_run": None},
+    {"id": "session-cleanup", "name": "Session Cleanup (>90 days)", "schedule": "weekly Sunday 03:00 UTC", "status": "active", "last_run": None, "next_run": None},
+    {"id": "usage-reset", "name": "Daily Usage Counter Reset", "schedule": "daily 00:00 UTC", "status": "active", "last_run": None, "next_run": None},
+    {"id": "health-check", "name": "System Health Check", "schedule": "every 5 minutes", "status": "active", "last_run": None, "next_run": None},
+    {"id": "report-gen", "name": "Weekly Analytics Report", "schedule": "weekly Monday 08:00 UTC", "status": "paused", "last_run": None, "next_run": None},
+]
+
+@router.get("/admin/scheduled-tasks")
+async def get_scheduled_tasks(auth=Depends(require_admin_auth)):
+    """View all scheduled/automated tasks (admin only)."""
+    now = datetime.utcnow().isoformat() + "Z"
+    active_count = sum(1 for t in _scheduled_tasks if t["status"] == "active")
+    return {
+        "tasks": _scheduled_tasks,
+        "total_tasks": len(_scheduled_tasks),
+        "active_count": active_count,
+        "paused_count": len(_scheduled_tasks) - active_count,
+        "timestamp": now
+    }
+
+
+@router.post("/admin/scheduled-tasks")
+async def toggle_scheduled_task(request: Request, auth=Depends(require_admin_auth)):
+    """Toggle a scheduled task on/off (admin only)."""
+    body = await request.json()
+    task_id = body.get("task_id", "")
+    action = body.get("action", "toggle")
+
+    for task in _scheduled_tasks:
+        if task["id"] == task_id:
+            if action == "run":
+                task["last_run"] = datetime.utcnow().isoformat() + "Z"
+                return {"status": "triggered", "task": task}
+            else:
+                task["status"] = "paused" if task["status"] == "active" else "active"
+                return {"status": "toggled", "task": task}
+
+    raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")

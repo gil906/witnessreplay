@@ -6372,3 +6372,28 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .sys-metric-fill.crit { background: #c62828; }
 .sys-uptime { font-size: 0.88em; color: #555; margin-top: 8px; }
 .sys-timestamp { font-size: 0.78em; color: #aaa; margin-top: 4px; }
+
+/* ── API Key Manager Panel ── */
+.api-key-panel { border-left: 3px solid #ff9800; }
+.akm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.akm-item { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 8px; }
+.akm-label { display: block; font-size: 0.7em; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+.akm-val { display: block; font-size: 0.95em; font-weight: 600; color: #e0e0e0; margin-top: 2px; }
+.akm-env { font-size: 0.78em; color: #999; margin-top: 8px; }
+.akm-env-tag { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 3px; margin: 0 4px; font-family: monospace; font-size: 0.9em; }
+
+/* ── Scheduled Tasks Panel ── */
+.scheduled-tasks-panel { border-left: 3px solid #2196f3; }
+.st-stats { display: flex; gap: 8px; margin-bottom: 10px; }
+.st-stat-badge { padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+.st-active { background: rgba(76,175,80,0.2); color: #4caf50; }
+.st-paused { background: rgba(255,152,0,0.2); color: #ff9800; }
+.st-list { display: flex; flex-direction: column; gap: 6px; }
+.st-task { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; border-left: 3px solid transparent; }
+.st-task-active { border-left-color: #4caf50; }
+.st-task-paused { border-left-color: #ff9800; opacity: 0.7; }
+.st-task-header { display: flex; justify-content: space-between; align-items: center; }
+.st-task-name { font-weight: 600; font-size: 0.9em; color: #e0e0e0; }
+.st-task-status { font-size: 0.75em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+.st-task-schedule { font-size: 0.78em; color: #aaa; margin-top: 4px; }
+.st-task-last { font-size: 0.72em; color: #888; margin-top: 2px; }

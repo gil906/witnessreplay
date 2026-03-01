@@ -6299,3 +6299,55 @@ document.getElementById('system-health-refresh')?.addEventListener('click', load
 // Auto-load new panels
 if (document.getElementById('audit-trail-content')) loadAuditTrail();
 if (document.getElementById('system-health-content')) loadSystemHealth();
+
+// ── API Key Manager Panel ──
+async function loadApiKeyManager() {
+    const el = document.getElementById('api-key-manager-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/api-key-manager', { headers: { 'X-Admin-Token': localStorage.getItem('adminToken') || '' } });
+        const d = await r.json();
+        const statusColor = d.status === 'active' ? '#4caf50' : '#f44336';
+        el.innerHTML = `
+            <div class="akm-grid">
+                <div class="akm-item"><span class="akm-label">Status</span><span class="akm-val" style="color:${statusColor}">${d.status?.toUpperCase()}</span></div>
+                <div class="akm-item"><span class="akm-label">Provider</span><span class="akm-val">${d.provider || 'N/A'}</span></div>
+                <div class="akm-item"><span class="akm-label">Key</span><span class="akm-val" style="font-family:monospace;font-size:0.85em">${d.key_masked || 'N/A'}</span></div>
+                <div class="akm-item"><span class="akm-label">Usage Today</span><span class="akm-val">${d.usage_today}/${d.usage_limit} (${d.usage_pct}%)</span></div>
+                <div class="akm-item"><span class="akm-label">Rotations</span><span class="akm-val">${d.rotation_count}</span></div>
+                <div class="akm-item"><span class="akm-label">Last Rotated</span><span class="akm-val">${d.last_rotated ? new Date(d.last_rotated).toLocaleString() : 'Never'}</span></div>
+            </div>
+            <div class="akm-env"><strong>Environment:</strong> ${Object.entries(d.environment_keys || {}).map(([k,v]) => `<span class="akm-env-tag">${k}: ${v}</span>`).join(' ')}</div>
+        `;
+    } catch(e) { el.innerHTML = '<p>Error loading API key info</p>'; }
+}
+
+document.getElementById('api-key-manager-refresh')?.addEventListener('click', loadApiKeyManager);
+
+// ── Scheduled Tasks Panel ──
+async function loadScheduledTasks() {
+    const el = document.getElementById('scheduled-tasks-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/scheduled-tasks', { headers: { 'X-Admin-Token': localStorage.getItem('adminToken') || '' } });
+        const d = await r.json();
+        let html = `<div class="st-stats"><span class="st-stat-badge st-active">${d.active_count} Active</span><span class="st-stat-badge st-paused">${d.paused_count} Paused</span></div>`;
+        html += '<div class="st-list">';
+        for (const t of (d.tasks || [])) {
+            const statusClass = t.status === 'active' ? 'st-task-active' : 'st-task-paused';
+            html += `<div class="st-task ${statusClass}">
+                <div class="st-task-header"><span class="st-task-name">${t.name}</span><span class="st-task-status">${t.status}</span></div>
+                <div class="st-task-schedule">📅 ${t.schedule}</div>
+                <div class="st-task-last">Last: ${t.last_run ? new Date(t.last_run).toLocaleString() : 'Never'}</div>
+            </div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = '<p>Error loading scheduled tasks</p>'; }
+}
+
+document.getElementById('scheduled-tasks-refresh')?.addEventListener('click', loadScheduledTasks);
+
+// Auto-load new panels
+if (document.getElementById('api-key-manager-content')) loadApiKeyManager();
+if (document.getElementById('scheduled-tasks-content')) loadScheduledTasks();

@@ -7615,6 +7615,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/memory</code> — Witness memory quality<br>' +
                 '<code>/issues</code> — Legal issue spotter<br>' +
                 '<code>/redline</code> — Testimony self-contradiction finder<br>' +
+                '<code>/evasion</code> — Evasion pattern detector<br>' +
+                '<code>/power</code> — Power dynamics analyzer<br>' +
+                '<code>/volatility</code> — Emotional volatility index<br>' +
+                '<code>/prepared</code> — Witness preparation detector<br>' +
+                '<code>/admissions</code> — Key admission extractor<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7916,7 +7921,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/exhibits': async () => { await this._showExhibitTracker(); },
         '/memory': async () => { await this._showMemoryQuality(); },
         '/issues': async () => { await this._showLegalIssues(); },
-        '/redline': async () => { await this._showRedline(); }
+        '/redline': async () => { await this._showRedline(); },
+        '/evasion': async () => { await this._showEvasionPatterns(); },
+        '/power': async () => { await this._showPowerDynamics(); },
+        '/volatility': async () => { await this._showVolatility(); },
+        '/prepared': async () => { await this._showPreparationDetector(); },
+        '/admissions': async () => { await this._showAdmissions(); }
     };
     
     const handler = commands[cmd];
@@ -12296,4 +12306,173 @@ WitnessReplayApp.prototype._showRedline = async function() {
         html += `</div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not perform redline analysis.'); }
+};
+
+// ── Evasion Pattern Detector ──
+WitnessReplayApp.prototype._showEvasionPatterns = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🔍 Detecting evasion patterns...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/evasion-patterns`);
+        const data = await r.json();
+        let html = `<div class="evasion-container"><h3>🔍 Evasion Pattern Analysis</h3>`;
+        html += `<div class="evasion-summary">`;
+        html += `<div class="evasion-stat"><span class="evasion-stat-val">${data.total_evasions}</span><span class="evasion-stat-label">Evasions Found</span></div>`;
+        html += `<div class="evasion-stat"><span class="evasion-stat-val evasion-risk-${data.risk_level}">${data.risk_level.toUpperCase()}</span><span class="evasion-stat-label">Risk Level</span></div>`;
+        html += `<div class="evasion-stat"><span class="evasion-stat-val">${data.evasion_rate_pct}%</span><span class="evasion-stat-label">Evasion Rate</span></div>`;
+        html += `<div class="evasion-stat"><span class="evasion-stat-val">${data.dominant_pattern}</span><span class="evasion-stat-label">Dominant Pattern</span></div>`;
+        html += `</div>`;
+        const cats = data.totals || {};
+        html += `<div class="evasion-breakdown">`;
+        for (const [cat, count] of Object.entries(cats)) {
+            const pct = data.total_evasions ? Math.round(count / data.total_evasions * 100) : 0;
+            html += `<div class="evasion-bar-row"><span class="evasion-bar-label">${cat.replace(/_/g,' ')}</span><div class="evasion-bar-track"><div class="evasion-bar-fill evasion-cat-${cat}" style="width:${pct}%"></div></div><span class="evasion-bar-count">${count}</span></div>`;
+        }
+        html += `</div>`;
+        if (data.patterns && data.patterns.length > 0) {
+            html += `<div class="evasion-patterns"><h4>Detected Patterns</h4>`;
+            for (const p of data.patterns.slice(0,10)) {
+                html += `<div class="evasion-pattern-item"><span class="evasion-cat-badge evasion-cat-${p.category}">${p.category.replace(/_/g,' ')}</span><span class="evasion-marker">"${p.marker}"</span><div class="evasion-excerpt">Seg ${p.segment}: ${p.excerpt}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="evasion-rec">${data.recommendation}</div>`;
+        html += `<div class="evasion-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not detect evasion patterns.'); }
+};
+
+// ── Power Dynamics Analyzer ──
+WitnessReplayApp.prototype._showPowerDynamics = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⚡ Analyzing power dynamics...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/power-dynamics`);
+        const data = await r.json();
+        let html = `<div class="power-container"><h3>⚡ Power Dynamics Analysis</h3>`;
+        html += `<div class="power-summary">`;
+        html += `<div class="power-stat"><span class="power-stat-val">${data.overall_dynamic.replace(/_/g,' ')}</span><span class="power-stat-label">Overall Dynamic</span></div>`;
+        html += `<div class="power-stat"><span class="power-stat-val">${data.total_dynamic_markers}</span><span class="power-stat-label">Dynamic Markers</span></div>`;
+        html += `<div class="power-stat"><span class="power-stat-val">${data.balance_ratio}</span><span class="power-stat-label">Balance Ratio</span></div>`;
+        html += `</div>`;
+        html += `<div class="power-meters">`;
+        const total = Math.max(data.dominance_count + data.submission_count + data.resistance_count, 1);
+        html += `<div class="power-meter-row"><span class="power-meter-label">Dominance</span><div class="power-meter-track"><div class="power-meter-fill power-dom" style="width:${Math.round(data.dominance_count/total*100)}%"></div></div><span>${data.dominance_count}</span></div>`;
+        html += `<div class="power-meter-row"><span class="power-meter-label">Submission</span><div class="power-meter-track"><div class="power-meter-fill power-sub" style="width:${Math.round(data.submission_count/total*100)}%"></div></div><span>${data.submission_count}</span></div>`;
+        html += `<div class="power-meter-row"><span class="power-meter-label">Resistance</span><div class="power-meter-track"><div class="power-meter-fill power-res" style="width:${Math.round(data.resistance_count/total*100)}%"></div></div><span>${data.resistance_count}</span></div>`;
+        html += `</div>`;
+        if (data.exchanges && data.exchanges.length > 0) {
+            html += `<div class="power-exchanges"><h4>Key Exchanges</h4>`;
+            for (const e of data.exchanges.slice(0,8)) {
+                html += `<div class="power-exchange-item"><span class="power-type-badge power-type-${e.type}">${e.type}</span><span class="power-marker">"${e.marker}"</span><div class="power-excerpt">Seg ${e.segment}: ${e.excerpt}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="power-rec">${data.recommendation}</div>`;
+        html += `<div class="power-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze power dynamics.'); }
+};
+
+// ── Emotional Volatility Index ──
+WitnessReplayApp.prototype._showVolatility = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🌊 Measuring emotional volatility...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/volatility`);
+        const data = await r.json();
+        let html = `<div class="volatility-container"><h3>�� Emotional Volatility Index</h3>`;
+        html += `<div class="volatility-summary">`;
+        html += `<div class="volatility-stat"><span class="volatility-stat-val volatility-${data.volatility_level}">${data.volatility_level.toUpperCase()}</span><span class="volatility-stat-label">Volatility Level</span></div>`;
+        html += `<div class="volatility-stat"><span class="volatility-stat-val">${data.shift_rate_pct}%</span><span class="volatility-stat-label">Shift Rate</span></div>`;
+        html += `<div class="volatility-stat"><span class="volatility-stat-val">${data.total_shifts}</span><span class="volatility-stat-label">Emotion Shifts</span></div>`;
+        html += `</div>`;
+        const dist = data.emotion_distribution || {};
+        html += `<div class="volatility-distribution"><h4>Emotion Distribution</h4>`;
+        const emotionIcons = {anger:'😠',fear:'😨',sadness:'😢',joy:'😊',surprise:'😲',disgust:'🤢',neutral:'😐'};
+        for (const [emotion, count] of Object.entries(dist)) {
+            const pct = Math.round(count / Math.max(data.segments_analyzed,1) * 100);
+            html += `<div class="volatility-emo-row"><span class="volatility-emo-icon">${emotionIcons[emotion]||'•'}</span><span class="volatility-emo-label">${emotion}</span><div class="volatility-emo-track"><div class="volatility-emo-fill volatility-emo-${emotion}" style="width:${pct}%"></div></div><span>${count}</span></div>`;
+        }
+        html += `</div>`;
+        if (data.shifts && data.shifts.length > 0) {
+            html += `<div class="volatility-shifts"><h4>Notable Shifts</h4>`;
+            for (const s of data.shifts.slice(0,8)) {
+                html += `<div class="volatility-shift-item"><span class="volatility-shift-from">${emotionIcons[s.from_emotion]||'•'} ${s.from_emotion}</span><span class="volatility-shift-arrow">→</span><span class="volatility-shift-to">${emotionIcons[s.to_emotion]||'•'} ${s.to_emotion}</span><span class="volatility-shift-seg">Seg ${s.from_segment}→${s.to_segment}</span></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="volatility-rec">${data.recommendation}</div>`;
+        html += `<div class="volatility-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not measure emotional volatility.'); }
+};
+
+// ── Witness Preparation Detector ──
+WitnessReplayApp.prototype._showPreparationDetector = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('📋 Detecting witness preparation...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/preparation`);
+        const data = await r.json();
+        let html = `<div class="prep-container"><h3>📋 Witness Preparation Detector</h3>`;
+        html += `<div class="prep-summary">`;
+        html += `<div class="prep-stat"><span class="prep-stat-val prep-assess-${data.assessment}">${data.assessment.replace(/_/g,' ').toUpperCase()}</span><span class="prep-stat-label">Assessment</span></div>`;
+        html += `<div class="prep-stat"><span class="prep-stat-val">${data.preparation_ratio_pct}%</span><span class="prep-stat-label">Preparation Score</span></div>`;
+        html += `<div class="prep-stat"><span class="prep-stat-val">${data.spontaneity_ratio_pct}%</span><span class="prep-stat-label">Spontaneity Score</span></div>`;
+        html += `<div class="prep-stat"><span class="prep-stat-val">${data.coached_marker_count}</span><span class="prep-stat-label">Coached Markers</span></div>`;
+        html += `</div>`;
+        const cats = data.totals || {};
+        html += `<div class="prep-breakdown"><h4>Coached Signal Breakdown</h4>`;
+        for (const [cat, count] of Object.entries(cats)) {
+            const pct = data.coached_marker_count ? Math.round(count / data.coached_marker_count * 100) : 0;
+            html += `<div class="prep-bar-row"><span class="prep-bar-label">${cat.replace(/_/g,' ')}</span><div class="prep-bar-track"><div class="prep-bar-fill prep-cat-${cat}" style="width:${pct}%"></div></div><span class="prep-bar-count">${count}</span></div>`;
+        }
+        html += `</div>`;
+        if (data.coached_signals && data.coached_signals.length > 0) {
+            html += `<div class="prep-signals"><h4>Coached Signals</h4>`;
+            for (const s of data.coached_signals.slice(0,8)) {
+                html += `<div class="prep-signal-item"><span class="prep-cat-badge prep-cat-${s.category}">${s.category.replace(/_/g,' ')}</span><span class="prep-marker">"${s.marker}"</span><div class="prep-excerpt">Seg ${s.segment}: ${s.excerpt}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="prep-rec">${data.recommendation}</div>`;
+        html += `<div class="prep-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not detect witness preparation.'); }
+};
+
+// ── Key Admission Extractor ──
+WitnessReplayApp.prototype._showAdmissions = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('✋ Extracting key admissions...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/key-admissions`);
+        const data = await r.json();
+        let html = `<div class="admit-container"><h3>✋ Key Admission Extractor</h3>`;
+        html += `<div class="admit-summary">`;
+        html += `<div class="admit-stat"><span class="admit-stat-val">${data.total_admissions}</span><span class="admit-stat-label">Admissions Found</span></div>`;
+        html += `<div class="admit-stat"><span class="admit-stat-val">${data.high_significance_count}</span><span class="admit-stat-label">High Significance</span></div>`;
+        html += `<div class="admit-stat"><span class="admit-stat-val">${data.admission_rate_pct}%</span><span class="admit-stat-label">Admission Rate</span></div>`;
+        html += `<div class="admit-stat"><span class="admit-stat-val">${data.most_common_type.replace(/_/g,' ')}</span><span class="admit-stat-label">Most Common Type</span></div>`;
+        html += `</div>`;
+        const cats = data.totals || {};
+        html += `<div class="admit-breakdown"><h4>Admission Types</h4>`;
+        for (const [cat, count] of Object.entries(cats)) {
+            const pct = data.total_admissions ? Math.round(count / data.total_admissions * 100) : 0;
+            html += `<div class="admit-bar-row"><span class="admit-bar-label">${cat.replace(/_/g,' ')}</span><div class="admit-bar-track"><div class="admit-bar-fill admit-cat-${cat}" style="width:${pct}%"></div></div><span class="admit-bar-count">${count}</span></div>`;
+        }
+        html += `</div>`;
+        if (data.admissions && data.admissions.length > 0) {
+            html += `<div class="admit-list"><h4>Extracted Admissions</h4>`;
+            for (const a of data.admissions.slice(0,10)) {
+                const sigClass = a.significance === 'high' ? 'admit-sig-high' : 'admit-sig-medium';
+                html += `<div class="admit-item ${sigClass}"><div class="admit-item-header"><span class="admit-cat-badge admit-cat-${a.category}">${a.category.replace(/_/g,' ')}</span><span class="admit-sig-badge ${sigClass}">${a.significance}</span><span class="admit-trigger">"${a.trigger_phrase}"</span></div><div class="admit-text">Seg ${a.segment}: ${a.full_text}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="admit-rec">${data.recommendation}</div>`;
+        html += `<div class="admit-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not extract admissions.'); }
 };
