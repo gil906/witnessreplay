@@ -19801,3 +19801,520 @@ async def session_analytics(auth=Depends(require_admin_auth)):
         },
         "timestamp": now.isoformat() + "Z"
     }
+
+
+# ============================================================
+# Feature: Witness Reliability Timeline
+# ============================================================
+@router.get("/sessions/{session_id}/reliability-timeline")
+async def reliability_timeline(session_id: str):
+    """Track witness reliability score across testimony segments."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    reliability_markers_pos = ["specifically", "exactly", "i remember", "i saw", "at that time", "clearly", "distinctly"]
+    reliability_markers_neg = ["maybe", "i think", "not sure", "possibly", "i guess", "don't remember", "can't recall", "hard to say"]
+
+    segments = []
+    running_scores = []
+    for i, stmt in enumerate(statements):
+        lower = stmt.lower()
+        words = lower.split()
+        word_count = max(len(words), 1)
+        pos_count = sum(lower.count(p) for p in reliability_markers_pos)
+        neg_count = sum(lower.count(n) for n in reliability_markers_neg)
+        detail_score = min(100, int(word_count / 2))
+        specificity = min(100, pos_count * 15)
+        uncertainty_penalty = min(80, neg_count * 20)
+        has_numbers = len(re.findall(r'\b\d+\b', stmt))
+        has_names = len(re.findall(r'\b[A-Z][a-z]+\b', stmt))
+        factual_bonus = min(30, (has_numbers + has_names) * 5)
+
+        reliability = max(0, min(100, 50 + specificity - uncertainty_penalty + factual_bonus + min(20, detail_score // 5)))
+        running_scores.append(reliability)
+
+        if reliability >= 75:
+            level = "high"
+        elif reliability >= 50:
+            level = "medium"
+        elif reliability >= 25:
+            level = "low"
+        else:
+            level = "very_low"
+
+        segments.append({
+            "segment": i + 1,
+            "reliability_score": reliability,
+            "level": level,
+            "word_count": word_count,
+            "specificity_markers": pos_count,
+            "uncertainty_markers": neg_count,
+            "factual_references": has_numbers + has_names,
+            "excerpt": stmt[:80] + ("..." if len(stmt) > 80 else "")
+        })
+
+    avg_reliability = round(sum(running_scores) / max(len(running_scores), 1), 1)
+    trend = "stable"
+    if len(running_scores) >= 3:
+        first_half = sum(running_scores[:len(running_scores)//2]) / max(len(running_scores)//2, 1)
+        second_half = sum(running_scores[len(running_scores)//2:]) / max(len(running_scores) - len(running_scores)//2, 1)
+        if second_half > first_half + 10:
+            trend = "improving"
+        elif second_half < first_half - 10:
+            trend = "declining"
+
+    return {
+        "session_id": session_id,
+        "segments": segments,
+        "summary": {
+            "average_reliability": avg_reliability,
+            "trend": trend,
+            "total_segments": len(segments),
+            "high_reliability_count": sum(1 for s in segments if s["level"] == "high"),
+            "low_reliability_count": sum(1 for s in segments if s["level"] in ("low", "very_low")),
+            "peak_segment": max(segments, key=lambda s: s["reliability_score"])["segment"] if segments else 0,
+            "lowest_segment": min(segments, key=lambda s: s["reliability_score"])["segment"] if segments else 0
+        },
+        "recommendation": f"Average reliability is {avg_reliability}% with {trend} trend. {'Focus examination on low-reliability segments.' if avg_reliability < 60 else 'Testimony shows generally reliable recall.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Testimony Stress Detector
+# ============================================================
+@router.get("/sessions/{session_id}/stress-detection")
+async def stress_detection(session_id: str):
+    """Detect stress indicators in witness testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    stress_phrases = ["i don't know", "i can't", "i'm not sure", "please", "stop", "wait", "hold on", "let me think", "i need a moment", "this is hard"]
+    deflection_phrases = ["why do you ask", "that's not relevant", "i already said", "as i mentioned", "you already know", "i told you"]
+    nervousness = ["um", "uh", "well", "like", "you know", "i mean"]
+    short_threshold = 5
+
+    indicators = []
+    stress_scores = []
+    for i, stmt in enumerate(statements):
+        lower = stmt.lower()
+        words = lower.split()
+        word_count = len(words)
+
+        stress_count = sum(lower.count(p) for p in stress_phrases)
+        deflection_count = sum(lower.count(p) for p in deflection_phrases)
+        filler_count = sum(1 for w in words if w.strip('.,!?') in nervousness)
+        is_short = word_count <= short_threshold
+        has_repetition = len(words) != len(set(words)) and word_count > 3
+        exclamation_count = stmt.count('!')
+        question_count = stmt.count('?')
+
+        score = min(100, stress_count * 15 + deflection_count * 20 + filler_count * 5 + (25 if is_short else 0) + (10 if has_repetition else 0) + exclamation_count * 8 + question_count * 3)
+        stress_scores.append(score)
+
+        if score > 20:
+            indicators.append({
+                "segment": i + 1,
+                "stress_score": score,
+                "level": "high" if score >= 60 else "moderate" if score >= 30 else "mild",
+                "triggers": {
+                    "stress_phrases": stress_count,
+                    "deflections": deflection_count,
+                    "fillers": filler_count,
+                    "short_response": is_short,
+                    "repetition": has_repetition,
+                    "exclamations": exclamation_count
+                },
+                "excerpt": stmt[:80] + ("..." if len(stmt) > 80 else "")
+            })
+
+    avg_stress = round(sum(stress_scores) / max(len(stress_scores), 1), 1)
+    peak_stress = max(stress_scores) if stress_scores else 0
+    high_stress_segments = sum(1 for s in stress_scores if s >= 60)
+
+    return {
+        "session_id": session_id,
+        "indicators": indicators,
+        "summary": {
+            "average_stress": avg_stress,
+            "peak_stress": peak_stress,
+            "total_segments": len(statements),
+            "high_stress_segments": high_stress_segments,
+            "stress_distribution": {
+                "calm": sum(1 for s in stress_scores if s < 20),
+                "mild": sum(1 for s in stress_scores if 20 <= s < 40),
+                "moderate": sum(1 for s in stress_scores if 40 <= s < 60),
+                "high": sum(1 for s in stress_scores if s >= 60)
+            }
+        },
+        "stress_pattern": "escalating" if len(stress_scores) >= 3 and stress_scores[-1] > stress_scores[0] + 15 else "de-escalating" if len(stress_scores) >= 3 and stress_scores[-1] < stress_scores[0] - 15 else "stable",
+        "recommendation": f"Average stress level: {avg_stress}%. {'Witness shows significant stress in {0} segments — consider breaks or topic changes.'.format(high_stress_segments) if high_stress_segments > 0 else 'No significant stress indicators detected.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Key Evidence Linker
+# ============================================================
+@router.get("/sessions/{session_id}/evidence-linker")
+async def evidence_linker(session_id: str):
+    """Cross-reference testimony with mentioned evidence items."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+    evidence_categories = {
+        "physical": ["weapon", "knife", "gun", "blood", "dna", "fingerprint", "footprint", "tool", "clothing", "bag", "phone", "car", "vehicle"],
+        "documentary": ["document", "contract", "receipt", "email", "letter", "text message", "photo", "photograph", "video", "recording", "report", "file"],
+        "testimonial": ["witness", "saw", "heard", "told me", "said", "testified", "statement", "testimony", "deposition", "interview"],
+        "digital": ["computer", "laptop", "phone", "app", "website", "social media", "gps", "location data", "camera", "surveillance", "cctv"],
+        "forensic": ["autopsy", "toxicology", "ballistics", "dna analysis", "lab", "forensic", "examination", "analysis"]
+    }
+
+    evidence_items = []
+    for category, keywords in evidence_categories.items():
+        for kw in keywords:
+            count = full_text.count(kw)
+            if count > 0:
+                mentioned_in = []
+                for i, stmt in enumerate(statements):
+                    if kw in stmt.lower():
+                        mentioned_in.append(i + 1)
+                evidence_items.append({
+                    "keyword": kw,
+                    "category": category,
+                    "mentions": count,
+                    "segments": mentioned_in,
+                    "corroborated": len(mentioned_in) > 1
+                })
+
+    evidence_items.sort(key=lambda x: x["mentions"], reverse=True)
+    category_counts = {}
+    for item in evidence_items:
+        category_counts[item["category"]] = category_counts.get(item["category"], 0) + item["mentions"]
+
+    total_refs = sum(item["mentions"] for item in evidence_items)
+    corroborated = sum(1 for item in evidence_items if item["corroborated"])
+    uncorroborated = len(evidence_items) - corroborated
+    coverage = len(category_counts) / len(evidence_categories) * 100
+
+    return {
+        "session_id": session_id,
+        "evidence_items": evidence_items[:30],
+        "category_summary": category_counts,
+        "totals": {
+            "unique_evidence_types": len(evidence_items),
+            "total_references": total_refs,
+            "corroborated": corroborated,
+            "uncorroborated": uncorroborated,
+            "evidence_coverage_pct": round(coverage, 1)
+        },
+        "gaps": [cat for cat in evidence_categories if cat not in category_counts],
+        "recommendation": f"Found {len(evidence_items)} evidence types with {total_refs} references. Coverage: {coverage:.0f}%. {'Missing categories: ' + ', '.join(cat for cat in evidence_categories if cat not in category_counts) + '.' if coverage < 100 else 'All evidence categories covered.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Testimony Pattern Matcher
+# ============================================================
+@router.get("/sessions/{session_id}/pattern-match")
+async def pattern_match(session_id: str):
+    """Detect rehearsed, coached, or scripted patterns in testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    patterns = []
+    phrase_counts = {}
+    for stmt in statements:
+        words = stmt.lower().split()
+        for n in range(3, min(8, len(words))):
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i:i+n])
+                if phrase not in phrase_counts:
+                    phrase_counts[phrase] = 0
+                phrase_counts[phrase] += 1
+
+    repeated_phrases = [(phrase, count) for phrase, count in phrase_counts.items() if count >= 2 and len(phrase) > 15]
+    repeated_phrases.sort(key=lambda x: (-x[1], -len(x[0])))
+    seen = set()
+    unique_phrases = []
+    for phrase, count in repeated_phrases:
+        if not any(phrase in s for s in seen):
+            unique_phrases.append({"phrase": phrase, "repetitions": count, "type": "repeated_phrase"})
+            seen.add(phrase)
+        if len(unique_phrases) >= 10:
+            break
+
+    coached_markers = ["as i recall", "to the best of my recollection", "as i stated before", "let me be clear", "for the record", "to be precise", "as i previously mentioned"]
+    coached_found = []
+    for marker in coached_markers:
+        count = sum(1 for s in statements if marker in s.lower())
+        if count > 0:
+            coached_found.append({"marker": marker, "count": count, "type": "coached_language"})
+
+    lengths = [len(s.split()) for s in statements]
+    avg_len = sum(lengths) / max(len(lengths), 1)
+    if len(lengths) >= 3:
+        variance = sum((l - avg_len)**2 for l in lengths) / len(lengths)
+        uniformity = max(0, 100 - int(variance / 2))
+    else:
+        uniformity = 50
+
+    openings = {}
+    for stmt in statements:
+        first_words = " ".join(stmt.lower().split()[:3])
+        openings[first_words] = openings.get(first_words, 0) + 1
+    formulaic_openings = [{"opening": k, "count": v} for k, v in openings.items() if v >= 2]
+
+    total_patterns = len(unique_phrases) + len(coached_found) + len(formulaic_openings)
+    rehearsal_score = min(100, total_patterns * 8 + max(0, (uniformity - 50)) // 2 + len(coached_found) * 10)
+
+    return {
+        "session_id": session_id,
+        "repeated_phrases": unique_phrases,
+        "coached_language": coached_found,
+        "formulaic_openings": formulaic_openings,
+        "response_uniformity": uniformity,
+        "rehearsal_score": max(0, rehearsal_score),
+        "assessment": "highly_rehearsed" if rehearsal_score >= 70 else "somewhat_rehearsed" if rehearsal_score >= 40 else "natural",
+        "totals": {
+            "repeated_phrases": len(unique_phrases),
+            "coached_markers": len(coached_found),
+            "formulaic_openings": len(formulaic_openings),
+            "total_patterns": total_patterns
+        },
+        "recommendation": f"Rehearsal score: {max(0, rehearsal_score)}%. {'Testimony appears highly rehearsed — investigate coaching.' if rehearsal_score >= 70 else 'Testimony appears ' + ('somewhat prepared' if rehearsal_score >= 40 else 'natural and spontaneous') + '.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Motive & Bias Analyzer
+# ============================================================
+@router.get("/sessions/{session_id}/motive-analysis")
+async def motive_analysis(session_id: str):
+    """Analyze potential motives and biases in witness testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+    words = full_text.split()
+    word_count = max(len(words), 1)
+
+    self_interest = ["my property", "my money", "i deserve", "owe me", "my rights", "my insurance", "compensation", "damages", "settlement", "lawsuit"]
+    emotional_bias = ["hate", "despise", "love", "always", "never", "every time", "worst", "best", "absolutely", "totally"]
+    relationship_bias = ["friend", "enemy", "ex", "partner", "boss", "colleague", "neighbor", "rival", "competitor"]
+    minimization = ["it was nothing", "no big deal", "doesn't matter", "not important", "forget it", "small thing", "minor"]
+    exaggeration = ["enormous", "massive", "extreme", "incredible", "unbelievable", "devastating", "catastrophic", "unbearable", "worst ever"]
+
+    bias_signals = []
+    categories = {
+        "self_interest": (self_interest, "Potential financial or personal motive"),
+        "emotional_bias": (emotional_bias, "Strong emotional language suggesting bias"),
+        "relationship_bias": (relationship_bias, "Relationship dynamics may influence testimony"),
+        "minimization": (minimization, "Downplaying events — potential protective bias"),
+        "exaggeration": (exaggeration, "Exaggerating events — potential aggrandizing bias")
+    }
+
+    category_scores = {}
+    for cat_name, (markers, desc) in categories.items():
+        count = sum(full_text.count(m) for m in markers)
+        rate = round(count / word_count * 1000, 1)
+        if count > 0:
+            severity = "high" if rate > 5 else "moderate" if rate > 2 else "low"
+            bias_signals.append({
+                "category": cat_name,
+                "description": desc,
+                "count": count,
+                "rate_per_1k": rate,
+                "severity": severity,
+                "examples": [m for m in markers if m in full_text][:5]
+            })
+            category_scores[cat_name] = min(100, int(rate * 15))
+        else:
+            category_scores[cat_name] = 0
+
+    overall_bias = round(sum(category_scores.values()) / max(len(category_scores), 1), 1)
+    if overall_bias >= 60:
+        objectivity = "low"
+    elif overall_bias >= 30:
+        objectivity = "moderate"
+    else:
+        objectivity = "high"
+
+    positive_words = sum(full_text.count(w) for w in ["good", "right", "correct", "proper", "honest", "fair"])
+    negative_words = sum(full_text.count(w) for w in ["bad", "wrong", "incorrect", "improper", "dishonest", "unfair"])
+    narrative_balance = abs(positive_words - negative_words)
+    one_sided = narrative_balance > 5
+
+    return {
+        "session_id": session_id,
+        "bias_signals": bias_signals,
+        "category_scores": category_scores,
+        "overall_bias_score": overall_bias,
+        "objectivity_rating": objectivity,
+        "narrative": {
+            "positive_language": positive_words,
+            "negative_language": negative_words,
+            "balance": "balanced" if not one_sided else ("positive-leaning" if positive_words > negative_words else "negative-leaning"),
+            "one_sided": one_sided
+        },
+        "word_count": word_count,
+        "recommendation": f"Objectivity: {objectivity}. Overall bias score: {overall_bias}%. {'Significant bias detected in: ' + ', '.join(s['category'] for s in bias_signals if s['severity'] == 'high') + '.' if any(s['severity'] == 'high' for s in bias_signals) else 'No severe bias indicators found.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Admin Feature: Content Moderation
+# ============================================================
+_moderation_flags = deque(maxlen=200)
+_moderation_rules = {
+    "auto_flag_keywords": ["threat", "violence", "weapon", "bomb", "kill"],
+    "max_message_length": 10000,
+    "flag_empty_sessions_hours": 24,
+    "auto_review_threshold": 5
+}
+
+@router.get("/admin/content-moderation")
+async def get_content_moderation(auth=Depends(require_admin_auth)):
+    """Get content moderation status and flagged items."""
+    now = datetime.utcnow()
+    flags = list(_moderation_flags)
+    pending = [f for f in flags if f.get("status") == "pending"]
+    reviewed = [f for f in flags if f.get("status") == "reviewed"]
+    dismissed = [f for f in flags if f.get("status") == "dismissed"]
+
+    return {
+        "rules": _moderation_rules,
+        "totals": {
+            "total_flags": len(flags),
+            "pending": len(pending),
+            "reviewed": len(reviewed),
+            "dismissed": len(dismissed)
+        },
+        "recent_flags": flags[-20:],
+        "timestamp": now.isoformat() + "Z"
+    }
+
+@router.post("/admin/content-moderation")
+async def update_content_moderation(data: dict, auth=Depends(require_admin_auth)):
+    """Update moderation rules or review flagged content."""
+    action = data.get("action", "flag")
+    if action == "flag":
+        entry = {
+            "session_id": data.get("session_id", "unknown"),
+            "reason": data.get("reason", "manual"),
+            "status": "pending",
+            "flagged_at": datetime.utcnow().isoformat() + "Z"
+        }
+        _moderation_flags.append(entry)
+        return {"status": "flagged", "entry": entry}
+    elif action == "update_rules":
+        for key in ["max_message_length", "auto_review_threshold"]:
+            if key in data:
+                _moderation_rules[key] = int(data[key])
+        if "auto_flag_keywords" in data and isinstance(data["auto_flag_keywords"], list):
+            _moderation_rules["auto_flag_keywords"] = data["auto_flag_keywords"]
+        return {"status": "rules_updated", "rules": _moderation_rules}
+    elif action == "clear":
+        _moderation_flags.clear()
+        return {"status": "cleared", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+# ============================================================
+# Admin Feature: Export Manager
+# ============================================================
+_export_history = deque(maxlen=200)
+
+@router.get("/admin/export-manager")
+async def get_export_manager(auth=Depends(require_admin_auth)):
+    """Get export history and statistics."""
+    now = datetime.utcnow()
+    exports = list(_export_history)
+
+    format_counts = {}
+    session_exports = {}
+    for ex in exports:
+        fmt = ex.get("format", "unknown")
+        format_counts[fmt] = format_counts.get(fmt, 0) + 1
+        sid = ex.get("session_id", "unknown")
+        session_exports[sid] = session_exports.get(sid, 0) + 1
+
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_count = sum(1 for ex in exports if datetime.fromisoformat(ex.get("timestamp", "2000-01-01T00:00:00").replace("Z", "")) >= today_start)
+
+    return {
+        "total_exports": len(exports),
+        "today_exports": today_count,
+        "format_distribution": format_counts,
+        "top_exported_sessions": sorted(session_exports.items(), key=lambda x: x[1], reverse=True)[:10],
+        "recent_exports": exports[-20:],
+        "available_formats": ["pdf", "docx", "xlsx", "json", "txt", "csv"],
+        "timestamp": now.isoformat() + "Z"
+    }
+
+@router.post("/admin/export-manager")
+async def trigger_export_action(data: dict, auth=Depends(require_admin_auth)):
+    """Log an export or clear export history."""
+    action = data.get("action", "log")
+    if action == "log":
+        entry = {
+            "session_id": data.get("session_id", "unknown"),
+            "format": data.get("format", "json"),
+            "size_bytes": data.get("size_bytes", 0),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        _export_history.append(entry)
+        return {"status": "logged", "entry": entry}
+    elif action == "clear":
+        _export_history.clear()
+        return {"status": "cleared", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    raise HTTPException(status_code=400, detail=f"Unknown action: {action}")

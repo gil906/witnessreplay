@@ -7936,7 +7936,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/cscore': async () => { await this._showConsistencyScore(); },
         '/argument': async () => { await this._showLegalArguments(); },
         '/gapanalysis': async () => { await this._showTestimonyGaps(); },
-        '/matrixcompare': async () => { await this._showWitnessComparisonMatrix(); }
+        '/matrixcompare': async () => { await this._showWitnessComparisonMatrix(); },
+        '/reliability': async () => { await this._showReliabilityTimeline(); },
+        '/stress': async () => { await this._showStressDetection(); },
+        '/evidencelink': async () => { await this._showEvidenceLinker(); },
+        '/patternmatch': async () => { await this._showPatternMatch(); },
+        '/motive': async () => { await this._showMotiveAnalysis(); }
     };
     
     const handler = commands[cmd];
@@ -8091,7 +8096,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/cscore', desc: 'Witness consistency score' },
         { cmd: '/argument', desc: 'Legal argument builder' },
         { cmd: '/gapanalysis', desc: 'Testimony gap detector' },
-        { cmd: '/matrixcompare', desc: 'Witness comparison matrix' }
+        { cmd: '/matrixcompare', desc: 'Witness comparison matrix' },
+        { cmd: '/reliability', desc: 'Witness reliability timeline' },
+        { cmd: '/stress', desc: 'Testimony stress detector' },
+        { cmd: '/evidencelink', desc: 'Key evidence linker' },
+        { cmd: '/patternmatch', desc: 'Rehearsal & pattern matcher' },
+        { cmd: '/motive', desc: 'Motive & bias analyzer' }
     ];
     
     const filter = val.toLowerCase();
@@ -12864,4 +12874,201 @@ WitnessReplayApp.prototype._showWitnessComparisonMatrix = async function() {
         html += `<div class="cmatrix-rec">${data.recommendation}</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not build comparison matrix.'); }
+};
+
+// ============================================================
+// Feature: Witness Reliability Timeline
+// ============================================================
+WitnessReplayApp.prototype._showReliabilityTimeline = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('📈 Building reliability timeline...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/reliability-timeline`);
+        const data = await r.json();
+        let html = `<div class="reltl-container"><h3>📈 Witness Reliability Timeline</h3>`;
+        html += `<div class="reltl-summary">`;
+        html += `<div class="reltl-avg"><span class="reltl-avg-val">${data.summary.average_reliability}%</span><span class="reltl-avg-label">Average Reliability</span></div>`;
+        html += `<div class="reltl-meta">`;
+        html += `<div class="reltl-meta-item"><span class="reltl-meta-val">${data.summary.total_segments}</span><span>Segments</span></div>`;
+        html += `<div class="reltl-meta-item"><span class="reltl-meta-val reltl-high">${data.summary.high_reliability_count}</span><span>High</span></div>`;
+        html += `<div class="reltl-meta-item"><span class="reltl-meta-val reltl-low">${data.summary.low_reliability_count}</span><span>Low</span></div>`;
+        html += `<div class="reltl-meta-item"><span class="reltl-meta-val">${data.summary.trend}</span><span>Trend</span></div>`;
+        html += `</div></div>`;
+        if (data.segments.length) {
+            html += `<div class="reltl-chart">`;
+            for (const seg of data.segments) {
+                const pct = seg.reliability_score;
+                html += `<div class="reltl-bar-wrap"><div class="reltl-bar reltl-level-${seg.level}" style="height:${pct}%"><span class="reltl-bar-val">${pct}</span></div><span class="reltl-bar-label">S${seg.segment}</span></div>`;
+            }
+            html += `</div>`;
+            html += `<div class="reltl-segments">`;
+            for (const seg of data.segments.slice(0, 10)) {
+                html += `<div class="reltl-seg-card reltl-level-${seg.level}"><div class="reltl-seg-header"><span class="reltl-seg-num">Segment ${seg.segment}</span><span class="reltl-seg-score">${seg.reliability_score}%</span><span class="reltl-seg-level">${seg.level}</span></div><p class="reltl-seg-excerpt">"${seg.excerpt}"</p><div class="reltl-seg-detail"><span>📌 ${seg.specificity_markers} specific</span><span>❓ ${seg.uncertainty_markers} uncertain</span><span>🔢 ${seg.factual_references} facts</span></div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="reltl-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build reliability timeline.'); }
+};
+
+// ============================================================
+// Feature: Testimony Stress Detector
+// ============================================================
+WitnessReplayApp.prototype._showStressDetection = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('😰 Analyzing stress indicators...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/stress-detection`);
+        const data = await r.json();
+        let html = `<div class="stressdet-container"><h3>😰 Testimony Stress Detector</h3>`;
+        html += `<div class="stressdet-summary">`;
+        html += `<div class="stressdet-gauge"><span class="stressdet-gauge-val">${data.summary.average_stress}%</span><span class="stressdet-gauge-label">Average Stress</span></div>`;
+        html += `<div class="stressdet-stats">`;
+        html += `<div class="stressdet-stat"><span class="stressdet-stat-val">${data.summary.peak_stress}</span><span>Peak Stress</span></div>`;
+        html += `<div class="stressdet-stat"><span class="stressdet-stat-val">${data.summary.high_stress_segments}</span><span>High Stress</span></div>`;
+        html += `<div class="stressdet-stat"><span class="stressdet-stat-val">${data.stress_pattern}</span><span>Pattern</span></div>`;
+        html += `</div></div>`;
+        html += `<div class="stressdet-dist">`;
+        const dist = data.summary.stress_distribution;
+        html += `<div class="stressdet-dist-bar"><span class="stressdet-dist-calm" style="flex:${dist.calm || 1}">😌 ${dist.calm}</span><span class="stressdet-dist-mild" style="flex:${dist.mild || 1}">😐 ${dist.mild}</span><span class="stressdet-dist-mod" style="flex:${dist.moderate || 1}">😟 ${dist.moderate}</span><span class="stressdet-dist-high" style="flex:${dist.high || 1}">😰 ${dist.high}</span></div>`;
+        html += `</div>`;
+        if (data.indicators.length) {
+            html += `<div class="stressdet-indicators"><h4>Stress Indicators</h4>`;
+            for (const ind of data.indicators.slice(0, 8)) {
+                html += `<div class="stressdet-ind-card stressdet-level-${ind.level}"><div class="stressdet-ind-header"><span>Segment ${ind.segment}</span><span class="stressdet-ind-score">${ind.stress_score}%</span><span class="stressdet-ind-level">${ind.level}</span></div><p class="stressdet-ind-excerpt">"${ind.excerpt}"</p><div class="stressdet-triggers">`;
+                if (ind.triggers.stress_phrases) html += `<span class="stressdet-trig">Stress: ${ind.triggers.stress_phrases}</span>`;
+                if (ind.triggers.deflections) html += `<span class="stressdet-trig">Deflections: ${ind.triggers.deflections}</span>`;
+                if (ind.triggers.fillers) html += `<span class="stressdet-trig">Fillers: ${ind.triggers.fillers}</span>`;
+                if (ind.triggers.short_response) html += `<span class="stressdet-trig">Short Response</span>`;
+                html += `</div></div>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<div class="stressdet-empty">✅ No significant stress indicators detected.</div>`;
+        }
+        html += `<div class="stressdet-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze stress indicators.'); }
+};
+
+// ============================================================
+// Feature: Key Evidence Linker
+// ============================================================
+WitnessReplayApp.prototype._showEvidenceLinker = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🔗 Linking evidence references...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/evidence-linker`);
+        const data = await r.json();
+        let html = `<div class="evlink-container"><h3>🔗 Key Evidence Linker</h3>`;
+        html += `<div class="evlink-totals">`;
+        html += `<div class="evlink-total"><span class="evlink-total-val">${data.totals.unique_evidence_types}</span><span>Evidence Types</span></div>`;
+        html += `<div class="evlink-total"><span class="evlink-total-val">${data.totals.total_references}</span><span>References</span></div>`;
+        html += `<div class="evlink-total"><span class="evlink-total-val evlink-corrob">${data.totals.corroborated}</span><span>Corroborated</span></div>`;
+        html += `<div class="evlink-total"><span class="evlink-total-val">${data.totals.evidence_coverage_pct}%</span><span>Coverage</span></div>`;
+        html += `</div>`;
+        const cats = data.category_summary;
+        if (Object.keys(cats).length) {
+            html += `<div class="evlink-cats"><h4>Evidence Categories</h4>`;
+            for (const [cat, count] of Object.entries(cats)) {
+                html += `<div class="evlink-cat-bar"><span class="evlink-cat-name">${cat}</span><div class="evlink-cat-fill" style="width:${Math.min(100, count * 10)}%"><span>${count}</span></div></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.evidence_items.length) {
+            html += `<div class="evlink-items"><h4>Evidence Items</h4>`;
+            for (const item of data.evidence_items.slice(0, 15)) {
+                html += `<div class="evlink-item"><span class="evlink-item-kw">${item.keyword}</span><span class="evlink-item-cat">${item.category}</span><span class="evlink-item-mentions">${item.mentions}×</span>${item.corroborated ? '<span class="evlink-item-corr">✓ corroborated</span>' : '<span class="evlink-item-uncorr">single source</span>'}</div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.gaps.length) {
+            html += `<div class="evlink-gaps"><h4>⚠️ Missing Categories</h4><p>${data.gaps.join(', ')}</p></div>`;
+        }
+        html += `<div class="evlink-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not link evidence.'); }
+};
+
+// ============================================================
+// Feature: Testimony Pattern Matcher
+// ============================================================
+WitnessReplayApp.prototype._showPatternMatch = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🔄 Detecting testimony patterns...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/pattern-match`);
+        const data = await r.json();
+        let html = `<div class="patmatch-container"><h3>🔄 Testimony Pattern Matcher</h3>`;
+        html += `<div class="patmatch-hero">`;
+        html += `<div class="patmatch-score patmatch-${data.assessment}"><span class="patmatch-score-val">${data.rehearsal_score}%</span><span class="patmatch-score-label">Rehearsal Score</span></div>`;
+        html += `<div class="patmatch-assess patmatch-${data.assessment}">${data.assessment.replace(/_/g, ' ')}</div>`;
+        html += `<div class="patmatch-counts">`;
+        html += `<span class="patmatch-count">Repeated: ${data.totals.repeated_phrases}</span>`;
+        html += `<span class="patmatch-count">Coached: ${data.totals.coached_markers}</span>`;
+        html += `<span class="patmatch-count">Formulaic: ${data.totals.formulaic_openings}</span>`;
+        html += `<span class="patmatch-count">Uniformity: ${data.response_uniformity}%</span>`;
+        html += `</div></div>`;
+        if (data.repeated_phrases.length) {
+            html += `<div class="patmatch-section"><h4>🔁 Repeated Phrases</h4>`;
+            for (const p of data.repeated_phrases) {
+                html += `<div class="patmatch-phrase"><span class="patmatch-phrase-text">"${p.phrase}"</span><span class="patmatch-phrase-count">${p.repetitions}× repeated</span></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.coached_language.length) {
+            html += `<div class="patmatch-section"><h4>🎓 Coached Language</h4>`;
+            for (const c of data.coached_language) {
+                html += `<div class="patmatch-coached"><span>"${c.marker}"</span><span>${c.count}× used</span></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.formulaic_openings.length) {
+            html += `<div class="patmatch-section"><h4>📋 Formulaic Openings</h4>`;
+            for (const o of data.formulaic_openings) {
+                html += `<div class="patmatch-opening"><span>"${o.opening}..."</span><span>${o.count}× used</span></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="patmatch-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not detect patterns.'); }
+};
+
+// ============================================================
+// Feature: Motive & Bias Analyzer
+// ============================================================
+WitnessReplayApp.prototype._showMotiveAnalysis = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🎯 Analyzing motives and biases...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/motive-analysis`);
+        const data = await r.json();
+        let html = `<div class="motbias-container"><h3>🎯 Motive & Bias Analyzer</h3>`;
+        html += `<div class="motbias-hero">`;
+        html += `<div class="motbias-score motbias-obj-${data.objectivity_rating}"><span class="motbias-score-val">${data.overall_bias_score}%</span><span class="motbias-score-label">Bias Score</span></div>`;
+        html += `<div class="motbias-objectivity motbias-obj-${data.objectivity_rating}">Objectivity: ${data.objectivity_rating.toUpperCase()}</div>`;
+        html += `</div>`;
+        html += `<div class="motbias-narrative">`;
+        html += `<div class="motbias-narr-item"><span>Positive:</span><span>${data.narrative.positive_language}</span></div>`;
+        html += `<div class="motbias-narr-item"><span>Negative:</span><span>${data.narrative.negative_language}</span></div>`;
+        html += `<div class="motbias-narr-item"><span>Balance:</span><span>${data.narrative.balance}</span></div>`;
+        html += `</div>`;
+        const catScores = data.category_scores;
+        html += `<div class="motbias-cats"><h4>Bias Categories</h4>`;
+        for (const [cat, score] of Object.entries(catScores)) {
+            html += `<div class="motbias-cat-row"><span class="motbias-cat-name">${cat.replace(/_/g, ' ')}</span><div class="motbias-cat-bar"><div class="motbias-cat-fill" style="width:${score}%"></div></div><span class="motbias-cat-val">${score}%</span></div>`;
+        }
+        html += `</div>`;
+        if (data.bias_signals.length) {
+            html += `<div class="motbias-signals"><h4>Detected Signals</h4>`;
+            for (const sig of data.bias_signals) {
+                html += `<div class="motbias-signal motbias-sev-${sig.severity}"><div class="motbias-sig-header"><span>${sig.category.replace(/_/g, ' ')}</span><span class="motbias-sig-sev">${sig.severity}</span></div><p>${sig.description}</p><div class="motbias-sig-examples">${sig.examples.map(e => `<span class="motbias-example">"${e}"</span>`).join('')}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="motbias-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze motives.'); }
 };

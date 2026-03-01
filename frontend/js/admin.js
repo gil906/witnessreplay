@@ -6489,3 +6489,81 @@ async function loadSessionAnalytics() {
 }
 document.getElementById('session-analytics-refresh')?.addEventListener('click', loadSessionAnalytics);
 setTimeout(loadSessionAnalytics, 2400);
+
+// ============================================================
+// Admin Feature: Content Moderation
+// ============================================================
+async function loadContentModeration() {
+    try {
+        const r = await fetch('/api/admin/content-moderation', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const data = await r.json();
+        const el = document.getElementById('content-moderation-content');
+        if (!el) return;
+        let html = '<div class="admin-metric-grid">';
+        html += '<div class="admin-metric"><span class="admin-metric-val">' + data.totals.total_flags + '</span><span>Total Flags</span></div>';
+        html += '<div class="admin-metric"><span class="admin-metric-val" style="color:#fbbf24">' + data.totals.pending + '</span><span>Pending</span></div>';
+        html += '<div class="admin-metric"><span class="admin-metric-val" style="color:#34d399">' + data.totals.reviewed + '</span><span>Reviewed</span></div>';
+        html += '<div class="admin-metric"><span class="admin-metric-val">' + data.totals.dismissed + '</span><span>Dismissed</span></div>';
+        html += '</div>';
+        html += '<h4 style="margin:12px 0 6px;color:#e2e8f0;">Moderation Rules</h4>';
+        html += '<div style="font-size:0.85em;color:#9ca3af;">Max message length: <strong>' + data.rules.max_message_length + '</strong></div>';
+        html += '<div style="font-size:0.85em;color:#9ca3af;">Auto-review threshold: <strong>' + data.rules.auto_review_threshold + '</strong></div>';
+        html += '<div style="font-size:0.85em;color:#9ca3af;">Keywords: <strong>' + data.rules.auto_flag_keywords.join(', ') + '</strong></div>';
+        if (data.recent_flags.length) {
+            html += '<h4 style="margin:12px 0 6px;color:#e2e8f0;">Recent Flags</h4>';
+            for (const f of data.recent_flags.slice(-5)) {
+                html += '<div style="padding:3px 0;font-size:0.8em;color:#6b7280;">' + f.status + ' — ' + f.reason + ' — ' + (f.session_id || '').substring(0,8) + '...</div>';
+            }
+        }
+        el.innerHTML = html;
+    } catch(e) { console.error('Content moderation load error:', e); }
+}
+document.getElementById('content-moderation-refresh')?.addEventListener('click', loadContentModeration);
+document.getElementById('content-moderation-clear')?.addEventListener('click', async function() {
+    try {
+        await fetch('/api/admin/content-moderation', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') }, body: JSON.stringify({ action: 'clear' }) });
+        loadContentModeration();
+    } catch(e) { console.error('Content moderation clear error:', e); }
+});
+setTimeout(loadContentModeration, 2600);
+
+// ============================================================
+// Admin Feature: Export Manager
+// ============================================================
+async function loadExportManager() {
+    try {
+        const r = await fetch('/api/admin/export-manager', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const data = await r.json();
+        const el = document.getElementById('export-manager-content');
+        if (!el) return;
+        let html = '<div class="admin-metric-grid">';
+        html += '<div class="admin-metric"><span class="admin-metric-val">' + data.total_exports + '</span><span>Total Exports</span></div>';
+        html += '<div class="admin-metric"><span class="admin-metric-val">' + data.today_exports + '</span><span>Today</span></div>';
+        html += '<div class="admin-metric"><span class="admin-metric-val">' + data.available_formats.length + '</span><span>Formats</span></div>';
+        html += '</div>';
+        const fmts = data.format_distribution;
+        if (Object.keys(fmts).length) {
+            html += '<h4 style="margin:12px 0 6px;color:#e2e8f0;">Format Distribution</h4><ul style="list-style:none;padding:0;margin:0;">';
+            for (const [fmt, count] of Object.entries(fmts)) {
+                html += '<li style="padding:3px 0;font-size:0.85em;color:#9ca3af;">' + fmt.toUpperCase() + ' — <strong>' + count + '</strong></li>';
+            }
+            html += '</ul>';
+        }
+        if (data.recent_exports.length) {
+            html += '<h4 style="margin:12px 0 6px;color:#e2e8f0;">Recent Exports</h4>';
+            for (const ex of data.recent_exports.slice(-5)) {
+                html += '<div style="padding:3px 0;font-size:0.8em;color:#6b7280;">' + (ex.format || 'json').toUpperCase() + ' — ' + ex.session_id.substring(0,8) + '... — ' + ex.timestamp + '</div>';
+            }
+        }
+        html += '<div style="margin-top:10px;font-size:0.8em;color:#6b7280;">Available: ' + data.available_formats.join(', ').toUpperCase() + '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Export manager load error:', e); }
+}
+document.getElementById('export-manager-refresh')?.addEventListener('click', loadExportManager);
+document.getElementById('export-manager-clear')?.addEventListener('click', async function() {
+    try {
+        await fetch('/api/admin/export-manager', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') }, body: JSON.stringify({ action: 'clear' }) });
+        loadExportManager();
+    } catch(e) { console.error('Export manager clear error:', e); }
+});
+setTimeout(loadExportManager, 2800);
