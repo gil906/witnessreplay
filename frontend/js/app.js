@@ -13823,3 +13823,158 @@ WitnessReplayApp.prototype._showMemoryQuality = async function() {
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not assess memory quality.'); }
 };
+
+// ── Fact Extraction ─────────────────────────────────
+WitnessReplayApp.prototype._showFactExtraction = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/fact-extraction`);
+        const d = await r.json();
+        const lvlColors = {high:'#22c55e',moderate:'#eab308',low:'#ef4444'};
+        const lc = lvlColors[d.density_level] || '#666';
+        let html = '<div class="factext-container"><h3>🔎 Fact Extraction</h3>';
+        html += `<div class="factext-header"><div class="factext-stat"><span class="factext-num">${d.total_claims}</span><span class="factext-lbl">Total Claims</span></div>`;
+        html += `<div class="factext-stat"><span class="factext-num">${d.verifiable_claims}</span><span class="factext-lbl">Verifiable</span></div>`;
+        html += `<div class="factext-stat"><span class="factext-num" style="color:${lc}">${d.fact_density_per_100_words}</span><span class="factext-lbl">Per 100 Words</span></div></div>`;
+        html += `<div class="factext-assess">${d.assessment}</div>`;
+        html += '<div class="factext-cats">';
+        d.categories.forEach(cat => {
+            const vc = cat.verifiability === 'high' ? '#22c55e' : '#eab308';
+            html += `<div class="factext-cat"><div class="factext-cat-head"><span>${cat.icon} ${cat.name}</span><span class="factext-cat-cnt">${cat.count}</span><span class="factext-verif" style="color:${vc}">${cat.verifiability}</span></div>`;
+            if (cat.claims.length > 0) {
+                html += '<div class="factext-claims">';
+                cat.claims.slice(0, 5).forEach(cl => {
+                    html += `<div class="factext-claim">${cl.verifiable ? '✅' : '❓'} ${cl.text}</div>`;
+                });
+                html += '</div>';
+            } else {
+                html += '<div class="factext-none">No claims found</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+        html += `<div class="factext-footer"><span>Words: ${d.word_count}</span><span>Density: ${d.density_level.toUpperCase()}</span></div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not extract facts.'); }
+};
+
+// ── Response Adequacy Scorer ────────────────────────
+WitnessReplayApp.prototype._showResponseAdequacy = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/response-adequacy`);
+        const d = await r.json();
+        const lblColors = {excellent:'#22c55e',good:'#3b82f6',fair:'#eab308',poor:'#ef4444'};
+        const lc = lblColors[d.overall_label] || '#666';
+        let html = '<div class="resadeq-container"><h3>📊 Response Adequacy</h3>';
+        html += `<div class="resadeq-score" style="border-color:${lc}"><span class="resadeq-num">${d.overall_adequacy}%</span><span class="resadeq-lbl" style="color:${lc}">${d.overall_label.toUpperCase()}</span></div>`;
+        html += `<div class="resadeq-assess">${d.assessment}</div>`;
+        html += `<div class="resadeq-summary"><span>Pairs Analyzed: ${d.total_pairs_analyzed}</span><span>Evasive: <strong style="color:#ef4444">${d.evasive_responses}</strong></span></div>`;
+        if (d.pairs.length > 0) {
+            html += '<div class="resadeq-pairs">';
+            d.pairs.slice(0, 10).forEach(p => {
+                const pc = lblColors[p.label] || '#666';
+                html += `<div class="resadeq-pair"><div class="resadeq-pair-head"><span>#${p.index}</span><span class="resadeq-pair-score" style="color:${pc}">${p.adequacy_score}% ${p.label}</span></div>`;
+                html += `<div class="resadeq-pair-q">Q: ${p.question_preview}</div>`;
+                html += `<div class="resadeq-pair-a">A: ${p.answer_preview}</div>`;
+                html += `<div class="resadeq-pair-dims"><span>Direct: ${p.directness}%</span><span>Relevant: ${p.relevance}%</span><span>Complete: ${p.completeness}%</span></div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not score response adequacy.'); }
+};
+
+// ── Influence Detection ─────────────────────────────
+WitnessReplayApp.prototype._showInfluenceDetection = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/influence-detection`);
+        const d = await r.json();
+        const lvlColors = {high:'#ef4444',moderate:'#eab308',low:'#22c55e'};
+        const lc = lvlColors[d.influence_level] || '#666';
+        let html = '<div class="infldet-container"><h3>🎓 Witness Influence Detection</h3>';
+        html += `<div class="infldet-score" style="border-color:${lc}"><span class="infldet-num">${d.influence_score}</span><span class="infldet-lbl" style="color:${lc}">${d.influence_level.toUpperCase()}</span></div>`;
+        html += `<div class="infldet-assess">${d.assessment}</div>`;
+        html += `<div class="infldet-summary"><span>Total Flags: ${d.total_flags}</span><span>Formality: ${d.formality_score}%</span></div>`;
+        html += '<div class="infldet-indicators">';
+        d.indicators.forEach(ind => {
+            const sc = ind.severity === 'high' ? '#ef4444' : ind.severity === 'medium' ? '#eab308' : '#22c55e';
+            html += `<div class="infldet-ind"><div class="infldet-ind-head"><span>${ind.icon} ${ind.name}</span><span class="infldet-ind-cnt" style="color:${sc}">${ind.count} found</span><span class="infldet-sev" style="background:${sc}">${ind.severity}</span></div>`;
+            if (ind.examples.length > 0) {
+                html += '<div class="infldet-examples">';
+                ind.examples.slice(0, 3).forEach(ex => {
+                    html += `<div class="infldet-ex"><span class="infldet-ex-marker">"${ex.indicator}"</span> — ${ex.text}</div>`;
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not detect influence.'); }
+};
+
+// ── Fragmentation Index ─────────────────────────────
+WitnessReplayApp.prototype._showFragmentationIndex = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/fragmentation-index`);
+        const d = await r.json();
+        const lvlColors = {high:'#ef4444',moderate:'#eab308',low:'#22c55e'};
+        const lc = lvlColors[d.fragmentation_level] || '#666';
+        let html = '<div class="fragidx-container"><h3>🧩 Testimony Fragmentation Index</h3>';
+        html += `<div class="fragidx-score" style="border-color:${lc}"><span class="fragidx-num">${d.fragmentation_score}</span><span class="fragidx-lbl" style="color:${lc}">${d.fragmentation_level.toUpperCase()}</span></div>`;
+        html += `<div class="fragidx-assess">${d.assessment}</div>`;
+        html += `<div class="fragidx-summary"><span>Fragments: ${d.total_fragments}</span><span>Sentences: ${d.sentence_count}</span><span>Rate: ${d.fragments_per_10_sentences}/10</span></div>`;
+        html += '<div class="fragidx-dims">';
+        d.dimensions.forEach(dim => {
+            if (dim.impact !== 'info') {
+                const ic = dim.impact === 'high' ? '#ef4444' : dim.impact === 'medium' ? '#eab308' : '#22c55e';
+                html += `<div class="fragidx-dim"><div class="fragidx-dim-head"><span>${dim.icon} ${dim.name}</span><span class="fragidx-dim-cnt" style="color:${ic}">${dim.count}</span></div>`;
+                if (dim.examples && dim.examples.length > 0) {
+                    html += '<div class="fragidx-examples">';
+                    dim.examples.slice(0, 3).forEach(ex => {
+                        html += `<div class="fragidx-ex"><span class="fragidx-marker">"${ex.marker}"</span> ${ex.text}</div>`;
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else {
+                html += `<div class="fragidx-dim"><div class="fragidx-dim-head"><span>${dim.icon} ${dim.name}</span><span class="fragidx-dim-score">${dim.score}%</span></div>`;
+                html += `<div class="fragidx-info">Avg words/sentence: ${dim.avg_words} | Variance: ${dim.variance}</div></div>`;
+            }
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not compute fragmentation index.'); }
+};
+
+// ── Language Sophistication ─────────────────────────
+WitnessReplayApp.prototype._showLanguageSophistication = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/language-sophistication`);
+        const d = await r.json();
+        const lvlColors = {high:'#22c55e',moderate:'#3b82f6',basic:'#eab308'};
+        const lc = lvlColors[d.sophistication_level] || '#666';
+        let html = '<div class="langsoph-container"><h3>🎩 Language Sophistication</h3>';
+        html += `<div class="langsoph-score" style="border-color:${lc}"><span class="langsoph-num">${d.overall_sophistication}</span><span class="langsoph-lbl" style="color:${lc}">${d.sophistication_level.toUpperCase()}</span></div>`;
+        html += `<div class="langsoph-assess">${d.assessment}</div>`;
+        html += '<div class="langsoph-dims">';
+        d.dimensions.forEach(dim => {
+            const barW = Math.min(dim.value, 100);
+            const bc = dim.value >= 60 ? '#22c55e' : dim.value >= 30 ? '#eab308' : '#3b82f6';
+            html += `<div class="langsoph-dim"><div class="langsoph-dim-head"><span>${dim.icon} ${dim.name}</span><span class="langsoph-dim-val">${dim.value}${dim.unit}</span></div>`;
+            html += `<div class="langsoph-dim-bar"><div style="width:${barW}%;background:${bc};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="langsoph-dim-desc">${dim.description}</div></div>`;
+        });
+        html += '</div>';
+        html += `<div class="langsoph-footer"><span>Words: ${d.word_count}</span></div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze language sophistication.'); }
+};

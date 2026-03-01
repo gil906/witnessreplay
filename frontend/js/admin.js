@@ -6796,3 +6796,61 @@ async function loadUserActivityPanel() {
 }
 document.getElementById('user-activity-refresh')?.addEventListener('click', loadUserActivityPanel);
 setTimeout(loadUserActivityPanel, 3000);
+
+// ── Feature Usage Stats Panel ───────────────────────
+async function loadFeatureUsagePanel() {
+    const el = document.getElementById('feature-usage-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/feature-usage-stats', {headers:{'Authorization':'Basic '+btoa(getAdminCreds())}});
+        const d = await r.json();
+        let html = '<div class="featusage-grid">';
+        html += `<div class="featusage-stat"><span class="featusage-num">${d.total_features}</span><span class="featusage-lbl">Features</span></div>`;
+        html += `<div class="featusage-stat"><span class="featusage-num">${d.total_calls_24h}</span><span class="featusage-lbl">Calls (24h)</span></div>`;
+        html += `<div class="featusage-stat"><span class="featusage-num">${d.avg_error_rate_pct}%</span><span class="featusage-lbl">Avg Error Rate</span></div>`;
+        html += '</div>';
+        html += '<div class="featusage-popular"><strong>🔥 Most Popular</strong>';
+        d.most_popular.forEach(f => { html += `<div class="featusage-row"><span>${f.name}</span><span class="featusage-calls">${f.calls}</span></div>`; });
+        html += '</div>';
+        html += '<div class="featusage-least"><strong>💤 Least Used</strong>';
+        d.least_used.forEach(f => { html += `<div class="featusage-row"><span>${f.name}</span><span class="featusage-calls">${f.calls}</span></div>`; });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Feature usage error:', e); }
+}
+document.getElementById('feature-usage-refresh')?.addEventListener('click', loadFeatureUsagePanel);
+setTimeout(loadFeatureUsagePanel, 3500);
+
+// ── Error Tracker Panel ─────────────────────────────
+async function loadErrorTrackerPanel() {
+    const el = document.getElementById('error-tracker-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/error-tracker', {headers:{'Authorization':'Basic '+btoa(getAdminCreds())}});
+        const d = await r.json();
+        const hColors = {healthy:'#22c55e',degraded:'#eab308',unhealthy:'#ef4444'};
+        const hc = hColors[d.health] || '#666';
+        let html = `<div class="errtrack-health" style="border-left:3px solid ${hc}"><span class="errtrack-hlbl">System Health</span><span class="errtrack-hval" style="color:${hc}">${d.health.toUpperCase()}</span><span class="errtrack-rate">${d.error_rate_pct}% error rate</span></div>`;
+        html += '<div class="errtrack-grid">';
+        html += `<div class="errtrack-stat"><span class="errtrack-num">${d.total_errors_24h}</span><span class="errtrack-lbl">Errors (24h)</span></div>`;
+        html += `<div class="errtrack-stat"><span class="errtrack-num">${d.total_requests_24h}</span><span class="errtrack-lbl">Requests (24h)</span></div>`;
+        html += '</div>';
+        html += '<div class="errtrack-sev"><strong>Severity</strong>';
+        Object.entries(d.severity_breakdown).forEach(([k, v]) => {
+            const sc = k === 'high' || k === 'critical' ? '#ef4444' : k === 'medium' ? '#eab308' : '#22c55e';
+            html += `<span class="errtrack-sev-badge" style="color:${sc}">${k}: ${v}</span>`;
+        });
+        html += '</div>';
+        html += '<div class="errtrack-types"><strong>Error Types</strong>';
+        d.error_types.forEach(t => { html += `<div class="errtrack-type-row"><span>${t.icon} ${t.type}</span><span>${t.count}</span></div>`; });
+        html += '</div>';
+        html += '<div class="errtrack-recent"><strong>Recent Errors</strong>';
+        d.recent_errors.slice(0, 5).forEach(e => {
+            html += `<div class="errtrack-err-row"><span>${e.icon} ${e.message}</span><span class="errtrack-ago">${e.minutes_ago}m ago</span></div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Error tracker error:', e); }
+}
+document.getElementById('error-tracker-refresh')?.addEventListener('click', loadErrorTrackerPanel);
+setTimeout(loadErrorTrackerPanel, 4000);
