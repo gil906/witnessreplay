@@ -18677,3 +18677,586 @@ async def toggle_scheduled_task(request: Request, auth=Depends(require_admin_aut
                 return {"status": "toggled", "task": task}
 
     raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+
+# ── Questioning Strategy Generator ──────────────────────────────────────
+@router.get("/sessions/{session_id}/questioning-strategy")
+async def questioning_strategy(session_id: str):
+    """Generate follow-up questioning strategies based on testimony weaknesses."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    weakness_indicators = {
+        "vague_language": ["somewhat", "kind of", "sort of", "maybe", "possibly", "roughly", "approximately", "around"],
+        "hedging": ["I think", "I believe", "I'm not sure", "I don't recall", "I can't remember", "I'm not certain", "possibly", "perhaps"],
+        "inconsistency": ["actually", "wait", "let me correct", "I mean", "what I meant was", "I misspoke", "that's not exactly"],
+        "evasion": ["I don't want to", "I'd rather not", "that's not relevant", "I plead the fifth", "next question", "I refuse"],
+        "emotional": ["I was upset", "I was angry", "I was scared", "I couldn't think", "I panicked", "I was confused"]
+    }
+
+    strategy_templates = {
+        "vague_language": {
+            "approach": "Pin down specifics",
+            "questions": [
+                "Can you be more precise about [topic]?",
+                "When you say 'approximately', what exact number are you referring to?",
+                "You mentioned 'around' — can you narrow that down?",
+                "Specifically, what do you mean by [vague term]?"
+            ]
+        },
+        "hedging": {
+            "approach": "Challenge certainty",
+            "questions": [
+                "You said you 'think' — do you know or do you think?",
+                "You mentioned you 'can't remember' — is that because you don't know or you don't want to say?",
+                "Earlier you were certain about [X]. Why are you uncertain now?",
+                "What would help you remember more clearly?"
+            ]
+        },
+        "inconsistency": {
+            "approach": "Highlight contradictions",
+            "questions": [
+                "Earlier you said [X], but now you're saying [Y]. Which is accurate?",
+                "Why did you feel the need to correct yourself?",
+                "Can you explain the difference between your two statements?",
+                "Were you being truthful the first time or now?"
+            ]
+        },
+        "evasion": {
+            "approach": "Redirect and press",
+            "questions": [
+                "I understand your reluctance, but the question is directly relevant because...",
+                "Let me rephrase — [simpler version of question]",
+                "You've avoided answering this several times. Why?",
+                "Is there a reason you don't want to address this topic?"
+            ]
+        },
+        "emotional": {
+            "approach": "Probe emotional state impact",
+            "questions": [
+                "You mentioned being [emotion]. How did that affect what you observed?",
+                "Given your emotional state, how confident are you in your recollection?",
+                "Did your [emotion] cloud your judgment at the time?",
+                "After you calmed down, did your perspective change?"
+            ]
+        }
+    }
+
+    detected_weaknesses = []
+    weakness_counts = {k: 0 for k in weakness_indicators}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for category, indicators in weakness_indicators.items():
+            for indicator in indicators:
+                if indicator in lower:
+                    detected_weaknesses.append({
+                        "segment": idx + 1,
+                        "category": category,
+                        "indicator": indicator,
+                        "excerpt": stmt[:150]
+                    })
+                    weakness_counts[category] += 1
+                    break
+
+    strategies = []
+    for cat, count in weakness_counts.items():
+        if count > 0:
+            tmpl = strategy_templates[cat]
+            strategies.append({
+                "weakness_type": cat,
+                "occurrences": count,
+                "approach": tmpl["approach"],
+                "suggested_questions": tmpl["questions"],
+                "priority": "high" if count >= 3 else "medium" if count >= 1 else "low"
+            })
+
+    strategies.sort(key=lambda s: s["occurrences"], reverse=True)
+    total_weaknesses = sum(weakness_counts.values())
+
+    return {
+        "session_id": session_id,
+        "strategies": strategies,
+        "detected_weaknesses": detected_weaknesses[:30],
+        "weakness_counts": weakness_counts,
+        "total_weaknesses": total_weaknesses,
+        "vulnerability_score": min(round(total_weaknesses / max(len(statements), 1) * 100, 1), 100),
+        "top_vulnerability": max(weakness_counts, key=weakness_counts.get) if total_weaknesses > 0 else "none",
+        "segments_analyzed": len(statements),
+        "recommendation": f"Found {total_weaknesses} exploitable weaknesses. Top vulnerability: {max(weakness_counts, key=weakness_counts.get) if total_weaknesses > 0 else 'none'}. {len(strategies)} questioning strategies generated."
+    }
+
+
+# ── Testimony Confidence Mapper ─────────────────────────────────────────
+@router.get("/sessions/{session_id}/confidence-map")
+async def confidence_map(session_id: str):
+    """Map confidence levels across all testimony segments."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    high_conf = ["I am certain", "I'm sure", "absolutely", "definitely", "without a doubt",
+                 "I clearly saw", "I know for a fact", "100 percent", "no question", "I am positive"]
+    medium_conf = ["I believe", "I think", "probably", "most likely", "it seems",
+                   "as far as I know", "from what I recall", "I'm fairly sure", "generally", "typically"]
+    low_conf = ["I'm not sure", "I don't know", "maybe", "I can't remember", "I don't recall",
+                "I'm unsure", "possibly", "it might have been", "I guess", "hard to say",
+                "I don't remember", "I couldn't say", "vaguely"]
+
+    segments = []
+    high_count = 0
+    medium_count = 0
+    low_count = 0
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        level = "medium"
+        triggers = []
+
+        for phrase in low_conf:
+            if phrase in lower:
+                level = "low"
+                triggers.append(phrase)
+        for phrase in high_conf:
+            if phrase in lower:
+                level = "high"
+                triggers.append(phrase)
+        if not triggers:
+            for phrase in medium_conf:
+                if phrase in lower:
+                    triggers.append(phrase)
+
+        if level == "high":
+            high_count += 1
+            score = 9
+        elif level == "low":
+            low_count += 1
+            score = 3
+        else:
+            medium_count += 1
+            score = 6
+
+        segments.append({
+            "segment": idx + 1,
+            "confidence_level": level,
+            "confidence_score": score,
+            "triggers": triggers[:3],
+            "excerpt": stmt[:120]
+        })
+
+    total = len(statements) or 1
+    avg_score = round(sum(s["confidence_score"] for s in segments) / total, 1)
+
+    trend = "stable"
+    if len(segments) >= 4:
+        first_half = sum(s["confidence_score"] for s in segments[:len(segments)//2]) / (len(segments)//2)
+        second_half = sum(s["confidence_score"] for s in segments[len(segments)//2:]) / (len(segments) - len(segments)//2)
+        if second_half - first_half > 1:
+            trend = "increasing"
+        elif first_half - second_half > 1:
+            trend = "decreasing"
+
+    return {
+        "session_id": session_id,
+        "segments": segments,
+        "summary": {
+            "high_confidence": high_count,
+            "medium_confidence": medium_count,
+            "low_confidence": low_count,
+            "average_score": avg_score,
+            "trend": trend
+        },
+        "confidence_distribution": {
+            "high_pct": round(high_count / total * 100, 1),
+            "medium_pct": round(medium_count / total * 100, 1),
+            "low_pct": round(low_count / total * 100, 1)
+        },
+        "segments_analyzed": len(statements),
+        "recommendation": f"Average confidence: {avg_score}/10. Trend: {trend}. {low_count} low-confidence segments warrant further questioning."
+    }
+
+
+# ── Witness Profile Builder (Enhanced) ──────────────────────────────────
+@router.get("/sessions/{session_id}/witness-dossier")
+async def witness_dossier(session_id: str):
+    """Build comprehensive witness dossier from testimony analysis."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    all_messages = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            all_messages.append({"role": role, "content": content})
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+    word_count = sum(len(s.split()) for s in statements)
+    avg_response_len = round(word_count / max(len(statements), 1), 1)
+
+    cooperation_markers = ["yes", "I agree", "absolutely", "of course", "sure", "right", "correct", "that's right"]
+    resistance_markers = ["I don't want to", "I refuse", "objection", "I won't", "no comment", "I plead", "next question"]
+    detail_markers = ["specifically", "exactly", "precisely", "the color was", "at approximately", "I noticed", "in detail"]
+    emotion_markers = ["angry", "scared", "upset", "worried", "nervous", "frustrated", "happy", "sad", "afraid", "anxious"]
+
+    cooperation_score = sum(1 for m in cooperation_markers if m in full_text)
+    resistance_score = sum(1 for m in resistance_markers if m in full_text)
+    detail_score = sum(1 for m in detail_markers if m in full_text)
+    emotion_score = sum(1 for m in emotion_markers if m in full_text)
+
+    demeanor = "cooperative" if cooperation_score > resistance_score else "resistant" if resistance_score > cooperation_score else "neutral"
+    detail_level = "highly detailed" if detail_score >= 3 else "moderately detailed" if detail_score >= 1 else "vague"
+    emotional_state = "emotional" if emotion_score >= 3 else "somewhat emotional" if emotion_score >= 1 else "composed"
+
+    communication_style = "verbose" if avg_response_len > 40 else "concise" if avg_response_len < 15 else "moderate"
+
+    filler_words = ["um", "uh", "like", "you know", "well", "so", "basically", "actually"]
+    filler_count = sum(full_text.count(f) for f in filler_words)
+
+    return {
+        "session_id": session_id,
+        "profile": {
+            "total_statements": len(statements),
+            "word_count": word_count,
+            "avg_response_length": avg_response_len,
+            "communication_style": communication_style,
+            "demeanor": demeanor,
+            "detail_level": detail_level,
+            "emotional_state": emotional_state,
+            "cooperation_score": cooperation_score,
+            "resistance_score": resistance_score,
+            "filler_word_count": filler_count
+        },
+        "behavioral_indicators": {
+            "cooperation_level": min(round(cooperation_score / max(len(statements), 1) * 100, 1), 100),
+            "resistance_level": min(round(resistance_score / max(len(statements), 1) * 100, 1), 100),
+            "detail_richness": min(round(detail_score / max(len(statements), 1) * 100, 1), 100),
+            "emotional_expression": min(round(emotion_score / max(len(statements), 1) * 100, 1), 100)
+        },
+        "assessment": {
+            "overall_credibility": "moderate",
+            "reliability_concerns": [],
+            "strengths": [s for s in [
+                "Cooperative demeanor" if demeanor == "cooperative" else None,
+                "Detailed responses" if detail_level == "highly detailed" else None,
+                "Composed emotional state" if emotional_state == "composed" else None,
+            ] if s],
+            "weaknesses": [w for w in [
+                "Resistant to questioning" if demeanor == "resistant" else None,
+                "Vague responses" if detail_level == "vague" else None,
+                "High emotional volatility" if emotional_state == "emotional" else None,
+                "Excessive filler words" if filler_count > 10 else None,
+            ] if w]
+        },
+        "segments_analyzed": len(statements),
+        "recommendation": f"Witness profile: {demeanor}, {detail_level}, {emotional_state}. Communication style: {communication_style} (avg {avg_response_len} words/response)."
+    }
+
+
+# ── Topic Segmentation ──────────────────────────────────────────────────
+@router.get("/sessions/{session_id}/topic-segments")
+async def topic_segmentation(session_id: str):
+    """Break testimony into topical segments with theme identification."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    topic_keywords = {
+        "personal_background": ["name", "age", "born", "live", "address", "family", "married", "children", "education", "job", "work", "occupation"],
+        "incident_details": ["happened", "occurred", "saw", "witnessed", "accident", "event", "incident", "crash", "fight", "attack", "scene"],
+        "timeline_sequence": ["before", "after", "then", "next", "first", "later", "when", "time", "date", "morning", "evening", "night", "clock", "hour"],
+        "people_involved": ["he said", "she said", "they", "defendant", "plaintiff", "victim", "suspect", "officer", "doctor", "witness", "lawyer"],
+        "physical_evidence": ["document", "photo", "video", "recording", "letter", "email", "text message", "report", "receipt", "contract"],
+        "injuries_damages": ["injury", "hurt", "pain", "damage", "broken", "bleeding", "hospital", "doctor", "medical", "treatment", "surgery"],
+        "financial_matters": ["money", "payment", "cost", "salary", "expenses", "insurance", "settlement", "compensation", "debt", "account"],
+        "emotional_impact": ["felt", "feeling", "scared", "afraid", "angry", "upset", "trauma", "stress", "anxiety", "depression", "nightmare"]
+    }
+
+    segments = []
+    topic_counts = {k: 0 for k in topic_keywords}
+    current_topic = None
+    topic_transitions = []
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        best_topic = "general"
+        best_score = 0
+
+        for topic, keywords in topic_keywords.items():
+            score = sum(1 for kw in keywords if kw in lower)
+            if score > best_score:
+                best_score = score
+                best_topic = topic
+
+        if best_topic != "general":
+            topic_counts[best_topic] += 1
+
+        if current_topic and best_topic != current_topic:
+            topic_transitions.append({
+                "from_topic": current_topic,
+                "to_topic": best_topic,
+                "at_segment": idx + 1
+            })
+        current_topic = best_topic
+
+        segments.append({
+            "segment": idx + 1,
+            "topic": best_topic,
+            "confidence": min(best_score, 5),
+            "keywords_matched": best_score,
+            "excerpt": stmt[:120]
+        })
+
+    dominant_topic = max(topic_counts, key=topic_counts.get) if any(topic_counts.values()) else "general"
+    covered_topics = [t for t, c in topic_counts.items() if c > 0]
+    missing_topics = [t for t, c in topic_counts.items() if c == 0]
+
+    return {
+        "session_id": session_id,
+        "segments": segments,
+        "topic_distribution": topic_counts,
+        "topic_transitions": topic_transitions[:20],
+        "dominant_topic": dominant_topic,
+        "covered_topics": covered_topics,
+        "missing_topics": missing_topics,
+        "coverage_pct": round(len(covered_topics) / len(topic_keywords) * 100, 1),
+        "transition_count": len(topic_transitions),
+        "segments_analyzed": len(statements),
+        "recommendation": f"Testimony covers {len(covered_topics)}/{len(topic_keywords)} topics. Dominant: {dominant_topic.replace('_', ' ')}. {len(missing_topics)} topics not addressed."
+    }
+
+
+# ── Cross-Examination Weakness Finder ────────────────────────────────────
+@router.get("/sessions/{session_id}/cross-exam-weaknesses")
+async def cross_exam_weaknesses(session_id: str):
+    """Find vulnerabilities in testimony for cross-examination."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 15:
+                statements.append(content)
+
+    weakness_types = {
+        "memory_gaps": {
+            "markers": ["I don't remember", "I can't recall", "it's been a long time", "I'm not sure", "I forget", "I don't know", "hard to remember", "my memory is fuzzy"],
+            "attack": "Challenge the witness on selective memory — why remember some details but not others?",
+            "severity": "high"
+        },
+        "inconsistent_details": {
+            "markers": ["actually", "let me correct", "I mean", "wait", "what I meant", "I misspoke", "that's not what I said"],
+            "attack": "Highlight self-corrections as evidence of unreliable testimony.",
+            "severity": "high"
+        },
+        "speculation": {
+            "markers": ["I assume", "I suppose", "I would think", "probably", "it must have been", "I imagine", "I bet", "I would guess"],
+            "attack": "Object to speculation — witness should testify to facts, not assumptions.",
+            "severity": "medium"
+        },
+        "secondhand_info": {
+            "markers": ["I was told", "someone said", "I heard that", "they told me", "according to", "I was informed", "rumor", "supposedly"],
+            "attack": "Object to hearsay — witness lacks firsthand knowledge.",
+            "severity": "high"
+        },
+        "bias_indicators": {
+            "markers": ["I hate", "I can't stand", "I always thought", "I never liked", "I don't trust", "they always", "typical of them"],
+            "attack": "Expose bias to undermine witness credibility.",
+            "severity": "medium"
+        },
+        "absolute_claims": {
+            "markers": ["always", "never", "every time", "without exception", "100 percent", "absolutely certain", "there's no way"],
+            "attack": "Challenge absolute claims — find any exception to disprove.",
+            "severity": "medium"
+        },
+        "time_uncertainty": {
+            "markers": ["around", "approximately", "about", "I think it was", "sometime", "roughly", "give or take", "more or less"],
+            "attack": "Pin down exact times — vague timing undermines chronology.",
+            "severity": "low"
+        }
+    }
+
+    found_weaknesses = []
+    type_counts = {k: 0 for k in weakness_types}
+    severity_counts = {"high": 0, "medium": 0, "low": 0}
+
+    for idx, stmt in enumerate(statements):
+        lower = stmt.lower()
+        for wtype, config in weakness_types.items():
+            for marker in config["markers"]:
+                if marker in lower:
+                    found_weaknesses.append({
+                        "segment": idx + 1,
+                        "type": wtype,
+                        "marker": marker,
+                        "severity": config["severity"],
+                        "attack_strategy": config["attack"],
+                        "excerpt": stmt[:150]
+                    })
+                    type_counts[wtype] += 1
+                    severity_counts[config["severity"]] += 1
+                    break
+
+    total = sum(type_counts.values())
+    exploitability = "high" if severity_counts["high"] >= 3 else "medium" if total >= 3 else "low"
+
+    top_weakness = max(type_counts, key=type_counts.get) if total > 0 else "none"
+
+    return {
+        "session_id": session_id,
+        "weaknesses": found_weaknesses[:40],
+        "type_counts": type_counts,
+        "severity_counts": severity_counts,
+        "total_weaknesses": total,
+        "exploitability": exploitability,
+        "top_weakness": top_weakness,
+        "attack_strategies": [
+            {"type": k, "strategy": v["attack"], "count": type_counts[k]}
+            for k, v in weakness_types.items() if type_counts[k] > 0
+        ],
+        "vulnerability_rate_pct": round(total / max(len(statements), 1) * 100, 1),
+        "segments_analyzed": len(statements),
+        "recommendation": f"Found {total} cross-exam weaknesses ({severity_counts['high']} high severity). Exploitability: {exploitability}. Top target: {top_weakness.replace('_', ' ')}."
+    }
+
+
+# ── Admin User Management ────────────────────────────────────────────────
+_user_sessions_log = []
+
+@router.get("/admin/user-management")
+async def admin_user_management(auth=Depends(require_admin_auth)):
+    """User management dashboard with session tracking."""
+    import os
+    data_dir = os.environ.get("DATA_DIR", "/app/wr-data")
+    sessions_dir = os.path.join(data_dir, "sessions")
+
+    users = {}
+    total_sessions = 0
+    recent_activity = []
+
+    if os.path.isdir(sessions_dir):
+        for fname in os.listdir(sessions_dir):
+            if fname.endswith(".json"):
+                total_sessions += 1
+                fpath = os.path.join(sessions_dir, fname)
+                try:
+                    stat = os.stat(fpath)
+                    created = datetime.fromtimestamp(stat.st_ctime).isoformat() + "Z"
+                    modified = datetime.fromtimestamp(stat.st_mtime).isoformat() + "Z"
+                    size_kb = round(stat.st_size / 1024, 1)
+                    session_id = fname.replace(".json", "")
+
+                    recent_activity.append({
+                        "session_id": session_id,
+                        "created": created,
+                        "modified": modified,
+                        "size_kb": size_kb
+                    })
+                except Exception:
+                    pass
+
+    recent_activity.sort(key=lambda x: x.get("modified", ""), reverse=True)
+
+    return {
+        "total_sessions": total_sessions,
+        "total_data_files": total_sessions,
+        "recent_sessions": recent_activity[:20],
+        "storage_summary": {
+            "total_files": total_sessions,
+            "total_size_kb": round(sum(s.get("size_kb", 0) for s in recent_activity), 1)
+        },
+        "activity_log": _user_sessions_log[-50:],
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ── Admin Performance Metrics ────────────────────────────────────────────
+_perf_metrics = {
+    "requests_total": 0,
+    "errors_total": 0,
+    "response_times": [],
+    "endpoint_hits": {},
+    "started_at": datetime.utcnow().isoformat() + "Z"
+}
+
+@router.get("/admin/performance-metrics")
+async def admin_performance_metrics(auth=Depends(require_admin_auth)):
+    """API performance metrics: response times, error rates, throughput."""
+    import time
+    now = datetime.utcnow()
+    started = datetime.fromisoformat(_perf_metrics["started_at"].replace("Z", ""))
+    uptime_hours = round((now - started).total_seconds() / 3600, 2)
+
+    recent_times = _perf_metrics["response_times"][-100:]
+    avg_response_ms = round(sum(recent_times) / max(len(recent_times), 1), 2)
+    max_response_ms = max(recent_times) if recent_times else 0
+    min_response_ms = min(recent_times) if recent_times else 0
+
+    total_req = max(_perf_metrics["requests_total"], 1)
+    error_rate = round(_perf_metrics["errors_total"] / total_req * 100, 2)
+
+    top_endpoints = sorted(
+        _perf_metrics["endpoint_hits"].items(),
+        key=lambda x: x[1], reverse=True
+    )[:10]
+
+    return {
+        "uptime_hours": uptime_hours,
+        "requests_total": _perf_metrics["requests_total"],
+        "errors_total": _perf_metrics["errors_total"],
+        "error_rate_pct": error_rate,
+        "response_times": {
+            "avg_ms": avg_response_ms,
+            "max_ms": max_response_ms,
+            "min_ms": min_response_ms,
+            "samples": len(recent_times)
+        },
+        "top_endpoints": [{"endpoint": ep, "hits": hits} for ep, hits in top_endpoints],
+        "throughput": {
+            "requests_per_hour": round(_perf_metrics["requests_total"] / max(uptime_hours, 0.01), 1)
+        },
+        "timestamp": now.isoformat() + "Z"
+    }
+
+@router.post("/admin/performance-metrics")
+async def reset_performance_metrics(auth=Depends(require_admin_auth)):
+    """Reset performance metrics."""
+    _perf_metrics["requests_total"] = 0
+    _perf_metrics["errors_total"] = 0
+    _perf_metrics["response_times"] = []
+    _perf_metrics["endpoint_hits"] = {}
+    _perf_metrics["started_at"] = datetime.utcnow().isoformat() + "Z"
+    return {"status": "reset", "timestamp": datetime.utcnow().isoformat() + "Z"}

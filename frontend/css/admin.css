@@ -6397,3 +6397,29 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .st-task-status { font-size: 0.75em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); }
 .st-task-schedule { font-size: 0.78em; color: #aaa; margin-top: 4px; }
 .st-task-last { font-size: 0.72em; color: #888; margin-top: 2px; }
+
+/* ── User Management Panel ── */
+.user-mgmt-panel { border-left: 3px solid #7c4dff; }
+.um-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.um-stat { text-align: center; padding: 10px; background: rgba(124,77,255,0.08); border-radius: 8px; }
+.um-val { display: block; font-size: 1.3em; font-weight: 700; color: #7c4dff; }
+.um-label { display: block; font-size: 0.7em; color: #999; margin-top: 2px; }
+.um-sessions h4 { margin: 8px 0 6px; font-size: 0.9em; }
+.um-table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+.um-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #aaa; font-weight: 600; }
+.um-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.um-sid { font-family: monospace; color: #7c4dff; }
+
+/* ── Performance Metrics Panel ── */
+.perf-metrics-panel { border-left: 3px solid #00e676; }
+.perf-actions { display: flex; gap: 6px; margin-top: 8px; }
+.pm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.pm-stat { text-align: center; padding: 10px; background: rgba(0,230,118,0.08); border-radius: 8px; }
+.pm-val { display: block; font-size: 1.2em; font-weight: 700; color: #00e676; }
+.pm-label { display: block; font-size: 0.7em; color: #999; margin-top: 2px; }
+.pm-detail { margin: 8px 0; }
+.pm-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 0.82em; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.pm-endpoints h4 { margin: 8px 0 6px; font-size: 0.9em; }
+.pm-ep-row { display: flex; justify-content: space-between; padding: 3px 8px; font-size: 0.8em; }
+.pm-ep-name { font-family: monospace; color: #00e676; }
+.pm-ep-hits { font-weight: 600; }

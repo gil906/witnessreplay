@@ -6351,3 +6351,69 @@ document.getElementById('scheduled-tasks-refresh')?.addEventListener('click', lo
 // Auto-load new panels
 if (document.getElementById('api-key-manager-content')) loadApiKeyManager();
 if (document.getElementById('scheduled-tasks-content')) loadScheduledTasks();
+
+// ── User Management Panel ──
+async function loadUserManagement() {
+    const el = document.getElementById('user-mgmt-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/user-management', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const data = await r.json();
+        let html = `<div class="um-stats">`;
+        html += `<div class="um-stat"><span class="um-val">${data.total_sessions}</span><span class="um-label">Total Sessions</span></div>`;
+        html += `<div class="um-stat"><span class="um-val">${data.storage_summary.total_size_kb} KB</span><span class="um-label">Storage Used</span></div>`;
+        html += `<div class="um-stat"><span class="um-val">${data.storage_summary.total_files}</span><span class="um-label">Data Files</span></div>`;
+        html += `</div>`;
+        if (data.recent_sessions && data.recent_sessions.length > 0) {
+            html += `<div class="um-sessions"><h4>Recent Sessions</h4><table class="um-table"><thead><tr><th>Session ID</th><th>Modified</th><th>Size</th></tr></thead><tbody>`;
+            for (const s of data.recent_sessions.slice(0, 10)) {
+                html += `<tr><td class="um-sid">${s.session_id.substring(0,12)}...</td><td>${new Date(s.modified).toLocaleString()}</td><td>${s.size_kb} KB</td></tr>`;
+            }
+            html += `</tbody></table></div>`;
+        } else {
+            html += `<p>No sessions found.</p>`;
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = '<p class="error">Failed to load user management data.</p>'; }
+}
+document.getElementById('user-mgmt-refresh')?.addEventListener('click', loadUserManagement);
+if (document.getElementById('user-mgmt-content')) loadUserManagement();
+
+// ── Performance Metrics Panel ──
+async function loadPerfMetrics() {
+    const el = document.getElementById('perf-metrics-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/performance-metrics', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || '') } });
+        const data = await r.json();
+        let html = `<div class="pm-stats">`;
+        html += `<div class="pm-stat"><span class="pm-val">${data.requests_total}</span><span class="pm-label">Total Requests</span></div>`;
+        html += `<div class="pm-stat"><span class="pm-val">${data.error_rate_pct}%</span><span class="pm-label">Error Rate</span></div>`;
+        html += `<div class="pm-stat"><span class="pm-val">${data.response_times.avg_ms}ms</span><span class="pm-label">Avg Response</span></div>`;
+        html += `<div class="pm-stat"><span class="pm-val">${data.uptime_hours}h</span><span class="pm-label">Uptime</span></div>`;
+        html += `</div>`;
+        html += `<div class="pm-detail">`;
+        html += `<div class="pm-row"><span>Throughput</span><span>${data.throughput.requests_per_hour} req/h</span></div>`;
+        html += `<div class="pm-row"><span>Max Response</span><span>${data.response_times.max_ms}ms</span></div>`;
+        html += `<div class="pm-row"><span>Min Response</span><span>${data.response_times.min_ms}ms</span></div>`;
+        html += `<div class="pm-row"><span>Errors</span><span>${data.errors_total}</span></div>`;
+        html += `</div>`;
+        if (data.top_endpoints && data.top_endpoints.length > 0) {
+            html += `<div class="pm-endpoints"><h4>Top Endpoints</h4>`;
+            for (const ep of data.top_endpoints.slice(0, 5)) {
+                html += `<div class="pm-ep-row"><span class="pm-ep-name">${ep.endpoint}</span><span class="pm-ep-hits">${ep.hits}</span></div>`;
+            }
+            html += `</div>`;
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = '<p class="error">Failed to load performance metrics.</p>'; }
+}
+async function resetPerfMetrics() {
+    try {
+        await fetch('/api/admin/performance-metrics', { method: 'POST', headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || ''), 'Content-Type': 'application/json' } });
+        loadPerfMetrics();
+    } catch(e) { console.error('Failed to reset metrics'); }
+}
+document.getElementById('perf-metrics-refresh')?.addEventListener('click', loadPerfMetrics);
+document.getElementById('perf-metrics-reset')?.addEventListener('click', resetPerfMetrics);
+if (document.getElementById('perf-metrics-content')) loadPerfMetrics();

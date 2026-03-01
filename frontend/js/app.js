@@ -7926,7 +7926,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/power': async () => { await this._showPowerDynamics(); },
         '/volatility': async () => { await this._showVolatility(); },
         '/prepared': async () => { await this._showPreparationDetector(); },
-        '/admissions': async () => { await this._showAdmissions(); }
+        '/admissions': async () => { await this._showAdmissions(); },
+        '/strategy': async () => { await this._showQuestioningStrategy(); },
+        '/confidence': async () => { await this._showConfidenceMap(); },
+        '/witnessprofile': async () => { await this._showWitnessProfile(); },
+        '/segments': async () => { await this._showTopicSegments(); },
+        '/weakpoints': async () => { await this._showCrossExamWeaknesses(); }
     };
     
     const handler = commands[cmd];
@@ -12475,4 +12480,192 @@ WitnessReplayApp.prototype._showAdmissions = async function() {
         html += `<div class="admit-footer">${data.segments_analyzed} segments analyzed</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not extract admissions.'); }
+};
+
+// ── Questioning Strategy Generator ──
+WitnessReplayApp.prototype._showQuestioningStrategy = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🎯 Generating questioning strategies...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/questioning-strategy`);
+        const data = await r.json();
+        let html = `<div class="strategy-container"><h3>🎯 Questioning Strategy Generator</h3>`;
+        html += `<div class="strategy-summary">`;
+        html += `<div class="strategy-stat"><span class="strategy-stat-val">${data.total_weaknesses}</span><span class="strategy-stat-label">Weaknesses Found</span></div>`;
+        html += `<div class="strategy-stat"><span class="strategy-stat-val">${data.vulnerability_score}%</span><span class="strategy-stat-label">Vulnerability Score</span></div>`;
+        html += `<div class="strategy-stat"><span class="strategy-stat-val">${data.top_vulnerability.replace(/_/g,' ')}</span><span class="strategy-stat-label">Top Vulnerability</span></div>`;
+        html += `<div class="strategy-stat"><span class="strategy-stat-val">${data.strategies.length}</span><span class="strategy-stat-label">Strategies</span></div>`;
+        html += `</div>`;
+        if (data.strategies.length) {
+            html += `<div class="strategy-list">`;
+            for (const s of data.strategies) {
+                const prioClass = `strategy-prio-${s.priority}`;
+                html += `<div class="strategy-card ${prioClass}">`;
+                html += `<div class="strategy-card-header"><span class="strategy-type">${s.weakness_type.replace(/_/g,' ')}</span><span class="strategy-prio-badge ${prioClass}">${s.priority}</span><span class="strategy-count">${s.occurrences} found</span></div>`;
+                html += `<div class="strategy-approach"><strong>Approach:</strong> ${s.approach}</div>`;
+                html += `<div class="strategy-questions"><strong>Suggested Questions:</strong><ul>`;
+                for (const q of s.suggested_questions) { html += `<li>${q}</li>`; }
+                html += `</ul></div></div>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<div class="strategy-empty">✅ No significant weaknesses detected — testimony appears strong.</div>`;
+        }
+        html += `<div class="strategy-rec">${data.recommendation}</div>`;
+        html += `<div class="strategy-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate questioning strategies.'); }
+};
+
+// ── Confidence Map ──
+WitnessReplayApp.prototype._showConfidenceMap = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('📊 Mapping confidence levels...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/confidence-map`);
+        const data = await r.json();
+        let html = `<div class="confmap-container"><h3>📊 Testimony Confidence Map</h3>`;
+        html += `<div class="confmap-summary">`;
+        html += `<div class="confmap-stat"><span class="confmap-stat-val">${data.summary.average_score}/10</span><span class="confmap-stat-label">Avg Confidence</span></div>`;
+        html += `<div class="confmap-stat"><span class="confmap-stat-val confmap-trend-${data.summary.trend}">${data.summary.trend.toUpperCase()}</span><span class="confmap-stat-label">Trend</span></div>`;
+        html += `<div class="confmap-stat"><span class="confmap-stat-val confmap-high">${data.summary.high_confidence}</span><span class="confmap-stat-label">High Confidence</span></div>`;
+        html += `<div class="confmap-stat"><span class="confmap-stat-val confmap-low">${data.summary.low_confidence}</span><span class="confmap-stat-label">Low Confidence</span></div>`;
+        html += `</div>`;
+        html += `<div class="confmap-dist">`;
+        html += `<div class="confmap-bar-row"><span class="confmap-bar-label">High</span><div class="confmap-bar-track"><div class="confmap-bar-fill confmap-fill-high" style="width:${data.confidence_distribution.high_pct}%"></div></div><span>${data.confidence_distribution.high_pct}%</span></div>`;
+        html += `<div class="confmap-bar-row"><span class="confmap-bar-label">Medium</span><div class="confmap-bar-track"><div class="confmap-bar-fill confmap-fill-med" style="width:${data.confidence_distribution.medium_pct}%"></div></div><span>${data.confidence_distribution.medium_pct}%</span></div>`;
+        html += `<div class="confmap-bar-row"><span class="confmap-bar-label">Low</span><div class="confmap-bar-track"><div class="confmap-bar-fill confmap-fill-low" style="width:${data.confidence_distribution.low_pct}%"></div></div><span>${data.confidence_distribution.low_pct}%</span></div>`;
+        html += `</div>`;
+        if (data.segments.length) {
+            html += `<div class="confmap-heatmap"><h4>Segment Heatmap</h4><div class="confmap-heatmap-grid">`;
+            for (const seg of data.segments.slice(0,30)) {
+                html += `<div class="confmap-cell confmap-cell-${seg.confidence_level}" title="Seg ${seg.segment}: ${seg.confidence_level} (${seg.confidence_score}/10)">${seg.segment}</div>`;
+            }
+            html += `</div></div>`;
+        }
+        html += `<div class="confmap-rec">${data.recommendation}</div>`;
+        html += `<div class="confmap-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not map confidence levels.'); }
+};
+
+// ── Witness Profile Builder ──
+WitnessReplayApp.prototype._showWitnessProfile = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('👤 Building witness profile...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/witness-dossier`);
+        const data = await r.json();
+        const p = data.profile;
+        const b = data.behavioral_indicators;
+        let html = `<div class="wprofile-container"><h3>👤 Witness Profile</h3>`;
+        html += `<div class="wprofile-summary">`;
+        html += `<div class="wprofile-stat"><span class="wprofile-stat-val">${p.demeanor.toUpperCase()}</span><span class="wprofile-stat-label">Demeanor</span></div>`;
+        html += `<div class="wprofile-stat"><span class="wprofile-stat-val">${p.detail_level}</span><span class="wprofile-stat-label">Detail Level</span></div>`;
+        html += `<div class="wprofile-stat"><span class="wprofile-stat-val">${p.emotional_state}</span><span class="wprofile-stat-label">Emotional State</span></div>`;
+        html += `<div class="wprofile-stat"><span class="wprofile-stat-val">${p.communication_style}</span><span class="wprofile-stat-label">Communication</span></div>`;
+        html += `</div>`;
+        html += `<div class="wprofile-stats-grid">`;
+        html += `<div class="wprofile-metric"><span class="wprofile-metric-label">Statements</span><span class="wprofile-metric-val">${p.total_statements}</span></div>`;
+        html += `<div class="wprofile-metric"><span class="wprofile-metric-label">Words</span><span class="wprofile-metric-val">${p.word_count}</span></div>`;
+        html += `<div class="wprofile-metric"><span class="wprofile-metric-label">Avg Length</span><span class="wprofile-metric-val">${p.avg_response_length} words</span></div>`;
+        html += `<div class="wprofile-metric"><span class="wprofile-metric-label">Filler Words</span><span class="wprofile-metric-val">${p.filler_word_count}</span></div>`;
+        html += `</div>`;
+        html += `<div class="wprofile-bars">`;
+        html += `<div class="wprofile-bar-row"><span class="wprofile-bar-label">Cooperation</span><div class="wprofile-bar-track"><div class="wprofile-bar-fill wprofile-coop" style="width:${b.cooperation_level}%"></div></div><span>${b.cooperation_level}%</span></div>`;
+        html += `<div class="wprofile-bar-row"><span class="wprofile-bar-label">Resistance</span><div class="wprofile-bar-track"><div class="wprofile-bar-fill wprofile-resist" style="width:${b.resistance_level}%"></div></div><span>${b.resistance_level}%</span></div>`;
+        html += `<div class="wprofile-bar-row"><span class="wprofile-bar-label">Detail Richness</span><div class="wprofile-bar-track"><div class="wprofile-bar-fill wprofile-detail" style="width:${b.detail_richness}%"></div></div><span>${b.detail_richness}%</span></div>`;
+        html += `<div class="wprofile-bar-row"><span class="wprofile-bar-label">Emotional Expression</span><div class="wprofile-bar-track"><div class="wprofile-bar-fill wprofile-emotion" style="width:${b.emotional_expression}%"></div></div><span>${b.emotional_expression}%</span></div>`;
+        html += `</div>`;
+        const a = data.assessment;
+        if (a.strengths.length) { html += `<div class="wprofile-strengths"><h4>✅ Strengths</h4><ul>${a.strengths.map(s=>`<li>${s}</li>`).join('')}</ul></div>`; }
+        if (a.weaknesses.length) { html += `<div class="wprofile-weaknesses"><h4>⚠️ Weaknesses</h4><ul>${a.weaknesses.map(w=>`<li>${w}</li>`).join('')}</ul></div>`; }
+        html += `<div class="wprofile-rec">${data.recommendation}</div>`;
+        html += `<div class="wprofile-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build witness profile.'); }
+};
+
+// ── Topic Segmentation ──
+WitnessReplayApp.prototype._showTopicSegments = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('📂 Segmenting by topic...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/topic-segments`);
+        const data = await r.json();
+        let html = `<div class="topseg-container"><h3>📂 Topic Segmentation</h3>`;
+        html += `<div class="topseg-summary">`;
+        html += `<div class="topseg-stat"><span class="topseg-stat-val">${data.covered_topics.length}/${data.covered_topics.length + data.missing_topics.length}</span><span class="topseg-stat-label">Topics Covered</span></div>`;
+        html += `<div class="topseg-stat"><span class="topseg-stat-val">${data.coverage_pct}%</span><span class="topseg-stat-label">Coverage</span></div>`;
+        html += `<div class="topseg-stat"><span class="topseg-stat-val">${data.dominant_topic.replace(/_/g,' ')}</span><span class="topseg-stat-label">Dominant Topic</span></div>`;
+        html += `<div class="topseg-stat"><span class="topseg-stat-val">${data.transition_count}</span><span class="topseg-stat-label">Topic Transitions</span></div>`;
+        html += `</div>`;
+        const topicColors = {personal_background:'#4dabf7',incident_details:'#ff6b6b',timeline_sequence:'#ffd43b',people_involved:'#69db7c',physical_evidence:'#da77f2',injuries_damages:'#ff922b',financial_matters:'#20c997',emotional_impact:'#f06595'};
+        html += `<div class="topseg-dist"><h4>Topic Distribution</h4>`;
+        for (const [topic, count] of Object.entries(data.topic_distribution)) {
+            if (count > 0) {
+                const pct = Math.round(count / Math.max(data.segments_analyzed,1) * 100);
+                const color = topicColors[topic] || '#868e96';
+                html += `<div class="topseg-bar-row"><span class="topseg-bar-label">${topic.replace(/_/g,' ')}</span><div class="topseg-bar-track"><div class="topseg-bar-fill" style="width:${pct}%;background:${color}"></div></div><span>${count}</span></div>`;
+            }
+        }
+        html += `</div>`;
+        if (data.missing_topics.length) {
+            html += `<div class="topseg-missing"><h4>⚠️ Missing Topics</h4><div class="topseg-tags">`;
+            for (const t of data.missing_topics) { html += `<span class="topseg-missing-tag">${t.replace(/_/g,' ')}</span>`; }
+            html += `</div></div>`;
+        }
+        if (data.segments.length) {
+            html += `<div class="topseg-timeline"><h4>Segment Flow</h4><div class="topseg-flow">`;
+            for (const seg of data.segments.slice(0,25)) {
+                const color = topicColors[seg.topic] || '#868e96';
+                html += `<div class="topseg-flow-item" style="border-left:3px solid ${color}" title="${seg.topic.replace(/_/g,' ')} — ${seg.excerpt}"><span class="topseg-flow-num">${seg.segment}</span><span class="topseg-flow-topic">${seg.topic.replace(/_/g,' ')}</span></div>`;
+            }
+            html += `</div></div>`;
+        }
+        html += `<div class="topseg-rec">${data.recommendation}</div>`;
+        html += `<div class="topseg-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not segment by topic.'); }
+};
+
+// ── Cross-Exam Weakness Finder ──
+WitnessReplayApp.prototype._showCrossExamWeaknesses = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⚔️ Finding cross-exam weaknesses...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/cross-exam-weaknesses`);
+        const data = await r.json();
+        let html = `<div class="xweak-container"><h3>⚔️ Cross-Examination Weakness Finder</h3>`;
+        html += `<div class="xweak-summary">`;
+        html += `<div class="xweak-stat"><span class="xweak-stat-val">${data.total_weaknesses}</span><span class="xweak-stat-label">Weaknesses Found</span></div>`;
+        html += `<div class="xweak-stat"><span class="xweak-stat-val xweak-exploit-${data.exploitability}">${data.exploitability.toUpperCase()}</span><span class="xweak-stat-label">Exploitability</span></div>`;
+        html += `<div class="xweak-stat"><span class="xweak-stat-val">${data.vulnerability_rate_pct}%</span><span class="xweak-stat-label">Vulnerability Rate</span></div>`;
+        html += `<div class="xweak-stat"><span class="xweak-stat-val">${data.top_weakness.replace(/_/g,' ')}</span><span class="xweak-stat-label">Top Weakness</span></div>`;
+        html += `</div>`;
+        html += `<div class="xweak-severity">`;
+        html += `<span class="xweak-sev-badge xweak-sev-high">High: ${data.severity_counts.high}</span>`;
+        html += `<span class="xweak-sev-badge xweak-sev-medium">Medium: ${data.severity_counts.medium}</span>`;
+        html += `<span class="xweak-sev-badge xweak-sev-low">Low: ${data.severity_counts.low}</span>`;
+        html += `</div>`;
+        if (data.attack_strategies.length) {
+            html += `<div class="xweak-strategies"><h4>Attack Strategies</h4>`;
+            for (const s of data.attack_strategies) {
+                html += `<div class="xweak-strat-card"><div class="xweak-strat-header"><span class="xweak-strat-type">${s.type.replace(/_/g,' ')}</span><span class="xweak-strat-count">${s.count} instances</span></div><p class="xweak-strat-text">${s.strategy}</p></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.weaknesses.length) {
+            html += `<div class="xweak-list"><h4>Detected Weaknesses</h4>`;
+            for (const w of data.weaknesses.slice(0,12)) {
+                html += `<div class="xweak-item xweak-sev-${w.severity}"><div class="xweak-item-header"><span class="xweak-type-badge">${w.type.replace(/_/g,' ')}</span><span class="xweak-sev-dot xweak-sev-${w.severity}">${w.severity}</span><span class="xweak-marker">"${w.marker}"</span></div><div class="xweak-excerpt">Seg ${w.segment}: ${w.excerpt}</div></div>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<div class="xweak-empty">✅ No significant weaknesses found — testimony appears solid for cross-examination.</div>`;
+        }
+        html += `<div class="xweak-rec">${data.recommendation}</div>`;
+        html += `<div class="xweak-footer">${data.segments_analyzed} segments analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not find cross-exam weaknesses.'); }
 };
