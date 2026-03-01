@@ -7625,6 +7625,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/legalthemes</code> — Legal theme extractor<br>' +
                 '<code>/readscore</code> — Testimony readability score<br>' +
                 '<code>/coopindex</code> — Cooperation index<br>' +
+                '<code>/digest</code> — Executive testimony digest<br>' +
+                '<code>/vulnerable</code> — Vulnerability scanner<br>' +
+                '<code>/casenarr</code> — Case narrative builder<br>' +
+                '<code>/swot</code> — Testimony SWOT analysis<br>' +
+                '<code>/depocostv2</code> — Enhanced depo cost estimate<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -7971,7 +7976,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/adequacy': async () => { await this._showResponseAdequacy(); },
         '/influence': async () => { await this._showInfluenceDetection(); },
         '/fragment': async () => { await this._showFragmentationIndex(); },
-        '/langsoph': async () => { await this._showLanguageSophistication(); }
+        '/langsoph': async () => { await this._showLanguageSophistication(); },
+        '/digest': async () => { await this._showTestimonyDigest(); },
+        '/vulnerable': async () => { await this._showVulnerabilityScan(); },
+        '/casenarr': async () => { await this._showCaseNarrative(); },
+        '/swot': async () => { await this._showTestimonySwot(); },
+        '/depocostv2': async () => { await this._showDepoCostV2(); }
     };
     
     const handler = commands[cmd];
@@ -8156,7 +8166,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/adequacy', desc: 'Response adequacy scoring' },
         { cmd: '/influence', desc: 'Witness influence detection' },
         { cmd: '/fragment', desc: 'Testimony fragmentation index' },
-        { cmd: '/langsoph', desc: 'Language sophistication analysis' }
+        { cmd: '/langsoph', desc: 'Language sophistication analysis' },
+        { cmd: '/digest', desc: 'Executive testimony digest' },
+        { cmd: '/vulnerable', desc: 'Witness vulnerability scan' },
+        { cmd: '/casenarr', desc: 'Case narrative builder' },
+        { cmd: '/swot', desc: 'Testimony SWOT analysis' },
+        { cmd: '/depocostv2', desc: 'Enhanced deposition cost estimate' }
     ];
     
     const filter = val.toLowerCase();
@@ -13977,4 +13992,150 @@ WitnessReplayApp.prototype._showLanguageSophistication = async function() {
         html += '</div>';
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not analyze language sophistication.'); }
+};
+
+// ── Testimony Digest Generator ──────────────────────
+WitnessReplayApp.prototype._showTestimonyDigest = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/testimony-digest`);
+        const d = await r.json();
+        const ratingColors = {strong:'#22c55e',moderate:'#eab308',weak:'#ef4444'};
+        const rc = ratingColors[d.overall_rating] || '#666';
+        let html = '<div class="tdigest-container"><h3>📋 Testimony Digest</h3>';
+        html += `<div class="tdigest-header"><div class="tdigest-rating" style="border-color:${rc}"><span class="tdigest-icon">${d.rating_icon}</span><span class="tdigest-label" style="color:${rc}">${d.overall_rating.toUpperCase()}</span></div>`;
+        html += `<div class="tdigest-stats"><div class="tdigest-stat"><span class="tdigest-num">${d.credibility_estimate}%</span><span class="tdigest-lbl">Credibility</span></div>`;
+        html += `<div class="tdigest-stat"><span class="tdigest-num">${d.strong_statements}</span><span class="tdigest-lbl">Strong</span></div>`;
+        html += `<div class="tdigest-stat"><span class="tdigest-num" style="color:#ef4444">${d.contradictions_found}</span><span class="tdigest-lbl">Contradictions</span></div></div></div>`;
+        html += `<div class="tdigest-assess">${d.assessment}</div>`;
+        d.sections.forEach(sec => {
+            html += `<div class="tdigest-section"><div class="tdigest-sec-head">${sec.icon} ${sec.title}</div>`;
+            html += '<div class="tdigest-sec-items">';
+            sec.items.forEach(item => { html += `<div class="tdigest-item">• ${item}</div>`; });
+            html += '</div></div>';
+        });
+        html += `<div class="tdigest-footer"><span>Words: ${d.word_count}</span><span>Exchanges: ${d.total_exchanges}</span></div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate testimony digest.'); }
+};
+
+// ── Witness Vulnerability Scanner ───────────────────
+WitnessReplayApp.prototype._showVulnerabilityScan = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/vulnerability-scan`);
+        const d = await r.json();
+        const lvlColors = {high:'#ef4444',moderate:'#eab308',low:'#22c55e'};
+        const lc = lvlColors[d.vulnerability_level] || '#666';
+        let html = '<div class="vulnscan-container"><h3>🔓 Vulnerability Scanner</h3>';
+        html += `<div class="vulnscan-score" style="border-color:${lc}"><span class="vulnscan-num">${d.vulnerability_score}</span><span class="vulnscan-lbl" style="color:${lc}">${d.vulnerability_level.toUpperCase()}</span></div>`;
+        html += `<div class="vulnscan-assess">${d.assessment}</div>`;
+        html += `<div class="vulnscan-summary"><span>Total Flags: ${d.total_vulnerabilities}</span><span>High Severity: <strong style="color:#ef4444">${d.high_severity_areas}</strong></span></div>`;
+        html += '<div class="vulnscan-vulns">';
+        d.vulnerabilities.forEach(v => {
+            const sc = v.severity === 'high' ? '#ef4444' : v.severity === 'medium' ? '#eab308' : '#22c55e';
+            html += `<div class="vulnscan-vuln"><div class="vulnscan-vuln-head"><span>${v.icon} ${v.name}</span><span class="vulnscan-cnt" style="color:${sc}">${v.count}</span><span class="vulnscan-sev" style="background:${sc}">${v.severity}</span></div>`;
+            html += `<div class="vulnscan-desc">${v.description}</div>`;
+            if (v.examples.length > 0) {
+                html += '<div class="vulnscan-examples">';
+                v.examples.forEach(ex => { html += `<div class="vulnscan-ex">"${ex}"</div>`; });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not run vulnerability scan.'); }
+};
+
+// ── Case Narrative Builder ──────────────────────────
+WitnessReplayApp.prototype._showCaseNarrative = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/case-narrative`);
+        const d = await r.json();
+        const qualColors = {comprehensive:'#22c55e',partial:'#eab308',sparse:'#ef4444'};
+        const qc = qualColors[d.narrative_quality] || '#666';
+        let html = '<div class="casenarr-container"><h3>📖 Case Narrative</h3>';
+        html += `<div class="casenarr-header"><div class="casenarr-quality" style="border-color:${qc}"><span class="casenarr-pct">${d.completeness_pct}%</span><span class="casenarr-qlbl" style="color:${qc}">${d.narrative_quality.toUpperCase()}</span></div>`;
+        html += `<div class="casenarr-stats"><div class="casenarr-stat"><span class="casenarr-num" style="color:#22c55e">${d.strong_sections}</span><span class="casenarr-lbl">Strong</span></div>`;
+        html += `<div class="casenarr-stat"><span class="casenarr-num" style="color:#ef4444">${d.weak_sections}</span><span class="casenarr-lbl">Weak</span></div></div></div>`;
+        html += `<div class="casenarr-assess">${d.assessment}</div>`;
+        d.sections.forEach(sec => {
+            const stc = sec.strength === 'strong' ? '#22c55e' : sec.strength === 'moderate' ? '#eab308' : '#ef4444';
+            html += `<div class="casenarr-section"><div class="casenarr-sec-head"><span>${sec.icon} ${sec.title}</span><span class="casenarr-str" style="color:${stc}">${sec.strength}</span></div>`;
+            html += '<div class="casenarr-stmts">';
+            sec.statements.forEach(s => { html += `<div class="casenarr-stmt">• ${s}</div>`; });
+            html += '</div></div>';
+        });
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build case narrative.'); }
+};
+
+// ── Testimony SWOT Analysis ─────────────────────────
+WitnessReplayApp.prototype._showTestimonySwot = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/testimony-swot`);
+        const d = await r.json();
+        const verdictColors = {favorable:'#22c55e',mixed:'#eab308',unfavorable:'#ef4444'};
+        const vc = verdictColors[d.verdict] || '#666';
+        let html = '<div class="tswot-container"><h3>🧩 Testimony SWOT Analysis</h3>';
+        html += `<div class="tswot-header"><div class="tswot-score" style="border-color:${vc}"><span class="tswot-num">${d.overall_score}</span><span class="tswot-lbl" style="color:${vc}">${d.verdict.toUpperCase()}</span></div>`;
+        html += `<div class="tswot-meta"><span>${d.total_items} items</span><span>${d.high_impact_items} high-impact</span></div></div>`;
+        html += `<div class="tswot-assess">${d.assessment}</div>`;
+        const quadrants = [
+            {key:'strengths', title:'Strengths', icon:'💪', color:'#22c55e'},
+            {key:'weaknesses', title:'Weaknesses', icon:'⚡', color:'#ef4444'},
+            {key:'opportunities', title:'Opportunities', icon:'🔍', color:'#3b82f6'},
+            {key:'threats', title:'Threats', icon:'⚠️', color:'#f97316'}
+        ];
+        html += '<div class="tswot-grid">';
+        quadrants.forEach(q => {
+            html += `<div class="tswot-quad" style="border-top:3px solid ${q.color}"><div class="tswot-quad-head" style="color:${q.color}">${q.icon} ${q.title}</div>`;
+            d.swot[q.key].forEach(item => {
+                const ic = item.impact === 'high' ? '#ef4444' : item.impact === 'medium' ? '#eab308' : '#22c55e';
+                html += `<div class="tswot-item"><div class="tswot-item-head"><span>${item.icon} ${item.item}</span><span class="tswot-impact" style="color:${ic}">${item.impact}</span></div>`;
+                html += `<div class="tswot-item-desc">${item.description}</div></div>`;
+            });
+            html += '</div>';
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate SWOT analysis.'); }
+};
+
+// ── Enhanced Deposition Cost Estimator V2 ───────────
+WitnessReplayApp.prototype._showDepoCostV2 = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/depo-cost-v2`);
+        const d = await r.json();
+        let html = '<div class="depov2-container"><h3>💰 Enhanced Deposition Cost Estimate</h3>';
+        html += `<div class="depov2-total"><span class="depov2-amount">$${d.total_estimated_cost.toLocaleString()}</span><span class="depov2-lbl">Estimated Total</span></div>`;
+        html += `<div class="depov2-meta"><span>~${d.estimated_hours}h</span><span>${d.pages_estimated} pages</span><span>Complexity: ${d.complexity_factor}x</span><span>Coverage: ${d.topic_coverage_pct}%</span></div>`;
+        html += `<div class="depov2-assess">${d.assessment}</div>`;
+        html += '<div class="depov2-breakdown"><strong>💵 Cost Breakdown</strong>';
+        d.cost_breakdown.forEach(item => {
+            const pct = Math.round(item.cost / Math.max(d.total_estimated_cost, 1) * 100);
+            html += `<div class="depov2-item"><span>${item.icon} ${item.item}</span><span class="depov2-detail">${item.detail}</span><span class="depov2-cost">$${item.cost.toLocaleString()}</span>`;
+            html += `<div class="depov2-bar"><div class="depov2-fill" style="width:${pct}%"></div></div></div>`;
+        });
+        html += '</div>';
+        if (d.savings_suggestions.length > 0) {
+            html += '<div class="depov2-savings"><strong>💡 Cost Savings</strong>';
+            d.savings_suggestions.forEach(s => {
+                html += `<div class="depov2-sav-item"><span>${s.icon} ${s.suggestion}</span><span class="depov2-sav-amt">Save ~$${s.potential_savings.toLocaleString()}</span></div>`;
+            });
+            html += `<div class="depov2-sav-total">Potential savings: <strong>$${d.total_potential_savings.toLocaleString()}</strong></div>`;
+            html += '</div>';
+        }
+        if (d.remaining_topics.length > 0) {
+            html += `<div class="depov2-topics"><strong>📋 Uncovered Topics</strong><span>${d.remaining_topics.join(', ')}</span></div>`;
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not estimate deposition cost.'); }
 };

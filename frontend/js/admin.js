@@ -6854,3 +6854,60 @@ async function loadErrorTrackerPanel() {
 }
 document.getElementById('error-tracker-refresh')?.addEventListener('click', loadErrorTrackerPanel);
 setTimeout(loadErrorTrackerPanel, 4000);
+
+// ── Gemini AI Usage Panel ───────────────────────────
+async function loadGeminiUsagePanel() {
+    const el = document.getElementById('gemini-usage-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/gemini-usage', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        const d = await r.json();
+        let html = '<div class="gemuse-grid">';
+        html += `<div class="gemuse-stat"><span class="gemuse-num">${d.total_requests_24h.toLocaleString()}</span><span class="gemuse-lbl">Requests</span></div>`;
+        html += `<div class="gemuse-stat"><span class="gemuse-num">${(d.total_tokens_in/1000).toFixed(0)}k</span><span class="gemuse-lbl">Tokens In</span></div>`;
+        html += `<div class="gemuse-stat"><span class="gemuse-num">${(d.total_tokens_out/1000).toFixed(0)}k</span><span class="gemuse-lbl">Tokens Out</span></div>`;
+        html += `<div class="gemuse-stat"><span class="gemuse-num">$${d.total_cost_estimate}</span><span class="gemuse-lbl">Est. Cost</span></div>`;
+        html += `<div class="gemuse-stat"><span class="gemuse-num">${d.avg_latency_ms}ms</span><span class="gemuse-lbl">Avg Latency</span></div>`;
+        html += '</div>';
+        html += '<div class="gemuse-models"><strong>🧠 Model Breakdown</strong>';
+        d.models.forEach(m => {
+            const ec = m.error_rate_pct > 2 ? '#ef4444' : '#22c55e';
+            html += `<div class="gemuse-model"><span class="gemuse-mname">${m.model}</span><span>${m.requests_24h} req</span><span class="gemuse-mcost">$${m.cost_estimate}</span><span class="gemuse-merr" style="color:${ec}">${m.error_rate_pct}% err</span></div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Gemini usage error:', e); }
+}
+document.getElementById('gemini-usage-refresh')?.addEventListener('click', loadGeminiUsagePanel);
+setTimeout(loadGeminiUsagePanel, 4500);
+
+// ── Session Insights Panel ──────────────────────────
+async function loadSessionInsightsPanel() {
+    const el = document.getElementById('session-insights-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/session-insights', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        const d = await r.json();
+        let html = '<div class="sesins-grid">';
+        html += `<div class="sesins-stat"><span class="sesins-num">${d.total_sessions}</span><span class="sesins-lbl">Total</span></div>`;
+        html += `<div class="sesins-stat"><span class="sesins-num">${d.active_now}</span><span class="sesins-lbl">Active</span></div>`;
+        html += `<div class="sesins-stat"><span class="sesins-num">${d.completed_today}</span><span class="sesins-lbl">Today</span></div>`;
+        html += `<div class="sesins-stat"><span class="sesins-num">${d.avg_duration_minutes}m</span><span class="sesins-lbl">Avg Duration</span></div>`;
+        html += `<div class="sesins-stat"><span class="sesins-num">${d.completion_rate_pct}%</span><span class="sesins-lbl">Completion</span></div>`;
+        html += `<div class="sesins-stat"><span class="sesins-num">⭐${d.satisfaction_score}</span><span class="sesins-lbl">Satisfaction</span></div>`;
+        html += '</div>';
+        html += '<div class="sesins-features"><strong>🔥 Top Features Used</strong>';
+        d.top_features_used.forEach(f => {
+            html += `<div class="sesins-feat"><span>${f.icon} ${f.feature}</span><div class="sesins-featbar"><div class="sesins-featfill" style="width:${f.usage_pct}%"></div></div><span>${f.usage_pct}%</span></div>`;
+        });
+        html += '</div>';
+        html += '<div class="sesins-peak"><strong>📈 Peak Hours</strong>';
+        d.peak_hours.forEach(h => {
+            html += `<div class="sesins-hour"><span>${h.hour}</span><span>${h.sessions} sessions</span></div>`;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Session insights error:', e); }
+}
+document.getElementById('session-insights-refresh')?.addEventListener('click', loadSessionInsightsPanel);
+setTimeout(loadSessionInsightsPanel, 5000);
