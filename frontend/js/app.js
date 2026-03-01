@@ -7961,7 +7961,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/impeachrisk': async () => { await this._showImpeachmentRisk(); },
         '/legalthemes': async () => { await this._showLegalThemes(); },
         '/readscore': async () => { await this._showReadabilityScore(); },
-        '/coopindex': async () => { await this._showCooperationIndex(); }
+        '/coopindex': async () => { await this._showCooperationIndex(); },
+        '/psychprofile': async () => { await this._showPsychologicalProfile(); },
+        '/legalstrength': async () => { await this._showLegalStrength(); },
+        '/examprep': async () => { await this._showCrossExamPrep(); },
+        '/emotionmap': async () => { await this._showEmotionalTrajectory(); },
+        '/memquality': async () => { await this._showMemoryQuality(); }
     };
     
     const handler = commands[cmd];
@@ -8136,7 +8141,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/impeachrisk', desc: 'Impeachment risk assessment' },
         { cmd: '/legalthemes', desc: 'Legal theme extractor' },
         { cmd: '/readscore', desc: 'Testimony readability score' },
-        { cmd: '/coopindex', desc: 'Cooperation index' }
+        { cmd: '/coopindex', desc: 'Cooperation index' },
+        { cmd: '/psychprofile', desc: 'Psychological profile' },
+        { cmd: '/legalstrength', desc: 'Legal strength meter' },
+        { cmd: '/examprep', desc: 'Cross-exam preparation' },
+        { cmd: '/emotionmap', desc: 'Emotional trajectory' },
+        { cmd: '/memquality', desc: 'Memory quality assessment' }
     ];
     
     const filter = val.toLowerCase();
@@ -13567,4 +13577,168 @@ WitnessReplayApp.prototype._showCooperationIndex = async function() {
         html += '</div>';
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not calculate cooperation index.'); }
+};
+
+// ── Psychological Profile Generator ─────────────────
+WitnessReplayApp.prototype._showPsychologicalProfile = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/psychological-profile`);
+        const d = await r.json();
+        const styleColors = {verbose:'#a855f7',moderate:'#3b82f6',concise:'#22c55e',terse:'#eab308'};
+        const sClr = styleColors[d.communication.style] || '#666';
+        let html = '<div class="psyprof-container"><h3>🧠 Psychological Profile</h3>';
+        // Communication
+        html += `<div class="psyprof-section"><div class="psyprof-section-title">🗣️ Communication Style</div>`;
+        html += `<div class="psyprof-badge" style="border-color:${sClr};color:${sClr}">${d.communication.style.toUpperCase()}</div>`;
+        html += `<div class="psyprof-desc">${d.communication.description}</div>`;
+        html += `<div class="psyprof-stats"><span>Words: ${d.communication.total_words}</span><span>Sentences: ${d.communication.total_sentences}</span><span>Avg Length: ${d.communication.avg_sentence_length}</span></div></div>`;
+        // Vocabulary
+        const vColors = {advanced:'#22c55e',intermediate:'#3b82f6',basic:'#eab308'};
+        html += `<div class="psyprof-section"><div class="psyprof-section-title">📚 Vocabulary</div>`;
+        html += `<div class="psyprof-badge" style="border-color:${vColors[d.vocabulary.level]||'#666'};color:${vColors[d.vocabulary.level]||'#666'}">${d.vocabulary.level.toUpperCase()}</div>`;
+        html += `<div class="psyprof-stats"><span>Diversity: ${d.vocabulary.diversity_pct}%</span><span>Complex: ${d.vocabulary.complex_word_pct}%</span><span>Unique: ${d.vocabulary.unique_words}</span></div></div>`;
+        // Emotional Baseline
+        html += `<div class="psyprof-section"><div class="psyprof-section-title">💭 Emotional Baseline</div>`;
+        html += `<div class="psyprof-emotion-bars">`;
+        [{l:'Positive',v:d.emotional_baseline.positive_pct,c:'#22c55e'},{l:'Negative',v:d.emotional_baseline.negative_pct,c:'#ef4444'},{l:'Uncertain',v:d.emotional_baseline.uncertain_pct,c:'#eab308'}].forEach(e => {
+            html += `<div class="psyprof-ebar"><span class="psyprof-ebar-lbl">${e.l}</span><div class="psyprof-ebar-track"><div style="width:${e.v}%;background:${e.c};height:100%;border-radius:3px"></div></div><span class="psyprof-ebar-val">${e.v}%</span></div>`;
+        });
+        html += `</div><div class="psyprof-tone">Dominant: <strong>${d.emotional_baseline.dominant_tone}</strong></div></div>`;
+        // Assertion & Defensiveness
+        html += `<div class="psyprof-row">`;
+        const aClr = d.assertion_strength.level === 'strong' ? '#22c55e' : d.assertion_strength.level === 'moderate' ? '#eab308' : '#ef4444';
+        html += `<div class="psyprof-card"><div class="psyprof-card-title">💪 Assertion</div><div class="psyprof-card-val" style="color:${aClr}">${d.assertion_strength.score}%</div><div class="psyprof-card-sub">${d.assertion_strength.level}</div></div>`;
+        const dfClr = d.defensiveness.level === 'low' ? '#22c55e' : d.defensiveness.level === 'moderate' ? '#eab308' : '#ef4444';
+        html += `<div class="psyprof-card"><div class="psyprof-card-title">🛡️ Defensiveness</div><div class="psyprof-card-val" style="color:${dfClr}">${d.defensiveness.index}%</div><div class="psyprof-card-sub">${d.defensiveness.level}</div></div>`;
+        const dtClr = d.detail_orientation.level === 'high' ? '#22c55e' : d.detail_orientation.level === 'moderate' ? '#eab308' : '#ef4444';
+        html += `<div class="psyprof-card"><div class="psyprof-card-title">🎯 Detail</div><div class="psyprof-card-val" style="color:${dtClr}">${d.detail_orientation.score}%</div><div class="psyprof-card-sub">${d.detail_orientation.level}</div></div>`;
+        html += `</div>`;
+        // Personality Traits
+        html += `<div class="psyprof-section"><div class="psyprof-section-title">🏷️ Personality Traits</div>`;
+        html += `<div class="psyprof-traits">${d.personality_traits.map(t => `<span class="psyprof-trait">${t.icon} ${t.trait}<span class="psyprof-trait-tip">${t.description}</span></span>`).join('')}</div></div>`;
+        // Overall
+        html += `<div class="psyprof-overall">${d.overall_assessment}</div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate psychological profile.'); }
+};
+
+// ── Legal Strength Meter ────────────────────────────
+WitnessReplayApp.prototype._showLegalStrength = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/legal-strength`);
+        const d = await r.json();
+        const vColors = {strong:'#22c55e',moderate:'#3b82f6',weak:'#eab308',very_weak:'#ef4444'};
+        const clr = vColors[d.verdict] || '#666';
+        let html = '<div class="lstrength-container"><h3>⚖️ Legal Strength Meter</h3>';
+        html += `<div class="lstrength-score" style="border-color:${clr}"><span class="lstrength-num">${d.overall_score}</span><span class="lstrength-verdict" style="color:${clr}">${d.verdict.replace(/_/g,' ').toUpperCase()}</span></div>`;
+        html += `<div class="lstrength-rec">${d.recommendation}</div>`;
+        html += `<div class="lstrength-summary"><span>Strongest: <strong>${d.summary.strongest}</strong></span><span>Weakest: <strong>${d.summary.weakest}</strong></span><span>≥70: ${d.summary.dimensions_above_70}</span><span><40: ${d.summary.dimensions_below_40}</span></div>`;
+        html += '<div class="lstrength-dims">';
+        d.dimensions.forEach(dim => {
+            const dc = dim.score >= 70 ? '#22c55e' : dim.score >= 40 ? '#eab308' : '#ef4444';
+            html += `<div class="lstrength-dim"><div class="lstrength-dim-head"><span>${dim.icon} ${dim.name} <small>(${dim.weight}%)</small></span><span class="lstrength-dim-score" style="color:${dc}">${dim.score}%</span></div>`;
+            html += `<div class="lstrength-dim-bar"><div style="width:${dim.score}%;background:${dc};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="lstrength-dim-desc">${dim.description}</div></div>`;
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate legal strength.'); }
+};
+
+// ── Cross-Examination Prep ──────────────────────────
+WitnessReplayApp.prototype._showCrossExamPrep = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/cross-exam-prep`);
+        const d = await r.json();
+        const vulnColors = {high:'#ef4444',moderate:'#eab308',low:'#22c55e'};
+        const vc = vulnColors[d.vulnerability_level] || '#666';
+        let html = '<div class="cexprep-container"><h3>🎯 Cross-Examination Preparation</h3>';
+        html += `<div class="cexprep-vuln" style="border-color:${vc}"><span class="cexprep-vlbl">Vulnerability Level</span><span class="cexprep-vlvl" style="color:${vc}">${d.vulnerability_level.toUpperCase()}</span><span class="cexprep-issues">${d.total_issues} issues found</span></div>`;
+        html += `<div class="cexprep-assess">${d.assessment}</div>`;
+        html += '<div class="cexprep-strategies">';
+        d.strategies.forEach(s => {
+            const sc = s.severity === 'high' ? '#ef4444' : s.severity === 'medium' ? '#eab308' : '#22c55e';
+            html += `<div class="cexprep-strat"><div class="cexprep-strat-head"><span>${s.icon} ${s.category} <span class="cexprep-sev" style="background:${sc}">${s.severity}</span></span><span>${s.count} found</span></div>`;
+            html += `<div class="cexprep-strat-desc">${s.description}</div>`;
+            html += `<div class="cexprep-questions"><strong>Sample Questions:</strong>`;
+            s.sample_questions.forEach((q, i) => {
+                html += `<div class="cexprep-q"><span class="cexprep-qnum">${i+1}.</span> ${q}</div>`;
+            });
+            html += `</div></div>`;
+        });
+        html += '</div>';
+        html += `<div class="cexprep-footer"><span>Strategies: ${d.strategy_count}</span><span>Questions: ${d.total_questions_generated}</span><span>Priority: ${d.priority_area}</span></div>`;
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate cross-exam prep.'); }
+};
+
+// ── Emotional Trajectory Mapper ─────────────────────
+WitnessReplayApp.prototype._showEmotionalTrajectory = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/emotional-trajectory`);
+        const d = await r.json();
+        const stColors = {stable:'#22c55e',moderate:'#eab308',volatile:'#ef4444'};
+        const sc = stColors[d.stability_level] || '#666';
+        let html = '<div class="emotraj-container"><h3>🎭 Emotional Trajectory</h3>';
+        html += `<div class="emotraj-stability" style="border-color:${sc}"><span class="emotraj-slbl">Stability</span><span class="emotraj-sval">${d.stability_score}%</span><span class="emotraj-slvl" style="color:${sc}">${d.stability_level.toUpperCase()}</span></div>`;
+        html += `<div class="emotraj-assess">${d.assessment}</div>`;
+        // Emotion summary cards
+        html += '<div class="emotraj-summaries">';
+        d.emotion_summary.forEach(es => {
+            html += `<div class="emotraj-emot" style="border-left:3px solid ${es.color}"><span class="emotraj-emot-icon">${es.icon}</span><span class="emotraj-emot-name">${es.emotion}</span><span class="emotraj-emot-avg">Avg: ${es.average_intensity}%</span><span class="emotraj-emot-peak">Peak: ${es.peak_intensity}%</span></div>`;
+        });
+        html += '</div>';
+        // Shifts
+        if (d.shifts.length > 0) {
+            html += `<div class="emotraj-shifts-title">⚡ Emotional Shifts (${d.total_shifts})</div><div class="emotraj-shifts">`;
+            d.shifts.slice(0, 8).forEach(sh => {
+                const dir = sh.direction === 'increased' ? '📈' : '📉';
+                const sigClr = sh.significance === 'major' ? '#ef4444' : '#eab308';
+                html += `<div class="emotraj-shift"><span>${dir} Response ${sh.from_response}→${sh.to_response}</span><span style="color:${sigClr}">${sh.emotion} ${sh.change > 0 ? '+' : ''}${sh.change}%</span></div>`;
+            });
+            html += '</div>';
+        }
+        // Mini timeline
+        if (d.timeline.length > 0) {
+            html += '<div class="emotraj-timeline"><div class="emotraj-tl-title">📊 Response Timeline</div>';
+            d.timeline.slice(0, 12).forEach(pt => {
+                const emColors = {confidence:'#22c55e',distress:'#ef4444',anger:'#f97316',composure:'#3b82f6',evasion:'#a855f7'};
+                const dc = emColors[pt.dominant_emotion] || '#666';
+                html += `<div class="emotraj-tl-pt"><span class="emotraj-tl-idx">#${pt.response_index}</span><span class="emotraj-tl-dom" style="color:${dc}">${pt.dominant_emotion}</span><span class="emotraj-tl-int">${pt.dominant_intensity}%</span></div>`;
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not map emotional trajectory.'); }
+};
+
+// ── Memory Quality Assessment ───────────────────────
+WitnessReplayApp.prototype._showMemoryQuality = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/memory-assessment`);
+        const d = await r.json();
+        const qColors = {excellent:'#22c55e',good:'#3b82f6',fair:'#eab308',poor:'#ef4444'};
+        const qc = qColors[d.quality_rating] || '#666';
+        let html = '<div class="memqual-container"><h3>🧩 Memory Quality Assessment</h3>';
+        html += `<div class="memqual-score" style="border-color:${qc}"><span class="memqual-num">${d.overall_score}</span><span class="memqual-rating" style="color:${qc}">${d.quality_rating.toUpperCase()}</span></div>`;
+        html += `<div class="memqual-assess">${d.assessment}</div>`;
+        html += `<div class="memqual-highlights"><span>Strongest: <strong>${d.strongest_area}</strong></span><span>Weakest: <strong>${d.weakest_area}</strong></span><span>Indicators: ${d.total_memory_indicators}</span></div>`;
+        html += '<div class="memqual-dims">';
+        d.dimensions.forEach(dim => {
+            const dc = dim.score >= 60 ? '#22c55e' : dim.score >= 30 ? '#eab308' : '#ef4444';
+            html += `<div class="memqual-dim"><div class="memqual-dim-head"><span>${dim.icon} ${dim.name}</span><span class="memqual-dim-score" style="color:${dc}">${dim.score}%</span></div>`;
+            html += `<div class="memqual-dim-bar"><div style="width:${dim.score}%;background:${dc};height:100%;border-radius:3px"></div></div>`;
+            html += `<div class="memqual-dim-desc">${dim.description}</div></div>`;
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess memory quality.'); }
 };

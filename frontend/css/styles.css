@@ -14388,3 +14388,134 @@ textarea:disabled {
 .coopidx-dim-detail{font-size:.8em;color:var(--text-secondary,#94a3b8)}
 .coopidx-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:.85em;color:var(--text-secondary,#94a3b8)}
 .coopidx-stats span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
+
+/* ── Psychological Profile ───────────────── */
+.psyprof-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.psyprof-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.psyprof-section{margin-bottom:16px;padding:12px;background:rgba(255,255,255,.04);border-radius:8px}
+.psyprof-section-title{font-weight:700;color:var(--text-primary,#e2e8f0);margin-bottom:8px;font-size:.95em}
+.psyprof-badge{display:inline-block;padding:4px 14px;border:2px solid;border-radius:20px;font-weight:700;font-size:.85em;margin-bottom:6px}
+.psyprof-desc{color:var(--text-secondary,#94a3b8);font-size:.85em;margin-bottom:6px}
+.psyprof-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.psyprof-stats span{padding:3px 8px;background:rgba(255,255,255,.05);border-radius:4px}
+.psyprof-emotion-bars{display:flex;flex-direction:column;gap:6px}
+.psyprof-ebar{display:flex;align-items:center;gap:8px}
+.psyprof-ebar-lbl{width:70px;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.psyprof-ebar-track{flex:1;height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+.psyprof-ebar-val{width:40px;text-align:right;font-size:.82em;font-weight:700;color:var(--text-primary,#e2e8f0)}
+.psyprof-tone{margin-top:6px;font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.psyprof-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.psyprof-card{padding:12px;background:rgba(255,255,255,.04);border-radius:8px;text-align:center}
+.psyprof-card-title{font-size:.8em;color:var(--text-secondary,#94a3b8);margin-bottom:4px}
+.psyprof-card-val{font-size:1.6em;font-weight:800}
+.psyprof-card-sub{font-size:.75em;color:var(--text-secondary,#94a3b8);text-transform:uppercase}
+.psyprof-traits{display:flex;flex-wrap:wrap;gap:8px}
+.psyprof-trait{position:relative;padding:6px 12px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);border-radius:20px;font-size:.82em;color:var(--text-primary,#e2e8f0);cursor:default}
+.psyprof-trait-tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);padding:4px 8px;background:#1e1e3a;border:1px solid rgba(255,255,255,.1);border-radius:6px;font-size:.75em;white-space:nowrap;z-index:10;color:var(--text-secondary,#94a3b8)}
+.psyprof-trait:hover .psyprof-trait-tip{display:block}
+.psyprof-overall{padding:10px 14px;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:4px;font-style:italic;color:var(--text-secondary,#94a3b8);font-size:.9em}
+
+/* ── Legal Strength Meter ────────────────── */
+.lstrength-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.lstrength-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.lstrength-score{display:flex;flex-direction:column;align-items:center;padding:16px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.lstrength-num{font-size:2.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.lstrength-verdict{font-size:1em;font-weight:700;margin-top:4px}
+.lstrength-rec{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:12px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.lstrength-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.lstrength-summary span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
+.lstrength-dims{display:flex;flex-direction:column;gap:10px}
+.lstrength-dim{padding:10px;background:rgba(255,255,255,.04);border-radius:8px}
+.lstrength-dim-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.lstrength-dim-head small{color:var(--text-secondary,#94a3b8);font-weight:400}
+.lstrength-dim-score{font-weight:700}
+.lstrength-dim-bar{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.lstrength-dim-desc{font-size:.8em;color:var(--text-secondary,#94a3b8)}
+
+/* ── Cross-Exam Prep ─────────────────────── */
+.cexprep-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.cexprep-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.cexprep-vuln{display:flex;flex-direction:column;align-items:center;padding:14px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.cexprep-vlbl{font-size:.8em;color:var(--text-secondary,#94a3b8)}
+.cexprep-vlvl{font-size:1.4em;font-weight:800;margin:4px 0}
+.cexprep-issues{font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.cexprep-assess{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.cexprep-strategies{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.cexprep-strat{padding:12px;background:rgba(255,255,255,.04);border-radius:8px}
+.cexprep-strat-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0);font-weight:600}
+.cexprep-sev{display:inline-block;padding:1px 8px;border-radius:10px;font-size:.7em;font-weight:700;color:#fff;margin-left:6px}
+.cexprep-strat-desc{font-size:.82em;color:var(--text-secondary,#94a3b8);margin-bottom:8px}
+.cexprep-questions{font-size:.85em}
+.cexprep-questions strong{color:var(--text-primary,#e2e8f0);font-size:.9em}
+.cexprep-q{padding:4px 0 4px 12px;border-left:2px solid rgba(139,92,246,.3);margin:4px 0;color:var(--text-secondary,#94a3b8)}
+.cexprep-qnum{color:var(--text-primary,#e2e8f0);font-weight:700;margin-right:4px}
+.cexprep-footer{display:flex;gap:12px;flex-wrap:wrap;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.cexprep-footer span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
+
+/* ── Emotional Trajectory ────────────────── */
+.emotraj-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.emotraj-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.emotraj-stability{display:flex;flex-direction:column;align-items:center;padding:14px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.emotraj-slbl{font-size:.8em;color:var(--text-secondary,#94a3b8)}
+.emotraj-sval{font-size:2em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.emotraj-slvl{font-size:1em;font-weight:700}
+.emotraj-assess{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:14px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.emotraj-summaries{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px}
+.emotraj-emot{display:flex;flex-direction:column;align-items:center;padding:10px;background:rgba(255,255,255,.04);border-radius:8px;border-left:3px solid}
+.emotraj-emot-icon{font-size:1.3em}
+.emotraj-emot-name{font-size:.82em;font-weight:700;color:var(--text-primary,#e2e8f0);text-transform:capitalize}
+.emotraj-emot-avg,.emotraj-emot-peak{font-size:.75em;color:var(--text-secondary,#94a3b8)}
+.emotraj-shifts-title{font-weight:700;color:var(--text-primary,#e2e8f0);margin-bottom:8px;font-size:.9em}
+.emotraj-shifts{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+.emotraj-shift{display:flex;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.emotraj-timeline{margin-top:10px}
+.emotraj-tl-title{font-weight:700;color:var(--text-primary,#e2e8f0);margin-bottom:8px;font-size:.85em}
+.emotraj-tl-pt{display:flex;gap:10px;align-items:center;padding:4px 8px;font-size:.8em}
+.emotraj-tl-idx{color:var(--text-secondary,#94a3b8);font-weight:700;width:30px}
+.emotraj-tl-dom{font-weight:600;text-transform:capitalize;flex:1}
+.emotraj-tl-int{font-weight:700;color:var(--text-primary,#e2e8f0)}
+
+/* ── Memory Quality ──────────────────────── */
+.memqual-container{background:var(--bg-secondary,#1a1a2e);border-radius:12px;padding:20px;margin:8px 0}
+.memqual-container h3{margin:0 0 16px;color:var(--text-primary,#e2e8f0)}
+.memqual-score{display:flex;flex-direction:column;align-items:center;padding:16px;border:3px solid;border-radius:12px;margin-bottom:14px;background:rgba(0,0,0,.2)}
+.memqual-num{font-size:2.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.memqual-rating{font-size:1em;font-weight:700;margin-top:4px}
+.memqual-assess{padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;margin-bottom:12px;color:var(--text-secondary,#94a3b8);font-style:italic}
+.memqual-highlights{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:.85em;color:var(--text-secondary,#94a3b8)}
+.memqual-highlights span{padding:4px 10px;background:rgba(255,255,255,.05);border-radius:6px}
+.memqual-dims{display:flex;flex-direction:column;gap:10px}
+.memqual-dim{padding:10px;background:rgba(255,255,255,.04);border-radius:8px}
+.memqual-dim-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.memqual-dim-score{font-weight:700}
+.memqual-dim-bar{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.memqual-dim-desc{font-size:.8em;color:var(--text-secondary,#94a3b8)}
+
+/* ── Admin: API Analytics ────────────────── */
+.aanalytics-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.aanalytics-card{padding:10px;background:rgba(255,255,255,.06);border-radius:8px;text-align:center}
+.aanalytics-card-val{font-size:1.4em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.aanalytics-card-lbl{font-size:.75em;color:var(--text-secondary,#94a3b8);margin-top:2px}
+.aanalytics-endpoints{margin-bottom:10px}
+.aanalytics-endpoints strong{display:block;margin-bottom:6px;color:var(--text-primary,#e2e8f0);font-size:.85em}
+.aanalytics-ep{display:flex;gap:8px;align-items:center;padding:4px 8px;font-size:.78em;color:var(--text-secondary,#94a3b8);border-bottom:1px solid rgba(255,255,255,.05)}
+.aanalytics-ep-method{font-weight:700;color:#8b5cf6;width:40px}
+.aanalytics-ep-path{flex:1;font-family:monospace;font-size:.85em}
+.aanalytics-ep-calls{width:60px;text-align:right}
+.aanalytics-ep-ms{width:50px;text-align:right}
+.aanalytics-codes{font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.aanalytics-codes strong{color:var(--text-primary,#e2e8f0);margin-right:6px}
+.aanalytics-code{display:inline-block;padding:2px 8px;border:1px solid;border-radius:4px;margin:2px;font-family:monospace;font-size:.85em}
+
+/* ── Admin: User Activity ────────────────── */
+.uactivity-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.uactivity-card{padding:10px;background:rgba(255,255,255,.06);border-radius:8px;text-align:center}
+.uactivity-card-val{font-size:1.3em;font-weight:800;color:var(--text-primary,#e2e8f0)}
+.uactivity-card-lbl{font-size:.72em;color:var(--text-secondary,#94a3b8);margin-top:2px}
+.uactivity-actions{margin-bottom:10px;font-size:.82em;color:var(--text-secondary,#94a3b8)}
+.uactivity-actions strong{display:block;margin-bottom:4px;color:var(--text-primary,#e2e8f0)}
+.uactivity-actions span{display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;background:rgba(255,255,255,.05);border-radius:4px}
+.uactivity-recent{font-size:.82em}
+.uactivity-recent strong{display:block;margin-bottom:6px;color:var(--text-primary,#e2e8f0)}
+.uactivity-row{display:flex;gap:10px;padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--text-secondary,#94a3b8)}
+.uactivity-sid{font-family:monospace;font-weight:700;color:#8b5cf6}

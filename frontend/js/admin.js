@@ -6680,7 +6680,7 @@ setTimeout(loadSysNotifPanel, 3600);
 // ── Audit Log Panel ─────────────────────────
 async function loadAuditLogPanel() {
     try {
-        const r = await fetch('/api/admin/audit-log', {headers:{'Authorization':'Bearer '+adminToken,'X-Admin-Token':adminToken}});
+        const r = await fetch('/api/admin/audit-log', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
         if (!r.ok) return;
         const d = await r.json();
         const el = document.getElementById('audit-log-content');
@@ -6701,7 +6701,7 @@ setTimeout(loadAuditLogPanel, 2400);
 // ── System Health Dashboard Panel ────────────────
 async function loadSysHealthPanel() {
     try {
-        const r = await fetch('/api/admin/system-health-dashboard', {headers:{'Authorization':'Bearer '+adminToken,'X-Admin-Token':adminToken}});
+        const r = await fetch('/api/admin/system-health-dashboard', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
         if (!r.ok) return;
         const d = await r.json();
         const el = document.getElementById('sys-health-content');
@@ -6725,3 +6725,74 @@ async function loadSysHealthPanel() {
 }
 document.getElementById('sys-health-refresh')?.addEventListener('click', loadSysHealthPanel);
 setTimeout(loadSysHealthPanel, 2600);
+
+// ── API Usage Analytics Panel ────────────────────
+async function loadApiAnalyticsPanel() {
+    try {
+        const r = await fetch('/api/admin/api-usage-analytics', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        if (!r.ok) return;
+        const d = await r.json();
+        const el = document.getElementById('api-analytics-content');
+        if (!el) return;
+        const s = d.summary;
+        let html = '<div class="aanalytics-summary">';
+        html += `<div class="aanalytics-card"><div class="aanalytics-card-val">${s.total_requests}</div><div class="aanalytics-card-lbl">Total Requests</div></div>`;
+        html += `<div class="aanalytics-card"><div class="aanalytics-card-val">${s.avg_response_ms}ms</div><div class="aanalytics-card-lbl">Avg Response</div></div>`;
+        html += `<div class="aanalytics-card"><div class="aanalytics-card-val" style="color:${s.error_rate_pct > 5 ? '#ef4444' : '#22c55e'}">${s.error_rate_pct}%</div><div class="aanalytics-card-lbl">Error Rate</div></div>`;
+        html += `<div class="aanalytics-card"><div class="aanalytics-card-val">${s.active_sessions}</div><div class="aanalytics-card-lbl">Sessions</div></div>`;
+        html += '</div>';
+        // Top endpoints
+        html += '<div class="aanalytics-endpoints"><strong>Top Endpoints:</strong>';
+        (d.endpoints || []).slice(0, 6).forEach(ep => {
+            const errClr = ep.errors > 0 ? '#ef4444' : '#22c55e';
+            html += `<div class="aanalytics-ep"><span class="aanalytics-ep-method">${ep.method}</span><span class="aanalytics-ep-path">${ep.endpoint}</span><span class="aanalytics-ep-calls">${ep.calls} calls</span><span class="aanalytics-ep-ms">${ep.avg_ms}ms</span><span style="color:${errClr}">${ep.errors} err</span></div>`;
+        });
+        html += '</div>';
+        // Status codes
+        html += '<div class="aanalytics-codes"><strong>Status Codes:</strong> ';
+        Object.entries(d.status_codes || {}).forEach(([code, count]) => {
+            const cClr = code.startsWith('2') ? '#22c55e' : code.startsWith('4') ? '#eab308' : '#ef4444';
+            html += `<span class="aanalytics-code" style="border-color:${cClr}">${code}: ${count}</span> `;
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('API analytics error:', e); }
+}
+document.getElementById('api-analytics-refresh')?.addEventListener('click', loadApiAnalyticsPanel);
+setTimeout(loadApiAnalyticsPanel, 2800);
+
+// ── User Activity Panel ──────────────────────────
+async function loadUserActivityPanel() {
+    try {
+        const r = await fetch('/api/admin/user-activity', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        if (!r.ok) return;
+        const d = await r.json();
+        const el = document.getElementById('user-activity-content');
+        if (!el) return;
+        const e = d.engagement;
+        let html = '<div class="uactivity-summary">';
+        html += `<div class="uactivity-card"><div class="uactivity-card-val">${e.total_sessions}</div><div class="uactivity-card-lbl">Total Sessions</div></div>`;
+        html += `<div class="uactivity-card"><div class="uactivity-card-val">${e.active_sessions}</div><div class="uactivity-card-lbl">Active</div></div>`;
+        html += `<div class="uactivity-card"><div class="uactivity-card-val">${e.total_messages}</div><div class="uactivity-card-lbl">Messages</div></div>`;
+        html += `<div class="uactivity-card"><div class="uactivity-card-val">${e.avg_messages_per_session}</div><div class="uactivity-card-lbl">Avg Msgs</div></div>`;
+        html += `<div class="uactivity-card"><div class="uactivity-card-val">${e.engagement_rate_pct}%</div><div class="uactivity-card-lbl">Engagement</div></div>`;
+        html += '</div>';
+        // Action breakdown
+        const ab = d.action_breakdown;
+        html += '<div class="uactivity-actions"><strong>Action Breakdown:</strong>';
+        html += `<span>💬 Chat: ${ab.chat_messages}</span><span>📁 Sessions: ${ab.sessions_created}</span><span>📤 Exports: ${ab.exports}</span><span>🔬 Analyses: ${ab.analyses_run}</span><span>🔍 Searches: ${ab.searches}</span>`;
+        html += '</div>';
+        // Recent activity
+        if (d.recent_activity && d.recent_activity.length > 0) {
+            html += '<div class="uactivity-recent"><strong>Recent Sessions:</strong>';
+            d.recent_activity.slice(0, 8).forEach(a => {
+                const stClr = a.status === 'active' ? '#22c55e' : '#94a3b8';
+                html += `<div class="uactivity-row"><span class="uactivity-sid">${a.session_id}</span><span style="color:${stClr}">${a.status}</span><span>${a.messages} msgs</span><span>${a.created}</span></div>`;
+            });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { console.error('User activity error:', e); }
+}
+document.getElementById('user-activity-refresh')?.addEventListener('click', loadUserActivityPanel);
+setTimeout(loadUserActivityPanel, 3000);
