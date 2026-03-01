@@ -7966,7 +7966,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/legalstrength': async () => { await this._showLegalStrength(); },
         '/examprep': async () => { await this._showCrossExamPrep(); },
         '/emotionmap': async () => { await this._showEmotionalTrajectory(); },
-        '/memquality': async () => { await this._showMemoryQuality(); }
+        '/memquality': async () => { await this._showMemoryQuality(); },
+        '/factcheck': async () => { await this._showFactExtraction(); },
+        '/adequacy': async () => { await this._showResponseAdequacy(); },
+        '/influence': async () => { await this._showInfluenceDetection(); },
+        '/fragment': async () => { await this._showFragmentationIndex(); },
+        '/langsoph': async () => { await this._showLanguageSophistication(); }
     };
     
     const handler = commands[cmd];
@@ -8146,7 +8151,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/legalstrength', desc: 'Legal strength meter' },
         { cmd: '/examprep', desc: 'Cross-exam preparation' },
         { cmd: '/emotionmap', desc: 'Emotional trajectory' },
-        { cmd: '/memquality', desc: 'Memory quality assessment' }
+        { cmd: '/memquality', desc: 'Memory quality assessment' },
+        { cmd: '/factcheck', desc: 'Fact extraction & verification' },
+        { cmd: '/adequacy', desc: 'Response adequacy scoring' },
+        { cmd: '/influence', desc: 'Witness influence detection' },
+        { cmd: '/fragment', desc: 'Testimony fragmentation index' },
+        { cmd: '/langsoph', desc: 'Language sophistication analysis' }
     ];
     
     const filter = val.toLowerCase();
@@ -9731,6 +9741,8 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
 
     const existing = document.getElementById('quick-templates-bar');
     if (existing) existing.remove();
+    const existingMenu = document.getElementById('qt-menu-wrapper');
+    if (existingMenu) existingMenu.remove();
 
     const templates = [
         { icon: '🔫', label: 'Robbery', prompt: 'I want to report a robbery that I witnessed.' },
@@ -9743,30 +9755,94 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
         { icon: '📝', label: 'Other', prompt: 'I want to report an incident.' },
     ];
 
-    const bar = document.createElement('div');
-    bar.id = 'quick-templates-bar';
-    bar.className = 'quick-templates-bar';
-    bar.innerHTML = '<div class="qt-label">🚀 Quick Start — Select incident type:</div><div class="qt-grid"></div>';
-    const grid = bar.querySelector('.qt-grid');
+    const self = this;
+    const isDesktop = window.matchMedia('(min-width: 769px)').matches;
 
-    templates.forEach(t => {
-        const btn = document.createElement('button');
-        btn.className = 'qt-btn';
-        btn.innerHTML = `<span class="qt-icon">${t.icon}</span><span class="qt-text">${t.label}</span>`;
-        btn.title = t.prompt;
-        btn.addEventListener('click', () => {
-            if (this.textInput) {
-                this.textInput.value = t.prompt;
-                this.textInput.focus();
-            }
-            bar.classList.add('qt-fade');
-            setTimeout(() => bar.remove(), 300);
+    const selectTemplate = function(t, containerToRemove) {
+        if (self.textInput) {
+            self.textInput.value = t.prompt;
+            self.textInput.focus();
+        }
+        if (containerToRemove) {
+            containerToRemove.classList.add('qt-fade');
+            setTimeout(() => containerToRemove.remove(), 300);
+        }
+    };
+
+    if (isDesktop) {
+        // Desktop: compact dropdown menu next to input
+        const wrapper = document.createElement('div');
+        wrapper.id = 'qt-menu-wrapper';
+        wrapper.className = 'qt-menu-wrapper';
+
+        const trigger = document.createElement('button');
+        trigger.className = 'qt-menu-trigger';
+        trigger.innerHTML = '⋮';
+        trigger.title = 'Quick Start — Select incident type';
+        trigger.setAttribute('aria-label', 'Select incident type');
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'qt-dropdown';
+
+        const header = document.createElement('div');
+        header.className = 'qt-dropdown-header';
+        header.textContent = 'Select incident type';
+        dropdown.appendChild(header);
+
+        templates.forEach(t => {
+            const item = document.createElement('button');
+            item.className = 'qt-dropdown-item';
+            item.innerHTML = `<span class="qt-icon">${t.icon}</span><span>${t.label}</span>`;
+            item.title = t.prompt;
+            item.addEventListener('click', () => {
+                selectTemplate(t, null);
+                dropdown.classList.remove('qt-dropdown-open');
+                wrapper.remove();
+            });
+            dropdown.appendChild(item);
         });
-        grid.appendChild(btn);
-    });
 
-    // Insert at top of transcript area
-    transcript.parentNode.insertBefore(bar, transcript);
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('qt-dropdown-open');
+        });
+
+        // Close on outside click
+        document.addEventListener('click', function closeQt(e) {
+            if (!wrapper.contains(e.target)) {
+                dropdown.classList.remove('qt-dropdown-open');
+            }
+        });
+
+        wrapper.appendChild(trigger);
+        wrapper.appendChild(dropdown);
+
+        // Insert next to the input bar
+        const inputBar = document.getElementById('text-input-bar');
+        if (inputBar && inputBar.parentNode) {
+            inputBar.parentNode.insertBefore(wrapper, inputBar);
+        } else {
+            transcript.parentNode.insertBefore(wrapper, transcript);
+        }
+    } else {
+        // Mobile: keep the original grid layout
+        const bar = document.createElement('div');
+        bar.id = 'quick-templates-bar';
+        bar.className = 'quick-templates-bar';
+        bar.innerHTML = '<div class="qt-label">🚀 Quick Start — Select incident type:</div><div class="qt-grid"></div>';
+        const grid = bar.querySelector('.qt-grid');
+
+        templates.forEach(t => {
+            const btn = document.createElement('button');
+            btn.className = 'qt-btn';
+            btn.innerHTML = `<span class="qt-icon">${t.icon}</span><span class="qt-text">${t.label}</span>`;
+            btn.title = t.prompt;
+            btn.addEventListener('click', () => selectTemplate(t, bar));
+            grid.appendChild(btn);
+        });
+
+        transcript.parentNode.insertBefore(bar, transcript);
+    }
 };
 
 // Hook: Remove quick templates after first user message
@@ -9778,6 +9854,11 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
             if (bar) {
                 bar.classList.add('qt-fade');
                 setTimeout(() => bar.remove(), 300);
+            }
+            const menu = document.getElementById('qt-menu-wrapper');
+            if (menu) {
+                menu.classList.add('qt-fade');
+                setTimeout(() => menu.remove(), 300);
             }
             return origSend.apply(this, arguments);
         };

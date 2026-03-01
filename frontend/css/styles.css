@@ -12218,6 +12218,77 @@ textarea:disabled {
 .ir-footer { text-align: center; font-size: 0.72rem; color: #475569; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(59, 130, 246, 0.1); }
 
 /* ═══ IMPROVEMENT 33: Quick Incident Templates ═══ */
+/* Desktop: Quick Templates dropdown menu */
+.qt-menu-wrapper {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 8px;
+    transition: opacity 0.3s, transform 0.3s;
+}
+.qt-menu-wrapper.qt-fade { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+.qt-menu-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(30, 30, 60, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 1.3rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+}
+.qt-menu-trigger:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #e2e8f0;
+}
+.qt-dropdown {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    background: rgba(20, 20, 45, 0.97);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    z-index: 1000;
+    padding: 6px;
+    animation: fadeSlideIn 0.2s ease;
+}
+.qt-dropdown.qt-dropdown-open { display: block; }
+.qt-dropdown-header {
+    font-size: 0.75rem;
+    color: #64748b;
+    padding: 6px 10px 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.qt-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-align: left;
+}
+.qt-dropdown-item:hover {
+    background: rgba(59, 130, 246, 0.18);
+}
+.qt-dropdown-item .qt-icon { font-size: 1.1em; }
+
 .quick-templates-bar {
     padding: 16px;
     background: rgba(15, 15, 30, 0.5);
