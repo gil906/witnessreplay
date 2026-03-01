@@ -6567,3 +6567,50 @@ document.getElementById('export-manager-clear')?.addEventListener('click', async
     } catch(e) { console.error('Export manager clear error:', e); }
 });
 setTimeout(loadExportManager, 2800);
+
+// ============================================================
+// Admin Feature: Backup Manager (Create button)
+// ============================================================
+document.getElementById('backup-manager-create')?.addEventListener('click', async function() {
+    try {
+        const token = localStorage.getItem('admin_token') || '';
+        await fetch('/api/admin/backup-manager', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ action: 'create', type: 'manual' }) });
+        if (typeof loadBackupManager === 'function') loadBackupManager();
+    } catch(e) { console.error('Backup create error:', e); }
+});
+
+// ============================================================
+// Admin Feature: Rate Limit Dashboard
+// ============================================================
+async function loadRateLimitsPanel() {
+    try {
+        const token = localStorage.getItem('admin_token') || '';
+        const res = await fetch('/api/admin/rate-limits', { headers: { 'Authorization': 'Bearer ' + token } });
+        const data = await res.json();
+        const el = document.getElementById('rate-limits-content');
+        if (!el) return;
+        let html = '';
+        if (data.api_key_stats) {
+            // Existing format
+            const stats = data.api_key_stats;
+            const keys = Object.keys(stats);
+            html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;">';
+            html += '<div style="background:rgba(59,130,246,0.1);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:1.4em;font-weight:700;color:#3b82f6;">' + keys.length + '</div><div style="font-size:0.75em;color:#94a3b8;">Tracked Keys</div></div>';
+            const totalReqs = keys.reduce((s, k) => s + (stats[k].requests_last_minute || 0), 0);
+            html += '<div style="background:rgba(34,197,94,0.1);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:1.4em;font-weight:700;color:#22c55e;">' + totalReqs + '</div><div style="font-size:0.75em;color:#94a3b8;">Requests/min</div></div>';
+            html += '</div>';
+            if (keys.length) {
+                html += '<h4 style="margin:8px 0 4px;color:#e2e8f0;font-size:0.9em;">API Key Activity</h4>';
+                for (const k of keys) {
+                    html += '<div style="font-size:0.8em;color:#94a3b8;padding:2px 0;">🔑 ' + k + ' — ' + stats[k].requests_last_minute + ' req/min · ' + stats[k].total_tracked + ' tracked</div>';
+                }
+            }
+            html += '<div style="margin-top:8px;font-size:0.75em;color:#475569;">Updated: ' + (data.timestamp || 'now') + '</div>';
+        } else {
+            html += '<div style="font-size:0.85em;color:#94a3b8;">No rate limit data available</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { console.error('Rate limits load error:', e); }
+}
+document.getElementById('rate-limits-refresh')?.addEventListener('click', loadRateLimitsPanel);
+setTimeout(loadRateLimitsPanel, 3200);

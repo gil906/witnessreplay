@@ -7941,7 +7941,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/stress': async () => { await this._showStressDetection(); },
         '/evidencelink': async () => { await this._showEvidenceLinker(); },
         '/patternmatch': async () => { await this._showPatternMatch(); },
-        '/motive': async () => { await this._showMotiveAnalysis(); }
+        '/motive': async () => { await this._showMotiveAnalysis(); },
+        '/scorecard': async () => { await this._showCredibilityScorecard(); },
+        '/questioneffect': async () => { await this._showQuestionEffectiveness(); },
+        '/authenticity': async () => { await this._showAuthenticityCheck(); },
+        '/fingerprint': async () => { await this._showBehavioralFingerprint(); },
+        '/narrativeflow': async () => { await this._showNarrativeFlow(); }
     };
     
     const handler = commands[cmd];
@@ -8101,7 +8106,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/stress', desc: 'Testimony stress detector' },
         { cmd: '/evidencelink', desc: 'Key evidence linker' },
         { cmd: '/patternmatch', desc: 'Rehearsal & pattern matcher' },
-        { cmd: '/motive', desc: 'Motive & bias analyzer' }
+        { cmd: '/motive', desc: 'Motive & bias analyzer' },
+        { cmd: '/scorecard', desc: 'Credibility scorecard (composite)' },
+        { cmd: '/questioneffect', desc: 'Question effectiveness analyzer' },
+        { cmd: '/authenticity', desc: 'Testimony authenticity verifier' },
+        { cmd: '/fingerprint', desc: 'Witness behavioral fingerprint' },
+        { cmd: '/narrativeflow', desc: 'Narrative flow & coherence' }
     ];
     
     const filter = val.toLowerCase();
@@ -13071,4 +13081,169 @@ WitnessReplayApp.prototype._showMotiveAnalysis = async function() {
         html += `<div class="motbias-rec">${data.recommendation}</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not analyze motives.'); }
+};
+
+// ============================================================
+// Feature: Credibility Scorecard
+// ============================================================
+WitnessReplayApp.prototype._showCredibilityScorecard = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('📊 Generating credibility scorecard...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/credibility-scorecard`);
+        const data = await r.json();
+        let html = `<div class="csc-container"><h3>📊 Witness Credibility Scorecard</h3>`;
+        html += `<div class="csc-hero"><div class="csc-grade csc-grade-${data.grade.toLowerCase()}">${data.grade}</div>`;
+        html += `<div class="csc-composite"><span class="csc-score-val">${data.composite_score}%</span><span class="csc-assessment">${data.assessment}</span></div></div>`;
+        html += `<div class="csc-dimensions">`;
+        for (const dim of data.dimensions) {
+            const lvl = dim.score >= 70 ? 'high' : dim.score >= 50 ? 'mid' : 'low';
+            html += `<div class="csc-dim-row"><span class="csc-dim-name">${dim.name}</span><div class="csc-dim-bar"><div class="csc-dim-fill csc-fill-${lvl}" style="width:${dim.score}%"></div></div><span class="csc-dim-val">${dim.score}%</span><span class="csc-dim-wt">(×${dim.weight})</span></div>`;
+        }
+        html += `</div>`;
+        if (data.strengths.length) {
+            html += `<div class="csc-strengths"><h4>✅ Strengths</h4><div class="csc-tag-list">${data.strengths.map(s => `<span class="csc-tag csc-tag-good">${s}</span>`).join('')}</div></div>`;
+        }
+        if (data.weaknesses.length) {
+            html += `<div class="csc-weaknesses"><h4>⚠️ Weaknesses</h4><div class="csc-tag-list">${data.weaknesses.map(w => `<span class="csc-tag csc-tag-bad">${w}</span>`).join('')}</div></div>`;
+        }
+        html += `<div class="csc-meta"><span>Statements: ${data.statement_count}</span><span>Words: ${data.total_words}</span></div>`;
+        html += `<div class="csc-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate scorecard.'); }
+};
+
+// ============================================================
+// Feature: Question Effectiveness Analyzer
+// ============================================================
+WitnessReplayApp.prototype._showQuestionEffectiveness = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('❓ Analyzing question effectiveness...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/question-effectiveness`);
+        const data = await r.json();
+        let html = `<div class="qeff-container"><h3>❓ Question Effectiveness Analyzer</h3>`;
+        html += `<div class="qeff-summary">`;
+        html += `<div class="qeff-stat"><span class="qeff-stat-val">${data.summary.total_questions}</span><span>Questions</span></div>`;
+        html += `<div class="qeff-stat"><span class="qeff-stat-val">${data.summary.average_effectiveness}%</span><span>Avg Score</span></div>`;
+        html += `<div class="qeff-stat qeff-good"><span class="qeff-stat-val">${data.summary.highly_effective}</span><span>Highly Effective</span></div>`;
+        html += `<div class="qeff-stat qeff-bad"><span class="qeff-stat-val">${data.summary.ineffective}</span><span>Ineffective</span></div>`;
+        html += `</div>`;
+        if (data.question_rankings.length) {
+            html += `<div class="qeff-rankings"><h4>Question Rankings</h4>`;
+            for (const q of data.question_rankings.slice(0, 10)) {
+                const lvl = q.rating === 'highly_effective' ? 'high' : q.rating === 'effective' ? 'mid' : q.rating === 'moderate' ? 'low' : 'vlow';
+                html += `<div class="qeff-item qeff-item-${lvl}">`;
+                html += `<div class="qeff-item-header"><span class="qeff-idx">#${q.index}</span><span class="qeff-score">${q.effectiveness_score}%</span><span class="qeff-rating">${q.rating.replace(/_/g, ' ')}</span></div>`;
+                html += `<div class="qeff-q"><strong>Q:</strong> ${q.question_excerpt}</div>`;
+                html += `<div class="qeff-a"><strong>A:</strong> ${q.answer_excerpt}</div>`;
+                html += `<div class="qeff-metrics"><span>Words: ${q.answer_words}</span><span>Details: ${q.detail_references}</span><span>Evasive: ${q.evasive_responses}</span></div>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="qeff-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze questions.'); }
+};
+
+// ============================================================
+// Feature: Testimony Authenticity Verifier
+// ============================================================
+WitnessReplayApp.prototype._showAuthenticityCheck = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🔬 Verifying testimony authenticity...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/authenticity-check`);
+        const data = await r.json();
+        let html = `<div class="auth-chk-container"><h3>🔬 Testimony Authenticity Verifier</h3>`;
+        const vcls = data.verdict === 'likely_authentic' ? 'good' : data.verdict === 'possibly_authentic' ? 'mid' : 'bad';
+        html += `<div class="auth-chk-hero"><div class="auth-chk-score auth-chk-${vcls}"><span class="auth-chk-val">${data.authenticity_score}%</span><span class="auth-chk-verdict">${data.verdict.replace(/_/g, ' ').toUpperCase()}</span></div>`;
+        html += `<p class="auth-chk-desc">${data.description}</p></div>`;
+        html += `<div class="auth-chk-indicators">`;
+        for (const ind of data.indicators) {
+            const ilvl = ind.score >= 70 ? 'high' : ind.score >= 50 ? 'mid' : 'low';
+            html += `<div class="auth-chk-ind"><span class="auth-chk-ind-name">${ind.name}</span><div class="auth-chk-ind-bar"><div class="auth-chk-ind-fill auth-chk-fill-${ilvl}" style="width:${ind.score}%"></div></div><span class="auth-chk-ind-val">${ind.score}%</span></div>`;
+        }
+        html += `</div>`;
+        if (data.flags.length) {
+            html += `<div class="auth-chk-flags"><h4>🚩 Red Flags</h4><div class="auth-chk-tag-list">${data.flags.map(f => `<span class="auth-chk-tag auth-chk-tag-bad">${f}</span>`).join('')}</div></div>`;
+        }
+        if (data.strengths.length) {
+            html += `<div class="auth-chk-strengths"><h4>✅ Authentic Markers</h4><div class="auth-chk-tag-list">${data.strengths.map(s => `<span class="auth-chk-tag auth-chk-tag-good">${s}</span>`).join('')}</div></div>`;
+        }
+        html += `<div class="auth-chk-meta"><span>Statements: ${data.statement_count}</span><span>Words: ${data.word_count}</span><span>Unique: ${data.unique_words}</span></div>`;
+        html += `<div class="auth-chk-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not verify authenticity.'); }
+};
+
+// ============================================================
+// Feature: Witness Behavioral Fingerprint
+// ============================================================
+WitnessReplayApp.prototype._showBehavioralFingerprint = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🧬 Generating behavioral fingerprint...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/behavioral-fingerprint`);
+        const data = await r.json();
+        const fp = data.fingerprint;
+        let html = `<div class="bfp-container"><h3>🧬 Witness Behavioral Fingerprint</h3>`;
+        html += `<div class="bfp-tags">${data.profile_tags.map(t => `<span class="bfp-tag">${t}</span>`).join('')}</div>`;
+        html += `<div class="bfp-grid">`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">📚</div><div class="bfp-card-label">Vocabulary</div><div class="bfp-card-val">${fp.vocabulary_level}</div><div class="bfp-card-sub">${fp.vocab_complexity_pct}% complex words</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">📝</div><div class="bfp-card-label">Sentence Length</div><div class="bfp-card-val">${fp.avg_sentence_length} words</div><div class="bfp-card-sub">average per sentence</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">📖</div><div class="bfp-card-label">Narrative Style</div><div class="bfp-card-val">${fp.narrative_style}</div><div class="bfp-card-sub">${fp.temporal_markers} temporal markers</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">💬</div><div class="bfp-card-label">Response Pattern</div><div class="bfp-card-val">${fp.response_pattern}</div><div class="bfp-card-sub">${fp.short_responses} short / ${fp.long_responses} long</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">🎩</div><div class="bfp-card-label">Formality</div><div class="bfp-card-val">${fp.formality}</div><div class="bfp-card-sub">speech register</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">⚖️</div><div class="bfp-card-label">Hedging Rate</div><div class="bfp-card-val">${fp.hedging_rate}%</div><div class="bfp-card-sub">uncertainty language</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">💪</div><div class="bfp-card-label">Assertiveness</div><div class="bfp-card-val">${fp.assertiveness_rate}%</div><div class="bfp-card-sub">confidence language</div></div>`;
+        html += `<div class="bfp-card"><div class="bfp-card-icon">❤️</div><div class="bfp-card-label">Expressiveness</div><div class="bfp-card-val">${fp.emotional_expressiveness}%</div><div class="bfp-card-sub">emotional language</div></div>`;
+        html += `</div>`;
+        html += `<div class="bfp-meta"><span>Statements: ${fp.total_statements}</span><span>Words: ${fp.total_words}</span></div>`;
+        html += `<div class="bfp-summary">${data.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate fingerprint.'); }
+};
+
+// ============================================================
+// Feature: Narrative Flow Analyzer
+// ============================================================
+WitnessReplayApp.prototype._showNarrativeFlow = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🌊 Analyzing narrative flow...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/narrative-flow`);
+        const data = await r.json();
+        let html = `<div class="nflow-container"><h3>🌊 Narrative Flow Analyzer</h3>`;
+        const flvl = data.flow_rating === 'excellent' ? 'high' : data.flow_rating === 'good' ? 'mid' : 'low';
+        html += `<div class="nflow-hero"><div class="nflow-score nflow-${flvl}"><span class="nflow-val">${data.coherence_score}%</span><span class="nflow-label">Coherence</span></div>`;
+        html += `<div class="nflow-rating nflow-${flvl}">${data.flow_rating.toUpperCase()}</div>`;
+        html += `<p class="nflow-desc">${data.description}</p></div>`;
+        html += `<div class="nflow-stats">`;
+        html += `<div class="nflow-stat"><span>${data.summary.total_segments}</span><span>Segments</span></div>`;
+        html += `<div class="nflow-stat"><span>${data.summary.smooth_transitions}</span><span>Smooth</span></div>`;
+        html += `<div class="nflow-stat"><span>${data.summary.topic_jumps}</span><span>Jumps</span></div>`;
+        html += `<div class="nflow-stat"><span>${data.summary.dominant_topic}</span><span>Main Topic</span></div>`;
+        html += `</div>`;
+        if (Object.keys(data.topic_distribution).length) {
+            html += `<div class="nflow-topics"><h4>Topic Distribution</h4>`;
+            const maxTopic = Math.max(...Object.values(data.topic_distribution));
+            for (const [topic, count] of Object.entries(data.topic_distribution).sort((a, b) => b[1] - a[1])) {
+                const pct = Math.round(count / maxTopic * 100);
+                html += `<div class="nflow-topic-row"><span class="nflow-topic-name">${topic}</span><div class="nflow-topic-bar"><div class="nflow-topic-fill" style="width:${pct}%"></div></div><span class="nflow-topic-val">${count}</span></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.flow_segments.length) {
+            html += `<div class="nflow-segments"><h4>Flow Timeline</h4>`;
+            for (const seg of data.flow_segments.slice(0, 12)) {
+                const tcls = seg.transition_type === 'smooth' ? 'smooth' : seg.transition_type === 'topic_jump' ? 'jump' : 'neutral';
+                html += `<div class="nflow-seg nflow-seg-${tcls}"><span class="nflow-seg-num">${seg.segment}</span><span class="nflow-seg-topic">${seg.primary_topic}</span><span class="nflow-seg-trans">${seg.transition_type.replace(/_/g, ' ')}</span></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="nflow-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze narrative flow.'); }
 };

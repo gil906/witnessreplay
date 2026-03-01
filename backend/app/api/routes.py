@@ -1,5 +1,6 @@
 import logging
 import re
+import random
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 from collections import deque
@@ -20318,3 +20319,501 @@ async def trigger_export_action(data: dict, auth=Depends(require_admin_auth)):
         _export_history.clear()
         return {"status": "cleared", "timestamp": datetime.utcnow().isoformat() + "Z"}
     raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+# ============================================================
+# Feature: Witness Credibility Scorecard
+# ============================================================
+@router.get("/sessions/{session_id}/credibility-scorecard")
+async def credibility_scorecard(session_id: str):
+    """Generate comprehensive credibility scorecard combining all analysis dimensions."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    full_text = " ".join(statements).lower()
+    word_count = max(len(full_text.split()), 1)
+
+    # Consistency dimension
+    consistency_pos = ["as i said", "like i mentioned", "same as before", "consistently"]
+    consistency_neg = ["actually", "wait", "let me correct", "i mean", "no wait", "scratch that"]
+    cons_score = max(0, min(100, 70 + sum(full_text.count(p) for p in consistency_pos) * 8 - sum(full_text.count(n) for n in consistency_neg) * 12))
+
+    # Detail dimension
+    num_count = len(re.findall(r'\b\d+\b', " ".join(statements)))
+    name_count = len(re.findall(r'\b[A-Z][a-z]{2,}\b', " ".join(statements)))
+    detail_score = max(0, min(100, 40 + num_count * 5 + name_count * 4 + min(30, word_count // 20)))
+
+    # Confidence dimension
+    confident = ["i am sure", "definitely", "absolutely", "i clearly saw", "without doubt", "i know", "i'm certain"]
+    uncertain = ["maybe", "i think", "not sure", "possibly", "i guess", "probably", "might have", "could be"]
+    conf_score = max(0, min(100, 60 + sum(full_text.count(c) for c in confident) * 10 - sum(full_text.count(u) for u in uncertain) * 10))
+
+    # Cooperation dimension
+    coop_pos = ["yes", "of course", "happy to", "let me explain", "i'll tell you", "sure"]
+    coop_neg = ["i refuse", "no comment", "i don't want to", "that's irrelevant", "none of your", "i won't"]
+    coop_score = max(0, min(100, 65 + sum(full_text.count(c) for c in coop_pos) * 6 - sum(full_text.count(n) for n in coop_neg) * 15))
+
+    # Emotional stability dimension
+    emo_volatile = ["!", "i'm angry", "how dare", "this is ridiculous", "i can't believe", "outraged"]
+    emo_stable = ["calmly", "as i recall", "to the best of", "from what i remember"]
+    emo_score = max(0, min(100, 70 - sum(full_text.count(e) for e in emo_volatile) * 8 + sum(full_text.count(e) for e in emo_stable) * 10))
+
+    # Specificity dimension
+    specific_markers = ["at approximately", "on the date of", "i saw exactly", "the time was", "located at", "wearing a"]
+    vague_markers = ["sometime", "somewhere", "some kind of", "i dunno", "whatever", "something like"]
+    spec_score = max(0, min(100, 55 + sum(full_text.count(s) for s in specific_markers) * 12 - sum(full_text.count(v) for v in vague_markers) * 10))
+
+    dimensions = [
+        {"name": "Consistency", "score": cons_score, "weight": 0.20},
+        {"name": "Detail Level", "score": detail_score, "weight": 0.15},
+        {"name": "Confidence", "score": conf_score, "weight": 0.15},
+        {"name": "Cooperation", "score": coop_score, "weight": 0.15},
+        {"name": "Emotional Stability", "score": emo_score, "weight": 0.15},
+        {"name": "Specificity", "score": spec_score, "weight": 0.20}
+    ]
+
+    composite = round(sum(d["score"] * d["weight"] for d in dimensions), 1)
+
+    if composite >= 80:
+        grade, assessment = "A", "Highly credible testimony"
+    elif composite >= 65:
+        grade, assessment = "B", "Generally credible with minor concerns"
+    elif composite >= 50:
+        grade, assessment = "C", "Moderately credible — requires corroboration"
+    elif composite >= 35:
+        grade, assessment = "D", "Low credibility — significant concerns"
+    else:
+        grade, assessment = "F", "Very low credibility — unreliable testimony"
+
+    strengths = [d["name"] for d in dimensions if d["score"] >= 70]
+    weaknesses = [d["name"] for d in dimensions if d["score"] < 50]
+
+    return {
+        "session_id": session_id,
+        "composite_score": composite,
+        "grade": grade,
+        "assessment": assessment,
+        "dimensions": dimensions,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "statement_count": len(statements),
+        "total_words": word_count,
+        "recommendation": f"Composite credibility: {composite}% (Grade {grade}). {assessment}. {'Key strengths: ' + ', '.join(strengths) + '.' if strengths else ''} {'Areas of concern: ' + ', '.join(weaknesses) + '.' if weaknesses else ''}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Question Effectiveness Analyzer
+# ============================================================
+@router.get("/sessions/{session_id}/question-effectiveness")
+async def question_effectiveness(session_id: str):
+    """Analyze which questions produced the most useful testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    qa_pairs = []
+    if hasattr(session, "messages"):
+        msgs = list(session.messages)
+        for i in range(len(msgs) - 1):
+            q_msg = msgs[i]
+            a_msg = msgs[i + 1]
+            q_role = q_msg.get("role", "") if isinstance(q_msg, dict) else getattr(q_msg, "role", "")
+            a_role = a_msg.get("role", "") if isinstance(a_msg, dict) else getattr(a_msg, "role", "")
+            q_content = q_msg.get("content", "") if isinstance(q_msg, dict) else getattr(q_msg, "content", "")
+            a_content = a_msg.get("content", "") if isinstance(a_msg, dict) else getattr(a_msg, "content", "")
+            if q_role == "assistant" and a_role == "user" and len(a_content) > 3:
+                qa_pairs.append({"question": q_content, "answer": a_content})
+
+    ranked = []
+    for idx, pair in enumerate(qa_pairs):
+        answer = pair["answer"]
+        a_lower = answer.lower()
+        words = a_lower.split()
+        word_count = len(words)
+        detail_markers = len(re.findall(r'\b\d+\b', answer)) + len(re.findall(r'\b[A-Z][a-z]{2,}\b', answer))
+        specificity = sum(a_lower.count(m) for m in ["because", "specifically", "exactly", "for example", "at that point"])
+        evasion = sum(a_lower.count(m) for m in ["i don't know", "no comment", "i can't", "i refuse", "maybe"])
+
+        length_score = min(40, word_count // 3)
+        detail_bonus = min(30, detail_markers * 5)
+        spec_bonus = min(20, specificity * 8)
+        evasion_penalty = min(40, evasion * 15)
+        effectiveness = max(0, min(100, length_score + detail_bonus + spec_bonus - evasion_penalty + 10))
+
+        if effectiveness >= 70:
+            rating = "highly_effective"
+        elif effectiveness >= 50:
+            rating = "effective"
+        elif effectiveness >= 30:
+            rating = "moderate"
+        else:
+            rating = "ineffective"
+
+        ranked.append({
+            "index": idx + 1,
+            "question_excerpt": pair["question"][:120] + ("..." if len(pair["question"]) > 120 else ""),
+            "answer_excerpt": answer[:120] + ("..." if len(answer) > 120 else ""),
+            "effectiveness_score": effectiveness,
+            "rating": rating,
+            "answer_words": word_count,
+            "detail_references": detail_markers,
+            "evasive_responses": evasion
+        })
+
+    ranked.sort(key=lambda x: x["effectiveness_score"], reverse=True)
+    avg_eff = round(sum(r["effectiveness_score"] for r in ranked) / max(len(ranked), 1), 1)
+
+    effective_count = sum(1 for r in ranked if r["rating"] in ("highly_effective", "effective"))
+    ineffective_count = sum(1 for r in ranked if r["rating"] == "ineffective")
+
+    return {
+        "session_id": session_id,
+        "question_rankings": ranked[:20],
+        "summary": {
+            "total_questions": len(ranked),
+            "average_effectiveness": avg_eff,
+            "highly_effective": sum(1 for r in ranked if r["rating"] == "highly_effective"),
+            "effective": effective_count,
+            "moderate": sum(1 for r in ranked if r["rating"] == "moderate"),
+            "ineffective": ineffective_count
+        },
+        "best_question": ranked[0] if ranked else None,
+        "worst_question": ranked[-1] if ranked else None,
+        "recommendation": f"Average question effectiveness: {avg_eff}%. {effective_count} questions produced useful testimony. {ineffective_count} questions were ineffective and may need rephrasing.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Testimony Authenticity Verifier
+# ============================================================
+@router.get("/sessions/{session_id}/authenticity-check")
+async def authenticity_check(session_id: str):
+    """Assess overall testimony authenticity through language and memory patterns."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    full_text = " ".join(statements)
+    lower_text = full_text.lower()
+    words = lower_text.split()
+    word_count = max(len(words), 1)
+
+    # Natural language indicators (authentic speech has these)
+    natural_markers = ["um", "uh", "well", "you know", "like i said", "let me think", "hmm", "so basically"]
+    natural_count = sum(lower_text.count(m) for m in natural_markers)
+    natural_score = min(100, 40 + natural_count * 8)
+
+    # Memory recall patterns (authentic memories are non-linear)
+    recall_markers = ["oh wait", "i just remembered", "come to think of it", "actually now", "that reminds me", "i forgot to mention"]
+    recall_count = sum(lower_text.count(m) for m in recall_markers)
+    memory_score = min(100, 50 + recall_count * 15)
+
+    # Sensory details (real memories have sensory info)
+    sensory = ["i saw", "i heard", "i felt", "it smelled", "it looked like", "it sounded", "i noticed", "i could see", "the color", "the sound"]
+    sensory_count = sum(lower_text.count(s) for s in sensory)
+    sensory_score = min(100, 35 + sensory_count * 10)
+
+    # Vocabulary diversity (scripted testimony has low diversity)
+    unique_words = len(set(words))
+    vocab_ratio = unique_words / word_count if word_count > 0 else 0
+    vocab_score = min(100, int(vocab_ratio * 150))
+
+    # Self-correction (authentic witnesses self-correct)
+    corrections = ["no wait", "let me rephrase", "what i meant", "i should say", "to be more precise", "correction"]
+    corr_count = sum(lower_text.count(c) for c in corrections)
+    correction_score = min(100, 45 + corr_count * 12)
+
+    # Emotional leakage (real testimony has emotional moments)
+    emotional = ["i was scared", "it was terrifying", "i couldn't believe", "i was shocked", "my heart", "i panicked", "i was nervous"]
+    emo_count = sum(lower_text.count(e) for e in emotional)
+    emotion_score = min(100, 40 + emo_count * 12)
+
+    indicators = [
+        {"name": "Natural Speech Patterns", "score": natural_score, "markers_found": natural_count, "weight": 0.18},
+        {"name": "Memory Recall Patterns", "score": memory_score, "markers_found": recall_count, "weight": 0.18},
+        {"name": "Sensory Details", "score": sensory_score, "markers_found": sensory_count, "weight": 0.18},
+        {"name": "Vocabulary Diversity", "score": vocab_score, "markers_found": unique_words, "weight": 0.16},
+        {"name": "Self-Correction", "score": correction_score, "markers_found": corr_count, "weight": 0.15},
+        {"name": "Emotional Authenticity", "score": emotion_score, "markers_found": emo_count, "weight": 0.15}
+    ]
+
+    authenticity = round(sum(i["score"] * i["weight"] for i in indicators), 1)
+
+    if authenticity >= 75:
+        verdict = "likely_authentic"
+        desc = "Testimony shows strong markers of authentic, genuine recall"
+    elif authenticity >= 55:
+        verdict = "possibly_authentic"
+        desc = "Testimony has some authentic markers but inconclusive"
+    elif authenticity >= 35:
+        verdict = "questionable"
+        desc = "Testimony lacks key authenticity markers — further investigation recommended"
+    else:
+        verdict = "likely_fabricated"
+        desc = "Testimony shows signs of fabrication or heavy scripting"
+
+    return {
+        "session_id": session_id,
+        "authenticity_score": authenticity,
+        "verdict": verdict,
+        "description": desc,
+        "indicators": indicators,
+        "flags": [i["name"] for i in indicators if i["score"] < 40],
+        "strengths": [i["name"] for i in indicators if i["score"] >= 70],
+        "word_count": word_count,
+        "unique_words": unique_words,
+        "statement_count": len(statements),
+        "recommendation": f"Authenticity score: {authenticity}% — {desc}.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Witness Behavioral Fingerprint
+# ============================================================
+@router.get("/sessions/{session_id}/behavioral-fingerprint")
+async def behavioral_fingerprint(session_id: str):
+    """Generate unique behavioral fingerprint for the witness."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    all_text = " ".join(statements)
+    lower_text = all_text.lower()
+    words = lower_text.split()
+    word_count = max(len(words), 1)
+    sentences = re.split(r'[.!?]+', all_text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 3]
+
+    # Average sentence length
+    avg_sentence_len = round(sum(len(s.split()) for s in sentences) / max(len(sentences), 1), 1)
+
+    # Vocabulary level
+    complex_words = [w for w in words if len(w) > 8]
+    vocab_complexity = round(len(complex_words) / word_count * 100, 1)
+    if vocab_complexity > 15:
+        vocab_level = "advanced"
+    elif vocab_complexity > 8:
+        vocab_level = "intermediate"
+    else:
+        vocab_level = "basic"
+
+    # Hedging frequency
+    hedges = ["i think", "maybe", "perhaps", "sort of", "kind of", "probably", "i believe", "it seems"]
+    hedge_count = sum(lower_text.count(h) for h in hedges)
+    hedge_rate = round(hedge_count / max(len(statements), 1) * 100, 1)
+
+    # Assertiveness
+    assertive = ["i know", "definitely", "absolutely", "clearly", "without doubt", "i'm sure", "certainly"]
+    assert_count = sum(lower_text.count(a) for a in assertive)
+    assertiveness = round(assert_count / max(len(statements), 1) * 100, 1)
+
+    # Emotional expressiveness
+    emotional_words = ["feel", "felt", "scared", "happy", "angry", "nervous", "worried", "afraid", "upset", "shocked"]
+    emo_count = sum(lower_text.count(e) for e in emotional_words)
+    expressiveness = round(emo_count / max(len(statements), 1) * 100, 1)
+
+    # Narrative style
+    temporal_markers = ["then", "after that", "before", "later", "next", "first", "finally", "meanwhile"]
+    temporal_count = sum(lower_text.count(t) for t in temporal_markers)
+    narrative_style = "chronological" if temporal_count > 3 else "episodic" if temporal_count > 1 else "fragmented"
+
+    # Response patterns
+    short_responses = sum(1 for s in statements if len(s.split()) < 10)
+    long_responses = sum(1 for s in statements if len(s.split()) > 50)
+    response_pattern = "verbose" if long_responses > short_responses else "concise" if short_responses > long_responses else "mixed"
+
+    # Formality level
+    informal = ["gonna", "wanna", "kinda", "yeah", "nah", "stuff", "thing", "like", "basically"]
+    formal = ["therefore", "however", "furthermore", "regarding", "subsequently", "accordingly"]
+    inf_count = sum(lower_text.count(w) for w in informal)
+    for_count = sum(lower_text.count(w) for w in formal)
+    formality = "formal" if for_count > inf_count else "informal" if inf_count > for_count + 2 else "neutral"
+
+    fingerprint = {
+        "vocabulary_level": vocab_level,
+        "vocab_complexity_pct": vocab_complexity,
+        "avg_sentence_length": avg_sentence_len,
+        "narrative_style": narrative_style,
+        "response_pattern": response_pattern,
+        "formality": formality,
+        "hedging_rate": hedge_rate,
+        "assertiveness_rate": assertiveness,
+        "emotional_expressiveness": expressiveness,
+        "temporal_markers": temporal_count,
+        "total_statements": len(statements),
+        "total_words": word_count,
+        "short_responses": short_responses,
+        "long_responses": long_responses
+    }
+
+    profile_tags = []
+    if vocab_level == "advanced":
+        profile_tags.append("educated speaker")
+    if hedge_rate > 30:
+        profile_tags.append("cautious communicator")
+    if assertiveness > 20:
+        profile_tags.append("assertive")
+    if expressiveness > 20:
+        profile_tags.append("emotionally expressive")
+    if narrative_style == "chronological":
+        profile_tags.append("organized thinker")
+    if formality == "formal":
+        profile_tags.append("formal speaker")
+    if response_pattern == "verbose":
+        profile_tags.append("detailed responder")
+    if response_pattern == "concise":
+        profile_tags.append("brief responder")
+
+    return {
+        "session_id": session_id,
+        "fingerprint": fingerprint,
+        "profile_tags": profile_tags if profile_tags else ["standard communicator"],
+        "summary": f"Witness uses {vocab_level} vocabulary with {narrative_style} narrative style. Communication is {formality} and {response_pattern}. Hedging rate: {hedge_rate}%, Assertiveness: {assertiveness}%.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Narrative Flow Analyzer
+# ============================================================
+@router.get("/sessions/{session_id}/narrative-flow")
+async def narrative_flow(session_id: str):
+    """Analyze testimony flow: logical progression, topic jumps, coherence."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content) > 5:
+                statements.append(content)
+
+    # Topic detection (simple keyword clustering)
+    topic_keywords = {
+        "location": ["where", "place", "location", "room", "building", "street", "area", "outside", "inside"],
+        "people": ["person", "man", "woman", "he", "she", "they", "someone", "people", "individual"],
+        "time": ["when", "time", "o'clock", "morning", "evening", "night", "afternoon", "hour", "minute"],
+        "actions": ["did", "happened", "went", "came", "ran", "said", "told", "walked", "drove"],
+        "objects": ["car", "weapon", "phone", "bag", "door", "window", "vehicle", "item", "object"],
+        "emotions": ["felt", "scared", "nervous", "angry", "happy", "worried", "afraid", "surprised"]
+    }
+
+    flow_segments = []
+    prev_topics = set()
+    topic_transitions = 0
+    coherent_transitions = 0
+    total_transitions = 0
+
+    for i, stmt in enumerate(statements):
+        lower = stmt.lower()
+        segment_topics = []
+        for topic, keywords in topic_keywords.items():
+            count = sum(lower.count(k) for k in keywords)
+            if count > 0:
+                segment_topics.append({"topic": topic, "strength": count})
+
+        segment_topics.sort(key=lambda x: x["strength"], reverse=True)
+        primary_topic = segment_topics[0]["topic"] if segment_topics else "general"
+        current_topics = set(t["topic"] for t in segment_topics[:3])
+
+        if i > 0:
+            total_transitions += 1
+            overlap = current_topics & prev_topics
+            if overlap:
+                coherent_transitions += 1
+                transition_type = "smooth"
+            elif primary_topic != "general":
+                topic_transitions += 1
+                transition_type = "topic_jump"
+            else:
+                transition_type = "neutral"
+        else:
+            transition_type = "opening"
+
+        # Connective words indicate flow
+        connectives = ["then", "after", "because", "so", "therefore", "however", "also", "but", "and then"]
+        conn_count = sum(lower.count(c) for c in connectives)
+
+        flow_segments.append({
+            "segment": i + 1,
+            "primary_topic": primary_topic,
+            "topics": [t["topic"] for t in segment_topics[:3]],
+            "transition_type": transition_type,
+            "connective_words": conn_count,
+            "word_count": len(stmt.split()),
+            "excerpt": stmt[:80] + ("..." if len(stmt) > 80 else "")
+        })
+
+        prev_topics = current_topics
+
+    coherence_pct = round(coherent_transitions / max(total_transitions, 1) * 100, 1)
+    jump_pct = round(topic_transitions / max(total_transitions, 1) * 100, 1)
+
+    if coherence_pct >= 70:
+        flow_rating = "excellent"
+        flow_desc = "Testimony follows a logical, well-connected narrative"
+    elif coherence_pct >= 50:
+        flow_rating = "good"
+        flow_desc = "Generally coherent with some topic shifts"
+    elif coherence_pct >= 30:
+        flow_rating = "fragmented"
+        flow_desc = "Narrative is fragmented with frequent topic jumps"
+    else:
+        flow_rating = "disjointed"
+        flow_desc = "Testimony is disjointed — possible confusion or evasion"
+
+    # Topic distribution
+    topic_counts = {}
+    for seg in flow_segments:
+        t = seg["primary_topic"]
+        topic_counts[t] = topic_counts.get(t, 0) + 1
+
+    return {
+        "session_id": session_id,
+        "flow_segments": flow_segments,
+        "coherence_score": coherence_pct,
+        "flow_rating": flow_rating,
+        "description": flow_desc,
+        "topic_distribution": topic_counts,
+        "summary": {
+            "total_segments": len(flow_segments),
+            "smooth_transitions": coherent_transitions,
+            "topic_jumps": topic_transitions,
+            "jump_percentage": jump_pct,
+            "dominant_topic": max(topic_counts, key=topic_counts.get) if topic_counts else "general"
+        },
+        "recommendation": f"Narrative coherence: {coherence_pct}% ({flow_rating}). {flow_desc}. {topic_transitions} topic jumps detected across {len(flow_segments)} segments.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }

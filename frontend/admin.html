@@ -515,7 +515,10 @@
             <section class="admin-panel backup-manager-panel" id="backup-manager-section">
                 <h3>💾 Backup Manager</h3>
                 <div id="backup-manager-content"><p>Loading...</p></div>
-                <button id="backup-manager-refresh" class="refresh-btn">↻ Refresh</button>
+                <div class="backup-manager-actions">
+                    <button id="backup-manager-refresh" class="refresh-btn">↻ Refresh</button>
+                    <button id="backup-manager-create" class="refresh-btn" style="background:#22c55e;">Create Backup</button>
+                </div>
             </section>
 
             <!-- Activity Log -->
@@ -595,6 +598,14 @@
                 <div class="export-manager-actions">
                     <button id="export-manager-refresh" class="refresh-btn">↻ Refresh</button>
                     <button id="export-manager-clear" class="refresh-btn" style="background:#ef4444;">Clear History</button>
+                </div>
+            </section>
+
+            <section class="admin-panel rate-limits-panel" id="rate-limits-section">
+                <h3>🚦 Rate Limit Dashboard</h3>
+                <div id="rate-limits-content"><p>Loading...</p></div>
+                <div class="rate-limits-actions">
+                    <button id="rate-limits-refresh" class="refresh-btn">↻ Refresh</button>
                 </div>
             </section>
 
