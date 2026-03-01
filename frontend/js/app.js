@@ -7622,8 +7622,8 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/admissions</code> — Key admission extractor<br>' +
                 '<code>/anxiety</code> — Witness anxiety monitor<br>' +
                 '<code>/impeachrisk</code> — Impeachment risk assessment<br>' +
-                '<code>/themes</code> — Legal theme extractor<br>' +
-                '<code>/readability</code> — Testimony readability score<br>' +
+                '<code>/legalthemes</code> — Legal theme extractor<br>' +
+                '<code>/readscore</code> — Testimony readability score<br>' +
                 '<code>/coopindex</code> — Cooperation index<br>' +
                 '<code>/help</code> — Show this help'
             );
@@ -7959,8 +7959,8 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/comparereport': async () => { await this._showComparisonReport(); },
         '/anxiety': async () => { await this._showAnxietyMonitor(); },
         '/impeachrisk': async () => { await this._showImpeachmentRisk(); },
-        '/themes': async () => { await this._showLegalThemes(); },
-        '/readability': async () => { await this._showReadabilityScore(); },
+        '/legalthemes': async () => { await this._showLegalThemes(); },
+        '/readscore': async () => { await this._showReadabilityScore(); },
         '/coopindex': async () => { await this._showCooperationIndex(); }
     };
     
@@ -8131,7 +8131,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/responsetime', desc: 'Response timing analysis' },
         { cmd: '/precedent', desc: 'Legal precedent mapping' },
         { cmd: '/completeness', desc: 'Testimony completeness check' },
-        { cmd: '/comparereport', desc: 'Witness comparison report' }
+        { cmd: '/comparereport', desc: 'Witness comparison report' },
+        { cmd: '/anxiety', desc: 'Witness anxiety monitor' },
+        { cmd: '/impeachrisk', desc: 'Impeachment risk assessment' },
+        { cmd: '/legalthemes', desc: 'Legal theme extractor' },
+        { cmd: '/readscore', desc: 'Testimony readability score' },
+        { cmd: '/coopindex', desc: 'Cooperation index' }
     ];
     
     const filter = val.toLowerCase();
