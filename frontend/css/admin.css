@@ -6423,3 +6423,50 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .pm-ep-row { display: flex; justify-content: space-between; padding: 3px 8px; font-size: 0.8em; }
 .pm-ep-name { font-family: monospace; color: #00e676; }
 .pm-ep-hits { font-weight: 600; }
+
+/* ============================================================
+   Admin: Environment Config Panel
+   ============================================================ */
+.env-config-panel { border-left: 3px solid #818cf8; }
+.env-config-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.env-config-stat { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center; }
+.env-config-val { display: block; font-size: 22px; font-weight: 700; color: #818cf8; }
+.env-config-label { font-size: 11px; opacity: 0.6; }
+.env-config-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.env-config-table th { background: rgba(255,255,255,0.08); padding: 6px 8px; text-align: left; font-weight: 600; }
+.env-config-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.env-config-table code { background: rgba(129,140,248,0.15); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+.env-override { background: rgba(245,158,11,0.2); color: #f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+.env-active { background: rgba(34,197,94,0.2); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+.env-default { background: rgba(255,255,255,0.08); color: #999; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+.env-config-actions { margin-top: 8px; }
+
+/* ============================================================
+   Admin: Session Analytics Dashboard
+   ============================================================ */
+.session-analytics-panel { border-left: 3px solid #22c55e; }
+.sa-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.sa-stat { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center; }
+.sa-stat-val { display: block; font-size: 20px; font-weight: 700; color: #22c55e; }
+.sa-stat-label { font-size: 10px; opacity: 0.6; }
+.sa-dist-section { margin-bottom: 12px; }
+.sa-dist-section h4 { margin: 0 0 6px; font-size: 13px; }
+.sa-dist-bar { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: rgba(255,255,255,0.05); }
+.sa-dist-seg { transition: width 0.3s; }
+.sa-dist-empty { background: #64748b; }
+.sa-dist-short { background: #3b82f6; }
+.sa-dist-medium { background: #f59e0b; }
+.sa-dist-long { background: #22c55e; }
+.sa-dist-legend { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+.sa-legend { font-size: 10px; display: flex; align-items: center; gap: 4px; }
+.sa-legend::before { content: ''; width: 8px; height: 8px; border-radius: 2px; }
+.sa-legend.sa-dist-empty::before { background: #64748b; }
+.sa-legend.sa-dist-short::before { background: #3b82f6; }
+.sa-legend.sa-dist-medium::before { background: #f59e0b; }
+.sa-legend.sa-dist-long::before { background: #22c55e; }
+.sa-features { margin-top: 12px; }
+.sa-features h4 { margin: 0 0 6px; font-size: 13px; }
+.sa-feat-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.04); text-transform: capitalize; }
+.sa-feat-name { font-weight: 500; }
+.sa-feat-hits { color: #22c55e; font-weight: 600; }
+.session-analytics-actions { margin-top: 8px; }

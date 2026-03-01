@@ -19260,3 +19260,544 @@ async def reset_performance_metrics(auth=Depends(require_admin_auth)):
     _perf_metrics["endpoint_hits"] = {}
     _perf_metrics["started_at"] = datetime.utcnow().isoformat() + "Z"
     return {"status": "reset", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+
+# ============================================================
+# Feature: Deception Indicator Analyzer
+# ============================================================
+@router.get("/sessions/{session_id}/deception-indicators")
+async def deception_indicators(session_id: str):
+    """Analyze testimony for linguistic markers of deception."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content_str = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content_str) > 5:
+                statements.append(content_str)
+    witness_msgs = [{"content": s, "role": "user"} for s in statements]
+    full_text = " ".join(m.get("content", "") for m in witness_msgs).lower()
+    words = full_text.split()
+    word_count = max(len(words), 1)
+
+    hedging = ["maybe", "perhaps", "possibly", "i think", "i believe", "sort of", "kind of", "i guess", "probably", "might have"]
+    distancing = ["that person", "the man", "the woman", "one would", "someone", "they say", "people say"]
+    qualifiers = ["honestly", "truthfully", "to be honest", "frankly", "believe me", "i swear", "trust me"]
+    tense_shifts = ["was going", "had been", "would have", "will have", "could have"]
+
+    indicators = []
+    hedging_count = sum(full_text.count(h) for h in hedging)
+    distancing_count = sum(full_text.count(d) for d in distancing)
+    qualifier_count = sum(full_text.count(q) for q in qualifiers)
+    tense_count = sum(full_text.count(t) for t in tense_shifts)
+
+    if hedging_count > 0:
+        indicators.append({"type": "hedging_language", "count": hedging_count, "severity": "medium" if hedging_count < 5 else "high", "description": "Use of uncertain/qualifying language"})
+    if distancing_count > 0:
+        indicators.append({"type": "distancing_pronouns", "count": distancing_count, "severity": "medium" if distancing_count < 3 else "high", "description": "Use of distancing language to avoid personal connection"})
+    if qualifier_count > 0:
+        indicators.append({"type": "truth_qualifiers", "count": qualifier_count, "severity": "high", "description": "Excessive truth-emphasizing phrases (overcompensation)"})
+    if tense_count > 0:
+        indicators.append({"type": "tense_inconsistency", "count": tense_count, "severity": "low" if tense_count < 3 else "medium", "description": "Inconsistent verb tenses suggesting narrative construction"})
+
+    # Check for excessive detail in some areas vs vagueness in others
+    sentence_lengths = [len(s.split()) for s in full_text.split('.') if s.strip()]
+    if sentence_lengths:
+        avg_len = sum(sentence_lengths) / len(sentence_lengths)
+        variance = sum((l - avg_len) ** 2 for l in sentence_lengths) / len(sentence_lengths)
+        if variance > 100:
+            indicators.append({"type": "detail_imbalance", "count": int(variance), "severity": "medium", "description": "Significant variation in detail level across statements"})
+
+    # Lack of sensory detail
+    sensory_words = ["saw", "heard", "felt", "smelled", "tasted", "touched", "looked", "sounded", "appeared"]
+    sensory_count = sum(full_text.count(s) for s in sensory_words)
+    sensory_rate = sensory_count / word_count * 100
+    if sensory_rate < 1.0 and word_count > 50:
+        indicators.append({"type": "low_sensory_detail", "count": sensory_count, "severity": "medium", "description": "Testimony lacks sensory details typical of genuine recall"})
+
+    total_flags = hedging_count + distancing_count + qualifier_count + tense_count
+    deception_score = min(100, int(total_flags / max(word_count, 1) * 500))
+
+    if deception_score < 20:
+        risk_level = "low"
+    elif deception_score < 50:
+        risk_level = "moderate"
+    elif deception_score < 75:
+        risk_level = "elevated"
+    else:
+        risk_level = "high"
+
+    return {
+        "session_id": session_id,
+        "indicators": indicators,
+        "totals": {
+            "hedging": hedging_count,
+            "distancing": distancing_count,
+            "truth_qualifiers": qualifier_count,
+            "tense_shifts": tense_count,
+            "sensory_detail_rate": round(sensory_rate, 1)
+        },
+        "deception_score": deception_score,
+        "risk_level": risk_level,
+        "word_count": word_count,
+        "recommendation": f"Deception risk is {risk_level}. {'Focus on areas with hedging language and truth qualifiers for deeper examination.' if deception_score >= 30 else 'No significant deception markers detected.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Witness Consistency Score
+# ============================================================
+@router.get("/sessions/{session_id}/consistency-score")
+async def consistency_score(session_id: str):
+    """Measure testimony consistency across all statements."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content_str = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content_str) > 5:
+                statements.append(content_str)
+    witness_msgs = statements
+
+    # Analyze statement-by-statement consistency
+    claims = []
+    for i, msg in enumerate(witness_msgs):
+        sentences = [s.strip() for s in msg.split('.') if len(s.strip()) > 10]
+        for s in sentences:
+            claims.append({"index": i, "text": s, "words": set(s.lower().split())})
+
+    # Find repeated claims (consistency markers)
+    repeated_themes = 0
+    contradictions_found = 0
+    consistency_pairs = []
+
+    negation_words = {"not", "never", "no", "didn't", "wasn't", "couldn't", "wouldn't", "don't", "can't", "won't"}
+
+    for i in range(len(claims)):
+        for j in range(i + 1, min(i + 10, len(claims))):
+            overlap = len(claims[i]["words"] & claims[j]["words"])
+            union_size = max(len(claims[i]["words"] | claims[j]["words"]), 1)
+            similarity = overlap / union_size
+
+            if similarity > 0.4:
+                # Check if one negates the other
+                neg_i = len(claims[i]["words"] & negation_words)
+                neg_j = len(claims[j]["words"] & negation_words)
+                if (neg_i > 0) != (neg_j > 0) and similarity > 0.3:
+                    contradictions_found += 1
+                    consistency_pairs.append({
+                        "type": "contradiction",
+                        "statement_a": claims[i]["text"][:100],
+                        "statement_b": claims[j]["text"][:100],
+                        "similarity": round(similarity, 2)
+                    })
+                elif similarity > 0.5:
+                    repeated_themes += 1
+
+    total_claims = max(len(claims), 1)
+    consistency_pct = max(0, min(100, 100 - (contradictions_found / total_claims * 100) + (repeated_themes / total_claims * 30)))
+    consistency_pct = round(min(100, consistency_pct), 1)
+
+    if consistency_pct >= 85:
+        grade = "A"
+        assessment = "Highly consistent testimony"
+    elif consistency_pct >= 70:
+        grade = "B"
+        assessment = "Generally consistent with minor variations"
+    elif consistency_pct >= 55:
+        grade = "C"
+        assessment = "Moderate consistency — some concerning variations"
+    elif consistency_pct >= 40:
+        grade = "D"
+        assessment = "Low consistency — significant contradictions"
+    else:
+        grade = "F"
+        assessment = "Very inconsistent testimony"
+
+    return {
+        "session_id": session_id,
+        "consistency_score": consistency_pct,
+        "grade": grade,
+        "assessment": assessment,
+        "total_claims": total_claims,
+        "repeated_themes": repeated_themes,
+        "contradictions_found": contradictions_found,
+        "contradiction_details": consistency_pairs[:10],
+        "recommendation": f"Consistency grade: {grade} ({consistency_pct}%). {'Review flagged contradictions for cross-examination opportunities.' if contradictions_found > 0 else 'Testimony appears internally consistent.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Legal Argument Builder
+# ============================================================
+@router.get("/sessions/{session_id}/legal-arguments")
+async def legal_arguments(session_id: str):
+    """Auto-generate legal arguments from testimony."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content_str = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content_str) > 5:
+                statements.append(content_str)
+    witness_msgs = statements
+    full_text = " ".join(witness_msgs).lower()
+
+    # Extract factual assertions
+    fact_indicators = ["i saw", "i heard", "i know", "i was there", "it happened", "the fact is", "clearly", "definitely", "absolutely"]
+    opinion_indicators = ["i think", "i believe", "maybe", "perhaps", "it seemed", "i felt like", "in my opinion"]
+    admission_indicators = ["i admit", "yes", "that's true", "i did", "i was", "i have", "correct"]
+
+    facts = []
+    opinions = []
+    admissions = []
+
+    for msg in witness_msgs:
+        sentences = [s.strip() for s in msg.split('.') if len(s.strip()) > 10]
+        for s in sentences:
+            sl = s.lower()
+            if any(f in sl for f in fact_indicators):
+                facts.append({"text": s[:150], "type": "factual_assertion", "strength": "strong"})
+            elif any(o in sl for o in opinion_indicators):
+                opinions.append({"text": s[:150], "type": "opinion", "strength": "weak"})
+            elif any(a in sl for a in admission_indicators):
+                admissions.append({"text": s[:150], "type": "admission", "strength": "strong"})
+
+    # Build argument components
+    supporting = [f for f in facts if f["strength"] == "strong"][:5]
+    weaknesses = opinions[:5]
+    key_admissions = admissions[:5]
+
+    # Generate redirect questions
+    redirect_questions = []
+    if weaknesses:
+        redirect_questions.append({"question": "Can you clarify what you mean when you say you 'think' or 'believe'?", "targets": "opinion_statements"})
+    if len(facts) > 0:
+        redirect_questions.append({"question": "Can you walk us through exactly what you observed?", "targets": "factual_assertions"})
+    if admissions:
+        redirect_questions.append({"question": "You acknowledged certain facts — can you elaborate on the circumstances?", "targets": "admissions"})
+    redirect_questions.append({"question": "Is there anything you'd like to add or correct from your earlier statements?", "targets": "general_cleanup"})
+
+    argument_strength = min(100, len(facts) * 15 + len(admissions) * 20 - len(opinions) * 5)
+    argument_strength = max(0, argument_strength)
+
+    return {
+        "session_id": session_id,
+        "supporting_facts": supporting,
+        "weaknesses": weaknesses,
+        "key_admissions": key_admissions,
+        "redirect_questions": redirect_questions,
+        "argument_strength": argument_strength,
+        "totals": {
+            "factual_assertions": len(facts),
+            "opinions": len(opinions),
+            "admissions": len(admissions)
+        },
+        "recommendation": f"Argument strength: {argument_strength}%. {'Strong factual basis for legal arguments.' if argument_strength >= 60 else 'Consider gathering additional corroborating testimony.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Testimony Gap Detector
+# ============================================================
+@router.get("/sessions/{session_id}/testimony-gaps")
+async def testimony_gaps(session_id: str):
+    """Find gaps in testimony coverage."""
+    session = await firestore_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    statements = []
+    if hasattr(session, "messages"):
+        for m in session.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            content_str = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user" and len(content_str) > 5:
+                statements.append(content_str)
+    witness_msgs = statements
+    full_text = " ".join(witness_msgs).lower()
+
+    # Essential testimony areas
+    coverage_areas = {
+        "who": {"keywords": ["person", "man", "woman", "he", "she", "they", "someone", "suspect", "victim", "witness", "officer", "name"], "covered": False, "importance": "critical"},
+        "what": {"keywords": ["happened", "did", "occurred", "event", "incident", "action", "said", "told"], "covered": False, "importance": "critical"},
+        "when": {"keywords": ["time", "clock", "morning", "afternoon", "evening", "night", "date", "day", "hour", "minute", "o'clock", "am", "pm"], "covered": False, "importance": "critical"},
+        "where": {"keywords": ["place", "location", "street", "room", "building", "house", "address", "near", "behind", "inside", "outside"], "covered": False, "importance": "critical"},
+        "how": {"keywords": ["how", "method", "way", "manner", "process", "step", "sequence"], "covered": False, "importance": "high"},
+        "why": {"keywords": ["why", "because", "reason", "motive", "purpose", "cause", "intention"], "covered": False, "importance": "high"},
+        "physical_evidence": {"keywords": ["weapon", "tool", "object", "item", "evidence", "blood", "damage", "mark", "bruise"], "covered": False, "importance": "high"},
+        "emotional_state": {"keywords": ["felt", "scared", "angry", "afraid", "nervous", "calm", "panicked", "shocked"], "covered": False, "importance": "medium"},
+        "prior_events": {"keywords": ["before", "previously", "earlier", "prior", "leading up", "beforehand"], "covered": False, "importance": "medium"},
+        "aftermath": {"keywords": ["after", "then", "later", "next", "following", "subsequently", "result"], "covered": False, "importance": "medium"},
+    }
+
+    gaps = []
+    covered = []
+    for area, info in coverage_areas.items():
+        hit_count = sum(1 for kw in info["keywords"] if kw in full_text)
+        if hit_count >= 2:
+            info["covered"] = True
+            covered.append({"area": area, "importance": info["importance"], "keyword_hits": hit_count})
+        else:
+            gaps.append({
+                "area": area,
+                "importance": info["importance"],
+                "keyword_hits": hit_count,
+                "suggested_question": f"Can you tell me more about the {area.replace('_', ' ')} aspects of what happened?"
+            })
+
+    total_areas = len(coverage_areas)
+    covered_count = len(covered)
+    coverage_pct = round(covered_count / total_areas * 100, 1)
+
+    critical_gaps = [g for g in gaps if g["importance"] == "critical"]
+    high_gaps = [g for g in gaps if g["importance"] == "high"]
+
+    if coverage_pct >= 80:
+        completeness = "thorough"
+    elif coverage_pct >= 60:
+        completeness = "adequate"
+    elif coverage_pct >= 40:
+        completeness = "partial"
+    else:
+        completeness = "incomplete"
+
+    return {
+        "session_id": session_id,
+        "gaps": gaps,
+        "covered_areas": covered,
+        "coverage_pct": coverage_pct,
+        "completeness": completeness,
+        "totals": {
+            "total_areas": total_areas,
+            "covered": covered_count,
+            "gaps": len(gaps),
+            "critical_gaps": len(critical_gaps),
+            "high_gaps": len(high_gaps)
+        },
+        "recommendation": f"Coverage is {completeness} ({coverage_pct}%). {'Critical gaps in: ' + ', '.join(g['area'] for g in critical_gaps) + '.' if critical_gaps else 'All critical areas covered.'}",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Feature: Witness Comparison Matrix
+# ============================================================
+@router.get("/sessions/{session_id}/comparison-matrix/{other_id}")
+async def comparison_matrix(session_id: str, other_id: str):
+    """Multi-dimensional comparison of two witness testimonies."""
+    session_a = await firestore_service.get_session(session_id)
+    session_b = await firestore_service.get_session(other_id)
+    if not session_a:
+        raise HTTPException(status_code=404, detail="First session not found")
+    if not session_b:
+        raise HTTPException(status_code=404, detail="Second session not found")
+
+    def analyze_dimension(messages):
+        texts = [m.get("content", "") for m in messages if m.get("role") in ("user", "witness")]
+        full = " ".join(texts).lower()
+        words = full.split()
+        wc = max(len(words), 1)
+        sentences = [s.strip() for s in full.split('.') if s.strip()]
+        sc = max(len(sentences), 1)
+
+        # Detail level
+        detail = min(100, int(wc / 5))
+        # Avg sentence length
+        avg_sent = round(sum(len(s.split()) for s in sentences) / sc, 1)
+        # Emotional words
+        emotion_words = ["felt", "scared", "angry", "afraid", "happy", "sad", "nervous", "upset", "shocked", "frustrated"]
+        emotion_count = sum(full.count(e) for e in emotion_words)
+        emotion_score = min(100, emotion_count * 10)
+        # Confidence
+        confident = ["definitely", "certainly", "absolutely", "clearly", "sure", "positive", "i know"]
+        uncertain = ["maybe", "perhaps", "i think", "not sure", "possibly", "i guess"]
+        conf_count = sum(full.count(c) for c in confident)
+        unc_count = sum(full.count(u) for u in uncertain)
+        confidence_score = max(0, min(100, 50 + (conf_count - unc_count) * 10))
+        # Cooperation
+        coop_words = ["yes", "of course", "certainly", "happy to", "sure", "i agree"]
+        resist_words = ["no comment", "i refuse", "i don't know", "i can't", "i won't", "none of your"]
+        coop_count = sum(full.count(c) for c in coop_words)
+        resist_count = sum(full.count(r) for r in resist_words)
+        cooperation_score = max(0, min(100, 50 + (coop_count - resist_count) * 10))
+
+        return {
+            "word_count": wc,
+            "sentence_count": sc,
+            "avg_sentence_length": avg_sent,
+            "detail_score": detail,
+            "emotion_score": emotion_score,
+            "confidence_score": confidence_score,
+            "cooperation_score": cooperation_score
+        }
+
+    msgs_a = []
+    if hasattr(session_a, "messages"):
+        for m in session_a.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            ct = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user": msgs_a.append({"role": "user", "content": ct})
+    msgs_b = []
+    if hasattr(session_b, "messages"):
+        for m in session_b.messages:
+            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
+            ct = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+            if role == "user": msgs_b.append({"role": "user", "content": ct})
+    dims_a = analyze_dimension(msgs_a)
+    dims_b = analyze_dimension(msgs_b)
+
+    dimensions = ["detail_score", "emotion_score", "confidence_score", "cooperation_score"]
+    comparison = []
+    for dim in dimensions:
+        label = dim.replace("_score", "").replace("_", " ").title()
+        val_a = dims_a[dim]
+        val_b = dims_b[dim]
+        diff = val_a - val_b
+        comparison.append({
+            "dimension": label,
+            "witness_a": val_a,
+            "witness_b": val_b,
+            "difference": diff,
+            "advantage": "A" if diff > 5 else "B" if diff < -5 else "equal"
+        })
+
+    overall_a = sum(dims_a[d] for d in dimensions) / len(dimensions)
+    overall_b = sum(dims_b[d] for d in dimensions) / len(dimensions)
+
+    return {
+        "session_a": session_id,
+        "session_b": other_id,
+        "witness_a_stats": dims_a,
+        "witness_b_stats": dims_b,
+        "comparison": comparison,
+        "overall_scores": {
+            "witness_a": round(overall_a, 1),
+            "witness_b": round(overall_b, 1),
+            "stronger_witness": "A" if overall_a > overall_b else "B" if overall_b > overall_a else "tied"
+        },
+        "recommendation": f"Witness {'A' if overall_a > overall_b else 'B'} scores higher overall ({round(max(overall_a, overall_b), 1)} vs {round(min(overall_a, overall_b), 1)}). Review individual dimensions for specific strengths.",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+# ============================================================
+# Admin Feature: Environment Config Panel
+# ============================================================
+_env_config_overrides = {}
+
+@router.get("/admin/environment-config")
+async def get_environment_config(auth=Depends(require_admin_auth)):
+    """Get environment configuration overview."""
+    import os
+    safe_keys = [
+        "GEMINI_MODEL", "LOG_LEVEL", "MAX_SESSIONS", "SESSION_TIMEOUT",
+        "RATE_LIMIT_RPM", "CORS_ORIGINS", "UPLOAD_MAX_SIZE", "ENABLE_ANALYTICS",
+        "CACHE_TTL", "MAX_WORKERS", "DEBUG_MODE"
+    ]
+    env_vars = {}
+    for key in safe_keys:
+        val = _env_config_overrides.get(key, os.environ.get(key, ""))
+        if val:
+            env_vars[key] = val
+
+    return {
+        "environment": env_vars,
+        "defaults": {
+            "GEMINI_MODEL": "gemini-2.0-flash",
+            "LOG_LEVEL": "INFO",
+            "MAX_SESSIONS": "100",
+            "SESSION_TIMEOUT": "3600",
+            "RATE_LIMIT_RPM": "60",
+            "UPLOAD_MAX_SIZE": "50MB",
+            "CACHE_TTL": "300"
+        },
+        "overrides": _env_config_overrides,
+        "total_configured": len(env_vars),
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+@router.post("/admin/environment-config")
+async def update_environment_config(data: dict, auth=Depends(require_admin_auth)):
+    """Update runtime configuration overrides."""
+    action = data.get("action", "set")
+    key = data.get("key", "")
+    value = data.get("value", "")
+
+    allowed_keys = {"GEMINI_MODEL", "LOG_LEVEL", "MAX_SESSIONS", "SESSION_TIMEOUT", "RATE_LIMIT_RPM", "CACHE_TTL", "DEBUG_MODE"}
+    if key not in allowed_keys:
+        raise HTTPException(status_code=400, detail=f"Key '{key}' is not configurable")
+
+    if action == "set":
+        _env_config_overrides[key] = value
+        return {"status": "updated", "key": key, "value": value, "timestamp": datetime.utcnow().isoformat() + "Z"}
+    elif action == "reset":
+        _env_config_overrides.pop(key, None)
+        return {"status": "reset", "key": key, "timestamp": datetime.utcnow().isoformat() + "Z"}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+# ============================================================
+# Admin Feature: Session Analytics Dashboard
+# ============================================================
+@router.get("/admin/session-analytics")
+async def session_analytics(auth=Depends(require_admin_auth)):
+    """Get session analytics overview."""
+    now = datetime.utcnow()
+    all_sessions = await firestore_service.list_sessions(limit=1000)
+    total_sessions = len(all_sessions)
+
+    session_sizes = []
+    analysis_usage = {}
+    msg_counts = []
+
+    for session in all_sessions:
+        msgs = session.messages if hasattr(session, "messages") else []
+        msg_counts.append(len(msgs))
+        size_bytes = sum(len(m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")) for m in msgs)
+        session_sizes.append(size_bytes)
+
+    avg_messages = round(sum(msg_counts) / max(len(msg_counts), 1), 1)
+    avg_size = round(sum(session_sizes) / max(len(session_sizes), 1))
+    total_messages = sum(msg_counts)
+
+    # Endpoint popularity from perf metrics
+    endpoint_hits = _perf_metrics.get("endpoint_hits", {})
+    analysis_endpoints = {k: v for k, v in endpoint_hits.items() if "/sessions/" in k and k.count("/") >= 4}
+    popular_features = sorted(analysis_endpoints.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "total_sessions": total_sessions,
+        "total_messages": total_messages,
+        "avg_messages_per_session": avg_messages,
+        "avg_session_size_bytes": avg_size,
+        "sessions_distribution": {
+            "empty": sum(1 for c in msg_counts if c == 0),
+            "short": sum(1 for c in msg_counts if 0 < c <= 5),
+            "medium": sum(1 for c in msg_counts if 5 < c <= 20),
+            "long": sum(1 for c in msg_counts if c > 20)
+        },
+        "popular_analysis_features": [{"endpoint": ep, "hits": hits} for ep, hits in popular_features],
+        "storage": {
+            "total_bytes": sum(session_sizes),
+            "avg_bytes": avg_size,
+            "largest_session_bytes": max(session_sizes) if session_sizes else 0
+        },
+        "timestamp": now.isoformat() + "Z"
+    }

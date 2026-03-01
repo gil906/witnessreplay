@@ -6417,3 +6417,75 @@ async function resetPerfMetrics() {
 document.getElementById('perf-metrics-refresh')?.addEventListener('click', loadPerfMetrics);
 document.getElementById('perf-metrics-reset')?.addEventListener('click', resetPerfMetrics);
 if (document.getElementById('perf-metrics-content')) loadPerfMetrics();
+
+// ============================================================
+// Admin: Environment Config Panel
+// ============================================================
+async function loadEnvConfig() {
+    try {
+        const r = await fetch('/api/admin/environment-config', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') } });
+        const data = await r.json();
+        const el = document.getElementById('env-config-content');
+        if (!el) return;
+        let html = '<div class="env-config-grid">';
+        html += '<div class="env-config-stat"><span class="env-config-val">' + data.total_configured + '</span><span class="env-config-label">Configured</span></div>';
+        html += '<div class="env-config-stat"><span class="env-config-val">' + Object.keys(data.defaults).length + '</span><span class="env-config-label">Available</span></div>';
+        html += '<div class="env-config-stat"><span class="env-config-val">' + Object.keys(data.overrides).length + '</span><span class="env-config-label">Overrides</span></div>';
+        html += '</div>';
+        html += '<table class="env-config-table"><tr><th>Key</th><th>Value</th><th>Default</th><th>Status</th></tr>';
+        for (const [key, def] of Object.entries(data.defaults)) {
+            const current = data.environment[key] || '';
+            const isOverride = data.overrides[key] !== undefined;
+            const status = isOverride ? '<span class="env-override">override</span>' : (current ? '<span class="env-active">active</span>' : '<span class="env-default">default</span>');
+            html += '<tr><td><code>' + key + '</code></td><td>' + (current || '<em>' + def + '</em>') + '</td><td>' + def + '</td><td>' + status + '</td></tr>';
+        }
+        html += '</table>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Env config load error:', e); }
+}
+document.getElementById('env-config-refresh')?.addEventListener('click', loadEnvConfig);
+setTimeout(loadEnvConfig, 2200);
+
+// ============================================================
+// Admin: Session Analytics Dashboard
+// ============================================================
+async function loadSessionAnalytics() {
+    try {
+        const r = await fetch('/api/admin/session-analytics', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') } });
+        const data = await r.json();
+        const el = document.getElementById('session-analytics-content');
+        if (!el) return;
+        let html = '<div class="sa-stats-grid">';
+        html += '<div class="sa-stat"><span class="sa-stat-val">' + data.total_sessions + '</span><span class="sa-stat-label">Sessions</span></div>';
+        html += '<div class="sa-stat"><span class="sa-stat-val">' + data.total_messages + '</span><span class="sa-stat-label">Messages</span></div>';
+        html += '<div class="sa-stat"><span class="sa-stat-val">' + data.avg_messages_per_session + '</span><span class="sa-stat-label">Avg Msgs/Session</span></div>';
+        html += '<div class="sa-stat"><span class="sa-stat-val">' + (data.storage.total_bytes / 1024).toFixed(1) + 'KB</span><span class="sa-stat-label">Total Storage</span></div>';
+        html += '</div>';
+        // Distribution bar
+        const dist = data.sessions_distribution;
+        const total = Math.max(data.total_sessions, 1);
+        html += '<div class="sa-dist-section"><h4>Session Distribution</h4><div class="sa-dist-bar">';
+        html += '<div class="sa-dist-seg sa-dist-empty" style="width:' + (dist.empty/total*100) + '%" title="Empty: ' + dist.empty + '"></div>';
+        html += '<div class="sa-dist-seg sa-dist-short" style="width:' + (dist.short/total*100) + '%" title="Short: ' + dist.short + '"></div>';
+        html += '<div class="sa-dist-seg sa-dist-medium" style="width:' + (dist.medium/total*100) + '%" title="Medium: ' + dist.medium + '"></div>';
+        html += '<div class="sa-dist-seg sa-dist-long" style="width:' + (dist.long/total*100) + '%" title="Long: ' + dist.long + '"></div>';
+        html += '</div><div class="sa-dist-legend">';
+        html += '<span class="sa-legend sa-dist-empty">Empty: ' + dist.empty + '</span>';
+        html += '<span class="sa-legend sa-dist-short">Short: ' + dist.short + '</span>';
+        html += '<span class="sa-legend sa-dist-medium">Medium: ' + dist.medium + '</span>';
+        html += '<span class="sa-legend sa-dist-long">Long: ' + dist.long + '</span>';
+        html += '</div></div>';
+        // Popular features
+        if (data.popular_analysis_features.length) {
+            html += '<div class="sa-features"><h4>Popular Analysis Features</h4>';
+            for (const f of data.popular_analysis_features) {
+                const name = f.endpoint.split('/').pop().replace(/-/g, ' ');
+                html += '<div class="sa-feat-row"><span class="sa-feat-name">' + name + '</span><span class="sa-feat-hits">' + f.hits + ' hits</span></div>';
+            }
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { console.error('Session analytics load error:', e); }
+}
+document.getElementById('session-analytics-refresh')?.addEventListener('click', loadSessionAnalytics);
+setTimeout(loadSessionAnalytics, 2400);

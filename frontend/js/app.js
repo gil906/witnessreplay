@@ -7931,7 +7931,12 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/confidence': async () => { await this._showConfidenceMap(); },
         '/witnessprofile': async () => { await this._showWitnessProfile(); },
         '/segments': async () => { await this._showTopicSegments(); },
-        '/weakpoints': async () => { await this._showCrossExamWeaknesses(); }
+        '/weakpoints': async () => { await this._showCrossExamWeaknesses(); },
+        '/deception': async () => { await this._showDeceptionIndicators(); },
+        '/consistency': async () => { await this._showConsistencyScore(); },
+        '/argument': async () => { await this._showLegalArguments(); },
+        '/gapanalysis': async () => { await this._showTestimonyGaps(); },
+        '/matrixcompare': async () => { await this._showComparisonMatrix(); }
     };
     
     const handler = commands[cmd];
@@ -8081,7 +8086,12 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/exhibits', desc: 'Deposition exhibit tracker' },
         { cmd: '/memory', desc: 'Witness memory quality' },
         { cmd: '/issues', desc: 'Legal issue spotter' },
-        { cmd: '/redline', desc: 'Self-contradiction finder' }
+        { cmd: '/redline', desc: 'Self-contradiction finder' },
+        { cmd: '/deception', desc: 'Deception indicator analysis' },
+        { cmd: '/consistency', desc: 'Witness consistency score' },
+        { cmd: '/argument', desc: 'Legal argument builder' },
+        { cmd: '/gapanalysis', desc: 'Testimony gap detector' },
+        { cmd: '/matrixcompare', desc: 'Witness comparison matrix' }
     ];
     
     const filter = val.toLowerCase();
@@ -12668,4 +12678,190 @@ WitnessReplayApp.prototype._showCrossExamWeaknesses = async function() {
         html += `<div class="xweak-footer">${data.segments_analyzed} segments analyzed</div></div>`;
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not find cross-exam weaknesses.'); }
+};
+
+// ============================================================
+// Feature: Deception Indicator Analyzer
+// ============================================================
+WitnessReplayApp.prototype._showDeceptionIndicators = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🎭 Analyzing deception indicators...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/deception-indicators`);
+        const data = await r.json();
+        let html = `<div class="deception-container"><h3>🎭 Deception Indicator Analysis</h3>`;
+        html += `<div class="deception-summary">`;
+        html += `<div class="deception-score-ring deception-risk-${data.risk_level}"><span class="deception-score-val">${data.deception_score}</span><span class="deception-score-label">Deception Score</span></div>`;
+        html += `<div class="deception-totals">`;
+        html += `<div class="deception-total-item"><span class="deception-total-val">${data.totals.hedging}</span><span>Hedging</span></div>`;
+        html += `<div class="deception-total-item"><span class="deception-total-val">${data.totals.distancing}</span><span>Distancing</span></div>`;
+        html += `<div class="deception-total-item"><span class="deception-total-val">${data.totals.truth_qualifiers}</span><span>Truth Qualifiers</span></div>`;
+        html += `<div class="deception-total-item"><span class="deception-total-val">${data.totals.tense_shifts}</span><span>Tense Shifts</span></div>`;
+        html += `</div></div>`;
+        html += `<div class="deception-risk-badge deception-risk-${data.risk_level}">Risk Level: ${data.risk_level.toUpperCase()}</div>`;
+        if (data.indicators.length) {
+            html += `<div class="deception-indicators"><h4>Detected Indicators</h4>`;
+            for (const ind of data.indicators) {
+                html += `<div class="deception-ind-card deception-sev-${ind.severity}"><div class="deception-ind-header"><span class="deception-ind-type">${ind.type.replace(/_/g,' ')}</span><span class="deception-ind-count">${ind.count} occurrences</span><span class="deception-ind-sev">${ind.severity}</span></div><p class="deception-ind-desc">${ind.description}</p></div>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<div class="deception-empty">✅ No significant deception indicators detected.</div>`;
+        }
+        html += `<div class="deception-rec">${data.recommendation}</div>`;
+        html += `<div class="deception-footer">${data.word_count} words analyzed</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze deception indicators.'); }
+};
+
+// ============================================================
+// Feature: Witness Consistency Score
+// ============================================================
+WitnessReplayApp.prototype._showConsistencyScore = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🔗 Calculating consistency score...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/consistency-score`);
+        const data = await r.json();
+        let html = `<div class="consist-container"><h3>🔗 Witness Consistency Score</h3>`;
+        html += `<div class="consist-hero">`;
+        html += `<div class="consist-grade consist-grade-${data.grade}">${data.grade}</div>`;
+        html += `<div class="consist-score-bar"><div class="consist-score-fill" style="width:${data.consistency_score}%"></div><span class="consist-score-text">${data.consistency_score}%</span></div>`;
+        html += `<div class="consist-assess">${data.assessment}</div>`;
+        html += `</div>`;
+        html += `<div class="consist-stats">`;
+        html += `<div class="consist-stat"><span class="consist-stat-val">${data.total_claims}</span><span>Total Claims</span></div>`;
+        html += `<div class="consist-stat"><span class="consist-stat-val">${data.repeated_themes}</span><span>Consistent Themes</span></div>`;
+        html += `<div class="consist-stat"><span class="consist-stat-val consist-contradictions">${data.contradictions_found}</span><span>Contradictions</span></div>`;
+        html += `</div>`;
+        if (data.contradiction_details.length) {
+            html += `<div class="consist-details"><h4>Flagged Contradictions</h4>`;
+            for (const c of data.contradiction_details.slice(0,5)) {
+                html += `<div class="consist-contra-card"><div class="consist-contra-a">A: "${c.statement_a}"</div><div class="consist-contra-vs">vs</div><div class="consist-contra-b">B: "${c.statement_b}"</div><div class="consist-contra-sim">Similarity: ${(c.similarity*100).toFixed(0)}%</div></div>`;
+            }
+            html += `</div>`;
+        }
+        html += `<div class="consist-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate consistency score.'); }
+};
+
+// ============================================================
+// Feature: Legal Argument Builder
+// ============================================================
+WitnessReplayApp.prototype._showLegalArguments = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('⚖️ Building legal arguments...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/legal-arguments`);
+        const data = await r.json();
+        let html = `<div class="legarg-container"><h3>⚖️ Legal Argument Builder</h3>`;
+        html += `<div class="legarg-strength">`;
+        html += `<div class="legarg-strength-bar"><div class="legarg-strength-fill" style="width:${data.argument_strength}%"></div></div>`;
+        html += `<span class="legarg-strength-label">Argument Strength: ${data.argument_strength}%</span>`;
+        html += `</div>`;
+        html += `<div class="legarg-counts">`;
+        html += `<span class="legarg-count-badge legarg-fact">Facts: ${data.totals.factual_assertions}</span>`;
+        html += `<span class="legarg-count-badge legarg-opinion">Opinions: ${data.totals.opinions}</span>`;
+        html += `<span class="legarg-count-badge legarg-admission">Admissions: ${data.totals.admissions}</span>`;
+        html += `</div>`;
+        if (data.supporting_facts.length) {
+            html += `<div class="legarg-section"><h4>✅ Supporting Facts</h4>`;
+            for (const f of data.supporting_facts) { html += `<div class="legarg-item legarg-fact-item">"${f.text}"</div>`; }
+            html += `</div>`;
+        }
+        if (data.weaknesses.length) {
+            html += `<div class="legarg-section"><h4>⚠️ Weaknesses (Opinion-Based)</h4>`;
+            for (const w of data.weaknesses) { html += `<div class="legarg-item legarg-weak-item">"${w.text}"</div>`; }
+            html += `</div>`;
+        }
+        if (data.key_admissions.length) {
+            html += `<div class="legarg-section"><h4>🎯 Key Admissions</h4>`;
+            for (const a of data.key_admissions) { html += `<div class="legarg-item legarg-admit-item">"${a.text}"</div>`; }
+            html += `</div>`;
+        }
+        if (data.redirect_questions.length) {
+            html += `<div class="legarg-section"><h4>❓ Suggested Redirect Questions</h4>`;
+            for (const q of data.redirect_questions) { html += `<div class="legarg-question"><span class="legarg-q-icon">→</span>${q.question}<span class="legarg-q-target">(${q.targets.replace(/_/g,' ')})</span></div>`; }
+            html += `</div>`;
+        }
+        html += `<div class="legarg-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build legal arguments.'); }
+};
+
+// ============================================================
+// Feature: Testimony Gap Detector
+// ============================================================
+WitnessReplayApp.prototype._showTestimonyGaps = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        this.displaySystemMessage('🕳️ Detecting testimony gaps...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/testimony-gaps`);
+        const data = await r.json();
+        let html = `<div class="tgap-container"><h3>🕳️ Testimony Gap Detector</h3>`;
+        html += `<div class="tgap-hero">`;
+        html += `<div class="tgap-coverage-ring tgap-${data.completeness}"><span class="tgap-cov-val">${data.coverage_pct}%</span><span class="tgap-cov-label">Coverage</span></div>`;
+        html += `<div class="tgap-meta">`;
+        html += `<div class="tgap-completeness tgap-${data.completeness}">${data.completeness.toUpperCase()}</div>`;
+        html += `<div class="tgap-stat-row"><span>Areas Covered:</span><span>${data.totals.covered}/${data.totals.total_areas}</span></div>`;
+        html += `<div class="tgap-stat-row"><span>Critical Gaps:</span><span class="tgap-crit">${data.totals.critical_gaps}</span></div>`;
+        html += `<div class="tgap-stat-row"><span>High-Priority Gaps:</span><span class="tgap-high">${data.totals.high_gaps}</span></div>`;
+        html += `</div></div>`;
+        if (data.gaps.length) {
+            html += `<div class="tgap-gaps"><h4>Gaps Found</h4>`;
+            for (const g of data.gaps) {
+                html += `<div class="tgap-gap-card tgap-imp-${g.importance}"><div class="tgap-gap-header"><span class="tgap-gap-area">${g.area.replace(/_/g,' ')}</span><span class="tgap-gap-imp">${g.importance}</span></div><div class="tgap-gap-q">💡 ${g.suggested_question}</div></div>`;
+            }
+            html += `</div>`;
+        }
+        if (data.covered_areas.length) {
+            html += `<div class="tgap-covered"><h4>✅ Covered Areas</h4><div class="tgap-covered-grid">`;
+            for (const c of data.covered_areas) {
+                html += `<span class="tgap-cov-badge">${c.area.replace(/_/g,' ')} (${c.keyword_hits} hits)</span>`;
+            }
+            html += `</div></div>`;
+        }
+        html += `<div class="tgap-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not detect testimony gaps.'); }
+};
+
+// ============================================================
+// Feature: Witness Comparison Matrix
+// ============================================================
+WitnessReplayApp.prototype._showComparisonMatrix = async function() {
+    if (!this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    const otherId = prompt('Enter the other session ID to compare:');
+    if (!otherId) { this.displaySystemMessage('⚠️ Comparison cancelled.'); return; }
+    try {
+        this.displaySystemMessage('📊 Building comparison matrix...');
+        const r = await fetch(`/api/sessions/${this.sessionId}/comparison-matrix/${otherId}`);
+        const data = await r.json();
+        let html = `<div class="cmatrix-container"><h3>📊 Witness Comparison Matrix</h3>`;
+        html += `<div class="cmatrix-overall">`;
+        html += `<div class="cmatrix-score-card"><span class="cmatrix-label">Witness A</span><span class="cmatrix-overall-val">${data.overall_scores.witness_a}</span></div>`;
+        html += `<div class="cmatrix-vs">VS</div>`;
+        html += `<div class="cmatrix-score-card"><span class="cmatrix-label">Witness B</span><span class="cmatrix-overall-val">${data.overall_scores.witness_b}</span></div>`;
+        html += `<div class="cmatrix-winner">Stronger: Witness ${data.overall_scores.stronger_witness}</div>`;
+        html += `</div>`;
+        html += `<div class="cmatrix-grid"><h4>Dimensional Comparison</h4><table class="cmatrix-table">`;
+        html += `<tr><th>Dimension</th><th>Witness A</th><th>Witness B</th><th>Advantage</th></tr>`;
+        for (const c of data.comparison) {
+            html += `<tr><td>${c.dimension}</td><td>${c.witness_a}</td><td>${c.witness_b}</td><td class="cmatrix-adv-${c.advantage.toLowerCase()}">${c.advantage}</td></tr>`;
+        }
+        html += `</table></div>`;
+        html += `<div class="cmatrix-detail">`;
+        html += `<div class="cmatrix-detail-col"><h4>Witness A Stats</h4>`;
+        html += `<div>Words: ${data.witness_a_stats.word_count}</div>`;
+        html += `<div>Sentences: ${data.witness_a_stats.sentence_count}</div>`;
+        html += `<div>Avg Sent Length: ${data.witness_a_stats.avg_sentence_length}</div></div>`;
+        html += `<div class="cmatrix-detail-col"><h4>Witness B Stats</h4>`;
+        html += `<div>Words: ${data.witness_b_stats.word_count}</div>`;
+        html += `<div>Sentences: ${data.witness_b_stats.sentence_count}</div>`;
+        html += `<div>Avg Sent Length: ${data.witness_b_stats.avg_sentence_length}</div></div>`;
+        html += `</div>`;
+        html += `<div class="cmatrix-rec">${data.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build comparison matrix.'); }
 };
