@@ -14492,3 +14492,184 @@ WitnessApp.prototype.runDefenseStrategyPreview = async function() {
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not preview defense strategies.'); }
 };
+
+// ─── Prosecution Strength Score ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runProsecutionStrength = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('⚖️ Calculating prosecution strength score…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/prosecution-strength`);
+        const d = await r.json();
+        let html = `<div class="prosstr-container"><h3>⚖️ Prosecution Strength Score</h3>`;
+        html += `<div class="prosstr-header">`;
+        html += `<div class="prosstr-score" style="color:${d.strength_color}">${d.overall_strength_score}<span class="prosstr-unit">/100</span></div>`;
+        html += `<div class="prosstr-label" style="color:${d.strength_color}">${d.strength_label}</div>`;
+        html += `<div class="prosstr-prob">Conviction Probability: <strong style="color:${d.strength_color}">${d.conviction_probability}%</strong></div>`;
+        html += `</div>`;
+        html += `<div class="prosstr-verdict">${d.verdict}</div>`;
+        html += `<div class="prosstr-factors">`;
+        d.factors.forEach(f => {
+            const fc = f.score >= 70 ? '#22c55e' : f.score >= 50 ? '#eab308' : '#ef4444';
+            const weightedScore = Math.round(f.score * f.weight);
+            html += `<div class="prosstr-factor"><div class="prosstr-factor-top">${f.icon} <strong>${f.factor}</strong>`;
+            html += `<span class="prosstr-fscore" style="color:${fc}">${f.score}</span></div>`;
+            html += `<div class="prosstr-bar"><div class="prosstr-fill" style="width:${f.score}%;background:${fc}"></div></div>`;
+            html += `<div class="prosstr-desc">${f.description}</div>`;
+            html += `<div class="prosstr-weight">Weight: ${Math.round(f.weight*100)}% · Contribution: ${weightedScore} pts</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="prosstr-actions"><h4>⚡ Recommended Actions</h4><ul>`;
+        d.recommended_actions.forEach(a => { html += `<li>${a}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate prosecution strength.'); }
+};
+
+// ─── Witness Coaching Detection ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runCoachingDetection = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('🎓 Scanning for coaching indicators…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/coaching-detection`);
+        const d = await r.json();
+        let html = `<div class="coaching-container"><h3>🎓 Witness Coaching Detection</h3>`;
+        html += `<div class="coaching-header">`;
+        html += `<div class="coaching-score" style="color:${d.risk_color}">${d.coaching_risk_score}<span class="coaching-unit">/100</span></div>`;
+        html += `<div class="coaching-risk" style="color:${d.risk_color};border-color:${d.risk_color}">${d.risk_level} COACHING RISK</div>`;
+        html += `</div>`;
+        html += `<div class="coaching-interp">${d.interpretation}</div>`;
+        html += `<div class="coaching-legal">⚖️ ${d.legal_note}</div>`;
+        html += `<div class="coaching-grid">`;
+        d.indicators.forEach(ind => {
+            const ic = ind.score >= 60 ? '#ef4444' : ind.score >= 40 ? '#f97316' : '#22c55e';
+            html += `<div class="coaching-card"><div class="coaching-card-top">${ind.icon} <strong>${ind.indicator}</strong>`;
+            html += `<span class="coaching-pct" style="color:${ic}">${ind.score}%</span></div>`;
+            html += `<div class="coaching-bar"><div class="coaching-fill" style="width:${ind.score}%;background:${ic}"></div></div>`;
+            html += `<div class="coaching-desc">${ind.description}</div>`;
+            html += `<div class="coaching-examples">${ind.examples.join(' · ')}</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="coaching-actions"><h4>⚡ Recommended Actions</h4><ul>`;
+        d.recommended_actions.forEach(a => { html += `<li>${a}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not scan for coaching indicators.'); }
+};
+
+// ─── Alibi Verification Analysis ──────────────────────────────────────────────
+WitnessReplayApp.prototype.runAlibiVerification = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('🔍 Verifying alibi claims…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/alibi-verification`);
+        const d = await r.json();
+        let html = `<div class="alibi-container"><h3>🔍 Alibi Verification Analysis</h3>`;
+        html += `<div class="alibi-header">`;
+        html += `<div class="alibi-score" style="color:${d.verdict_color}">${d.alibi_strength_score}<span class="alibi-unit">/100</span></div>`;
+        html += `<div class="alibi-verdict" style="color:${d.verdict_color}">${d.alibi_verdict}</div>`;
+        html += `</div>`;
+        html += `<div class="alibi-meta">`;
+        html += `<span class="alibi-badge">📂 ${d.primary_alibi_type}</span>`;
+        html += `<span class="alibi-badge">⏱️ ${d.time_window_covered}</span>`;
+        html += `<span class="alibi-badge">🗺️ Specificity: ${d.geographic_specificity}</span>`;
+        html += `<span class="alibi-badge">✅ ${d.corroboration_count} Sources</span>`;
+        html += `</div>`;
+        html += `<div class="alibi-summary">${d.summary}</div>`;
+        html += `<h4>📎 Corroboration Sources</h4><div class="alibi-sources">`;
+        d.corroboration_sources.forEach(s => {
+            const sc = s.available ? (s.reliability >= 70 ? '#22c55e' : '#eab308') : '#94a3b8';
+            html += `<div class="alibi-source ${s.available ? 'alibi-avail' : 'alibi-unavail'}">`;
+            html += `<span>${s.icon} ${s.source}</span>`;
+            html += `<span style="color:${sc}">${s.available ? `✅ ${s.reliability}%` : '❌ N/A'}</span></div>`;
+        });
+        html += `</div>`;
+        if (d.vulnerabilities.length > 0) {
+            html += `<div class="alibi-vulns"><h4>⚠️ Vulnerabilities</h4><ul>`;
+            d.vulnerabilities.forEach(v => { html += `<li>${v}</li>`; });
+            html += `</ul></div>`;
+        }
+        html += `<div class="alibi-attacks"><h4>🎯 Prosecution Attack Vectors</h4><ul>`;
+        d.prosecution_attacks.forEach(a => { html += `<li>${a}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not verify alibi claims.'); }
+};
+
+// ─── Expert Witness Assessment ─────────────────────────────────────────────────
+WitnessReplayApp.prototype.runExpertWitnessNeeds = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('🔬 Assessing expert witness needs…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/expert-witness-needs`);
+        const d = await r.json();
+        let html = `<div class="expert-container"><h3>🔬 Expert Witness Assessment</h3>`;
+        html += `<div class="expert-header">`;
+        html += `<div class="expert-stat"><span class="expert-num" style="color:${d.need_color}">${d.overall_expert_need_score}</span><span class="expert-lbl">Need Score</span></div>`;
+        html += `<div class="expert-stat"><span class="expert-num">${d.total_expert_count_recommended}</span><span class="expert-lbl">Recommended</span></div>`;
+        html += `<div class="expert-stat"><span class="expert-num">$${(d.estimated_total_cost_usd/1000).toFixed(0)}k</span><span class="expert-lbl">Est. Cost</span></div>`;
+        html += `</div>`;
+        html += `<div class="expert-summary">${d.summary}</div>`;
+        html += `<div class="expert-domains">`;
+        d.expert_domains.forEach(e => {
+            const nc = e.need_score >= 60 ? '#ef4444' : e.need_score >= 40 ? '#f97316' : '#22c55e';
+            const avColor = e.availability === 'High' ? '#22c55e' : e.availability === 'Medium' ? '#eab308' : '#ef4444';
+            html += `<div class="expert-card"><div class="expert-card-top">${e.icon} <strong>${e.domain}</strong>`;
+            html += `<span class="expert-need" style="color:${nc}">${e.need_score}/100</span></div>`;
+            html += `<div class="expert-bar"><div class="expert-fill" style="width:${e.need_score}%;background:${nc}"></div></div>`;
+            html += `<div class="expert-desc">${e.description}</div>`;
+            html += `<div class="expert-meta">`;
+            html += `<span>Impact: <strong>${e.impact}</strong></span>`;
+            html += `<span style="color:${avColor}">Availability: ${e.availability}</span>`;
+            html += `<span>~$${e.estimated_cost_usd.toLocaleString()}</span>`;
+            html += `</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="expert-notes"><h4>💡 Strategic Notes</h4><ul>`;
+        d.strategic_notes.forEach(n => { html += `<li>${n}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess expert witness needs.'); }
+};
+
+// ─── Temporal Consistency Check ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runTemporalConsistency = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('📅 Checking temporal consistency…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/temporal-consistency`);
+        const d = await r.json();
+        let html = `<div class="temporal-container"><h3>📅 Temporal Consistency Check</h3>`;
+        html += `<div class="temporal-header">`;
+        html += `<div class="temporal-score" style="color:${d.consistency_color}">${d.consistency_score}<span class="temporal-unit">/100</span></div>`;
+        html += `<div class="temporal-label" style="color:${d.consistency_color}">${d.consistency_label}</div>`;
+        html += `</div>`;
+        html += `<div class="temporal-stats">`;
+        html += `<div class="temporal-stat"><span class="temporal-num">${d.total_events_analyzed}</span><span class="temporal-lbl">Events</span></div>`;
+        html += `<div class="temporal-stat"><span class="temporal-num" style="color:#ef4444">${d.inconsistencies_found}</span><span class="temporal-lbl">Inconsistent</span></div>`;
+        html += `<div class="temporal-stat"><span class="temporal-num" style="color:#f97316">${d.gaps_detected}</span><span class="temporal-lbl">Gaps</span></div>`;
+        html += `<div class="temporal-stat"><span class="temporal-num">${d.inconsistency_rate}%</span><span class="temporal-lbl">Error Rate</span></div>`;
+        html += `</div>`;
+        html += `<div class="temporal-assess">${d.assessment}</div>`;
+        html += `<h4>🗓️ Timeline Events</h4><div class="temporal-events">`;
+        d.timeline_events.forEach(ev => {
+            const ec = ev.consistency === 'inconsistent' ? '#ef4444' : '#22c55e';
+            html += `<div class="temporal-event" style="border-left:3px solid ${ec}">`;
+            html += `<div class="temporal-event-top"><span class="temporal-seq">#${ev.sequence}</span>`;
+            html += `<span class="temporal-time">⏰ ${ev.stated_time}</span>`;
+            html += `<span class="temporal-status" style="color:${ec}">${ev.consistency.toUpperCase()}</span>`;
+            html += `<span class="temporal-conf">${ev.confidence}% conf</span></div>`;
+            html += `<div class="temporal-event-name">${ev.event}</div>`;
+            html += `<div class="temporal-event-note">${ev.note}</div></div>`;
+        });
+        html += `</div>`;
+        if (d.cross_examination_targets && d.cross_examination_targets.length > 0) {
+            html += `<div class="temporal-cross"><h4>🎯 Cross-Examination Targets</h4><ul>`;
+            d.cross_examination_targets.forEach(t => { html += `<li>${t}</li>`; });
+            html += `</ul></div>`;
+        }
+        html += `<div class="temporal-recs"><h4>💡 Recommendations</h4><ul>`;
+        d.recommendations.forEach(rec => { html += `<li>${rec}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not check temporal consistency.'); }
+};

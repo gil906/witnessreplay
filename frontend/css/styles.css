@@ -15047,3 +15047,110 @@ textarea:disabled {
 .defense-counter { font-size: 0.75rem; color: #60a5fa; line-height: 1.4; font-style: italic; }
 .defense-priority h4 { font-size: 0.82rem; margin-bottom: 6px; }
 .defense-priority li { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+/* ── Prosecution Strength Score ── */
+.prosstr-container { padding: 1rem; }
+.prosstr-container h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+.prosstr-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.prosstr-score { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+.prosstr-unit { font-size: 1rem; color: #94a3b8; }
+.prosstr-label { font-size: 1.1rem; font-weight: 700; }
+.prosstr-prob { font-size: 0.85rem; color: #94a3b8; }
+.prosstr-verdict { background: rgba(255,255,255,0.06); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 0.75rem; border-left: 3px solid #60a5fa; }
+.prosstr-factors { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.6rem; margin-bottom: 0.75rem; }
+.prosstr-factor { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.6rem; }
+.prosstr-factor-top { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; font-size: 0.85rem; }
+.prosstr-fscore { margin-left: auto; font-weight: 700; }
+.prosstr-bar { height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-bottom: 0.3rem; }
+.prosstr-fill { height: 100%; border-radius: 3px; transition: width 0.6s; }
+.prosstr-desc { font-size: 0.78rem; color: #94a3b8; }
+.prosstr-weight { font-size: 0.72rem; color: #64748b; margin-top: 0.2rem; }
+.prosstr-actions h4 { font-size: 0.9rem; margin-bottom: 0.4rem; }
+.prosstr-actions ul { padding-left: 1.2rem; font-size: 0.83rem; color: #cbd5e1; }
+.prosstr-actions li { margin-bottom: 0.3rem; }
+
+/* ── Witness Coaching Detection ── */
+.coaching-container { padding: 1rem; }
+.coaching-container h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+.coaching-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+.coaching-score { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+.coaching-unit { font-size: 1rem; color: #94a3b8; }
+.coaching-risk { font-size: 0.82rem; font-weight: 700; padding: 0.3rem 0.7rem; border: 1.5px solid; border-radius: 20px; }
+.coaching-interp { background: rgba(255,255,255,0.06); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 0.5rem; }
+.coaching-legal { font-size: 0.78rem; color: #94a3b8; background: rgba(250,204,21,0.08); border-radius: 5px; padding: 0.4rem 0.6rem; margin-bottom: 0.75rem; }
+.coaching-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.6rem; margin-bottom: 0.75rem; }
+.coaching-card { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.6rem; }
+.coaching-card-top { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+.coaching-pct { margin-left: auto; font-weight: 700; }
+.coaching-bar { height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-bottom: 0.3rem; }
+.coaching-fill { height: 100%; border-radius: 3px; }
+.coaching-desc { font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.2rem; }
+.coaching-examples { font-size: 0.72rem; color: #64748b; }
+.coaching-actions h4 { font-size: 0.9rem; margin-bottom: 0.4rem; }
+.coaching-actions ul { padding-left: 1.2rem; font-size: 0.83rem; color: #cbd5e1; }
+.coaching-actions li { margin-bottom: 0.3rem; }
+
+/* ── Alibi Verification ── */
+.alibi-container { padding: 1rem; }
+.alibi-container h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+.alibi-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; }
+.alibi-score { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+.alibi-unit { font-size: 1rem; color: #94a3b8; }
+.alibi-verdict { font-size: 1rem; font-weight: 700; }
+.alibi-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.alibi-badge { background: rgba(255,255,255,0.08); border-radius: 12px; padding: 0.2rem 0.6rem; font-size: 0.75rem; color: #cbd5e1; }
+.alibi-summary { background: rgba(255,255,255,0.06); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 0.75rem; }
+.alibi-sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.4rem; margin-bottom: 0.75rem; }
+.alibi-source { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.6rem; border-radius: 5px; font-size: 0.82rem; }
+.alibi-avail { background: rgba(34,197,94,0.08); }
+.alibi-unavail { background: rgba(148,163,184,0.06); opacity: 0.7; }
+.alibi-vulns h4, .alibi-attacks h4 { font-size: 0.9rem; margin-bottom: 0.4rem; }
+.alibi-vulns ul, .alibi-attacks ul { padding-left: 1.2rem; font-size: 0.83rem; color: #cbd5e1; }
+.alibi-vulns li, .alibi-attacks li { margin-bottom: 0.25rem; }
+.alibi-vulns { margin-bottom: 0.6rem; }
+
+/* ── Expert Witness Assessment ── */
+.expert-container { padding: 1rem; }
+.expert-container h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+.expert-header { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.expert-stat { display: flex; flex-direction: column; align-items: center; background: rgba(255,255,255,0.05); padding: 0.5rem 0.8rem; border-radius: 8px; min-width: 80px; }
+.expert-num { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+.expert-lbl { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.2rem; }
+.expert-summary { background: rgba(255,255,255,0.06); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 0.75rem; }
+.expert-domains { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.6rem; margin-bottom: 0.75rem; }
+.expert-card { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.6rem; }
+.expert-card-top { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+.expert-need { margin-left: auto; font-weight: 700; }
+.expert-bar { height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-bottom: 0.35rem; }
+.expert-fill { height: 100%; border-radius: 3px; }
+.expert-desc { font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.3rem; }
+.expert-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem; color: #64748b; }
+.expert-notes h4 { font-size: 0.9rem; margin-bottom: 0.4rem; }
+.expert-notes ul { padding-left: 1.2rem; font-size: 0.83rem; color: #cbd5e1; }
+.expert-notes li { margin-bottom: 0.3rem; }
+
+/* ── Temporal Consistency Check ── */
+.temporal-container { padding: 1rem; }
+.temporal-container h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+.temporal-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; }
+.temporal-score { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+.temporal-unit { font-size: 1rem; color: #94a3b8; }
+.temporal-label { font-size: 1.1rem; font-weight: 700; }
+.temporal-stats { display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.temporal-stat { display: flex; flex-direction: column; align-items: center; background: rgba(255,255,255,0.05); padding: 0.4rem 0.7rem; border-radius: 8px; }
+.temporal-num { font-size: 1.4rem; font-weight: 800; }
+.temporal-lbl { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
+.temporal-assess { background: rgba(255,255,255,0.06); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 0.75rem; }
+.temporal-events { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.75rem; }
+.temporal-event { background: rgba(255,255,255,0.04); border-radius: 5px; padding: 0.5rem 0.7rem; }
+.temporal-event-top { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; margin-bottom: 0.2rem; flex-wrap: wrap; }
+.temporal-seq { font-weight: 700; color: #94a3b8; min-width: 24px; }
+.temporal-time { color: #60a5fa; font-weight: 600; }
+.temporal-status { font-weight: 700; font-size: 0.72rem; }
+.temporal-conf { margin-left: auto; color: #64748b; font-size: 0.72rem; }
+.temporal-event-name { font-size: 0.83rem; font-weight: 600; margin-bottom: 0.15rem; }
+.temporal-event-note { font-size: 0.75rem; color: #94a3b8; }
+.temporal-cross h4, .temporal-recs h4 { font-size: 0.9rem; margin-bottom: 0.4rem; }
+.temporal-cross ul, .temporal-recs ul { padding-left: 1.2rem; font-size: 0.83rem; color: #cbd5e1; }
+.temporal-cross li, .temporal-recs li { margin-bottom: 0.3rem; }
+.temporal-cross { margin-bottom: 0.6rem; }

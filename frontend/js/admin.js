@@ -7099,3 +7099,112 @@ document.getElementById('case-complexity-refresh')?.addEventListener('click', lo
 document.getElementById('investigation-quality-refresh')?.addEventListener('click', loadInvestigationQualityPanel);
 setTimeout(loadCaseComplexityPanel, 7000);
 setTimeout(loadInvestigationQualityPanel, 8500);
+
+// ─── Testimony Length Distribution ────────────────────────────────────────────
+async function loadTestimonyDistribution() {
+    const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+    const res = await fetch('/api/admin/testimony-distribution', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { return '<p class="admin-error">Could not load testimony distribution.</p>'; }
+    const d = await res.json();
+    let html = `<div class="admin-metric-grid">`;
+    html += `<div class="admin-metric"><span class="admin-metric-val">${d.avg_session_duration_min} min</span><span class="admin-metric-lbl">Avg Duration</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val">${d.avg_exchanges_per_session}</span><span class="admin-metric-lbl">Avg Exchanges</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val">${d.longest_session_min} min</span><span class="admin-metric-lbl">Longest</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val">${d.peak_bucket}</span><span class="admin-metric-lbl">Peak Range</span></div>`;
+    html += `</div>`;
+    html += `<p style="font-size:0.85rem;color:#94a3b8;margin-bottom:0.75rem">${d.summary}</p>`;
+    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📊 Length Distribution (${d.total_sessions} sessions)</h4>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem">`;
+    const maxCount = Math.max(...d.length_distribution.map(b => b.count));
+    d.length_distribution.forEach(b => {
+        const pct = maxCount > 0 ? Math.round(100 * b.count / maxCount) : 0;
+        html += `<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem">`;
+        html += `<span style="min-width:70px;color:#94a3b8">${b.label}</span>`;
+        html += `<div style="flex:1;height:14px;background:rgba(255,255,255,0.08);border-radius:3px">`;
+        html += `<div style="width:${pct}%;height:100%;background:${b.color};border-radius:3px"></div></div>`;
+        html += `<span style="min-width:35px;text-align:right">${b.count}</span>`;
+        html += `<span style="color:#64748b;min-width:50px">${b.avg_exchanges} exch</span></div>`;
+    });
+    html += `</div>`;
+    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📝 Verbosity Breakdown</h4>`;
+    html += `<div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.75rem">`;
+    Object.values(d.verbosity_breakdown).forEach(v => {
+        html += `<div style="background:rgba(255,255,255,0.06);border-radius:6px;padding:0.4rem 0.7rem;font-size:0.82rem">`;
+        html += `<div style="font-weight:700;color:${v.color}">${v.pct}%</div><div style="color:#94a3b8">${v.label}</div></div>`;
+    });
+    html += `</div>`;
+    html += `<div style="font-size:0.78rem;color:#64748b;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem">`;
+    d.recommendations.forEach(r => { html += `<div>• ${r}</div>`; });
+    html += `</div>`;
+    return html;
+}
+
+async function loadTestimonyDistributionPanel() {
+    const el = document.getElementById('testimony-distribution-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadTestimonyDistribution();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load testimony distribution.</p>'; console.error(e); }
+}
+
+// ─── Witness Credibility Trends ────────────────────────────────────────────────
+async function loadCredibilityTrends() {
+    const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+    const res = await fetch('/api/admin/credibility-trends', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { return '<p class="admin-error">Could not load credibility trends.</p>'; }
+    const d = await res.json();
+    const trendColor = d.trend_direction === '↑' ? '#22c55e' : '#ef4444';
+    let html = `<div class="admin-metric-grid">`;
+    html += `<div class="admin-metric"><span class="admin-metric-val">${d.current_avg_credibility}</span><span class="admin-metric-lbl">Avg Credibility</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:${trendColor}">${d.trend_direction}${Math.abs(d.trend_delta)}</span><span class="admin-metric-lbl">vs Last Week</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:#22c55e">${d.high_credibility_count}</span><span class="admin-metric-lbl">High Cred</span></div>`;
+    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:#ef4444">${d.low_credibility_count}</span><span class="admin-metric-lbl">Low Cred</span></div>`;
+    html += `</div>`;
+    html += `<p style="font-size:0.85rem;color:#94a3b8;margin-bottom:0.75rem">${d.summary}</p>`;
+    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📊 Score Distribution</h4>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.75rem">`;
+    d.score_distribution.forEach(s => {
+        const pct = Math.round(100 * s.count / Math.max(d.total_sessions, 1));
+        html += `<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem">`;
+        html += `<span style="min-width:80px;color:#94a3b8">${s.label}</span>`;
+        html += `<div style="flex:1;height:12px;background:rgba(255,255,255,0.08);border-radius:3px">`;
+        html += `<div style="width:${pct}%;height:100%;background:${s.color};border-radius:3px"></div></div>`;
+        html += `<span style="min-width:30px;text-align:right">${s.count}</span>`;
+        html += `<span style="color:#64748b;min-width:35px">${pct}%</span></div>`;
+    });
+    html += `</div>`;
+    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">🔑 Top Credibility Drivers</h4>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.75rem">`;
+    d.top_credibility_drivers.forEach((drv, i) => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05)">`;
+        html += `<span>${i + 1}. ${drv.driver}</span>`;
+        html += `<span style="color:#60a5fa">+${drv.avg_impact} pts · ${drv.sessions_pct}% of sessions</span></div>`;
+    });
+    html += `</div>`;
+    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📈 12-Week Trend</h4>`;
+    html += `<div style="display:flex;gap:0.15rem;align-items:flex-end;height:50px;margin-bottom:0.75rem">`;
+    const maxScore = Math.max(...d.weekly_trend.map(w => w.avg_credibility));
+    d.weekly_trend.forEach(w => {
+        const h = Math.round(50 * w.avg_credibility / maxScore);
+        const c = w.avg_credibility >= 70 ? '#22c55e' : w.avg_credibility >= 50 ? '#eab308' : '#ef4444';
+        html += `<div title="${w.week}: ${w.avg_credibility}" style="flex:1;background:${c};height:${h}px;border-radius:2px 2px 0 0"></div>`;
+    });
+    html += `</div>`;
+    html += `<div style="font-size:0.78rem;color:#64748b;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem">`;
+    d.recommendations.forEach(r => { html += `<div>• ${r}</div>`; });
+    html += `</div>`;
+    return html;
+}
+
+async function loadCredibilityTrendsPanel() {
+    const el = document.getElementById('credibility-trends-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadCredibilityTrends();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load credibility trends.</p>'; console.error(e); }
+}
+
+document.getElementById('testimony-distribution-refresh')?.addEventListener('click', loadTestimonyDistributionPanel);
+document.getElementById('credibility-trends-refresh')?.addEventListener('click', loadCredibilityTrendsPanel);
+setTimeout(loadTestimonyDistributionPanel, 10000);
+setTimeout(loadCredibilityTrendsPanel, 11500);
