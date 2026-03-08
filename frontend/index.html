@@ -407,6 +407,21 @@
                 <div class="keyboard-hint">
                     Press <kbd>Space</kbd> to record · <kbd>Esc</kbd> to cancel · Enable <em>Auto-detect voice</em> for hands-free
                 </div>
+
+                <!-- Quick Analysis Bar -->
+                <div class="quick-analysis-bar" id="quick-analysis-bar" style="display:none;">
+                    <span class="qab-label">Quick Analysis:</span>
+                    <div class="qab-buttons">
+                        <button class="qab-btn" onclick="window.app?._showCredibilityScore?.()" title="Credibility Score" aria-label="Run credibility score">🛡️ Credibility</button>
+                        <button class="qab-btn" onclick="window.app?._showTestimonyDigest?.()" title="Testimony Digest" aria-label="Run testimony digest">📋 Digest</button>
+                        <button class="qab-btn" onclick="window.app?._showBiasAnalysis?.()" title="Cognitive Bias Analysis" aria-label="Run bias analysis">🧠 Bias</button>
+                        <button class="qab-btn" onclick="window.app?._showSettlementRisk?.()" title="Settlement Risk" aria-label="Run settlement risk assessment">⚖️ Settlement</button>
+                        <button class="qab-btn" onclick="window.app?._showGrandJuryReadiness?.()" title="Grand Jury Readiness" aria-label="Run grand jury readiness check">🏛️ Grand Jury</button>
+                        <button class="qab-btn" onclick="window.app?._showStatementImportance?.()" title="Statement Importance Ranking" aria-label="Run statement importance ranking">⭐ Importance</button>
+                        <button class="qab-btn" onclick="window.app?._showTestimonySwot?.()" title="SWOT Analysis" aria-label="Run SWOT analysis">🧩 SWOT</button>
+                        <button class="qab-btn qab-btn-more" id="qab-more-btn" onclick="window.app?.handleSlashCommand?.('/help')" title="More tools (type /help)" aria-label="More analysis tools">⋯ More</button>
+                    </div>
+                </div>
             </section>
 
             <!-- RIGHT COLUMN: Secondary - Scene & Timeline -->

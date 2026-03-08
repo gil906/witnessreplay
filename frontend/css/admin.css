@@ -6533,3 +6533,44 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .shealth-card-val{font-size:1.3em;font-weight:700;color:var(--text-primary,#e2e8f0)}
 .shealth-card-sub{font-size:.7em;color:var(--text-secondary,#64748b)}
 .sys-health-actions{margin-top:10px;display:flex;gap:8px}
+
+/* ── Model Performance Dashboard ── */
+.modperf-summary{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.modperf-stat{flex:1;min-width:80px;text-align:center;background:rgba(255,255,255,.05);border-radius:8px;padding:10px}
+.modperf-num{display:block;font-size:1.2em;font-weight:700;color:var(--accent-primary,#818cf8)}
+.modperf-lbl{font-size:.7em;color:var(--text-secondary,#94a3b8);text-transform:uppercase}
+.modperf-models{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.modperf-model{background:rgba(255,255,255,.04);border-radius:10px;padding:14px}
+.modperf-model-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.modperf-icon{font-size:1.4em}
+.modperf-tier{font-size:.75em;text-transform:uppercase;font-weight:700;margin-left:6px}
+.modperf-uptime{margin-left:auto;font-size:.82em;color:#22c55e;font-weight:600}
+.modperf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.modperf-cell{text-align:center;background:rgba(255,255,255,.05);border-radius:6px;padding:8px 4px}
+.modperf-val{display:block;font-size:1em;font-weight:700;color:var(--text-primary,#e2e8f0)}
+.modperf-cell-lbl{font-size:.68em;color:var(--text-secondary,#94a3b8);text-transform:uppercase}
+.modperf-quality-bar{height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-top:6px}
+.modperf-trends{margin-top:14px}
+.modperf-trends strong{display:block;margin-bottom:10px;color:var(--text-primary,#e2e8f0)}
+.modperf-trend-bars{display:flex;align-items:flex-end;gap:8px;height:90px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:4px}
+.modperf-trend-bar{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px}
+.modperf-tbar-fill{width:100%;border-radius:3px 3px 0 0;min-height:4px;transition:height .3s}
+.modperf-tbar-lbl{font-size:.68em;color:var(--text-secondary,#94a3b8)}
+.modperf-tbar-val{font-size:.68em;color:var(--text-secondary,#94a3b8)}
+
+/* ── Witness Behavior Trends ── */
+.wtrend-summary{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.wtrend-stat{flex:1;min-width:80px;text-align:center;background:rgba(255,255,255,.05);border-radius:8px;padding:10px}
+.wtrend-num{display:block;font-size:1.3em;font-weight:700}
+.wtrend-lbl{font-size:.7em;color:var(--text-secondary,#94a3b8);text-transform:uppercase}
+.wtrend-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+.wtrend-metric{background:rgba(255,255,255,.04);border-radius:8px;padding:10px}
+.wtrend-metric-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.85em;color:var(--text-primary,#e2e8f0)}
+.wtrend-dir{font-size:.78em;font-weight:600;text-transform:capitalize}
+.wtrend-vals{display:flex;justify-content:space-between;align-items:center}
+.wtrend-cur{font-size:1.1em;font-weight:700;color:var(--text-primary,#e2e8f0)}
+.wtrend-chg{font-size:.85em;font-weight:600}
+.wtrend-patterns strong{display:block;margin-bottom:8px;color:var(--text-primary,#e2e8f0)}
+.wtrend-pattern{margin-bottom:10px}
+.wtrend-pat-head{display:flex;justify-content:space-between;font-size:.85em;color:var(--text-secondary,#94a3b8);margin-bottom:4px}
+.wtrend-pat-bar{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}

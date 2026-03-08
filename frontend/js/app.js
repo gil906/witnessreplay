@@ -17,6 +17,12 @@ class WitnessReplayApp {
     constructor() {
         this.ws = null;
         this.sessionId = null;
+        // currentSessionId is an alias for sessionId used by analysis functions
+        Object.defineProperty(this, 'currentSessionId', {
+            get: () => this.sessionId,
+            set: (v) => { this.sessionId = v; },
+            enumerable: true, configurable: true
+        });
         this.audioRecorder = null;
         this.audioVisualizer = null;
         this.isRecording = false;
@@ -2392,6 +2398,10 @@ class WitnessReplayApp {
             this._syncAutoListenChip();
             this._syncSpeakerChip();
             this._syncSpeedButtons();
+
+            // Show quick analysis bar when session is active
+            const qab = document.getElementById('quick-analysis-bar');
+            if (qab) qab.style.display = 'flex';
             
             // Connect WebSocket
             this.connectWebSocket();
@@ -4440,6 +4450,10 @@ class WitnessReplayApp {
             this.loadSessionSketches(sessionId);
             
             this.ui.showToast('Session loaded', 'success');
+
+            // Show quick analysis bar when session is loaded
+            const qab = document.getElementById('quick-analysis-bar');
+            if (qab) qab.style.display = 'flex';
             
         } catch (error) {
             console.error('Error loading session:', error);
@@ -7665,6 +7679,10 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
                 '<code>/casenarr</code> — Case narrative builder<br>' +
                 '<code>/swot</code> — Testimony SWOT analysis<br>' +
                 '<code>/depocostv2</code> — Enhanced depo cost estimate<br>' +
+                '<code>/bias</code> — Cognitive bias analysis<br>' +
+                '<code>/settlement</code> — Settlement risk assessment<br>' +
+                '<code>/grandjury</code> — Grand jury readiness check<br>' +
+                '<code>/stmtimp</code> — Statement importance ranking<br>' +
                 '<code>/help</code> — Show this help'
             );
         },
@@ -8016,7 +8034,11 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/vulnerable': async () => { await this._showVulnerabilityScan(); },
         '/casenarr': async () => { await this._showCaseNarrative(); },
         '/swot': async () => { await this._showTestimonySwot(); },
-        '/depocostv2': async () => { await this._showDepoCostV2(); }
+        '/depocostv2': async () => { await this._showDepoCostV2(); },
+        '/bias': async () => { await this._showBiasAnalysis(); },
+        '/settlement': async () => { await this._showSettlementRisk(); },
+        '/grandjury': async () => { await this._showGrandJuryReadiness(); },
+        '/stmtimp': async () => { await this._showStatementImportance(); }
     };
     
     const handler = commands[cmd];
@@ -8206,7 +8228,11 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/vulnerable', desc: 'Witness vulnerability scan' },
         { cmd: '/casenarr', desc: 'Case narrative builder' },
         { cmd: '/swot', desc: 'Testimony SWOT analysis' },
-        { cmd: '/depocostv2', desc: 'Enhanced deposition cost estimate' }
+        { cmd: '/depocostv2', desc: 'Enhanced deposition cost estimate' },
+        { cmd: '/bias', desc: 'Cognitive bias analysis' },
+        { cmd: '/settlement', desc: 'Settlement risk assessment' },
+        { cmd: '/grandjury', desc: 'Grand jury readiness check' },
+        { cmd: '/stmtimp', desc: 'Statement importance ranking' }
     ];
     
     const filter = val.toLowerCase();
@@ -14173,4 +14199,135 @@ WitnessReplayApp.prototype._showDepoCostV2 = async function() {
         html += '</div>';
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not estimate deposition cost.'); }
+};
+
+// ── Cognitive Bias Analysis ─────────────────────────
+WitnessReplayApp.prototype._showBiasAnalysis = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/bias-analysis`);
+        const d = await r.json();
+        const riskColors = { high: '#ef4444', moderate: '#eab308', low: '#22c55e' };
+        const rc = riskColors[d.risk_level] || '#666';
+        let html = '<div class="bias-container"><h3>🧠 Cognitive Bias Analysis</h3>';
+        html += `<div class="bias-header">`;
+        html += `<div class="bias-score-badge" style="border-color:${rc}"><span class="bias-score-num">${d.bias_score}</span><span class="bias-score-lbl" style="color:${rc}">${d.risk_level.toUpperCase()} RISK</span></div>`;
+        html += `<div class="bias-meta"><div class="bias-meta-item"><span class="bias-meta-val">${d.total_biases_detected}</span><span class="bias-meta-lbl">Types Detected</span></div>`;
+        html += `<div class="bias-meta-item"><span class="bias-meta-val" style="color:#ef4444">${d.high_severity_biases}</span><span class="bias-meta-lbl">High Severity</span></div>`;
+        html += `<div class="bias-meta-item"><span class="bias-meta-val">${d.total_sentences_analyzed}</span><span class="bias-meta-lbl">Sentences</span></div></div></div>`;
+        html += `<div class="bias-assess">${d.assessment}</div>`;
+        html += '<div class="bias-list">';
+        d.biases.forEach(b => {
+            const sc = { high: '#ef4444', medium: '#eab308', low: '#22c55e' }[b.severity] || '#666';
+            html += `<div class="bias-item ${b.count === 0 ? 'bias-item-clean' : ''}">`;
+            html += `<div class="bias-item-head"><span class="bias-name">${b.icon} ${b.name}</span>`;
+            html += `<span class="bias-sev" style="color:${sc}">${b.severity}</span><span class="bias-cnt" style="color:${sc}">${b.count} instance${b.count !== 1 ? 's' : ''}</span></div>`;
+            html += `<div class="bias-desc">${b.description}</div>`;
+            if (b.examples && b.examples.length > 0) {
+                html += '<div class="bias-examples">';
+                b.examples.forEach(ex => { html += `<div class="bias-ex">"${ex}"</div>`; });
+                html += '</div>';
+            }
+            html += `<div class="bias-implication">⚖️ ${b.legal_implication}</div>`;
+            html += '</div>';
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not run cognitive bias analysis.'); }
+};
+
+// ── Settlement Risk Assessment ──────────────────────
+WitnessReplayApp.prototype._showSettlementRisk = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/settlement-risk`);
+        const d = await r.json();
+        const riskColors = { HIGH: '#ef4444', MODERATE: '#eab308', LOW: '#22c55e' };
+        const rc = riskColors[d.risk_tier] || '#666';
+        let html = '<div class="settle-container"><h3>⚖️ Settlement Risk Assessment</h3>';
+        html += `<div class="settle-header">`;
+        html += `<div class="settle-score-badge" style="border-color:${rc}"><span class="settle-score-num">${d.settlement_risk_score}</span><span class="settle-score-lbl" style="color:${rc}">${d.risk_tier} RISK</span></div>`;
+        html += `<div class="settle-meta"><div class="settle-verdict">${d.verdict}</div>`;
+        html += `<div class="settle-stats"><span>${d.high_impact_factors} high-impact factors</span><span>${d.total_factors_analyzed} total analyzed</span></div></div></div>`;
+        html += `<div class="settle-assess">${d.assessment}</div>`;
+        html += '<div class="settle-factors">';
+        d.risk_factors.forEach(f => {
+            const fc = { high: '#ef4444', medium: '#eab308', low: '#22c55e' }[f.impact] || '#666';
+            html += `<div class="settle-factor"><div class="settle-factor-head">`;
+            html += `<span>${f.icon} ${f.factor}</span><span class="settle-impact" style="color:${fc}">${f.impact.toUpperCase()}</span><span class="settle-cnt">${f.count} detected</span></div>`;
+            html += `<div class="settle-factor-desc">${f.description}</div>`;
+            html += `<div class="settle-rec">💡 ${f.recommendation}</div></div>`;
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess settlement risk.'); }
+};
+
+// ── Grand Jury Readiness ────────────────────────────
+WitnessReplayApp.prototype._showGrandJuryReadiness = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/grand-jury-readiness`);
+        const d = await r.json();
+        const levelColors = { ready: '#22c55e', needs_preparation: '#eab308', not_ready: '#ef4444' };
+        const lc = levelColors[d.readiness_level] || '#666';
+        let html = '<div class="grandjury-container"><h3>🏛️ Grand Jury Readiness</h3>';
+        html += `<div class="grandjury-header">`;
+        html += `<div class="grandjury-score" style="border-color:${lc}"><span class="grandjury-icon">${d.readiness_icon}</span><span class="grandjury-num">${d.readiness_score}</span><span class="grandjury-lbl" style="color:${lc}">${d.readiness_label}</span></div>`;
+        html += `<div class="grandjury-meta"><span>${d.criteria_passing}/${d.criteria.length} criteria passing</span><span>${d.sentences_analyzed} sentences analyzed</span></div></div>`;
+        html += `<div class="grandjury-assess">${d.assessment}</div>`;
+        html += '<div class="grandjury-criteria">';
+        d.criteria.forEach(c => {
+            const cs = { pass: '#22c55e', fail: '#ef4444', needs_work: '#eab308' }[c.status] || '#666';
+            const barW = Math.min(c.score, 100);
+            html += `<div class="grandjury-criterion"><div class="grandjury-crit-head">`;
+            html += `<span>${c.icon} ${c.criterion}</span><span class="grandjury-status" style="color:${cs}">${c.status.replace('_', ' ').toUpperCase()}</span><span class="grandjury-score-val">${c.score}/100</span></div>`;
+            html += `<div class="grandjury-bar"><div class="grandjury-bar-fill" style="width:${barW}%;background:${cs}"></div></div>`;
+            html += `<div class="grandjury-detail">${c.detail}</div>`;
+            html += `<div class="grandjury-note">📌 ${c.note}</div></div>`;
+        });
+        html += '</div>';
+        if (d.recommendations && d.recommendations.length > 0) {
+            html += '<div class="grandjury-recs"><strong>📋 Preparation Steps</strong>';
+            d.recommendations.forEach((rec, i) => { html += `<div class="grandjury-rec">${i+1}. ${rec}</div>`; });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not assess grand jury readiness.'); }
+};
+
+// ── Statement Importance Ranking ────────────────────
+WitnessReplayApp.prototype._showStatementImportance = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/statement-importance`);
+        const d = await r.json();
+        const impColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22c55e' };
+        let html = '<div class="stmtimp-container"><h3>⭐ Statement Importance Ranking</h3>';
+        html += `<div class="stmtimp-header">`;
+        html += `<div class="stmtimp-stats"><div class="stmtimp-stat"><span class="stmtimp-num" style="color:#ef4444">${d.critical_count}</span><span class="stmtimp-lbl">Critical</span></div>`;
+        html += `<div class="stmtimp-stat"><span class="stmtimp-num" style="color:#f97316">${d.high_count}</span><span class="stmtimp-lbl">High</span></div>`;
+        html += `<div class="stmtimp-stat"><span class="stmtimp-num">${d.total_statements}</span><span class="stmtimp-lbl">Total</span></div></div></div>`;
+        html += `<div class="stmtimp-assess">${d.assessment}</div>`;
+        html += '<div class="stmtimp-note">📋 Top 10 most legally significant statements:</div>';
+        html += '<div class="stmtimp-list">';
+        d.top_statements.forEach((stmt, i) => {
+            const ic = impColors[stmt.importance] || '#666';
+            const rank = i + 1;
+            const starFill = stmt.importance_score >= 80 ? '★★★' : stmt.importance_score >= 60 ? '★★☆' : '★☆☆';
+            html += `<div class="stmtimp-item"><div class="stmtimp-rank" style="color:${ic}">#${rank}</div>`;
+            html += `<div class="stmtimp-content"><div class="stmtimp-text">"${stmt.text}"</div>`;
+            html += `<div class="stmtimp-meta">`;
+            html += `<span class="stmtimp-imp" style="color:${ic}">${stmt.importance.toUpperCase()}</span>`;
+            html += `<span class="stmtimp-score">${stmt.importance_score}/100</span>`;
+            html += `<span class="stmtimp-stars">${starFill}</span>`;
+            if (stmt.tags && stmt.tags.length > 0) {
+                stmt.tags.forEach(tag => { html += `<span class="stmtimp-tag">${tag}</span>`; });
+            }
+            html += '</div></div></div>';
+        });
+        html += '</div></div>';
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not rank statement importance.'); }
 };

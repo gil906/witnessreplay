@@ -6911,3 +6911,89 @@ async function loadSessionInsightsPanel() {
 }
 document.getElementById('session-insights-refresh')?.addEventListener('click', loadSessionInsightsPanel);
 setTimeout(loadSessionInsightsPanel, 5000);
+
+// ═══════════════════════════════════════════════════════════════
+// Admin: Model Performance Dashboard
+// ═══════════════════════════════════════════════════════════════
+async function loadModelPerformancePanel() {
+    const el = document.getElementById('model-performance-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/model-performance', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        const d = await r.json();
+        const tierColors = { primary: '#3b82f6', secondary: '#22c55e', premium: '#f59e0b' };
+        let html = `<div class="modperf-summary"><div class="modperf-stat"><span class="modperf-num">${d.total_requests_7d.toLocaleString()}</span><span class="modperf-lbl">Total Requests (7d)</span></div>`;
+        html += `<div class="modperf-stat"><span class="modperf-num">$${d.total_cost_7d.toFixed(2)}</span><span class="modperf-lbl">Est. Cost (7d)</span></div>`;
+        html += `<div class="modperf-stat"><span class="modperf-num">${d.avg_quality_score}</span><span class="modperf-lbl">Avg Quality Score</span></div></div>`;
+        html += '<div class="modperf-models">';
+        d.models.forEach(m => {
+            const tc = tierColors[m.tier] || '#666';
+            const errColor = m.error_rate_pct > 2 ? '#ef4444' : m.error_rate_pct > 1 ? '#eab308' : '#22c55e';
+            html += `<div class="modperf-model" style="border-left:4px solid ${tc}">`;
+            html += `<div class="modperf-model-head"><span class="modperf-icon">${m.icon}</span><div><strong>${m.display_name}</strong><span class="modperf-tier" style="color:${tc}">${m.tier}</span></div>`;
+            html += `<span class="modperf-uptime">${m.uptime_pct}% uptime</span></div>`;
+            html += `<div class="modperf-grid">`;
+            html += `<div class="modperf-cell"><span class="modperf-val">${m.requests_7d.toLocaleString()}</span><span class="modperf-cell-lbl">Requests</span></div>`;
+            html += `<div class="modperf-cell"><span class="modperf-val">${m.avg_latency_ms}ms</span><span class="modperf-cell-lbl">Avg Latency</span></div>`;
+            html += `<div class="modperf-cell"><span class="modperf-val">${m.p95_latency_ms}ms</span><span class="modperf-cell-lbl">P95 Latency</span></div>`;
+            html += `<div class="modperf-cell"><span class="modperf-val" style="color:${errColor}">${m.error_rate_pct}%</span><span class="modperf-cell-lbl">Error Rate</span></div>`;
+            html += `<div class="modperf-cell"><span class="modperf-val">${m.quality_score}</span><span class="modperf-cell-lbl">Quality</span></div>`;
+            html += `<div class="modperf-cell"><span class="modperf-val">$${m.total_cost_7d}</span><span class="modperf-cell-lbl">Cost 7d</span></div>`;
+            html += '</div>';
+            const qW = Math.min(m.quality_score, 100);
+            html += `<div class="modperf-quality-bar"><div style="width:${qW}%;background:${tc};height:6px;border-radius:3px"></div></div>`;
+            html += '</div>';
+        });
+        html += '</div>';
+        if (d.daily_trends && d.daily_trends.length > 0) {
+            html += '<div class="modperf-trends"><strong>📈 7-Day Request Trend</strong><div class="modperf-trend-bars">';
+            const maxReqs = Math.max(...d.daily_trends.map(t => t.requests), 1);
+            d.daily_trends.forEach(t => {
+                const h = Math.round((t.requests / maxReqs) * 60);
+                html += `<div class="modperf-trend-bar"><div class="modperf-tbar-fill" style="height:${h}px;background:#3b82f6"></div><span class="modperf-tbar-lbl">${t.date}</span><span class="modperf-tbar-val">${t.requests}</span></div>`;
+            });
+            html += '</div></div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load model performance data.</p>'; console.error(e); }
+}
+document.getElementById('model-performance-refresh')?.addEventListener('click', loadModelPerformancePanel);
+setTimeout(loadModelPerformancePanel, 5500);
+
+// ═══════════════════════════════════════════════════════════════
+// Admin: Witness Behavior Trends
+// ═══════════════════════════════════════════════════════════════
+async function loadWitnessTrendsPanel() {
+    const el = document.getElementById('witness-trends-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/witness-trends', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        const d = await r.json();
+        const dirColors = { improving: '#22c55e', worsening: '#ef4444', stable: '#6b7280' };
+        let html = `<div class="wtrend-summary">`;
+        html += `<div class="wtrend-stat" style="color:#22c55e"><span class="wtrend-num">${d.improving_trends}</span><span class="wtrend-lbl">Improving</span></div>`;
+        html += `<div class="wtrend-stat" style="color:#ef4444"><span class="wtrend-num">${d.worsening_trends}</span><span class="wtrend-lbl">Worsening</span></div>`;
+        html += `<div class="wtrend-stat"><span class="wtrend-num">${d.stable_trends}</span><span class="wtrend-lbl">Stable</span></div>`;
+        html += `<div class="wtrend-stat"><span class="wtrend-num">${d.total_sessions_analyzed}</span><span class="wtrend-lbl">Sessions Analyzed</span></div></div>`;
+        html += '<div class="wtrend-metrics">';
+        Object.values(d.trends).forEach(t => {
+            const tc = dirColors[t.trend_direction] || '#666';
+            const changeSign = t.change > 0 ? '+' : '';
+            html += `<div class="wtrend-metric"><div class="wtrend-metric-head"><span>${t.icon} ${t.label}</span><span class="wtrend-dir" style="color:${tc}">${t.trend_icon} ${t.trend_direction}</span></div>`;
+            html += `<div class="wtrend-vals"><span class="wtrend-cur">${t.current}${t.unit}</span><span class="wtrend-chg" style="color:${tc}">${changeSign}${t.change}${t.unit}</span></div></div>`;
+        });
+        html += '</div>';
+        if (d.top_patterns && d.top_patterns.length > 0) {
+            html += '<div class="wtrend-patterns"><strong>🔍 Common Behavior Patterns</strong>';
+            d.top_patterns.forEach(p => {
+                const barW = Math.min(p.frequency_pct, 100);
+                html += `<div class="wtrend-pattern"><div class="wtrend-pat-head"><span>${p.icon} ${p.pattern}</span><span>${p.frequency_pct}% of sessions</span></div>`;
+                html += `<div class="wtrend-pat-bar"><div style="width:${barW}%;background:#3b82f6;height:8px;border-radius:4px"></div></div></div>`;
+            });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load witness trends.</p>'; console.error(e); }
+}
+document.getElementById('witness-trends-refresh')?.addEventListener('click', loadWitnessTrendsPanel);
+setTimeout(loadWitnessTrendsPanel, 6000);
