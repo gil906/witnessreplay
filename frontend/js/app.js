@@ -14865,3 +14865,195 @@ WitnessReplayApp.prototype.runVulnerabilityRadar = async function() {
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not run vulnerability radar.'); }
 };
+
+// ─── JURY PERSUASION SCORE ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runJuryPersuasion = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🎭 Running Jury Persuasion Score...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/jury-persuasion');
+        const d = await r.json();
+        let html = '<div class="juryperf-result">';
+        html += '<div class="juryperf-overall" style="border-color:' + d.persuasion_color + '">';
+        html += '<div class="juryperf-overall-score" style="color:' + d.persuasion_color + '">' + d.overall_persuasion_score + '<span style="font-size:0.9rem">/100</span></div>';
+        html += '<div><div class="juryperf-overall-lbl" style="color:' + d.persuasion_color + '">' + d.persuasion_label + '</div>';
+        html += '<div style="font-size:0.73rem;color:#94a3b8;margin-top:0.15rem">' + d.verdict + '</div></div></div>';
+        html += '<div class="juryperf-dims"><h4>📊 Persuasion Dimensions</h4>';
+        d.dimensions.forEach(dim => {
+            const c = dim.score >= 75 ? '#22c55e' : dim.score >= 55 ? '#eab308' : '#ef4444';
+            html += '<div class="juryperf-dim-row">';
+            html += '<span>' + dim.icon + '</span><span class="juryperf-dim-name" title="' + dim.description + '">' + dim.dimension + '</span>';
+            html += '<div class="juryperf-dim-bar-bg"><div class="juryperf-dim-bar" style="width:' + dim.score + '%;background:' + c + '"></div></div>';
+            html += '<span class="juryperf-dim-score" style="color:' + c + '">' + dim.score + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="juryperf-profiles"><h4>👥 Jury Profile Receptiveness</h4>';
+        html += '<div class="juryperf-profile-grid">';
+        d.jury_profiles.forEach(jp => {
+            const c = jp.receptiveness >= 70 ? '#22c55e' : jp.receptiveness >= 50 ? '#eab308' : '#ef4444';
+            html += '<div class="juryperf-profile-item"><div class="juryperf-profile-name">' + jp.icon + ' ' + jp.profile + '</div>';
+            html += '<div class="juryperf-profile-score" style="color:' + c + '">' + jp.receptiveness + '/100</div></div>';
+        });
+        html += '</div></div>';
+        html += '<div class="juryperf-tips"><h4>💡 Coaching Tips</h4>';
+        d.coaching_tips.forEach(tip => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + tip + '</div>'; });
+        html += '</div>';
+        html += '<div class="juryperf-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Jury persuasion score failed: ' + e.message); }
+};
+
+// ─── STATEMENT CREDIBILITY MAP ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCredibilityMap = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🗺️ Running Statement Credibility Map...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/credibility-map');
+        const d = await r.json();
+        const avgC = d.overall_credibility_score >= 75 ? '#22c55e' : d.overall_credibility_score >= 55 ? '#eab308' : '#ef4444';
+        let html = '<div class="credmap-result">';
+        html += '<div class="credmap-overall" style="border-color:' + avgC + '">';
+        html += '<div class="credmap-overall-score" style="color:' + avgC + '">' + d.overall_credibility_score + '<span style="font-size:0.9rem">/100</span></div>';
+        html += '<div style="font-size:0.73rem;color:#94a3b8">' + d.total_segments + ' segments · ' + d.flagged_count + ' flagged</div></div>';
+        html += '<div class="credmap-segs"><h4>📍 Segment Credibility</h4>';
+        d.segments.forEach(seg => {
+            const c = seg.credibility >= 75 ? '#22c55e' : seg.credibility >= 55 ? '#eab308' : '#ef4444';
+            html += '<div class="credmap-seg-row" title="' + seg.notes + '">';
+            html += '<span>' + seg.icon + '</span><span class="credmap-seg-name">' + seg.segment + '</span>';
+            html += '<div class="credmap-seg-bar-bg"><div class="credmap-seg-bar" style="width:' + seg.credibility + '%;background:' + c + '"></div></div>';
+            html += '<span class="credmap-seg-score" style="color:' + c + '">' + seg.credibility + '</span>';
+            html += '<span class="credmap-flag">' + (seg.flagged ? '⚠️' : '') + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="credmap-topics"><h4>🔑 Topic Credibility</h4>';
+        d.topic_credibility.forEach(t => {
+            const tc = t.score >= 70 ? '#22c55e' : t.score >= 50 ? '#eab308' : '#ef4444';
+            const rc = t.risk === 'High' ? '#ef4444' : t.risk === 'Medium' ? '#f97316' : '#64748b';
+            html += '<div class="credmap-topic-row"><span>' + t.topic + ' <span style="color:' + rc + ';font-size:0.65rem">[' + t.risk + ' risk]</span></span>';
+            html += '<span style="color:' + tc + ';font-weight:700">' + t.score + '/100</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="credmap-recs"><h4>🎯 Recommendations</h4>';
+        d.recommendations.forEach(rec => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + rec + '</div>'; });
+        html += '</div>';
+        html += '<div class="credmap-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Credibility map failed: ' + e.message); }
+};
+
+// ─── EMOTIONAL VOLATILITY INDEX ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runEmotionalVolatility = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '💢 Running Emotional Volatility Index...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/emotional-volatility');
+        const d = await r.json();
+        let html = '<div class="emotvol-result">';
+        html += '<div class="emotvol-overall" style="border-color:' + d.volatility_color + '">';
+        html += '<div class="emotvol-overall-score" style="color:' + d.volatility_color + '">' + d.volatility_score + '<span style="font-size:0.9rem">/100</span></div>';
+        html += '<div><div class="emotvol-overall-lbl" style="color:' + d.volatility_color + '">' + d.volatility_label + '</div>';
+        html += '<div style="font-size:0.73rem;color:#94a3b8;margin-top:0.15rem">' + d.interpretation + '</div></div></div>';
+        html += '<div style="font-size:0.75rem;color:#64748b;display:flex;gap:1.5rem">';
+        html += '<span>⚡ Shifts: <strong style="color:#cbd5e1">' + d.emotional_shifts_count + '</strong></span>';
+        html += '<span>📍 Peak: <strong style="color:#cbd5e1">' + d.peak_emotional_phase + ' (' + d.peak_intensity + '/100)</strong></span></div>';
+        html += '<div class="emotvol-phases"><h4>📈 Emotional Arc by Phase</h4>';
+        d.phases.forEach(ph => {
+            const c = ph.intensity >= 70 ? '#ef4444' : ph.intensity >= 50 ? '#f97316' : '#22c55e';
+            html += '<div class="emotvol-phase-row">';
+            html += '<span>' + ph.icon + '</span><span class="emotvol-phase-name">' + ph.phase + '</span>';
+            html += '<span class="emotvol-phase-emotion">' + ph.emotion + '</span>';
+            html += '<div class="emotvol-phase-bar-bg"><div class="emotvol-phase-bar" style="width:' + ph.intensity + '%;background:' + c + '"></div></div>';
+            html += '<span class="emotvol-phase-score" style="color:' + c + '">' + ph.intensity + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="emotvol-triggers"><h4>🎯 Emotional Triggers</h4>';
+        d.emotional_triggers.forEach(t => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + t + '</div>'; });
+        html += '</div>';
+        html += '<div class="emotvol-spectrum"><h4>🎨 Emotional Spectrum</h4>';
+        const specColors = ['#22c55e','#eab308','#f97316','#ef4444','#60a5fa'];
+        html += '<div class="emotvol-spectrum-bar">';
+        d.emotional_spectrum.forEach((e, i) => { html += '<div style="width:' + e.percentage + '%;background:' + specColors[i] + '" title="' + e.emotion + ': ' + e.percentage + '%"></div>'; });
+        html += '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:0.4rem">';
+        d.emotional_spectrum.forEach((e, i) => { html += '<span style="font-size:0.65rem;color:#94a3b8"><span style="color:' + specColors[i] + '">■</span> ' + e.emotion + ' (' + e.percentage + '%)</span>'; });
+        html += '</div></div>';
+        html += '<div class="emotvol-notes"><h4>💼 Strategic Notes</h4>';
+        d.strategic_notes.forEach(n => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + n + '</div>'; });
+        html += '</div>';
+        html += '<div class="emotvol-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Emotional volatility analysis failed: ' + e.message); }
+};
+
+// ─── LEGAL EXPOSURE CALCULATOR ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runLegalExposure = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '⚠️ Running Legal Exposure Calculator...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/legal-exposure');
+        const d = await r.json();
+        let html = '<div class="legalexp-result">';
+        html += '<div class="legalexp-overall" style="border-color:' + d.risk_color + '">';
+        html += '<div class="legalexp-overall-score" style="color:' + d.risk_color + '">' + d.total_risk_score + '<span style="font-size:0.9rem">/100</span></div>';
+        html += '<div><div class="legalexp-overall-tier" style="color:' + d.risk_color + '">' + d.risk_tier + ' EXPOSURE</div>';
+        html += '<div style="font-size:0.73rem;color:#94a3b8;margin-top:0.15rem">' + d.risk_summary + '</div></div></div>';
+        html += '<div style="font-size:0.75rem;color:#64748b">Max combined sentence: <strong style="color:#cbd5e1">' + d.estimated_total_max_sentence + ' years</strong></div>';
+        html += '<div class="legalexp-charges"><h4>⚖️ Charge Exposure Breakdown</h4>';
+        d.charges.forEach(c => {
+            const ec = c.exposure_level >= 70 ? '#ef4444' : c.exposure_level >= 45 ? '#f97316' : c.exposure_level >= 25 ? '#eab308' : '#22c55e';
+            html += '<div class="legalexp-charge-row">';
+            html += '<span>' + c.icon + '</span><div><div class="legalexp-charge-name">' + c.charge + '</div><div class="legalexp-severity">' + c.severity + ' · ' + (c.max_sentence_years > 0 ? 'up to ' + c.max_sentence_years + 'yr' : 'Civil') + '</div></div>';
+            html += '<span class="legalexp-prob" style="color:#64748b">' + c.probability_pct + '%</span>';
+            html += '<div style="flex:1"><div class="legalexp-charge-bar-bg" style="background:rgba(255,255,255,0.08);border-radius:3px;height:5px"><div style="width:' + c.exposure_level + '%;height:100%;background:' + ec + ';border-radius:3px"></div></div></div>';
+            html += '<span class="legalexp-score" style="color:' + ec + '">' + c.exposure_level + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="legalexp-mit"><h4>🛡️ Mitigation Strategies</h4>';
+        d.mitigation_strategies.forEach(ms => {
+            const fc = ms.feasibility === 'High' ? '#22c55e' : ms.feasibility === 'Medium' ? '#eab308' : '#ef4444';
+            html += '<div class="legalexp-mit-row"><span>' + ms.strategy + ' <span style="color:' + fc + ';font-size:0.65rem">[' + ms.feasibility + ']</span></span>';
+            html += '<span style="color:#22c55e;font-weight:700">-' + ms.risk_reduction_pct + '% risk</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="legalexp-actions"><h4>🎯 Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="legalexp-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Legal exposure analysis failed: ' + e.message); }
+};
+
+// ─── WITNESS COMPETENCY ASSESSMENT ───────────────────────────────────────────
+WitnessReplayApp.prototype.runCompetencyAssessment = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '📋 Running Witness Competency Assessment...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/competency-assessment');
+        const d = await r.json();
+        let html = '<div class="compeval-result">';
+        html += '<div class="compeval-overall" style="border-color:' + d.competency_color + '">';
+        html += '<div class="compeval-overall-score" style="color:' + d.competency_color + '">' + d.overall_competency_score + '<span style="font-size:0.9rem">/100</span></div>';
+        html += '<div><div class="compeval-overall-lbl" style="color:' + d.competency_color + '">' + d.competency_label + '</div>';
+        html += '<div style="font-size:0.73rem;color:#94a3b8;margin-top:0.15rem">' + d.competency_verdict + '</div>';
+        html += '<div style="font-size:0.7rem;margin-top:0.2rem">Legal standard met: <strong style="color:' + (d.legal_standard_met ? '#22c55e' : '#ef4444') + '">' + (d.legal_standard_met ? '✅ YES' : '❌ NO') + '</strong></div></div></div>';
+        html += '<div class="compeval-criteria"><h4>⚖️ Competency Criteria</h4>';
+        d.criteria.forEach(c => {
+            const sc = c.score >= 75 ? '#22c55e' : c.score >= 50 ? '#eab308' : '#ef4444';
+            const stCls = c.status === 'Competent' ? 'compeval-status-ok' : c.status === 'Questionable' ? 'compeval-status-q' : 'compeval-status-bad';
+            html += '<div class="compeval-crit-row" title="' + c.description + '">';
+            html += '<span>' + c.icon + '</span><span class="compeval-crit-name">' + c.criterion + '</span>';
+            html += '<div class="compeval-crit-bar-bg"><div class="compeval-crit-bar" style="width:' + c.score + '%;background:' + sc + '"></div></div>';
+            html += '<span class="compeval-crit-score" style="color:' + sc + '">' + c.score + '</span>';
+            html += '<span class="' + stCls + '">' + c.status + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="compeval-risks"><h4>⚠️ Challenge Risks</h4>';
+        d.challenge_risks.forEach(r2 => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + r2 + '</div>'; });
+        html += '</div>';
+        html += '<div class="compeval-actions"><h4>🎯 Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="compeval-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Competency assessment failed: ' + e.message); }
+};

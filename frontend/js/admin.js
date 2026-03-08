@@ -7291,3 +7291,98 @@ document.getElementById('evidence-analytics-refresh')?.addEventListener('click',
 document.getElementById('resolution-forecast-refresh')?.addEventListener('click', loadResolutionForecastPanel);
 setTimeout(loadEvidenceAnalyticsPanel, 13000);
 setTimeout(loadResolutionForecastPanel, 14500);
+
+// ─── ADMIN PLEA DEAL TRENDS ───────────────────────────────────────────────────
+async function loadPleaTrends() {
+    const token = getAdminToken();
+    const res = await fetch('/api/admin/plea-trends', { headers: { 'X-Admin-Token': token } });
+    const d = await res.json();
+    const trendColor = d.trend_direction === 'rising' ? '#22c55e' : '#f97316';
+    let html = '<div style="margin-bottom:0.75rem;display:flex;gap:1.5rem;align-items:center">';
+    html += '<div style="font-size:1.5rem;font-weight:800;color:#60a5fa">' + d.overall_plea_rate_pct + '%</div>';
+    html += '<div><div style="font-size:0.78rem;color:#94a3b8">Overall Plea Rate</div>';
+    html += '<div style="font-size:0.73rem;color:' + trendColor + ';font-weight:600">Trend: ' + d.trend_direction + ' · Avg reduction: ' + d.avg_sentence_reduction_pct + '%</div></div></div>';
+    html += '<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">📂 By Charge Category</h4>';
+    d.charge_categories.forEach(cat => {
+        const c = cat.plea_rate_pct >= 60 ? '#22c55e' : cat.plea_rate_pct >= 40 ? '#eab308' : '#f97316';
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#cbd5e1;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+        html += '<span>' + cat.category + ' (' + cat.count + ' cases)</span>';
+        html += '<span style="color:' + c + ';font-weight:700">' + cat.plea_rate_pct + '% · -' + cat.avg_reduction_pct + '% sentence</span></div>';
+    });
+    html += '</div>';
+    html += '<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">📅 Monthly Trend (last 12 months)</h4>';
+    html += '<div style="display:flex;gap:2px;align-items:flex-end;height:50px">';
+    const maxRate = Math.max(...d.monthly_data.map(m => m.plea_rate_pct));
+    d.monthly_data.forEach(m => {
+        const h = Math.max(4, Math.round(50 * m.plea_rate_pct / maxRate));
+        const c = m.plea_rate_pct >= 60 ? '#22c55e' : m.plea_rate_pct >= 40 ? '#eab308' : '#f97316';
+        html += '<div style="flex:1;background:' + c + ';height:' + h + 'px;border-radius:2px 2px 0 0;opacity:0.85" title="' + m.month + ': ' + m.plea_rate_pct + '%"></div>';
+    });
+    html += '</div></div>';
+    html += '<div style="margin-bottom:0.5rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">💡 Insights</h4>';
+    d.insights.forEach(ins => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.15rem">• ' + ins + '</div>'; });
+    html += '</div>';
+    return html;
+}
+
+async function loadPleaTrendsPanel() {
+    const el = document.getElementById('plea-trends-content');
+    try {
+        el.innerHTML = await loadPleaTrends();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load plea deal trends.</p>'; console.error(e); }
+}
+
+// ─── ADMIN WITNESS BACKGROUND RISK ────────────────────────────────────────────
+async function loadBackgroundRisk() {
+    const token = getAdminToken();
+    const res = await fetch('/api/admin/background-risk', { headers: { 'X-Admin-Token': token } });
+    const d = await res.json();
+    let html = '<div style="margin-bottom:0.75rem;display:flex;gap:1.5rem;align-items:center">';
+    html += '<div style="font-size:1.5rem;font-weight:800;color:#ef4444">' + d.high_risk_count + '</div>';
+    html += '<div><div style="font-size:0.78rem;color:#94a3b8">High-Risk Witnesses</div>';
+    html += '<div style="font-size:0.73rem;color:#94a3b8">of ' + d.total_witnesses_analyzed + ' total analyzed</div></div>';
+    html += '</div>';
+    html += '<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">🎯 Risk Distribution</h4>';
+    html += '<div style="display:flex;gap:0.4rem">';
+    d.risk_distribution.forEach(rd => {
+        html += '<div style="flex:' + rd.pct + ';background:' + rd.color + ';border-radius:4px;padding:0.4rem;min-width:0">';
+        html += '<div style="font-size:0.7rem;color:#fff;font-weight:700">' + rd.pct + '%</div>';
+        html += '<div style="font-size:0.65rem;color:rgba(255,255,255,0.75)">' + rd.tier + '</div>';
+        html += '<div style="font-size:0.65rem;color:rgba(255,255,255,0.6)">' + rd.count + ' witnesses</div></div>';
+    });
+    html += '</div></div>';
+    html += '<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">⚠️ Risk Factors</h4>';
+    d.risk_factors.forEach(rf => {
+        const trendColor = rf.trend === 'rising' ? '#ef4444' : rf.trend === 'falling' ? '#22c55e' : '#64748b';
+        const trendIcon = rf.trend === 'rising' ? '↑' : rf.trend === 'falling' ? '↓' : '→';
+        const ic = rf.avg_impact_score >= 75 ? '#ef4444' : rf.avg_impact_score >= 55 ? '#f97316' : '#eab308';
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#cbd5e1;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.04)">';
+        html += '<span>' + rf.icon + ' ' + rf.factor + ' <span style="color:' + trendColor + ';font-size:0.65rem">' + trendIcon + '</span></span>';
+        html += '<span><span style="color:#64748b">' + rf.affected_pct + '% affected</span> · <span style="color:' + ic + ';font-weight:700">impact:' + rf.avg_impact_score + '</span></span></div>';
+    });
+    html += '</div>';
+    html += '<div style="margin-bottom:0.5rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">📈 Weekly Flagged (8 weeks)</h4>';
+    html += '<div style="display:flex;gap:3px;align-items:flex-end;height:40px">';
+    const maxF = Math.max(...d.weekly_flagged_trend.map(w => w.flagged));
+    d.weekly_flagged_trend.forEach(w => {
+        const h = Math.max(4, Math.round(40 * w.flagged / maxF));
+        html += '<div style="flex:1;background:#ef4444;height:' + h + 'px;border-radius:2px 2px 0 0;opacity:0.75" title="' + w.week + ': ' + w.flagged + ' flagged, ' + w.cleared + ' cleared"></div>';
+    });
+    html += '</div></div>';
+    html += '<div style="margin-bottom:0.5rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">💡 Recommendations</h4>';
+    d.recommendations.forEach(rec => { html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.15rem">• ' + rec + '</div>'; });
+    html += '</div>';
+    return html;
+}
+
+async function loadBackgroundRiskPanel() {
+    const el = document.getElementById('background-risk-content');
+    try {
+        el.innerHTML = await loadBackgroundRisk();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load background risk data.</p>'; console.error(e); }
+}
+
+document.getElementById('plea-trends-refresh')?.addEventListener('click', loadPleaTrendsPanel);
+document.getElementById('background-risk-refresh')?.addEventListener('click', loadBackgroundRiskPanel);
+setTimeout(loadPleaTrendsPanel, 16000);
+setTimeout(loadBackgroundRiskPanel, 17500);

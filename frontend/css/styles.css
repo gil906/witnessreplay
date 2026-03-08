@@ -15263,3 +15263,88 @@ textarea:disabled {
 .vuln-mit-rank { background:rgba(255,255,255,0.06); border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:0.65rem; font-weight:700; flex-shrink:0; }
 .vuln-mit-action { color:#64748b; font-size:0.7rem; }
 .vuln-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   JURY PERSUASION SCORE
+═══════════════════════════════════════════════════════════ */
+.juryperf-result { display:flex; flex-direction:column; gap:0.75rem; }
+.juryperf-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.juryperf-overall-score { font-size:1.6rem; font-weight:800; }
+.juryperf-overall-lbl { font-size:0.8rem; font-weight:600; }
+.juryperf-dim-row { display:grid; grid-template-columns:1fr 100px 35px; gap:0.4rem; align-items:center; margin-bottom:0.25rem; font-size:0.74rem; }
+.juryperf-dim-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.juryperf-dim-bar { height:100%; border-radius:3px; }
+.juryperf-dim-score { font-weight:700; text-align:right; }
+.juryperf-profiles h4, .juryperf-dims h4, .juryperf-tips h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.juryperf-profile-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0.4rem; }
+.juryperf-profile-item { background:rgba(255,255,255,0.04); border-radius:6px; padding:0.4rem; }
+.juryperf-profile-name { font-size:0.68rem; color:#94a3b8; }
+.juryperf-profile-score { font-size:1rem; font-weight:700; color:#60a5fa; }
+.juryperf-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   STATEMENT CREDIBILITY MAP
+═══════════════════════════════════════════════════════════ */
+.credmap-result { display:flex; flex-direction:column; gap:0.75rem; }
+.credmap-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.credmap-overall-score { font-size:1.6rem; font-weight:800; }
+.credmap-seg-row { display:grid; grid-template-columns:20px 1fr 60px 36px 35px; gap:0.4rem; align-items:center; margin-bottom:0.28rem; font-size:0.73rem; }
+.credmap-seg-name { color:#cbd5e1; }
+.credmap-seg-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.credmap-seg-bar { height:100%; border-radius:3px; }
+.credmap-seg-score { font-weight:700; text-align:right; }
+.credmap-flag { color:#ef4444; font-size:0.65rem; font-weight:700; }
+.credmap-segs h4, .credmap-topics h4, .credmap-recs h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.credmap-topic-row { display:flex; justify-content:space-between; font-size:0.73rem; color:#cbd5e1; padding:0.2rem 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.credmap-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   EMOTIONAL VOLATILITY INDEX
+═══════════════════════════════════════════════════════════ */
+.emotvol-result { display:flex; flex-direction:column; gap:0.75rem; }
+.emotvol-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.emotvol-overall-score { font-size:1.6rem; font-weight:800; }
+.emotvol-overall-lbl { font-size:0.8rem; font-weight:600; }
+.emotvol-phase-row { display:grid; grid-template-columns:20px 110px 80px 90px 35px; gap:0.4rem; align-items:center; margin-bottom:0.25rem; font-size:0.73rem; }
+.emotvol-phase-name { color:#cbd5e1; }
+.emotvol-phase-emotion { color:#94a3b8; font-style:italic; }
+.emotvol-phase-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.emotvol-phase-bar { height:100%; border-radius:3px; }
+.emotvol-phase-score { font-weight:700; text-align:right; }
+.emotvol-phases h4, .emotvol-spectrum h4, .emotvol-triggers h4, .emotvol-notes h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.emotvol-spectrum-bar { display:flex; border-radius:4px; overflow:hidden; height:10px; margin-bottom:0.4rem; }
+.emotvol-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   LEGAL EXPOSURE CALCULATOR
+═══════════════════════════════════════════════════════════ */
+.legalexp-result { display:flex; flex-direction:column; gap:0.75rem; }
+.legalexp-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.legalexp-overall-score { font-size:1.6rem; font-weight:800; }
+.legalexp-overall-tier { font-size:0.85rem; font-weight:700; }
+.legalexp-charge-row { display:grid; grid-template-columns:22px 1fr 70px 60px 35px; gap:0.4rem; align-items:center; margin-bottom:0.28rem; font-size:0.73rem; }
+.legalexp-charge-name { color:#cbd5e1; }
+.legalexp-severity { font-size:0.65rem; color:#94a3b8; }
+.legalexp-prob { color:#64748b; text-align:center; }
+.legalexp-score { font-weight:700; text-align:right; }
+.legalexp-charges h4, .legalexp-mit h4, .legalexp-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.legalexp-mit-row { display:flex; justify-content:space-between; font-size:0.73rem; color:#cbd5e1; padding:0.2rem 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.legalexp-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   WITNESS COMPETENCY ASSESSMENT
+═══════════════════════════════════════════════════════════ */
+.compeval-result { display:flex; flex-direction:column; gap:0.75rem; }
+.compeval-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.compeval-overall-score { font-size:1.6rem; font-weight:800; }
+.compeval-overall-lbl { font-size:0.8rem; font-weight:600; }
+.compeval-crit-row { display:grid; grid-template-columns:22px 1fr 80px 35px 70px; gap:0.4rem; align-items:center; margin-bottom:0.25rem; font-size:0.73rem; }
+.compeval-crit-name { color:#cbd5e1; }
+.compeval-crit-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.compeval-crit-bar { height:100%; border-radius:3px; }
+.compeval-crit-score { font-weight:700; text-align:right; }
+.compeval-status-ok { color:#22c55e; font-size:0.65rem; font-weight:700; }
+.compeval-status-q { color:#eab308; font-size:0.65rem; font-weight:700; }
+.compeval-status-bad { color:#ef4444; font-size:0.65rem; font-weight:700; }
+.compeval-criteria h4, .compeval-risks h4, .compeval-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.compeval-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
