@@ -20127,92 +20127,6 @@ async def pattern_match(session_id: str):
 
 
 # ============================================================
-# Feature: Motive & Bias Analyzer
-# ============================================================
-@router.get("/sessions/{session_id}/motive-analysis")
-async def motive_analysis(session_id: str):
-    """Analyze potential motives and biases in witness testimony."""
-    session = await firestore_service.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    statements = []
-    if hasattr(session, "messages"):
-        for m in session.messages:
-            role = m.get("role", "") if isinstance(m, dict) else getattr(m, "role", "")
-            content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
-            if role == "user" and len(content) > 5:
-                statements.append(content)
-
-    full_text = " ".join(statements).lower()
-    words = full_text.split()
-    word_count = max(len(words), 1)
-
-    self_interest = ["my property", "my money", "i deserve", "owe me", "my rights", "my insurance", "compensation", "damages", "settlement", "lawsuit"]
-    emotional_bias = ["hate", "despise", "love", "always", "never", "every time", "worst", "best", "absolutely", "totally"]
-    relationship_bias = ["friend", "enemy", "ex", "partner", "boss", "colleague", "neighbor", "rival", "competitor"]
-    minimization = ["it was nothing", "no big deal", "doesn't matter", "not important", "forget it", "small thing", "minor"]
-    exaggeration = ["enormous", "massive", "extreme", "incredible", "unbelievable", "devastating", "catastrophic", "unbearable", "worst ever"]
-
-    bias_signals = []
-    categories = {
-        "self_interest": (self_interest, "Potential financial or personal motive"),
-        "emotional_bias": (emotional_bias, "Strong emotional language suggesting bias"),
-        "relationship_bias": (relationship_bias, "Relationship dynamics may influence testimony"),
-        "minimization": (minimization, "Downplaying events — potential protective bias"),
-        "exaggeration": (exaggeration, "Exaggerating events — potential aggrandizing bias")
-    }
-
-    category_scores = {}
-    for cat_name, (markers, desc) in categories.items():
-        count = sum(full_text.count(m) for m in markers)
-        rate = round(count / word_count * 1000, 1)
-        if count > 0:
-            severity = "high" if rate > 5 else "moderate" if rate > 2 else "low"
-            bias_signals.append({
-                "category": cat_name,
-                "description": desc,
-                "count": count,
-                "rate_per_1k": rate,
-                "severity": severity,
-                "examples": [m for m in markers if m in full_text][:5]
-            })
-            category_scores[cat_name] = min(100, int(rate * 15))
-        else:
-            category_scores[cat_name] = 0
-
-    overall_bias = round(sum(category_scores.values()) / max(len(category_scores), 1), 1)
-    if overall_bias >= 60:
-        objectivity = "low"
-    elif overall_bias >= 30:
-        objectivity = "moderate"
-    else:
-        objectivity = "high"
-
-    positive_words = sum(full_text.count(w) for w in ["good", "right", "correct", "proper", "honest", "fair"])
-    negative_words = sum(full_text.count(w) for w in ["bad", "wrong", "incorrect", "improper", "dishonest", "unfair"])
-    narrative_balance = abs(positive_words - negative_words)
-    one_sided = narrative_balance > 5
-
-    return {
-        "session_id": session_id,
-        "bias_signals": bias_signals,
-        "category_scores": category_scores,
-        "overall_bias_score": overall_bias,
-        "objectivity_rating": objectivity,
-        "narrative": {
-            "positive_language": positive_words,
-            "negative_language": negative_words,
-            "balance": "balanced" if not one_sided else ("positive-leaning" if positive_words > negative_words else "negative-leaning"),
-            "one_sided": one_sided
-        },
-        "word_count": word_count,
-        "recommendation": f"Objectivity: {objectivity}. Overall bias score: {overall_bias}%. {'Significant bias detected in: ' + ', '.join(s['category'] for s in bias_signals if s['severity'] == 'high') + '.' if any(s['severity'] == 'high' for s in bias_signals) else 'No severe bias indicators found.'}",
-        "timestamp": datetime.utcnow().isoformat() + "Z"
-    }
-
-
-# ============================================================
 # Admin Feature: Content Moderation
 # ============================================================
 _moderation_flags = deque(maxlen=200)
@@ -25265,7 +25179,7 @@ async def motive_analysis(session_id: str):
         ],
         "cross_exam_focus": [
             f"Challenge financial relationships with parties involved",
-            f"Explore any history of disputes with {session.get('witness_name', 'the defendant')}",
+            f"Explore any history of disputes with the defendant",
             "Ask directly about immunity deals or cooperation agreements",
             "Probe for any prior statements that conflict with claimed motives",
         ],
