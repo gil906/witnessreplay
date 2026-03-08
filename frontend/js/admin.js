@@ -7208,3 +7208,86 @@ document.getElementById('testimony-distribution-refresh')?.addEventListener('cli
 document.getElementById('credibility-trends-refresh')?.addEventListener('click', loadCredibilityTrendsPanel);
 setTimeout(loadTestimonyDistributionPanel, 10000);
 setTimeout(loadCredibilityTrendsPanel, 11500);
+
+// ─── EVIDENCE ANALYTICS ──────────────────────────────────────────────────────
+async function loadEvidenceAnalytics() {
+    const res = await fetch('/api/admin/evidence-analytics', { headers: { 'X-Admin-Token': getAdminToken() } });
+    if (!res.ok) throw new Error('Auth failed');
+    const d = await res.json();
+    let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.75rem">`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val">${d.total_evidence_items.toLocaleString()}</div><div class="admin-metric-lbl">Total Evidence Items</div></div>`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val" style="color:#22c55e">${d.top_reliability_type.score}/100</div><div class="admin-metric-lbl">Best: ${d.top_reliability_type.type}</div></div>`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val" style="color:#f97316">${d.lowest_reliability_type.score}/100</div><div class="admin-metric-lbl">Lowest: ${d.lowest_reliability_type.type}</div></div>`;
+    html += `</div>`;
+    html += `<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.5rem">Evidence Type Distribution</h4>`;
+    d.evidence_types.forEach(e => {
+        const c = e.avg_reliability_score >= 80 ? '#22c55e' : e.avg_reliability_score >= 65 ? '#eab308' : '#f97316';
+        html += `<div style="margin-bottom:0.3rem">`;
+        html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#cbd5e1;margin-bottom:0.15rem">`;
+        html += `<span>${e.icon} ${e.type}</span><span>${e.count} items (${e.percentage}%) — Reliability: <span style="color:${c}">${e.avg_reliability_score}/100</span></span></div>`;
+        html += `<div style="height:5px;background:rgba(255,255,255,0.08);border-radius:3px">`;
+        html += `<div style="height:100%;width:${e.percentage}%;background:${e.color};border-radius:3px"></div></div></div>`;
+    });
+    html += `</div>`;
+    html += `<div style="font-size:0.78rem;color:#64748b;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem">`;
+    d.insights.forEach(ins => { html += `<div>• ${ins}</div>`; });
+    html += `</div>`;
+    return html;
+}
+
+async function loadEvidenceAnalyticsPanel() {
+    const el = document.getElementById('evidence-analytics-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadEvidenceAnalytics();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load evidence analytics.</p>'; console.error(e); }
+}
+
+// ─── RESOLUTION FORECAST ─────────────────────────────────────────────────────
+async function loadResolutionForecast() {
+    const res = await fetch('/api/admin/resolution-forecast', { headers: { 'X-Admin-Token': getAdminToken() } });
+    if (!res.ok) throw new Error('Auth failed');
+    const d = await res.json();
+    let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.75rem">`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val">${d.most_likely_probability}%</div><div class="admin-metric-lbl">${d.most_likely_outcome}</div></div>`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val">${d.resolution_timeline.avg_days_to_resolution}d</div><div class="admin-metric-lbl">Avg Resolution Time</div></div>`;
+    html += `<div class="admin-metric-box"><div class="admin-metric-val" style="color:#eab308">${d.resolution_timeline.cases_pending}</div><div class="admin-metric-lbl">Cases Pending</div></div>`;
+    html += `</div>`;
+    html += `<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.5rem">Outcome Probability Distribution</h4>`;
+    d.outcome_probabilities.forEach(o => {
+        html += `<div style="margin-bottom:0.3rem">`;
+        html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#cbd5e1;margin-bottom:0.15rem">`;
+        html += `<span>${o.icon} ${o.outcome}</span><span style="color:${o.color};font-weight:600">${o.probability_pct}%</span></div>`;
+        html += `<div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px">`;
+        html += `<div style="height:100%;width:${o.probability_pct}%;background:${o.color};border-radius:3px"></div></div></div>`;
+    });
+    html += `</div>`;
+    html += `<div style="margin-bottom:0.75rem"><h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem">Predictive Factors</h4>`;
+    d.predictive_factors.forEach(pf => {
+        const c = pf.current_score >= 75 ? '#22c55e' : pf.current_score >= 50 ? '#eab308' : '#f97316';
+        const impC = pf.impact === 'High' ? '#ef4444' : pf.impact === 'Medium' ? '#eab308' : '#64748b';
+        html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#cbd5e1;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.04)">`;
+        html += `<span>${pf.factor} <span style="color:${impC};font-size:0.7rem">[${pf.impact}]</span></span>`;
+        html += `<span style="color:${c};font-weight:600">${pf.current_score}/100</span></div>`;
+    });
+    html += `</div>`;
+    const rt = d.resolution_timeline;
+    html += `<div style="font-size:0.75rem;color:#64748b;display:grid;grid-template-columns:1fr 1fr;gap:0.25rem">`;
+    html += `<div>⚡ Fastest: ${rt.fastest_resolution_days}d</div><div>🐌 Longest pending: ${rt.longest_pending_days}d</div>`;
+    html += `<div>✅ Resolved (30d): ${rt.cases_resolved_30d}</div><div>⚠️ Stalled (60d+): ${rt.cases_stalled_60d}</div>`;
+    html += `</div>`;
+    return html;
+}
+
+async function loadResolutionForecastPanel() {
+    const el = document.getElementById('resolution-forecast-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadResolutionForecast();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load resolution forecast.</p>'; console.error(e); }
+}
+
+document.getElementById('evidence-analytics-refresh')?.addEventListener('click', loadEvidenceAnalyticsPanel);
+document.getElementById('resolution-forecast-refresh')?.addEventListener('click', loadResolutionForecastPanel);
+setTimeout(loadEvidenceAnalyticsPanel, 13000);
+setTimeout(loadResolutionForecastPanel, 14500);

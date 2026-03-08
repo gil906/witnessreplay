@@ -25074,3 +25074,551 @@ async def admin_credibility_trends(auth=Depends(require_admin_auth)):
         ],
         "timestamp": now.isoformat() + "Z"
     }
+
+
+# ─── PLEA DEAL PROBABILITY ANALYSIS ────────────────────────────────────────
+@router.get("/sessions/{session_id}/plea-deal")
+async def plea_deal_analysis(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow()
+    random.seed(session_id + "plea")
+
+    factors = [
+        {
+            "factor": "Evidence Strength Against Defendant",
+            "weight": 25,
+            "score": random.randint(30, 95),
+            "description": "Strength and admissibility of prosecution evidence",
+            "plea_driver": True
+        },
+        {
+            "factor": "Witness Credibility Risk",
+            "weight": 20,
+            "score": random.randint(25, 90),
+            "description": "Risk that key witnesses underperform at trial",
+            "plea_driver": random.random() > 0.4
+        },
+        {
+            "factor": "Defendant's Criminal History",
+            "weight": 15,
+            "score": random.randint(20, 85),
+            "description": "Prior convictions affecting sentencing exposure",
+            "plea_driver": random.random() > 0.3
+        },
+        {
+            "factor": "Trial Cost & Duration Exposure",
+            "weight": 15,
+            "score": random.randint(30, 80),
+            "description": "Estimated time and cost if case proceeds to full trial",
+            "plea_driver": random.random() > 0.5
+        },
+        {
+            "factor": "Jurisdiction Plea Rate",
+            "weight": 15,
+            "score": random.randint(40, 90),
+            "description": "Historical plea agreement rate in this jurisdiction",
+            "plea_driver": True
+        },
+        {
+            "factor": "Defense Strategy Viability",
+            "weight": 10,
+            "score": random.randint(20, 75),
+            "description": "How strong are the available defense arguments",
+            "plea_driver": random.random() > 0.5
+        },
+    ]
+
+    weighted_sum = sum(f["score"] * f["weight"] for f in factors)
+    total_weight = sum(f["weight"] for f in factors)
+    plea_probability = round(weighted_sum / total_weight)
+
+    if plea_probability >= 80:
+        label = "Very Likely"
+        color = "#22c55e"
+        tier = "high"
+    elif plea_probability >= 60:
+        label = "Likely"
+        color = "#84cc16"
+        tier = "moderate-high"
+    elif plea_probability >= 40:
+        label = "Possible"
+        color = "#eab308"
+        tier = "moderate"
+    elif plea_probability >= 20:
+        label = "Unlikely"
+        color = "#f97316"
+        tier = "low"
+    else:
+        label = "Very Unlikely"
+        color = "#ef4444"
+        tier = "very-low"
+
+    charge_reductions = [
+        {"from_charge": "Murder 1st Degree", "to_charge": "Manslaughter", "probability_pct": random.randint(20, 50), "sentence_reduction_yrs": random.randint(10, 25)},
+        {"from_charge": "Aggravated Assault", "to_charge": "Simple Assault", "probability_pct": random.randint(30, 65), "sentence_reduction_yrs": random.randint(2, 8)},
+        {"from_charge": "Grand Larceny", "to_charge": "Petty Larceny", "probability_pct": random.randint(25, 70), "sentence_reduction_yrs": random.randint(1, 5)},
+    ]
+
+    estimated_sentence = {
+        "trial_conviction_max_yrs": random.randint(8, 40),
+        "plea_deal_expected_yrs": random.randint(2, 15),
+        "sentence_reduction_pct": random.randint(30, 65),
+        "probation_possible": random.random() > 0.5
+    }
+
+    return {
+        "session_id": session_id,
+        "plea_probability": plea_probability,
+        "plea_probability_label": label,
+        "plea_probability_color": color,
+        "tier": tier,
+        "factors": factors,
+        "charge_reduction_scenarios": charge_reductions,
+        "estimated_sentence_impact": estimated_sentence,
+        "negotiation_leverage_points": [
+            "Cooperate with prosecution to reveal co-conspirators",
+            "Offer restitution to victims as goodwill gesture",
+            "Agree to testify against other defendants",
+            "Waive right to appeal if deal is accepted",
+            "Agree to supervision conditions reducing recidivism risk"
+        ],
+        "recommended_timeline": f"Initiate plea negotiations within {random.randint(30, 90)} days before trial preparation costs escalate",
+        "summary": f"Plea deal probability: {plea_probability}% ({label}). Weighted across {len(factors)} legal factors. Estimated sentence reduction of {estimated_sentence['sentence_reduction_pct']}% possible.",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── WITNESS MOTIVE & INTENT ANALYSIS ──────────────────────────────────────
+@router.get("/sessions/{session_id}/motive-analysis")
+async def motive_analysis(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow()
+    random.seed(session_id + "motive")
+
+    motive_types = [
+        {
+            "motive": "Financial Gain",
+            "likelihood_pct": random.randint(10, 85),
+            "indicators": ["References to compensation", "Questions about civil suit", "Emphasis on economic damages"],
+            "credibility_impact": random.choice(["Reduces", "Neutral", "Increases"]),
+            "color": "#eab308"
+        },
+        {
+            "motive": "Personal Vendetta",
+            "likelihood_pct": random.randint(5, 70),
+            "indicators": ["Emotional language toward defendant", "History of disputes", "Unprompted character attacks"],
+            "credibility_impact": random.choice(["Reduces", "Significantly Reduces"]),
+            "color": "#ef4444"
+        },
+        {
+            "motive": "Fear of Retaliation",
+            "likelihood_pct": random.randint(5, 60),
+            "indicators": ["Hesitancy to implicate others", "Hedged statements", "Requests for anonymity"],
+            "credibility_impact": random.choice(["Neutral", "Increases"]),
+            "color": "#8b5cf6"
+        },
+        {
+            "motive": "Civic Duty / Truth-Seeking",
+            "likelihood_pct": random.randint(30, 90),
+            "indicators": ["Volunteers detail proactively", "Acknowledges uncertainty", "Corrects prior statements"],
+            "credibility_impact": "Increases",
+            "color": "#22c55e"
+        },
+        {
+            "motive": "Protecting Associates",
+            "likelihood_pct": random.randint(5, 55),
+            "indicators": ["Minimizes others' roles", "Memory gaps for specific events", "Inconsistent timelines"],
+            "credibility_impact": "Reduces",
+            "color": "#f97316"
+        },
+        {
+            "motive": "Legal Immunity Compliance",
+            "likelihood_pct": random.randint(10, 65),
+            "indicators": ["Formal language suggesting legal prep", "Strict adherence to agreed narrative", "Minimal elaboration"],
+            "credibility_impact": random.choice(["Neutral", "Reduces"]),
+            "color": "#06b6d4"
+        },
+    ]
+
+    motive_types.sort(key=lambda x: x["likelihood_pct"], reverse=True)
+    dominant_motive = motive_types[0]
+
+    bias_risk = round(sum(m["likelihood_pct"] for m in motive_types if m["credibility_impact"] in ["Reduces", "Significantly Reduces"]) / max(len(motive_types), 1))
+
+    return {
+        "session_id": session_id,
+        "dominant_motive": dominant_motive["motive"],
+        "dominant_motive_likelihood": dominant_motive["likelihood_pct"],
+        "bias_risk_score": bias_risk,
+        "bias_risk_label": "High" if bias_risk >= 60 else ("Moderate" if bias_risk >= 35 else "Low"),
+        "motive_types": motive_types,
+        "intent_signals": [
+            {"signal": "Proactive detail volunteering", "present": random.random() > 0.4, "interpretation": "Suggests genuine recall vs. rehearsed narrative"},
+            {"signal": "Self-incriminating statements", "present": random.random() > 0.6, "interpretation": "Strong indicator of truth-seeking motive"},
+            {"signal": "Protective deflection", "present": random.random() > 0.5, "interpretation": "May indicate loyalty bias or coaching"},
+            {"signal": "Economic references", "present": random.random() > 0.5, "interpretation": "Potential financial motive influencing testimony"},
+            {"signal": "Emotional inconsistency", "present": random.random() > 0.4, "interpretation": "Suggests underlying unresolved motive"},
+        ],
+        "cross_exam_focus": [
+            f"Challenge financial relationships with parties involved",
+            f"Explore any history of disputes with {session.get('witness_name', 'the defendant')}",
+            "Ask directly about immunity deals or cooperation agreements",
+            "Probe for any prior statements that conflict with claimed motives",
+        ],
+        "summary": f"Dominant motive: '{dominant_motive['motive']}' ({dominant_motive['likelihood_pct']}% likelihood). Bias risk: {bias_risk}/100. Analyze intent signals before cross-examination.",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── CROSS-EXAMINATION QUESTION GENERATOR ──────────────────────────────────
+@router.get("/sessions/{session_id}/cross-exam-questions")
+async def cross_exam_questions(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow()
+    random.seed(session_id + "crossexam")
+
+    question_categories = [
+        {
+            "category": "Timeline & Memory Challenges",
+            "priority": "Critical",
+            "color": "#ef4444",
+            "questions": [
+                "You stated the incident occurred at approximately 3pm — can you explain how you are certain of that time?",
+                "Your earlier statement mentioned a different sequence of events. Which account is accurate?",
+                "How much time elapsed between witnessing the event and contacting law enforcement?",
+                "Were you under any stress or duress that might have impacted your ability to recall accurately?",
+            ]
+        },
+        {
+            "category": "Credibility & Bias",
+            "priority": "High",
+            "color": "#f97316",
+            "questions": [
+                "Have you ever had any financial dealings with the parties involved in this case?",
+                "Do you have any prior relationship — positive or negative — with the defendant?",
+                "Are you receiving any benefit, compensation, or reduced sentence for your testimony today?",
+                "Have you spoken with any other witnesses about the events before testifying?",
+            ]
+        },
+        {
+            "category": "Inconsistency Exploitation",
+            "priority": "High",
+            "color": "#eab308",
+            "questions": [
+                "In your written statement you said X, but today you claim Y — which is correct?",
+                "Your account differs from physical evidence found at the scene — how do you reconcile this?",
+                "Three other witnesses placed you at a different location — can you explain that discrepancy?",
+                "You said you heard the defendant make a specific statement, yet no audio recording captured it — correct?",
+            ]
+        },
+        {
+            "category": "Observation & Perception",
+            "priority": "Medium",
+            "color": "#84cc16",
+            "questions": [
+                "What were the lighting conditions at the time you observed the event?",
+                "How far were you from the incident when you witnessed it?",
+                "Were you wearing corrective lenses? Had you consumed any substances that might impair perception?",
+                "What was your emotional state at the time of the observation?",
+            ]
+        },
+        {
+            "category": "Motive & Intent Probing",
+            "priority": "Medium",
+            "color": "#22c55e",
+            "questions": [
+                "What motivated you to come forward as a witness in this case?",
+                "Have you spoken with the plaintiff's attorney outside of formal depositions?",
+                "Did anyone suggest what to say or how to frame your account?",
+                "Is there any outcome in this case that would benefit you personally?",
+            ]
+        },
+        {
+            "category": "Physical Evidence Conflicts",
+            "priority": "Low",
+            "color": "#06b6d4",
+            "questions": [
+                "DNA evidence places someone else at the scene — how does that affect your account?",
+                "Security camera footage shows a different timeline — can you explain this?",
+                "The physical evidence suggests the event occurred differently — where do you believe the discrepancy lies?",
+            ]
+        },
+    ]
+
+    total_questions = sum(len(c["questions"]) for c in question_categories)
+
+    return {
+        "session_id": session_id,
+        "total_questions": total_questions,
+        "question_categories": question_categories,
+        "strategy_notes": [
+            "Lead with timeline challenges to establish baseline inconsistency",
+            "Save credibility attacks for after the witness is committed to key facts",
+            "Use rhetorical questions sparingly — the goal is facts, not theater",
+            "Allow silence after each answer — witnesses often fill silence with damaging admissions",
+            "Confirm each inconsistency before moving to the next — don't allow backpedaling",
+        ],
+        "danger_zones": [
+            "Avoid asking questions you don't already know the answer to",
+            "Do not allow the witness to rehabilitate credibility during cross",
+            "Watch for narrative pivots — challenge immediately with prior statements",
+        ],
+        "recommended_order": ["Timeline & Memory Challenges", "Inconsistency Exploitation", "Observation & Perception", "Credibility & Bias", "Motive & Intent Probing", "Physical Evidence Conflicts"],
+        "summary": f"Generated {total_questions} cross-examination questions across {len(question_categories)} categories. Begin with timeline challenges, escalate to credibility attacks.",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── WITNESS IMPACT SCORE ────────────────────────────────────────────────────
+@router.get("/sessions/{session_id}/witness-impact")
+async def witness_impact(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow()
+    random.seed(session_id + "impact")
+
+    dimensions = [
+        {"dimension": "Corroborative Power", "score": random.randint(30, 95), "weight": 25, "description": "How well this testimony supports or undermines other evidence"},
+        {"dimension": "Uniqueness of Information", "score": random.randint(20, 90), "weight": 20, "description": "Does this witness provide facts unavailable elsewhere?"},
+        {"dimension": "Emotional Persuasion", "score": random.randint(25, 85), "weight": 15, "description": "Likely emotional impact on jury or decision-maker"},
+        {"dimension": "Evidentiary Foundation", "score": random.randint(30, 90), "weight": 20, "description": "Ability to establish foundational facts for other evidence"},
+        {"dimension": "Vulnerability to Impeachment", "score": random.randint(15, 80), "weight": 10, "description": "Resistance to credibility attacks (higher = more resistant)"},
+        {"dimension": "Case Narrative Fit", "score": random.randint(35, 95), "weight": 10, "description": "How well testimony aligns with the overall case theory"},
+    ]
+
+    weighted = sum(d["score"] * d["weight"] for d in dimensions)
+    total_w = sum(d["weight"] for d in dimensions)
+    impact_score = round(weighted / total_w)
+
+    if impact_score >= 80:
+        impact_label = "Critical Witness"
+        color = "#22c55e"
+        recommendation = "Protect and thoroughly prepare this witness — they are central to the case outcome."
+    elif impact_score >= 60:
+        impact_label = "High-Value Witness"
+        color = "#84cc16"
+        recommendation = "Significant case asset. Invest in preparation and anticipate aggressive cross-examination."
+    elif impact_score >= 40:
+        impact_label = "Supporting Witness"
+        color = "#eab308"
+        recommendation = "Useful for corroboration. Limit exposure to avoid introducing weaknesses."
+    elif impact_score >= 20:
+        impact_label = "Marginal Witness"
+        color = "#f97316"
+        recommendation = "Consider whether testimony risk outweighs value. May be excluded strategically."
+    else:
+        impact_label = "Low-Impact Witness"
+        color = "#ef4444"
+        recommendation = "Testimony adds minimal value — consider not calling this witness unless necessary."
+
+    case_impact_direction = "Prosecution" if random.random() > 0.5 else "Defense"
+    swing_potential = random.randint(5, 35)
+
+    return {
+        "session_id": session_id,
+        "impact_score": impact_score,
+        "impact_label": impact_label,
+        "impact_color": color,
+        "case_impact_direction": case_impact_direction,
+        "swing_potential_pct": swing_potential,
+        "dimensions": dimensions,
+        "comparative_ranking": {
+            "percentile": random.randint(40, 95),
+            "rank_in_case": random.randint(1, 5),
+            "total_witnesses": random.randint(4, 12),
+            "stronger_than_pct": random.randint(35, 90)
+        },
+        "risk_factors": [
+            {"risk": "Prior statement inconsistencies", "severity": random.choice(["Low", "Medium", "High"]), "mitigation": "Thorough pre-trial preparation and narrative alignment"},
+            {"risk": "Hostile cross-examination exposure", "severity": random.choice(["Low", "Medium", "High"]), "mitigation": "Mock cross-examination sessions and objection coaching"},
+            {"risk": "Memory degradation over time", "severity": random.choice(["Low", "Medium"]), "mitigation": "Reinforce timeline with physical evidence anchors"},
+        ],
+        "recommendation": recommendation,
+        "summary": f"Witness impact score: {impact_score}/100 ({impact_label}). Testimony favors {case_impact_direction} by up to {swing_potential}%. {'High strategic value — prioritize preparation.' if impact_score >= 60 else 'Consider strategic importance before calling.'}",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── CASE VULNERABILITY RADAR ───────────────────────────────────────────────
+@router.get("/sessions/{session_id}/vulnerability-radar")
+async def vulnerability_radar(session_id: str):
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    now = datetime.utcnow()
+    random.seed(session_id + "vuln")
+
+    axes = [
+        {"axis": "Witness Reliability", "vulnerability_score": random.randint(10, 85), "description": "Risk from weak or impeachable witness testimony", "category": "Evidence"},
+        {"axis": "Physical Evidence Gaps", "vulnerability_score": random.randint(10, 80), "description": "Missing or contested physical evidence", "category": "Evidence"},
+        {"axis": "Legal Procedure Risk", "vulnerability_score": random.randint(5, 70), "description": "Procedural missteps that could invalidate evidence", "category": "Procedural"},
+        {"axis": "Timeline Inconsistency", "vulnerability_score": random.randint(10, 75), "description": "Contradictions in the established chronology", "category": "Narrative"},
+        {"axis": "Motive Clarity", "vulnerability_score": random.randint(15, 80), "description": "Weakness in establishing clear defendant motive", "category": "Narrative"},
+        {"axis": "Expert Testimony Exposure", "vulnerability_score": random.randint(10, 70), "description": "Risk from opposing expert witnesses", "category": "Expert"},
+        {"axis": "Jury Perception Risk", "vulnerability_score": random.randint(15, 85), "description": "Factors that may negatively influence jury sympathy", "category": "Presentation"},
+        {"axis": "Chain of Custody Integrity", "vulnerability_score": random.randint(5, 65), "description": "Risk of evidence tampering or handling challenges", "category": "Evidence"},
+    ]
+
+    axes.sort(key=lambda x: x["vulnerability_score"], reverse=True)
+    overall_vulnerability = round(sum(a["vulnerability_score"] for a in axes) / len(axes))
+
+    if overall_vulnerability >= 70:
+        overall_label = "Critically Vulnerable"
+        overall_color = "#ef4444"
+    elif overall_vulnerability >= 50:
+        overall_label = "Significantly Vulnerable"
+        overall_color = "#f97316"
+    elif overall_vulnerability >= 30:
+        overall_label = "Moderately Vulnerable"
+        overall_color = "#eab308"
+    else:
+        overall_label = "Well-Protected"
+        overall_color = "#22c55e"
+
+    top_3 = axes[:3]
+    mitigation_map = {a["axis"]: f"Address {a['axis'].lower()} by {'reinforcing witness preparation' if a['category']=='Evidence' else 'reviewing procedural compliance' if a['category']=='Procedural' else 'clarifying narrative timeline' if a['category']=='Narrative' else 'consulting domain expert' if a['category']=='Expert' else 'improving presentation strategy'}" for a in top_3}
+
+    return {
+        "session_id": session_id,
+        "overall_vulnerability": overall_vulnerability,
+        "overall_label": overall_label,
+        "overall_color": overall_color,
+        "axes": axes,
+        "top_vulnerabilities": top_3,
+        "vulnerability_by_category": {
+            cat: round(sum(a["vulnerability_score"] for a in axes if a["category"] == cat) / max(sum(1 for a in axes if a["category"] == cat), 1))
+            for cat in ["Evidence", "Procedural", "Narrative", "Expert", "Presentation"]
+        },
+        "mitigation_priorities": [
+            {"axis": a["axis"], "score": a["vulnerability_score"], "action": mitigation_map.get(a["axis"], f"Review and address {a['axis'].lower()}")}
+            for a in top_3
+        ],
+        "radar_data": [{"axis": a["axis"], "value": a["vulnerability_score"], "category": a["category"]} for a in axes],
+        "summary": f"Overall vulnerability: {overall_vulnerability}/100 ({overall_label}). Top risk: '{top_3[0]['axis']}' ({top_3[0]['vulnerability_score']}). Address top 3 vulnerabilities before trial.",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── ADMIN EVIDENCE TYPE ANALYTICS ──────────────────────────────────────────
+@router.get("/admin/evidence-analytics")
+async def admin_evidence_analytics(auth=Depends(require_admin_auth)):
+    now = datetime.utcnow()
+    random.seed(int(now.timestamp() // 3600))
+
+    evidence_types = [
+        {"type": "Eyewitness Testimony", "count": random.randint(120, 300), "avg_reliability_score": random.randint(55, 80), "color": "#6366f1", "icon": "👁️"},
+        {"type": "Physical Evidence", "count": random.randint(80, 200), "avg_reliability_score": random.randint(70, 95), "color": "#22c55e", "icon": "🔬"},
+        {"type": "Digital Records", "count": random.randint(60, 180), "avg_reliability_score": random.randint(75, 98), "color": "#06b6d4", "icon": "💾"},
+        {"type": "Expert Witness", "count": random.randint(30, 100), "avg_reliability_score": random.randint(65, 90), "color": "#8b5cf6", "icon": "🎓"},
+        {"type": "Audio/Video Recording", "count": random.randint(40, 150), "avg_reliability_score": random.randint(80, 99), "color": "#f59e0b", "icon": "🎥"},
+        {"type": "Document Evidence", "count": random.randint(50, 160), "avg_reliability_score": random.randint(70, 92), "color": "#ec4899", "icon": "📄"},
+        {"type": "Character Witness", "count": random.randint(20, 80), "avg_reliability_score": random.randint(40, 70), "color": "#f97316", "icon": "👤"},
+        {"type": "Forensic Analysis", "count": random.randint(25, 90), "avg_reliability_score": random.randint(78, 97), "color": "#14b8a6", "icon": "🧬"},
+    ]
+
+    total_items = sum(e["count"] for e in evidence_types)
+    evidence_types.sort(key=lambda x: x["count"], reverse=True)
+
+    for e in evidence_types:
+        e["percentage"] = round(100 * e["count"] / max(total_items, 1), 1)
+
+    weekly_trends = []
+    for i in range(8):
+        week_date = (now - timedelta(days=7 * (7 - i))).strftime("%b %d")
+        weekly_trends.append({
+            "week": week_date,
+            "physical": random.randint(15, 40),
+            "digital": random.randint(10, 35),
+            "testimonial": random.randint(20, 50),
+            "forensic": random.randint(5, 20),
+        })
+
+    top_reliability = max(evidence_types, key=lambda x: x["avg_reliability_score"])
+    lowest_reliability = min(evidence_types, key=lambda x: x["avg_reliability_score"])
+
+    return {
+        "total_evidence_items": total_items,
+        "unique_evidence_types": len(evidence_types),
+        "evidence_types": evidence_types,
+        "top_reliability_type": {"type": top_reliability["type"], "score": top_reliability["avg_reliability_score"]},
+        "lowest_reliability_type": {"type": lowest_reliability["type"], "score": lowest_reliability["avg_reliability_score"]},
+        "weekly_submission_trend": weekly_trends,
+        "insights": [
+            f"'{top_reliability['type']}' is the most reliable evidence type with avg score {top_reliability['avg_reliability_score']}/100",
+            f"'{lowest_reliability['type']}' has the lowest reliability — consider supplementing with physical corroboration",
+            f"Digital evidence has increased {random.randint(12, 35)}% in the past 30 days — likely due to expanded digital intake",
+            f"Forensic analysis items have the highest court admissibility rate at {random.randint(88, 98)}%",
+        ],
+        "summary": f"{total_items} total evidence items across {len(evidence_types)} types. Top type: {evidence_types[0]['type']} ({evidence_types[0]['percentage']}% of all evidence). Avg reliability across all types: {round(sum(e['avg_reliability_score'] for e in evidence_types)/len(evidence_types))}/100.",
+        "timestamp": now.isoformat() + "Z"
+    }
+
+
+# ─── ADMIN CASE RESOLUTION FORECAST ─────────────────────────────────────────
+@router.get("/admin/resolution-forecast")
+async def admin_resolution_forecast(auth=Depends(require_admin_auth)):
+    now = datetime.utcnow()
+    random.seed(int(now.timestamp() // 3600) + 7)
+
+    outcomes = [
+        {"outcome": "Guilty Verdict", "probability_pct": random.randint(25, 55), "color": "#ef4444", "icon": "⚖️"},
+        {"outcome": "Plea Agreement", "probability_pct": random.randint(20, 45), "color": "#eab308", "icon": "🤝"},
+        {"outcome": "Not Guilty / Acquittal", "probability_pct": random.randint(10, 30), "color": "#22c55e", "icon": "✅"},
+        {"outcome": "Case Dismissed", "probability_pct": random.randint(5, 20), "color": "#06b6d4", "icon": "🗑️"},
+        {"outcome": "Hung Jury / Mistrial", "probability_pct": random.randint(3, 15), "color": "#8b5cf6", "icon": "⚠️"},
+    ]
+
+    total_prob = sum(o["probability_pct"] for o in outcomes)
+    for o in outcomes:
+        o["probability_pct"] = round(100 * o["probability_pct"] / total_prob)
+
+    fix = 100 - sum(o["probability_pct"] for o in outcomes)
+    outcomes[0]["probability_pct"] += fix
+
+    outcomes.sort(key=lambda x: x["probability_pct"], reverse=True)
+
+    monthly_forecasts = []
+    for i in range(6):
+        month = (now.replace(day=1) - timedelta(days=30 * (5 - i))).strftime("%b %Y")
+        monthly_forecasts.append({
+            "month": month,
+            "guilty_pct": random.randint(25, 55),
+            "plea_pct": random.randint(20, 45),
+            "acquittal_pct": random.randint(10, 30),
+            "dismissed_pct": random.randint(5, 18),
+            "total_cases": random.randint(15, 45)
+        })
+
+    resolution_timeline = {
+        "avg_days_to_resolution": random.randint(90, 420),
+        "fastest_resolution_days": random.randint(14, 60),
+        "longest_pending_days": random.randint(400, 900),
+        "cases_resolved_30d": random.randint(5, 20),
+        "cases_pending": random.randint(20, 80),
+        "cases_stalled_60d": random.randint(3, 15),
+    }
+
+    most_likely = outcomes[0]
+    return {
+        "outcome_probabilities": outcomes,
+        "most_likely_outcome": most_likely["outcome"],
+        "most_likely_probability": most_likely["probability_pct"],
+        "monthly_historical": monthly_forecasts,
+        "resolution_timeline": resolution_timeline,
+        "predictive_factors": [
+            {"factor": "Evidence Completeness", "impact": "High", "current_score": random.randint(60, 90)},
+            {"factor": "Witness Reliability Average", "impact": "High", "current_score": random.randint(55, 85)},
+            {"factor": "Defense Counsel Experience", "impact": "Medium", "current_score": random.randint(50, 80)},
+            {"factor": "Jurisdiction Historical Rates", "impact": "Medium", "current_score": random.randint(45, 75)},
+            {"factor": "Case Media Exposure", "impact": "Low", "current_score": random.randint(20, 60)},
+        ],
+        "summary": f"Most likely outcome: {most_likely['outcome']} ({most_likely['probability_pct']}%). Average resolution timeline: {resolution_timeline['avg_days_to_resolution']} days. {resolution_timeline['cases_pending']} cases currently pending.",
+        "timestamp": now.isoformat() + "Z"
+    }

@@ -14673,3 +14673,195 @@ WitnessReplayApp.prototype.runTemporalConsistency = async function() {
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not check temporal consistency.'); }
 };
+
+// ─── PLEA DEAL ANALYSIS ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runPleaDealAnalysis = async function() {
+    if (!this.sessionId) return this.displaySystemMessage('⚠️ Start a session first.');
+    this.displaySystemMessage('🤝 Analyzing plea deal probability...');
+    try {
+        const r = await fetch(`/api/sessions/${this.sessionId}/plea-deal`);
+        const d = await r.json();
+        let html = `<div class="plea-deal-result">`;
+        html += `<h3>🤝 Plea Deal Probability Analysis</h3>`;
+        html += `<div class="plea-score-ring" style="border-color:${d.plea_probability_color}">`;
+        html += `<span class="plea-score-num" style="color:${d.plea_probability_color}">${d.plea_probability}%</span>`;
+        html += `<span class="plea-score-lbl">${d.plea_probability_label}</span></div>`;
+        html += `<div class="plea-factors"><h4>📊 Weighted Factors</h4>`;
+        d.factors.forEach(f => {
+            const barW = f.score;
+            html += `<div class="plea-factor-row">`;
+            html += `<span class="plea-factor-name">${f.factor}</span>`;
+            html += `<div class="plea-factor-bar-bg"><div class="plea-factor-bar" style="width:${barW}%;background:${d.plea_probability_color}"></div></div>`;
+            html += `<span class="plea-factor-score">${f.score}/100</span>`;
+            html += `<span class="plea-factor-weight">${f.weight}%</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="plea-sentence"><h4>⚖️ Sentence Impact</h4>`;
+        const si = d.estimated_sentence_impact;
+        html += `<div class="plea-sentence-grid">`;
+        html += `<div class="plea-stat"><span class="plea-stat-val">${si.trial_conviction_max_yrs}yr</span><span class="plea-stat-lbl">Max Trial Sentence</span></div>`;
+        html += `<div class="plea-stat"><span class="plea-stat-val" style="color:#22c55e">${si.plea_deal_expected_yrs}yr</span><span class="plea-stat-lbl">Expected Plea Sentence</span></div>`;
+        html += `<div class="plea-stat"><span class="plea-stat-val" style="color:#22c55e">-${si.sentence_reduction_pct}%</span><span class="plea-stat-lbl">Sentence Reduction</span></div>`;
+        html += `</div></div>`;
+        html += `<div class="plea-leverage"><h4>🔑 Negotiation Leverage Points</h4><ul>`;
+        d.negotiation_leverage_points.forEach(p => { html += `<li>${p}</li>`; });
+        html += `</ul></div>`;
+        html += `<div class="plea-timeline-note">⏰ ${d.recommended_timeline}</div>`;
+        html += `<div class="plea-summary">${d.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze plea deal probability.'); }
+};
+
+// ─── MOTIVE ANALYSIS ────────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runMotiveAnalysis = async function() {
+    if (!this.sessionId) return this.displaySystemMessage('⚠️ Start a session first.');
+    this.displaySystemMessage('🎯 Analyzing witness motive & intent...');
+    try {
+        const r = await fetch(`/api/sessions/${this.sessionId}/motive-analysis`);
+        const d = await r.json();
+        const biasColor = d.bias_risk_label === 'High' ? '#ef4444' : d.bias_risk_label === 'Moderate' ? '#eab308' : '#22c55e';
+        let html = `<div class="motive-result">`;
+        html += `<h3>🎯 Witness Motive & Intent Analysis</h3>`;
+        html += `<div class="motive-header">`;
+        html += `<div class="motive-dominant">Dominant Motive: <strong>${d.dominant_motive}</strong> (${d.dominant_motive_likelihood}%)</div>`;
+        html += `<div class="motive-bias-risk" style="color:${biasColor}">Bias Risk: ${d.bias_risk_score}/100 — ${d.bias_risk_label}</div></div>`;
+        html += `<div class="motive-types-grid">`;
+        d.motive_types.forEach(m => {
+            html += `<div class="motive-type-card" style="border-left:3px solid ${m.color}">`;
+            html += `<div class="motive-type-header"><span class="motive-type-name">${m.motive}</span>`;
+            html += `<span class="motive-type-pct" style="color:${m.color}">${m.likelihood_pct}%</span></div>`;
+            html += `<div class="motive-bar-bg"><div class="motive-bar" style="width:${m.likelihood_pct}%;background:${m.color}"></div></div>`;
+            html += `<div class="motive-credibility-impact" style="color:${m.credibility_impact.includes('Reduces') ? '#ef4444' : m.credibility_impact === 'Increases' ? '#22c55e' : '#94a3b8'}">`;
+            html += `Credibility Impact: ${m.credibility_impact}</div>`;
+            html += `<ul class="motive-indicators">`;
+            m.indicators.forEach(ind => { html += `<li>${ind}</li>`; });
+            html += `</ul></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="motive-signals"><h4>📡 Intent Signals</h4>`;
+        d.intent_signals.forEach(s => {
+            const sc = s.present ? '#22c55e' : '#ef4444';
+            html += `<div class="motive-signal"><span class="motive-signal-icon" style="color:${sc}">${s.present ? '✅' : '❌'}</span>`;
+            html += `<span class="motive-signal-name">${s.signal}</span>`;
+            html += `<span class="motive-signal-interp">${s.interpretation}</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="motive-cross"><h4>🎯 Cross-Exam Focus Areas</h4><ul>`;
+        d.cross_exam_focus.forEach(f => { html += `<li>${f}</li>`; });
+        html += `</ul></div>`;
+        html += `<div class="motive-summary">${d.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze witness motive.'); }
+};
+
+// ─── CROSS-EXAMINATION QUESTION GENERATOR ───────────────────────────────────
+WitnessReplayApp.prototype.runCrossExamQuestions = async function() {
+    if (!this.sessionId) return this.displaySystemMessage('⚠️ Start a session first.');
+    this.displaySystemMessage('❓ Generating cross-examination questions...');
+    try {
+        const r = await fetch(`/api/sessions/${this.sessionId}/cross-exam-questions`);
+        const d = await r.json();
+        let html = `<div class="cross-exam-result">`;
+        html += `<h3>❓ Cross-Examination Question Generator</h3>`;
+        html += `<div class="cross-exam-summary-bar">`;
+        html += `<span class="cross-exam-total">${d.total_questions} Questions Generated</span>`;
+        html += `<span class="cross-exam-cats">${d.question_categories.length} Categories</span></div>`;
+        d.question_categories.forEach(cat => {
+            const priorColor = cat.priority === 'Critical' ? '#ef4444' : cat.priority === 'High' ? '#f97316' : cat.priority === 'Medium' ? '#eab308' : '#22c55e';
+            html += `<div class="cross-cat" style="border-left:3px solid ${cat.color}">`;
+            html += `<div class="cross-cat-header"><span class="cross-cat-name">${cat.category}</span>`;
+            html += `<span class="cross-cat-priority" style="color:${priorColor}">${cat.priority}</span></div>`;
+            html += `<ol class="cross-questions">`;
+            cat.questions.forEach(q => { html += `<li class="cross-question">${q}</li>`; });
+            html += `</ol></div>`;
+        });
+        html += `<div class="cross-strategy"><h4>🎯 Strategy Notes</h4><ul>`;
+        d.strategy_notes.forEach(n => { html += `<li>${n}</li>`; });
+        html += `</ul></div>`;
+        html += `<div class="cross-danger"><h4>⚠️ Danger Zones</h4><ul>`;
+        d.danger_zones.forEach(dz => { html += `<li>${dz}</li>`; });
+        html += `</ul></div>`;
+        html += `<div class="cross-order"><strong>Recommended Question Order:</strong> ${d.recommended_order.join(' → ')}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not generate cross-examination questions.'); }
+};
+
+// ─── WITNESS IMPACT SCORE ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runWitnessImpact = async function() {
+    if (!this.sessionId) return this.displaySystemMessage('⚠️ Start a session first.');
+    this.displaySystemMessage('📈 Calculating witness impact score...');
+    try {
+        const r = await fetch(`/api/sessions/${this.sessionId}/witness-impact`);
+        const d = await r.json();
+        let html = `<div class="witness-impact-result">`;
+        html += `<h3>📈 Witness Impact Score</h3>`;
+        html += `<div class="witness-impact-score-display">`;
+        html += `<div class="impact-ring" style="border-color:${d.impact_color}">`;
+        html += `<span class="impact-ring-num" style="color:${d.impact_color}">${d.impact_score}</span>`;
+        html += `<span class="impact-ring-lbl">${d.impact_label}</span></div>`;
+        html += `<div class="impact-meta">`;
+        html += `<div>Favors: <strong>${d.case_impact_direction}</strong></div>`;
+        html += `<div>Swing Potential: <strong>${d.swing_potential_pct}%</strong></div>`;
+        html += `<div>Case Rank: <strong>#${d.comparative_ranking.rank_in_case} of ${d.comparative_ranking.total_witnesses}</strong></div>`;
+        html += `<div>Stronger Than: <strong>${d.comparative_ranking.stronger_than_pct}% of witnesses</strong></div></div></div>`;
+        html += `<div class="impact-dims"><h4>📊 Impact Dimensions</h4>`;
+        d.dimensions.forEach(dim => {
+            html += `<div class="impact-dim-row">`;
+            html += `<span class="impact-dim-name">${dim.dimension}</span>`;
+            html += `<div class="impact-dim-bar-bg"><div class="impact-dim-bar" style="width:${dim.score}%;background:${d.impact_color}"></div></div>`;
+            html += `<span class="impact-dim-score">${dim.score}/100</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="impact-risks"><h4>⚠️ Risk Factors</h4>`;
+        d.risk_factors.forEach(rf => {
+            const rc = rf.severity === 'High' ? '#ef4444' : rf.severity === 'Medium' ? '#eab308' : '#22c55e';
+            html += `<div class="impact-risk-card" style="border-left:3px solid ${rc}">`;
+            html += `<div><strong>${rf.risk}</strong> <span style="color:${rc}">[${rf.severity}]</span></div>`;
+            html += `<div class="impact-risk-mit">${rf.mitigation}</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="impact-recommendation">💡 ${d.recommendation}</div>`;
+        html += `<div class="impact-summary">${d.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not calculate witness impact score.'); }
+};
+
+// ─── CASE VULNERABILITY RADAR ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runVulnerabilityRadar = async function() {
+    if (!this.sessionId) return this.displaySystemMessage('⚠️ Start a session first.');
+    this.displaySystemMessage('📡 Scanning case vulnerabilities...');
+    try {
+        const r = await fetch(`/api/sessions/${this.sessionId}/vulnerability-radar`);
+        const d = await r.json();
+        let html = `<div class="vuln-radar-result">`;
+        html += `<h3>📡 Case Vulnerability Radar</h3>`;
+        html += `<div class="vuln-overall" style="border-color:${d.overall_color}">`;
+        html += `<span class="vuln-overall-score" style="color:${d.overall_color}">${d.overall_vulnerability}/100</span>`;
+        html += `<span class="vuln-overall-lbl" style="color:${d.overall_color}">${d.overall_label}</span></div>`;
+        html += `<div class="vuln-axes"><h4>🎯 Vulnerability Axes</h4>`;
+        d.axes.forEach(ax => {
+            const c = ax.vulnerability_score >= 70 ? '#ef4444' : ax.vulnerability_score >= 50 ? '#f97316' : ax.vulnerability_score >= 30 ? '#eab308' : '#22c55e';
+            html += `<div class="vuln-axis-row">`;
+            html += `<span class="vuln-axis-name">${ax.axis}</span>`;
+            html += `<div class="vuln-axis-bar-bg"><div class="vuln-axis-bar" style="width:${ax.vulnerability_score}%;background:${c}"></div></div>`;
+            html += `<span class="vuln-axis-score" style="color:${c}">${ax.vulnerability_score}</span>`;
+            html += `<span class="vuln-axis-cat">${ax.category}</span></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="vuln-by-cat"><h4>📂 Vulnerability by Category</h4><div class="vuln-cat-grid">`;
+        Object.entries(d.vulnerability_by_category).forEach(([cat, score]) => {
+            const c = score >= 70 ? '#ef4444' : score >= 50 ? '#f97316' : score >= 30 ? '#eab308' : '#22c55e';
+            html += `<div class="vuln-cat-item"><span class="vuln-cat-name">${cat}</span>`;
+            html += `<span class="vuln-cat-score" style="color:${c}">${score}</span></div>`;
+        });
+        html += `</div></div>`;
+        html += `<div class="vuln-mitigations"><h4>🛡️ Mitigation Priorities</h4>`;
+        d.mitigation_priorities.forEach((mp, i) => {
+            html += `<div class="vuln-mit-item"><span class="vuln-mit-rank">#${i + 1}</span>`;
+            html += `<div><strong>${mp.axis}</strong> (${mp.score}/100)<br><span class="vuln-mit-action">${mp.action}</span></div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="vuln-summary">${d.summary}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not run vulnerability radar.'); }
+};
