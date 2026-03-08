@@ -6997,3 +6997,105 @@ async function loadWitnessTrendsPanel() {
 }
 document.getElementById('witness-trends-refresh')?.addEventListener('click', loadWitnessTrendsPanel);
 setTimeout(loadWitnessTrendsPanel, 6000);
+
+// ─── Admin Case Complexity Dashboard ─────────────────────────────────────────
+async function loadCaseComplexity() {
+    const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+    const r = await fetch('/api/admin/case-complexity', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) { return '<p class="admin-error">Could not load case complexity data.</p>'; }
+    const d = await r.json();
+    const distColors = { simple: '#22c55e', moderate: '#eab308', complex: '#f97316', highly_complex: '#ef4444' };
+    let html = `<div class="admin-widget"><h3>🧩 Case Complexity Dashboard</h3>`;
+    html += `<div class="complexity-summary-bar">`;
+    html += `<div class="complexity-kpi"><span class="complexity-num">${d.total_cases}</span><span class="complexity-lbl">Total Cases</span></div>`;
+    html += `<div class="complexity-kpi"><span class="complexity-num" style="color:#ef4444">${d.high_complexity_pct}%</span><span class="complexity-lbl">High/Complex</span></div>`;
+    html += `<div class="complexity-kpi"><span class="complexity-num">${d.avg_overall_complexity_score}</span><span class="complexity-lbl">Avg Score</span></div>`;
+    html += `</div>`;
+    html += `<div class="complexity-dist-grid">`;
+    Object.entries(d.complexity_distribution).forEach(([k, v]) => {
+        const c = distColors[k] || '#94a3b8';
+        html += `<div class="complexity-dist-card" style="border-color:${c}">`;
+        html += `<div class="complexity-dist-icon">${v.icon}</div>`;
+        html += `<div class="complexity-dist-count" style="color:${c}">${v.count}</div>`;
+        html += `<div class="complexity-dist-label">${v.label}</div>`;
+        html += `<div class="complexity-dist-meta">~${v.avg_sessions} sessions · ${v.avg_duration_min}min avg</div>`;
+        html += `</div>`;
+    });
+    html += `</div>`;
+    html += `<h4>📊 Complexity Drivers</h4><div class="complexity-drivers">`;
+    d.complexity_drivers.forEach(dr => {
+        html += `<div class="complexity-driver-row">`;
+        html += `<span class="complexity-driver-name">${dr.driver}</span>`;
+        html += `<div class="complexity-bar-wrap"><div class="complexity-bar-fill" style="width:${dr.impact_score}%"></div></div>`;
+        html += `<span class="complexity-driver-pct">${dr.affected_cases_pct}% of cases</span>`;
+        html += `</div>`;
+    });
+    html += `</div>`;
+    html += `<div class="complexity-summary">${d.summary}</div>`;
+    html += `<div class="complexity-recs"><h4>💡 Recommendations</h4><ul>`;
+    d.recommendations.forEach(rec => { html += `<li>${rec}</li>`; });
+    html += `</ul></div></div>`;
+    return html;
+}
+
+// ─── Admin Investigation Quality Report ───────────────────────────────────────
+async function loadInvestigationQuality() {
+    const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+    const r = await fetch('/api/admin/investigation-quality', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) { return '<p class="admin-error">Could not load investigation quality data.</p>'; }
+    const d = await r.json();
+    const statusColors = { above: '#22c55e', 'on-target': '#eab308', below: '#ef4444' };
+    let html = `<div class="admin-widget"><h3>🏆 Investigation Quality Report</h3>`;
+    html += `<div class="iq-header">`;
+    html += `<div class="iq-score" style="color:${d.quality_color}">${d.overall_quality_score}<span class="iq-unit">/100</span></div>`;
+    html += `<div class="iq-label" style="color:${d.quality_color}">${d.quality_label}</div>`;
+    html += `<div class="iq-meta"><span>✅ ${d.above_benchmark_count} above benchmark</span><span>❌ ${d.below_benchmark_count} below benchmark</span></div>`;
+    html += `</div>`;
+    html += `<div class="iq-dims">`;
+    Object.values(d.quality_dimensions).forEach(dim => {
+        const sc = statusColors[dim.status] || '#94a3b8';
+        const vs = dim.vs_benchmark >= 0 ? `+${dim.vs_benchmark}` : `${dim.vs_benchmark}`;
+        html += `<div class="iq-dim-row">`;
+        html += `<span class="iq-dim-icon">${dim.icon}</span>`;
+        html += `<span class="iq-dim-label">${dim.label}</span>`;
+        html += `<div class="iq-dim-bar-wrap"><div class="iq-dim-bar-fill" style="width:${dim.score}%;background:${sc}"></div>`;
+        html += `<div class="iq-dim-bench" style="left:${dim.benchmark}%"></div></div>`;
+        html += `<span class="iq-dim-score">${dim.score}</span>`;
+        html += `<span class="iq-dim-vs" style="color:${sc}">(${vs})</span>`;
+        html += `</div>`;
+    });
+    html += `</div>`;
+    html += `<div class="iq-trend"><h4>📈 Weekly Quality Trend</h4><div class="iq-trend-bars">`;
+    d.weekly_quality_trend.forEach(w => {
+        const h = Math.round(w.quality_score * 0.8);
+        html += `<div class="iq-trend-bar-group"><div class="iq-trend-bar" style="height:${h}px" title="Score: ${w.quality_score}"></div><span class="iq-trend-week">${w.week}</span></div>`;
+    });
+    html += `</div></div>`;
+    html += `<div class="iq-summary">${d.summary}</div>`;
+    html += `<div class="iq-recs"><h4>💡 Recommendations</h4><ul>`;
+    d.recommendations.forEach(rec => { html += `<li>${rec}</li>`; });
+    html += `</ul></div></div>`;
+    return html;
+}
+
+// ─── Wire Case Complexity & Investigation Quality panels ──────────────────────
+async function loadCaseComplexityPanel() {
+    const el = document.getElementById('case-complexity-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadCaseComplexity();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load case complexity.</p>'; console.error(e); }
+}
+
+async function loadInvestigationQualityPanel() {
+    const el = document.getElementById('investigation-quality-content');
+    if (!el) return;
+    try {
+        el.innerHTML = await loadInvestigationQuality();
+    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load investigation quality.</p>'; console.error(e); }
+}
+
+document.getElementById('case-complexity-refresh')?.addEventListener('click', loadCaseComplexityPanel);
+document.getElementById('investigation-quality-refresh')?.addEventListener('click', loadInvestigationQualityPanel);
+setTimeout(loadCaseComplexityPanel, 7000);
+setTimeout(loadInvestigationQualityPanel, 8500);

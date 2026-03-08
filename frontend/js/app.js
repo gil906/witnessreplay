@@ -14331,3 +14331,164 @@ WitnessReplayApp.prototype._showStatementImportance = async function() {
         this.displaySystemMessage(html);
     } catch(e) { this.displaySystemMessage('❌ Could not rank statement importance.'); }
 };
+
+// ─── Key Evidence Extractor ──────────────────────────────────────────────────
+WitnessApp.prototype.runKeyEvidenceExtractor = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('🔍 Extracting key evidence items…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/key-evidence`);
+        const d = await r.json();
+        const statusColors = { corroborated: '#22c55e', central: '#22c55e', mentioned: '#eab308', uncertain: '#f97316', pending: '#94a3b8' };
+        let html = `<div class="keyev-container"><h3>🔍 Key Evidence Extractor</h3>`;
+        html += `<div class="keyev-stats">`;
+        html += `<div class="keyev-stat"><span class="keyev-num">${d.total_evidence_items}</span><span class="keyev-lbl">Total Items</span></div>`;
+        html += `<div class="keyev-stat"><span class="keyev-num" style="color:#22c55e">${d.corroborated_count}</span><span class="keyev-lbl">Corroborated</span></div>`;
+        html += `<div class="keyev-stat"><span class="keyev-num" style="color:#60a5fa">${d.average_reliability}%</span><span class="keyev-lbl">Avg Reliability</span></div>`;
+        html += `</div><div class="keyev-summary">${d.evidence_summary}</div>`;
+        const renderGroup = (title, icon, items) => {
+            let s = `<div class="keyev-group"><h4>${icon} ${title}</h4>`;
+            items.forEach(item => {
+                const sc = statusColors[item.status] || '#94a3b8';
+                s += `<div class="keyev-item"><div class="keyev-item-top"><span class="keyev-name">${item.item}</span>`;
+                s += `<span class="keyev-status" style="color:${sc}">${item.status.toUpperCase()}</span>`;
+                s += `<span class="keyev-rel">${item.reliability}%</span></div>`;
+                s += `<div class="keyev-notes">${item.notes}</div></div>`;
+            });
+            return s + '</div>';
+        };
+        html += renderGroup('Physical Evidence', '📦', d.physical_evidence);
+        html += renderGroup('Digital Evidence', '💻', d.digital_evidence);
+        html += renderGroup('Testimonial Evidence', '🗣️', d.testimonial_evidence);
+        html += `<div class="keyev-actions"><h4>⚡ Priority Actions</h4><ul>`;
+        d.priority_actions.forEach(a => { html += `<li>${a}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not extract key evidence.'); }
+};
+
+// ─── Deception Indicators ────────────────────────────────────────────────────
+WitnessApp.prototype.runDeceptionIndicators = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('🎭 Analyzing deception indicators…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/deception-indicators`);
+        const d = await r.json();
+        const riskColors = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e' };
+        const rc = riskColors[d.risk_level] || '#94a3b8';
+        let html = `<div class="deception-container"><h3>🎭 Deception Indicators Analysis</h3>`;
+        html += `<div class="deception-header"><div class="deception-score" style="color:${rc}">${d.overall_deception_risk_score}<span class="deception-unit">/100</span></div>`;
+        html += `<div class="deception-risk" style="color:${rc}; border-color:${rc}">${d.risk_level} RISK</div></div>`;
+        html += `<div class="deception-interp">${d.interpretation}</div>`;
+        html += `<div class="deception-grid">`;
+        d.indicators.forEach(ind => {
+            const pct = ind.score;
+            const barColor = pct >= 60 ? '#ef4444' : pct >= 40 ? '#f97316' : '#22c55e';
+            html += `<div class="deception-card"><div class="deception-card-top">${ind.icon} <strong>${ind.category}</strong> <span class="deception-pct" style="color:${barColor}">${pct}%</span></div>`;
+            html += `<div class="deception-bar"><div class="deception-fill" style="width:${pct}%;background:${barColor}"></div></div>`;
+            html += `<div class="deception-desc">${ind.interpretation}</div>`;
+            html += `<div class="deception-examples">${ind.examples.join(' · ')}</div></div>`;
+        });
+        html += `</div><div class="deception-rec">💡 ${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not analyze deception indicators.'); }
+};
+
+// ─── Jurisdiction Analysis ───────────────────────────────────────────────────
+WitnessApp.prototype.runJurisdictionAnalysis = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('⚖️ Analyzing jurisdiction and applicable laws…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/jurisdiction-analysis`);
+        const d = await r.json();
+        const venueRiskColor = { High: '#ef4444', Medium: '#f97316', Low: '#22c55e' };
+        const vrc = venueRiskColor[d.change_of_venue_risk] || '#94a3b8';
+        let html = `<div class="jurisd-container"><h3>⚖️ Jurisdiction Analysis</h3>`;
+        html += `<div class="jurisd-stats">`;
+        html += `<div class="jurisd-stat"><span class="jurisd-val">${d.primary_jurisdiction}</span><span class="jurisd-lbl">Primary Venue</span></div>`;
+        html += `<div class="jurisd-stat"><span class="jurisd-val" style="color:${vrc}">${d.change_of_venue_risk}</span><span class="jurisd-lbl">Venue Change Risk</span></div>`;
+        html += `</div>`;
+        html += `<div class="jurisd-summary">${d.summary}</div>`;
+        html += `<h4>📜 Applicable Laws (by relevance)</h4><div class="jurisd-laws">`;
+        d.applicable_laws.forEach(law => {
+            const pct = law.applicability;
+            html += `<div class="jurisd-law-item"><div class="jurisd-law-top"><span>${law.law}</span><span class="jurisd-pct">${pct}%</span></div>`;
+            html += `<div class="jurisd-bar"><div class="jurisd-fill" style="width:${pct}%"></div></div>`;
+            html += `<div class="jurisd-notes">${law.notes}</div></div>`;
+        });
+        html += `</div>`;
+        html += `<h4>⏰ Statutes of Limitations</h4><div class="jurisd-sol">`;
+        d.statutes_of_limitations.forEach(sol => {
+            html += `<div class="jurisd-sol-item"><span>${sol.crime_type}</span><span>${sol.limit_years} year${sol.limit_years > 1 ? 's' : ''}</span>${sol.tolled ? '<span class="jurisd-tolled">Tolled</span>' : ''}</div>`;
+        });
+        html += `</div>`;
+        html += `<div class="jurisd-keys"><h4>�� Key Issues</h4><ul>`;
+        d.key_issues.forEach(ki => { html += `<li>${ki}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not complete jurisdiction analysis.'); }
+};
+
+// ─── Witness Reliability Matrix ───────────────────────────────────────────────
+WitnessApp.prototype.runReliabilityMatrix = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('📊 Building reliability matrix…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/reliability-matrix`);
+        const d = await r.json();
+        let html = `<div class="relmat-container"><h3>📊 Witness Reliability Matrix</h3>`;
+        html += `<div class="relmat-header">`;
+        html += `<div class="relmat-score" style="color:${d.reliability_color}">${d.overall_reliability_score}<span class="relmat-unit">/100</span></div>`;
+        html += `<div class="relmat-label" style="color:${d.reliability_color}">${d.reliability_label}</div>`;
+        html += `</div>`;
+        html += `<div class="relmat-grid">`;
+        d.factors.forEach(f => {
+            const sc = f.score >= 70 ? '#22c55e' : f.score >= 50 ? '#eab308' : '#ef4444';
+            const effectiveScore = f.invert ? 100 - f.score : f.score;
+            html += `<div class="relmat-factor"><div class="relmat-factor-top">${f.icon} <strong>${f.factor}</strong>`;
+            if (f.invert) html += `<span class="relmat-inverted">⚠️ inverted</span>`;
+            html += `<span class="relmat-fscore" style="color:${sc}">${f.score}</span></div>`;
+            html += `<div class="relmat-bar"><div class="relmat-fill" style="width:${effectiveScore}%;background:${sc}"></div></div>`;
+            html += `<div class="relmat-desc">${f.description}</div>`;
+            html += `<div class="relmat-weight">Weight: ${Math.round(f.weight * 100)}%</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="relmat-swot">`;
+        html += `<div class="relmat-strengths"><h4>✅ Strengths</h4><ul>${d.strengths.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
+        html += `<div class="relmat-weaknesses"><h4>⚠️ Weaknesses</h4><ul>${d.weaknesses.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
+        html += `</div>`;
+        html += `<div class="relmat-rec">�� ${d.recommendation}</div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not build reliability matrix.'); }
+};
+
+// ─── Defense Strategy Preview ─────────────────────────────────────────────────
+WitnessApp.prototype.runDefenseStrategyPreview = async function() {
+    if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
+    this.displaySystemMessage('⚔️ Previewing likely defense strategies…');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/defense-strategy`);
+        const d = await r.json();
+        let html = `<div class="defense-container"><h3>⚔️ Defense Strategy Preview</h3>`;
+        html += `<div class="defense-header">`;
+        html += `<div class="defense-stat"><span class="defense-num" style="color:#ef4444">${d.high_risk_count}</span><span class="defense-lbl">High Risk</span></div>`;
+        html += `<div class="defense-stat"><span class="defense-num" style="color:#f97316">${d.medium_risk_count}</span><span class="defense-lbl">Medium Risk</span></div>`;
+        html += `<div class="defense-stat"><span class="defense-num">${d.overall_defense_strength}</span><span class="defense-lbl">Defense Strength</span></div>`;
+        html += `</div>`;
+        html += `<div class="defense-summary">${d.summary}</div>`;
+        html += `<div class="defense-strategies">`;
+        d.strategies.forEach(s => {
+            const lkc = s.likelihood >= 65 ? '#ef4444' : s.likelihood >= 45 ? '#f97316' : '#22c55e';
+            html += `<div class="defense-card"><div class="defense-card-top">${s.icon} <strong>${s.strategy}</strong>`;
+            html += `<span class="defense-likelihood" style="color:${lkc}">${s.likelihood}%</span></div>`;
+            html += `<div class="defense-bar"><div class="defense-fill" style="width:${s.likelihood}%;background:${lkc}"></div></div>`;
+            html += `<div class="defense-desc">${s.description}</div>`;
+            html += `<div class="defense-counter">🛡️ ${s.prosecution_countermeasure}</div></div>`;
+        });
+        html += `</div>`;
+        html += `<div class="defense-priority"><h4>⚡ Priority Preparation</h4><ul>`;
+        d.priority_preparation.forEach(p => { html += `<li>${p}</li>`; });
+        html += `</ul></div></div>`;
+        this.displaySystemMessage(html);
+    } catch(e) { this.displaySystemMessage('❌ Could not preview defense strategies.'); }
+};

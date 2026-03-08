@@ -6574,3 +6574,50 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .wtrend-pattern{margin-bottom:10px}
 .wtrend-pat-head{display:flex;justify-content:space-between;font-size:.85em;color:var(--text-secondary,#94a3b8);margin-bottom:4px}
 .wtrend-pat-bar{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+
+/* ─── Case Complexity Dashboard ─────────────────────────────────────────── */
+.complexity-summary-bar { display: flex; gap: 24px; margin-bottom: 16px; }
+.complexity-kpi { text-align: center; }
+.complexity-num { display: block; font-size: 1.6rem; font-weight: 800; }
+.complexity-lbl { font-size: 0.7rem; color: var(--text-secondary, #94a3b8); }
+.complexity-dist-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+@media(max-width:700px) { .complexity-dist-grid { grid-template-columns: 1fr 1fr; } }
+.complexity-dist-card { background: rgba(255,255,255,0.04); border: 2px solid; border-radius: 10px; padding: 12px 10px; text-align: center; }
+.complexity-dist-icon { font-size: 1.5rem; margin-bottom: 4px; }
+.complexity-dist-count { font-size: 1.4rem; font-weight: 800; }
+.complexity-dist-label { font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; }
+.complexity-dist-meta { font-size: 0.68rem; color: var(--text-secondary, #94a3b8); }
+.complexity-drivers { margin-bottom: 14px; }
+.complexity-driver-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.8rem; }
+.complexity-driver-name { width: 160px; flex-shrink: 0; font-size: 0.78rem; }
+.complexity-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+.complexity-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 3px; }
+.complexity-driver-pct { width: 80px; text-align: right; font-size: 0.72rem; color: var(--text-secondary, #94a3b8); }
+.complexity-summary { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; margin-bottom: 10px; }
+.complexity-recs h4 { font-size: 0.82rem; margin-bottom: 6px; }
+.complexity-recs li { font-size: 0.78rem; color: var(--text-secondary, #94a3b8); margin-bottom: 4px; }
+
+/* ─── Investigation Quality Report ──────────────────────────────────────── */
+.iq-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.iq-score { font-size: 2.4rem; font-weight: 800; }
+.iq-unit { font-size: 1rem; font-weight: 400; }
+.iq-label { font-size: 1rem; font-weight: 700; }
+.iq-meta { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; margin-left: auto; }
+.iq-dims { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.iq-dim-row { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+.iq-dim-icon { width: 20px; text-align: center; }
+.iq-dim-label { width: 160px; flex-shrink: 0; }
+.iq-dim-bar-wrap { position: relative; flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: visible; }
+.iq-dim-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.iq-dim-bench { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #f97316; border-radius: 1px; }
+.iq-dim-score { width: 28px; text-align: right; font-weight: 700; }
+.iq-dim-vs { width: 40px; font-size: 0.72rem; font-weight: 600; }
+.iq-trend { margin-bottom: 14px; }
+.iq-trend h4 { font-size: 0.82rem; margin-bottom: 8px; }
+.iq-trend-bars { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
+.iq-trend-bar-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.iq-trend-bar { width: 28px; background: linear-gradient(180deg, #3b82f6, #6366f1); border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.4s; }
+.iq-trend-week { font-size: 0.62rem; color: var(--text-secondary, #94a3b8); }
+.iq-summary { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; margin-bottom: 10px; }
+.iq-recs h4 { font-size: 0.82rem; margin-bottom: 6px; }
+.iq-recs li { font-size: 0.78rem; color: var(--text-secondary, #94a3b8); margin-bottom: 4px; }

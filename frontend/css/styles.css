@@ -14949,3 +14949,101 @@ textarea:disabled {
 .qab-btn-more{background:rgba(255,255,255,.03);border-style:dashed;color:var(--text-muted,#64748b)}
 .qab-btn-more:hover{background:rgba(255,255,255,.08);color:var(--text-secondary,#94a3b8)}
 @media(max-width:600px){.quick-analysis-bar{padding:8px;gap:6px}.qab-label{display:none}.qab-btn{padding:4px 8px;font-size:.75em}}
+
+/* ─── Key Evidence Extractor ─────────────────────────────────────────────── */
+.keyev-container { padding: 4px 0; }
+.keyev-stats { display: flex; gap: 16px; margin: 12px 0; }
+.keyev-stat { text-align: center; }
+.keyev-num { display: block; font-size: 1.5rem; font-weight: 700; }
+.keyev-lbl { font-size: 0.7rem; color: var(--text-secondary); }
+.keyev-summary { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 0.85rem; }
+.keyev-group { margin-bottom: 14px; }
+.keyev-group h4 { font-size: 0.85rem; margin-bottom: 8px; color: var(--text-secondary); }
+.keyev-item { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.keyev-item-top { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.keyev-name { flex: 1; font-size: 0.82rem; font-weight: 600; }
+.keyev-status { font-size: 0.7rem; font-weight: 700; }
+.keyev-rel { font-size: 0.75rem; color: #60a5fa; font-weight: 600; }
+.keyev-notes { font-size: 0.75rem; color: var(--text-secondary); }
+.keyev-actions { background: rgba(96,165,250,0.08); border-radius: 8px; padding: 10px 12px; }
+.keyev-actions h4 { font-size: 0.82rem; margin-bottom: 8px; }
+.keyev-actions li { font-size: 0.8rem; margin-bottom: 4px; color: var(--text-secondary); }
+
+/* ─── Deception Indicators ───────────────────────────────────────────────── */
+.deception-container { padding: 4px 0; }
+.deception-header { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+.deception-score { font-size: 2.2rem; font-weight: 800; }
+.deception-unit { font-size: 1rem; font-weight: 400; }
+.deception-risk { font-size: 0.85rem; font-weight: 700; border: 2px solid; border-radius: 6px; padding: 4px 10px; }
+.deception-interp { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5; }
+.deception-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+@media(max-width:600px) { .deception-grid { grid-template-columns: 1fr; } }
+.deception-card { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; }
+.deception-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.82rem; }
+.deception-pct { margin-left: auto; font-weight: 700; font-size: 0.9rem; }
+.deception-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 6px; }
+.deception-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+.deception-desc { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 4px; }
+.deception-examples { font-size: 0.7rem; color: #60a5fa; font-style: italic; }
+.deception-rec { background: rgba(96,165,250,0.08); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; }
+
+/* ─── Jurisdiction Analysis ──────────────────────────────────────────────── */
+.jurisd-container { padding: 4px 0; }
+.jurisd-stats { display: flex; gap: 24px; margin: 12px 0; }
+.jurisd-stat { }
+.jurisd-val { display: block; font-size: 1rem; font-weight: 700; }
+.jurisd-lbl { font-size: 0.7rem; color: var(--text-secondary); }
+.jurisd-summary { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 0.82rem; line-height: 1.5; }
+.jurisd-laws { margin-bottom: 14px; }
+.jurisd-law-item { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.jurisd-law-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 0.8rem; font-weight: 600; }
+.jurisd-pct { font-size: 0.78rem; color: #60a5fa; font-weight: 700; }
+.jurisd-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 4px; }
+.jurisd-fill { height: 100%; background: #60a5fa; border-radius: 2px; }
+.jurisd-notes { font-size: 0.72rem; color: var(--text-secondary); }
+.jurisd-sol { margin-bottom: 12px; }
+.jurisd-sol-item { display: flex; gap: 12px; align-items: center; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; margin-bottom: 4px; font-size: 0.8rem; }
+.jurisd-tolled { background: rgba(234,179,8,0.2); color: #eab308; border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; font-weight: 600; }
+.jurisd-keys h4 { font-size: 0.82rem; margin-bottom: 6px; }
+.jurisd-keys li { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+/* ─── Reliability Matrix ─────────────────────────────────────────────────── */
+.relmat-container { padding: 4px 0; }
+.relmat-header { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+.relmat-score { font-size: 2.2rem; font-weight: 800; }
+.relmat-unit { font-size: 1rem; font-weight: 400; }
+.relmat-label { font-size: 1rem; font-weight: 700; }
+.relmat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+@media(max-width:600px) { .relmat-grid { grid-template-columns: 1fr; } }
+.relmat-factor { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; }
+.relmat-factor-top { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.82rem; flex-wrap: wrap; }
+.relmat-inverted { font-size: 0.68rem; color: #f97316; }
+.relmat-fscore { margin-left: auto; font-weight: 700; }
+.relmat-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 6px; }
+.relmat-fill { height: 100%; border-radius: 2px; }
+.relmat-desc { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 4px; }
+.relmat-weight { font-size: 0.68rem; color: #94a3b8; }
+.relmat-swot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+@media(max-width:600px) { .relmat-swot { grid-template-columns: 1fr; } }
+.relmat-strengths, .relmat-weaknesses { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px 12px; }
+.relmat-strengths h4, .relmat-weaknesses h4 { font-size: 0.82rem; margin-bottom: 6px; }
+.relmat-strengths li, .relmat-weaknesses li { font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 3px; }
+.relmat-rec { background: rgba(96,165,250,0.08); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; }
+
+/* ─── Defense Strategy Preview ───────────────────────────────────────────── */
+.defense-container { padding: 4px 0; }
+.defense-header { display: flex; gap: 16px; margin: 12px 0; }
+.defense-stat { text-align: center; }
+.defense-num { display: block; font-size: 1.5rem; font-weight: 700; }
+.defense-lbl { font-size: 0.7rem; color: var(--text-secondary); }
+.defense-summary { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 0.82rem; line-height: 1.5; }
+.defense-strategies { display: grid; gap: 8px; margin-bottom: 12px; }
+.defense-card { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; }
+.defense-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.82rem; }
+.defense-likelihood { margin-left: auto; font-weight: 700; }
+.defense-bar { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 6px; }
+.defense-fill { height: 100%; border-radius: 2px; }
+.defense-desc { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.4; }
+.defense-counter { font-size: 0.75rem; color: #60a5fa; line-height: 1.4; font-style: italic; }
+.defense-priority h4 { font-size: 0.82rem; margin-bottom: 6px; }
+.defense-priority li { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 4px; }
