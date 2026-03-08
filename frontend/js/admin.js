@@ -7209,9 +7209,14 @@ document.getElementById('credibility-trends-refresh')?.addEventListener('click',
 setTimeout(loadTestimonyDistributionPanel, 10000);
 setTimeout(loadCredibilityTrendsPanel, 11500);
 
+// ─── ADMIN TOKEN HELPER ────────────────────────────────────────────────────────
+function getAdminToken() {
+    return sessionStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || localStorage.getItem('admin_token') || '';
+}
+
 // ─── EVIDENCE ANALYTICS ──────────────────────────────────────────────────────
 async function loadEvidenceAnalytics() {
-    const res = await fetch('/api/admin/evidence-analytics', { headers: { 'X-Admin-Token': getAdminToken() } });
+    const res = await fetch('/api/admin/evidence-analytics', { headers: { 'Authorization': 'Bearer ' + getAdminToken() } });
     if (!res.ok) throw new Error('Auth failed');
     const d = await res.json();
     let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.75rem">`;
@@ -7245,7 +7250,7 @@ async function loadEvidenceAnalyticsPanel() {
 
 // ─── RESOLUTION FORECAST ─────────────────────────────────────────────────────
 async function loadResolutionForecast() {
-    const res = await fetch('/api/admin/resolution-forecast', { headers: { 'X-Admin-Token': getAdminToken() } });
+    const res = await fetch('/api/admin/resolution-forecast', { headers: { 'Authorization': 'Bearer ' + getAdminToken() } });
     if (!res.ok) throw new Error('Auth failed');
     const d = await res.json();
     let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.75rem">`;
@@ -7295,7 +7300,7 @@ setTimeout(loadResolutionForecastPanel, 14500);
 // ─── ADMIN PLEA DEAL TRENDS ───────────────────────────────────────────────────
 async function loadPleaTrends() {
     const token = getAdminToken();
-    const res = await fetch('/api/admin/plea-trends', { headers: { 'X-Admin-Token': token } });
+    const res = await fetch('/api/admin/plea-trends', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await res.json();
     const trendColor = d.trend_direction === 'rising' ? '#22c55e' : '#f97316';
     let html = '<div style="margin-bottom:0.75rem;display:flex;gap:1.5rem;align-items:center">';
@@ -7335,7 +7340,7 @@ async function loadPleaTrendsPanel() {
 // ─── ADMIN WITNESS BACKGROUND RISK ────────────────────────────────────────────
 async function loadBackgroundRisk() {
     const token = getAdminToken();
-    const res = await fetch('/api/admin/background-risk', { headers: { 'X-Admin-Token': token } });
+    const res = await fetch('/api/admin/background-risk', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await res.json();
     let html = '<div style="margin-bottom:0.75rem;display:flex;gap:1.5rem;align-items:center">';
     html += '<div style="font-size:1.5rem;font-weight:800;color:#ef4444">' + d.high_risk_count + '</div>';
