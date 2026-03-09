@@ -19,16 +19,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
-    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
     ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
     ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
 ]
 
 # Routine conversational tasks should preserve higher-tier Flash budgets.
 ROUTINE_CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
     ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
-    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
     ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
 ]
 
 LIGHTWEIGHT_MODELS: List[Tuple[str, Dict[str, int]]] = [

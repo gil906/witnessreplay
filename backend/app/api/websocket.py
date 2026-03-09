@@ -187,13 +187,94 @@ class WebSocketHandler:
             })
     
     async def disconnect(self):
-        """Close the WebSocket connection."""
+        """Close the WebSocket connection and auto-generate report."""
         self.is_connected = False
         if hasattr(self, '_heartbeat_task'):
             self._heartbeat_task.cancel()
         for task in list(self._background_tasks):
             task.cancel()
         self._background_tasks.clear()
+
+        # ── Auto-generate report on disconnect ──
+        # If the witness provided statements, finalize the report
+        try:
+            session = await firestore_service.get_session(self.session_id)
+            if session and len(session.witness_statements) >= 1:
+                logger.info(f"Auto-generating report for session {self.session_id} ({len(session.witness_statements)} statements)")
+
+                # Mark session as completed
+                session.status = "completed"
+
+                # Generate AI summary if not already present
+                if not session.metadata.get("ai_summary"):
+                    try:
+                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
+                        if all_text.strip():
+                            model = model_selector.get_best_model_for_task("analysis")
+                            client = model_selector._get_client()
+                            summary_prompt = (
+                                "You are a law enforcement report writer. Based on the following witness statements, "
+                                "generate a concise incident report summary. Include: what happened, when, where, "
+                                "who was involved, and any important details.\n\n"
+                                f"Witness statements:\n{all_text}\n\n"
+                                "Write a professional incident report summary (2-3 paragraphs):"
+                            )
+                            response = client.models.generate_content(
+                                model=model,
+                                contents=summary_prompt
+                            )
+                            if response and response.text:
+                                metadata = dict(session.metadata or {})
+                                metadata["ai_summary"] = response.text
+                                metadata["report_generated_at"] = datetime.utcnow().isoformat()
+                                session.metadata = metadata
+                                logger.info(f"Generated AI summary for session {self.session_id}")
+                    except Exception as summary_err:
+                        logger.warning(f"Failed to generate AI summary on disconnect: {summary_err}")
+
+                # Assign to a case if not already assigned
+                if not session.case_id:
+                    try:
+                        case_id = await case_manager.assign_report_to_case(session)
+                        session.case_id = case_id
+                        logger.info(f"Auto-assigned session {self.session_id} to case {case_id}")
+                    except Exception as case_err:
+                        logger.warning(f"Failed to auto-assign case on disconnect: {case_err}")
+
+                # Generate scene image if none exists
+                if not session.scene_versions and len(session.witness_statements) >= 2:
+                    try:
+                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
+                        scene_description = all_text[:500]  # Use first 500 chars for image prompt
+                        if imagen_service and imagen_service.client:
+                            img_result = await asyncio.to_thread(
+                                imagen_service.generate_scene, scene_description
+                            )
+                            if img_result:
+                                scene_version = SceneVersion(
+                                    id=str(uuid.uuid4()),
+                                    description=scene_description[:200],
+                                    image_url=img_result.get("url", ""),
+                                    elements=[]
+                                )
+                                session.scene_versions.append(scene_version)
+                                logger.info(f"Generated scene image for session {self.session_id}")
+                    except Exception as img_err:
+                        logger.warning(f"Failed to generate scene image on disconnect: {img_err}")
+
+                # Save everything
+                await firestore_service.update_session(session)
+
+                # Also update case summary if assigned
+                if session.case_id:
+                    try:
+                        await case_manager.generate_case_summary(session.case_id)
+                    except Exception as case_sum_err:
+                        logger.warning(f"Failed to update case summary: {case_sum_err}")
+
+        except Exception as e:
+            logger.error(f"Error during auto-report generation on disconnect: {e}")
+
         remove_agent(self.session_id)
         logger.info(f"WebSocket disconnected for session {self.session_id}")
 

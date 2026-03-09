@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     
     # Model Configuration
-    gemini_model: str = "gemini-3-flash"
-    gemini_vision_model: str = "gemini-3-flash"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_vision_model: str = "gemini-2.5-flash"
     gemini_lite_model: str = "gemini-2.5-flash-lite"
     gemma_model: str = "gemma-3-27b-it"
     imagen_model: str = "imagen-4-fast-generate"
