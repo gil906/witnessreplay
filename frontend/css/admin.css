@@ -10,6 +10,55 @@
     --accent-primary: #60a5fa;
 }
 
+/* ─── Admin Tab Navigation ────────────────────────────────── */
+.admin-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+.admin-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-primary, #e2e8f0);
+}
+.admin-tab.active {
+    background: rgba(96,165,250,0.12);
+    color: #60a5fa;
+    font-weight: 600;
+}
+.admin-tab-content {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+.admin-tab-content.active {
+    display: flex;
+}
+@media (max-width: 768px) {
+    .admin-tabs { gap: 2px; padding: 3px; }
+    .admin-tab { padding: 6px 10px; font-size: 0.75rem; }
+}
+
 /* ─── Base / Reset ────────────────────────────────────────── */
 *, *::before, *::after {
     box-sizing: border-box;
