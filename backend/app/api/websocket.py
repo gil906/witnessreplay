@@ -210,8 +210,9 @@ class WebSocketHandler:
                     try:
                         all_text = " ".join([s.text for s in session.witness_statements if s.text])
                         if all_text.strip():
-                            model = model_selector.get_best_model_for_task("analysis")
-                            client = model_selector._get_client()
+                            from google import genai as genai_client
+                            model = await model_selector.get_best_model_for_task("analysis")
+                            client = genai_client.Client(api_key=settings.google_api_key)
                             summary_prompt = (
                                 "You are a law enforcement report writer. Based on the following witness statements, "
                                 "generate a concise incident report summary. Include: what happened, when, where, "

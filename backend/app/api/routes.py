@@ -6225,8 +6225,9 @@ async def fix_orphan_reports(auth=Depends(require_admin_auth)):
                     try:
                         all_text = " ".join([s.text for s in session.witness_statements if s.text])
                         if all_text.strip():
-                            client = model_selector._get_client()
-                            model = model_selector.get_best_model_for_task("analysis")
+                            from google import genai as genai_client
+                            client = genai_client.Client(api_key=settings.google_api_key)
+                            model = await model_selector.get_best_model_for_task("analysis")
                             summary_prompt = (
                                 "You are a law enforcement report writer. Based on the following witness statements, "
                                 "generate a concise incident report summary. Include: what happened, when, where, "
