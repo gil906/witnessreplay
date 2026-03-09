@@ -6670,3 +6670,487 @@ body.light-mode .case-card, body.light-mode .settings-section {
 .iq-summary { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; margin-bottom: 10px; }
 .iq-recs h4 { font-size: 0.82rem; margin-bottom: 6px; }
 .iq-recs li { font-size: 0.78rem; color: var(--text-secondary, #94a3b8); margin-bottom: 4px; }
+
+/* =========================================================
+   POLISHED ADMIN PANELS — Clean card layout
+   ========================================================= */
+
+/* ── Admin Panel Cards ── */
+.admin-panel {
+    background: rgba(18, 26, 38, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+.admin-panel:hover {
+    border-color: rgba(96, 165, 250, 0.15);
+}
+.admin-panel h3 {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary, #e2e8f0);
+    padding: 14px 18px;
+    margin: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.admin-panel h3 .admin-btn-sm,
+.admin-panel h3 .refresh-btn,
+.admin-panel h3 button {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.admin-panel > div,
+.admin-panel > .at-controls,
+.admin-panel > .sa-controls,
+.admin-panel > .sr-controls,
+.admin-panel > .export-controls,
+.admin-panel > .search-input-wrap,
+.admin-panel > .session-viewer-controls,
+.admin-panel > .backup-manager-actions {
+    padding: 14px 18px;
+}
+.admin-panel p {
+    color: var(--text-muted, #64748b);
+    font-size: 0.85rem;
+    padding: 14px 18px;
+    margin: 0;
+}
+
+/* ── Refresh Buttons ── */
+.admin-btn-sm,
+.refresh-btn {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+.admin-btn-sm:hover,
+.refresh-btn:hover {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.25);
+    color: #60a5fa;
+}
+
+/* ── Stats Cards (overview) — polished ── */
+.admin-stat {
+    background: rgba(18, 26, 38, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 12px !important;
+    padding: 16px 18px !important;
+    transition: all 0.2s !important;
+}
+.admin-stat:hover {
+    border-color: rgba(96, 165, 250, 0.2) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.stat-icon {
+    background: rgba(96, 165, 250, 0.08) !important;
+    border-radius: 10px !important;
+}
+
+/* ── Activity Chart — polished ── */
+.activity-chart-panel {
+    background: rgba(18, 26, 38, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+}
+.activity-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.activity-chart-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary, #e2e8f0);
+}
+.activity-chart-total {
+    font-size: 0.78rem;
+    color: var(--text-muted, #64748b);
+}
+
+/* ── System Health Panel — polished ── */
+.system-health-panel {
+    background: rgba(18, 26, 38, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.health-content {
+    padding: 14px 18px;
+}
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+.health-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.health-metric-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #64748b);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.health-metric-value {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary, #e2e8f0);
+}
+.health-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.health-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4ade80, #22c55e);
+    border-radius: 2px;
+    transition: width 0.4s;
+}
+
+/* ── Quota toggle button ── */
+.quota-toggle {
+    width: 100%;
+    padding: 12px 18px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    transition: background 0.15s;
+}
+.quota-toggle:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+.quota-toggle-icon {
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+}
+.health-status-badge,
+.quota-model-badge {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: rgba(74, 222, 128, 0.1);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+/* ── Admin header — cleaner ── */
+.admin-header .header-content {
+    gap: 12px;
+}
+.admin-header .logo-text h1 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+.admin-user-info {
+    margin-left: auto;
+}
+.user-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.user-avatar {
+    font-size: 1.2rem;
+}
+.user-details h3 {
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+}
+.user-role-label {
+    font-size: 0.68rem;
+    color: var(--text-muted, #64748b);
+    font-weight: 500;
+    display: block;
+    margin-top: 1px;
+}
+
+/* ── Admin actions bar ── */
+.admin-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.admin-actions .btn {
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    border-radius: 8px;
+}
+.header-btn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--text-secondary, #94a3b8);
+    transition: all 0.15s;
+    font-family: inherit;
+    position: relative;
+}
+.header-btn:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.1);
+}
+.notif-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.6rem;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+/* ── View Toggle Tabs — polished ── */
+.view-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.view-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    color: var(--text-muted, #64748b);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+}
+.view-tab:hover {
+    color: var(--text-secondary, #94a3b8);
+    background: rgba(255,255,255,0.03);
+}
+.view-tab.active {
+    background: rgba(96,165,250,0.1);
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+/* ── Cases List — cleaner cards ── */
+.cases-list .case-card,
+.cases-list .report-card {
+    background: rgba(18, 26, 38, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    transition: all 0.15s;
+    cursor: pointer;
+}
+.cases-list .case-card:hover,
+.cases-list .report-card:hover {
+    border-color: rgba(96, 165, 250, 0.2);
+    background: rgba(22, 32, 48, 0.7);
+}
+
+/* ── Search bar — polished ── */
+.admin-controls .search-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.admin-controls .search-input {
+    flex: 1;
+    padding: 10px 16px;
+    background: rgba(18, 26, 38, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.88rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.admin-controls .search-input:focus {
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+/* ── Filter chips — polished ── */
+.quick-filter-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.quick-filter-chip {
+    padding: 5px 12px;
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+.quick-filter-chip:hover {
+    background: rgba(96, 165, 250, 0.08);
+    border-color: rgba(96, 165, 250, 0.2);
+}
+.quick-filter-chip.active {
+    background: rgba(96, 165, 250, 0.12);
+    border-color: rgba(96, 165, 250, 0.3);
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+/* ── Global search ── */
+.global-search-input {
+    padding: 7px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.82rem;
+    font-family: inherit;
+    outline: none;
+    min-width: 200px;
+    transition: all 0.2s;
+}
+.global-search-input:focus {
+    border-color: rgba(96, 165, 250, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+}
+.global-search-input::placeholder {
+    color: var(--text-muted, #64748b);
+}
+
+/* ── Section headers ── */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.section-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+}
+.section-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-muted, #64748b);
+    font-weight: 400;
+    margin-left: 6px;
+}
+
+/* ── Loading/empty states ── */
+.loading-state,
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted, #64748b);
+    font-size: 0.88rem;
+}
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid rgba(255,255,255,0.1);
+    border-top: 2px solid #60a5fa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 8px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Mobile admin ── */
+@media (max-width: 768px) {
+    .admin-dashboard {
+        padding: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .stats-overview {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    .admin-stat {
+        padding: 12px !important;
+    }
+    .stat-icon {
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 1.2rem !important;
+    }
+    .stat-details .stat-value {
+        font-size: 1.25rem;
+    }
+    .health-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .admin-panel h3 {
+        font-size: 0.82rem;
+        padding: 10px 14px;
+    }
+    .admin-panel > div {
+        padding: 10px 14px;
+    }
+    .view-toggle {
+        gap: 1px;
+    }
+    .view-tab {
+        padding: 6px 10px;
+        font-size: 0.72rem;
+    }
+    .admin-header .logo-text h1 {
+        font-size: 0.88rem;
+    }
+    .global-search-input {
+        min-width: 120px;
+        font-size: 0.78rem;
+    }
+}
