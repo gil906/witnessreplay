@@ -6676,19 +6676,20 @@ body.light-mode .case-card, body.light-mode .settings-section {
    ========================================================= */
 
 /* ── Admin Quick Actions Bar ── */
-.admin-quick-actions {
-    display: flex;
+.wr-quick-actions {
+    display: flex !important;
+    flex-direction: row !important;
     gap: 12px;
     margin-bottom: 16px;
 }
-.admin-action-btn {
+.wr-action-btn {
     flex: 1;
-    display: flex;
+    display: flex !important;
     align-items: center;
     gap: 12px;
-    padding: 14px 20px;
+    padding: 16px 20px;
     background: rgba(18, 26, 38, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     color: var(--text-primary, #e2e8f0);
     cursor: pointer;
@@ -6696,51 +6697,44 @@ body.light-mode .case-card, body.light-mode .settings-section {
     font-family: inherit;
     text-align: left;
 }
-.admin-action-btn:hover {
-    border-color: rgba(96, 165, 250, 0.25);
-    background: rgba(22, 32, 48, 0.8);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+.wr-action-btn:hover {
+    border-color: rgba(96, 165, 250, 0.3);
+    background: rgba(22, 32, 48, 0.9);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
-.admin-action-btn:active {
+.wr-action-btn:active {
     transform: translateY(0);
 }
-.admin-action-btn:disabled {
-    opacity: 0.6;
+.wr-action-btn:disabled {
+    opacity: 0.5;
     cursor: wait;
+    transform: none;
 }
-.admin-action-btn .action-icon {
-    font-size: 1.5rem;
+.wr-action-icon {
+    font-size: 1.8rem;
     flex-shrink: 0;
 }
-.admin-action-btn .action-text {
-    font-size: 0.9rem;
-    font-weight: 600;
+.wr-action-text {
+    font-size: 0.92rem;
+    font-weight: 700;
     display: block;
+    color: var(--text-primary, #e2e8f0);
 }
-.admin-action-btn .action-desc {
+.wr-action-desc {
     font-size: 0.72rem;
     color: var(--text-muted, #64748b);
     display: block;
-    margin-top: 2px;
+    margin-top: 3px;
 }
-.seed-btn:hover {
-    border-color: rgba(74, 222, 128, 0.3);
-}
-.fix-btn:hover {
-    border-color: rgba(251, 191, 36, 0.3);
-}
+.wr-seed-btn { border-color: rgba(74, 222, 128, 0.2); }
+.wr-seed-btn:hover { border-color: rgba(74, 222, 128, 0.5); }
+.wr-fix-btn { border-color: rgba(251, 191, 36, 0.2); }
+.wr-fix-btn:hover { border-color: rgba(251, 191, 36, 0.5); }
 @media (max-width: 768px) {
-    .admin-quick-actions {
-        flex-direction: column;
-        gap: 8px;
-    }
-    .admin-action-btn {
-        padding: 12px 16px;
-    }
-    .admin-action-btn .action-icon {
-        font-size: 1.2rem;
-    }
+    .wr-quick-actions { flex-direction: column !important; gap: 8px; }
+    .wr-action-btn { padding: 12px 16px; }
+    .wr-action-icon { font-size: 1.4rem; }
 }
 
 /* ── Admin Panel Cards ── */
