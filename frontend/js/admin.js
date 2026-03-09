@@ -441,6 +441,7 @@ class AdminPortal {
         
         // Header actions
         document.getElementById('seed-data-btn')?.addEventListener('click', () => this.seedMockData());
+        document.getElementById('fix-reports-btn')?.addEventListener('click', () => this.fixOrphanReports());
         document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadCases());
         document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
         document.getElementById('witness-view-btn')?.addEventListener('click', () => {
@@ -2002,11 +2003,37 @@ class AdminPortal {
             
             if (!response.ok) throw new Error('Seed failed');
             
-            this.showToast('Demo data seeded successfully!', 'success');
+            const data = await response.json();
+            this.showToast(data.message || 'Demo data seeded successfully!', 'success');
             await this.loadCases();
         } catch (error) {
             console.error('Error seeding data:', error);
             this.showToast('Failed to seed demo data: ' + error.message, 'error');
+        }
+    }
+
+    async fixOrphanReports() {
+        try {
+            const btn = document.getElementById('fix-reports-btn');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing...'; }
+            
+            this.showToast('Fixing reports: assigning cases, generating images...', 'info');
+            const response = await this.fetchWithTimeout('/api/admin/fix-orphan-reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }, 120000); // 2 min timeout — image generation is slow
+            
+            if (!response.ok) throw new Error('Fix failed');
+            
+            const data = await response.json();
+            this.showToast(data.message || 'Reports fixed!', 'success');
+            await this.loadCases();
+        } catch (error) {
+            console.error('Error fixing reports:', error);
+            this.showToast('Failed to fix reports: ' + error.message, 'error');
+        } finally {
+            const btn = document.getElementById('fix-reports-btn');
+            if (btn) { btn.disabled = false; btn.textContent = '🔧 Fix Reports'; }
         }
     }
     

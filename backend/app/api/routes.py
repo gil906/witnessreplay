@@ -69,6 +69,8 @@ from app.services.interview_templates import get_all_templates, get_template, ge
 from app.services.tts_service import tts_service
 from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
+from app.services.model_selector import model_selector
+from app.services.imagen_service import imagen_service
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key, authenticate_user_credentials
@@ -6180,6 +6182,111 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
         }
     except Exception as e:
         logger.error(f"Error seeding mock data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/fix-orphan-reports")
+async def fix_orphan_reports(auth=Depends(require_admin_auth)):
+    """Re-process reports: assign to cases, generate images, create summaries."""
+    try:
+        sessions = await firestore_service.get_all_sessions()
+        fixed = []
+        cleaned = []
+        errors = []
+
+        for session in sessions:
+            try:
+                # Delete truly empty sessions (0 statements = witness never spoke)
+                if len(session.witness_statements) == 0:
+                    await firestore_service.delete_session(session.id)
+                    cleaned.append({"id": session.id, "title": session.title, "action": "deleted_empty"})
+                    continue
+
+                actions = []
+
+                # 1. Assign to case if not assigned
+                if not session.case_id:
+                    try:
+                        case_id = await case_manager.assign_report_to_case(session)
+                        if case_id:
+                            session.case_id = case_id
+                            actions.append(f"assigned_to_case_{case_id}")
+                    except Exception as e:
+                        actions.append(f"case_assignment_failed: {str(e)[:60]}")
+
+                # 2. Generate AI summary if missing
+                metadata = dict(session.metadata or {})
+                if not metadata.get("ai_summary"):
+                    try:
+                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
+                        if all_text.strip():
+                            client = model_selector._get_client()
+                            model = model_selector.get_best_model_for_task("analysis")
+                            summary_prompt = (
+                                "You are a law enforcement report writer. Based on the following witness statements, "
+                                "generate a concise incident report summary. Include: what happened, when, where, "
+                                "who was involved, and any important details.\n\n"
+                                f"Witness statements:\n{all_text}\n\n"
+                                "Write a professional incident report summary (2-3 paragraphs):"
+                            )
+                            response = client.models.generate_content(model=model, contents=summary_prompt)
+                            if response and response.text:
+                                metadata["ai_summary"] = response.text
+                                metadata["report_generated_at"] = datetime.utcnow().isoformat()
+                                session.metadata = metadata
+                                actions.append("summary_generated")
+                    except Exception as e:
+                        actions.append(f"summary_failed: {str(e)[:60]}")
+
+                # 3. Generate report scene image if missing
+                if not metadata.get("report_scene_image_url"):
+                    try:
+                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
+                        description = all_text[:500]
+                        if description.strip():
+                            result = await imagen_service.generate_report_scene(
+                                session.id, description
+                            )
+                            if result:
+                                metadata["report_scene_image_url"] = result.get("url", "")
+                                metadata["report_scene_model"] = result.get("model", "unknown")
+                                session.metadata = metadata
+                                actions.append("image_generated")
+                    except Exception as e:
+                        actions.append(f"image_failed: {str(e)[:60]}")
+
+                # 4. Mark as completed if still active
+                if session.status == "active":
+                    session.status = "completed"
+                    actions.append("status_completed")
+
+                # Save
+                if actions:
+                    await firestore_service.update_session(session)
+                    fixed.append({"id": session.id, "title": session.title, "actions": actions})
+
+            except Exception as e:
+                errors.append({"id": session.id, "error": str(e)[:100]})
+
+        # Update case summaries for all cases
+        try:
+            all_cases = await firestore_service.list_cases()
+            for case in all_cases:
+                try:
+                    await case_manager.generate_case_summary(case.id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return {
+            "message": f"Fixed {len(fixed)} reports, cleaned {len(cleaned)} empty sessions",
+            "fixed": fixed,
+            "cleaned": cleaned,
+            "errors": errors
+        }
+    except Exception as e:
+        logger.error(f"Error fixing orphan reports: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
