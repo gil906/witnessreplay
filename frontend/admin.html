@@ -169,12 +169,6 @@
                 <button id="notification-mute-toggle" class="header-btn" style="display:none;">🔔 Alerts On</button>
 
                 <div class="admin-actions">
-                    <button id="seed-data-btn" class="btn btn-secondary" aria-label="Seed demo data">
-                        🌱 Seed Demo
-                    </button>
-                    <button id="fix-reports-btn" class="btn btn-secondary" aria-label="Fix orphan reports" title="Assign cases, generate images for unprocessed reports">
-                        🔧 Fix Reports
-                    </button>
                     <button id="refresh-btn" class="btn btn-secondary" data-tooltip="Refresh data" aria-label="Refresh data">
                         🔄
                     </button>
@@ -227,6 +221,20 @@
                         <div class="stat-label">Scenes Generated</div>
                     </div>
                 </div>
+            </section>
+
+            <!-- Quick Actions Bar -->
+            <section class="admin-quick-actions">
+                <button id="seed-data-btn" class="admin-action-btn seed-btn">
+                    <span class="action-icon">🌱</span>
+                    <span class="action-text">Seed Demo Data</span>
+                    <span class="action-desc">Create 6 sample reports</span>
+                </button>
+                <button id="fix-reports-btn" class="admin-action-btn fix-btn">
+                    <span class="action-icon">🔧</span>
+                    <span class="action-text">Fix Reports</span>
+                    <span class="action-desc">Assign cases & generate images</span>
+                </button>
             </section>
 
             <!-- Activity Sparkline Chart -->

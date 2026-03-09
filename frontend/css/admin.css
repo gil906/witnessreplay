@@ -6675,6 +6675,74 @@ body.light-mode .case-card, body.light-mode .settings-section {
    POLISHED ADMIN PANELS — Clean card layout
    ========================================================= */
 
+/* ── Admin Quick Actions Bar ── */
+.admin-quick-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.admin-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: rgba(18, 26, 38, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    color: var(--text-primary, #e2e8f0);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    text-align: left;
+}
+.admin-action-btn:hover {
+    border-color: rgba(96, 165, 250, 0.25);
+    background: rgba(22, 32, 48, 0.8);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.admin-action-btn:active {
+    transform: translateY(0);
+}
+.admin-action-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+.admin-action-btn .action-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+.admin-action-btn .action-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: block;
+}
+.admin-action-btn .action-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted, #64748b);
+    display: block;
+    margin-top: 2px;
+}
+.seed-btn:hover {
+    border-color: rgba(74, 222, 128, 0.3);
+}
+.fix-btn:hover {
+    border-color: rgba(251, 191, 36, 0.3);
+}
+@media (max-width: 768px) {
+    .admin-quick-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .admin-action-btn {
+        padding: 12px 16px;
+    }
+    .admin-action-btn .action-icon {
+        font-size: 1.2rem;
+    }
+}
+
 /* ── Admin Panel Cards ── */
 .admin-panel {
     background: rgba(18, 26, 38, 0.65);
