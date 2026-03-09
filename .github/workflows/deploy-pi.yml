@@ -81,6 +81,9 @@ jobs:
         working-directory: /mnt/media/witnessreplay
         run: |
           echo "🚀 Deploying..."
+          # Stop and remove any existing container first
+          sudo docker stop witnessreplay 2>/dev/null || true
+          sudo docker rm witnessreplay 2>/dev/null || true
           sudo docker compose up -d --force-recreate --remove-orphans
           echo "✅ Container started"
 
