@@ -224,22 +224,22 @@
             </section>
 
             <!-- Quick Actions Bar -->
-            <section class="wr-quick-actions">
-                <button id="seed-data-btn" class="wr-action-btn wr-seed-btn">
-                    <span class="wr-action-icon">🌱</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                <button id="seed-data-btn" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:rgba(18,26,38,0.65);border:2px solid rgba(74,222,128,0.2);border-radius:12px;color:#e2e8f0;cursor:pointer;text-align:left;font-family:inherit;font-size:inherit;" onmouseover="this.style.borderColor='rgba(74,222,128,0.5)'" onmouseout="this.style.borderColor='rgba(74,222,128,0.2)'">
+                    <span style="font-size:1.8rem;">🌱</span>
                     <div>
-                        <span class="wr-action-text">Seed Demo Data</span>
-                        <span class="wr-action-desc">Create 6 sample reports</span>
+                        <strong style="display:block;font-size:0.92rem;">Seed Demo Data</strong>
+                        <span style="display:block;font-size:0.72rem;color:#64748b;margin-top:3px;">Create 6 sample reports</span>
                     </div>
                 </button>
-                <button id="fix-reports-btn" class="wr-action-btn wr-fix-btn">
-                    <span class="wr-action-icon">🔧</span>
+                <button id="fix-reports-btn" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:rgba(18,26,38,0.65);border:2px solid rgba(251,191,36,0.2);border-radius:12px;color:#e2e8f0;cursor:pointer;text-align:left;font-family:inherit;font-size:inherit;" onmouseover="this.style.borderColor='rgba(251,191,36,0.5)'" onmouseout="this.style.borderColor='rgba(251,191,36,0.2)'">
+                    <span style="font-size:1.8rem;">🔧</span>
                     <div>
-                        <span class="wr-action-text">Fix Reports</span>
-                        <span class="wr-action-desc">Assign cases & generate images</span>
+                        <strong style="display:block;font-size:0.92rem;">Fix Reports</strong>
+                        <span style="display:block;font-size:0.72rem;color:#64748b;margin-top:3px;">Assign cases & generate images</span>
                     </div>
                 </button>
-            </section>
+            </div>
 
             <!-- Activity Sparkline Chart -->
             <section class="activity-chart-panel" id="activity-chart-panel">
