@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WitnessReplay — Agent Monitor</title>
+<style>
+:root{--bg:#0a0a12;--bg2:#12121e;--card:#1a1a2e;--border:#2a2a40;--text:#e0e0e8;--dim:#888;--accent:#00d4ff;--green:#4caf50;--red:#f44336;--orange:#ff9800;--purple:#bb86fc}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+/* Header */
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:20px;font-weight:600;display:flex;align-items:center;gap:10px}
+.header h1 span{font-size:24px}
+.badge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase}
+.badge.running{background:#1b5e20;color:#a5d6a7}.badge.stopped{background:#b71c1c33;color:#ef9a9a}
+.badge.waiting{background:#e65100;color:#ffcc80}.badge.idle{background:#333;color:#999}
+
+/* Controls */
+.controls{display:flex;gap:10px;padding:16px 28px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.btn{padding:8px 18px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;transition:.2s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600}
+.btn.primary:hover{background:#00b8d9}
+.btn.danger{border-color:var(--red);color:var(--red)}.btn.danger:hover{background:var(--red);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Tabs */
+.tabs{display:flex;gap:0;padding:0 28px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.tab{padding:12px 22px;background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:.2s}
+.tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Content */
+.content{padding:24px 28px;max-width:1400px}
+.panel{display:none}.panel.active{display:block}
+
+/* Cards Grid */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px}
+.card h3{font-size:12px;text-transform:uppercase;color:var(--dim);margin-bottom:8px;letter-spacing:1px}
+.card .val{font-size:28px;font-weight:700}.card .val.accent{color:var(--accent)}
+.card .val.green{color:var(--green)}.card .val.red{color:var(--red)}.card .val.orange{color:var(--orange)}
+.card .sub{font-size:12px;color:var(--dim);margin-top:4px}
+
+/* Agent Cards */
+.agent-cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px}
+.agent-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;position:relative;overflow:hidden}
+.agent-card.active{border-color:var(--accent);box-shadow:0 0 20px rgba(0,212,255,.15)}
+.agent-card h3{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.agent-card .indicator{width:10px;height:10px;border-radius:50%;background:#555}
+.agent-card .indicator.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 14px;background:var(--bg2);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;border-bottom:1px solid var(--border)}
+tr:hover td{background:var(--bg2)}
+.status-pill{padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.status-pill.completed{background:#1b5e2033;color:#a5d6a7}
+.status-pill.failed{background:#b71c1c33;color:#ef9a9a}
+.status-pill.running{background:#0d47a133;color:#90caf9}
+.status-pill.cancelled{background:#33333380;color:#999}
+
+/* Prompt Editor */
+.editor{width:100%;min-height:500px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:'Fira Code',monospace,monospace;font-size:13px;line-height:1.6;resize:vertical}
+.editor-tabs{display:flex;gap:0;margin-bottom:0}
+.editor-tab{padding:10px 20px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--dim)}
+.editor-tab.active{background:var(--card);color:var(--accent);border-bottom-color:var(--card)}
+
+/* Config */
+.config-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.config-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.config-item label{display:block;font-size:12px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.config-item input{width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px}
+.config-item input:focus{outline:none;border-color:var(--accent)}
+
+/* Git log */
+.git-log{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:13px;max-height:500px;overflow-y:auto}
+.git-log div{padding:4px 0;border-bottom:1px solid var(--border)}
+.git-log .sha{color:var(--orange);margin-right:8px}
+
+/* Changes */
+.change-entry{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+.change-entry .meta{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-bottom:8px}
+.change-entry pre{font-size:12px;color:var(--dim);white-space:pre-wrap;max-height:200px;overflow-y:auto}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:12px 20px;font-size:13px;z-index:999;animation:slideIn .3s ease}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* Responsive */
+@media(max-width:768px){.agent-cards,.config-grid{grid-template-columns:1fr}.controls{padding:12px 16px}.content{padding:16px}}
+
+/* Ideas */
+.idea-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:12px;position:relative}
+.idea-card.done{opacity:.6}
+.idea-card .idea-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.idea-card h4{font-size:15px;margin:0}
+.idea-card .idea-meta{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.idea-card .idea-desc{font-size:13px;color:var(--dim);line-height:1.6;white-space:pre-wrap}
+.idea-card .idea-actions{display:flex;gap:8px;margin-top:12px}
+.idea-card .idea-actions button{font-size:11px;padding:4px 10px}
+.priority-pill{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.priority-pill.critical{background:#b71c1c33;color:#ef9a9a}
+.priority-pill.high{background:#e6510033;color:#ffcc80}
+.priority-pill.medium{background:#f9a82533;color:#fff59d}
+.priority-pill.low{background:#1b5e2033;color:#a5d6a7}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span>🔍</span> WitnessReplay Monitor</h1>
+    <div>
+        <span class="badge idle" id="main-badge">IDLE</span>
+        <span style="margin-left:12px;font-size:13px;color:var(--dim)">Cycle: <strong id="cycle-count">0</strong></span>
+    </div>
+</div>
+
+<div class="controls">
+    <button class="btn primary" id="btn-start" onclick="startLoop()">▶ Start Loop</button>
+    <button class="btn danger" id="btn-stop" onclick="stopLoop()" disabled>⏹ Stop Loop</button>
+    <span style="border-left:1px solid var(--border);margin:0 8px"></span>
+    <button class="btn" onclick="runAgent('feature')">🔨 Run Feature Agent</button>
+    <button class="btn" onclick="runAgent('ux')">🎨 Run UX Agent</button>
+    <button class="btn" onclick="runAgent('tester')">🧪 Run Tester Agent</button>
+</div>
+
+<div class="tabs">
+    <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
+    <button class="tab" onclick="showTab('history')">📜 Run History</button>
+    <button class="tab" onclick="showTab('changes')">📝 Changes</button>
+    <button class="tab" onclick="showTab('prompts')">✏️ Prompts</button>
+    <button class="tab" onclick="showTab('ideas-bugs')">💡🐛 Ideas & Bugs</button>
+    <button class="tab" onclick="showTab('config')">⚙️ Config</button>
+    <button class="tab" onclick="showTab('git')">🐙 Git Log</button>
+    <button class="tab" onclick="showTab('readme')">📖 Project Info</button>
+</div>
+
+<div class="content">
+    <!-- DASHBOARD -->
+    <div class="panel active" id="panel-dashboard">
+        <div class="agent-cards">
+            <div class="agent-card" id="card-feature">
+                <h3><div class="indicator" id="ind-feature"></div> 🔨 Feature Agent</h3>
+                <div style="font-size:13px;color:var(--dim)" id="feature-status">Idle</div>
+            </div>
+            <div class="agent-card" id="card-ux">
+                <h3><div class="indicator" id="ind-ux"></div> 🎨 UX Agent</h3>
+                <div style="font-size:13px;color:var(--dim)" id="ux-status">Idle</div>
+            </div>
+            <div class="agent-card" id="card-tester">
+                <h3><div class="indicator" id="ind-tester"></div> 🧪 Tester Agent</h3>
+                <div style="font-size:13px;color:var(--dim)" id="tester-status">Idle</div>
+            </div>
+        </div>
+        <div class="cards">
+            <div class="card"><h3>Total Runs</h3><div class="val accent" id="stat-total">0</div></div>
+            <div class="card"><h3>Completed</h3><div class="val green" id="stat-completed">0</div></div>
+            <div class="card"><h3>Failed</h3><div class="val red" id="stat-failed">0</div></div>
+            <div class="card"><h3>Success Rate</h3><div class="val" id="stat-rate">—</div></div>
+        </div>
+        <h3 style="margin-bottom:12px;font-size:14px;color:var(--dim)">Recent Runs</h3>
+        <div class="table-wrap">
+            <table><thead><tr><th>#</th><th>Agent</th><th>Status</th><th>Duration</th><th>Commit</th><th>Time</th></tr></thead>
+            <tbody id="recent-runs"></tbody></table>
+        </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="panel" id="panel-history">
+        <h2 style="margin-bottom:16px">Run History</h2>
+        <div class="table-wrap">
+            <table><thead><tr><th>#</th><th>Agent</th><th>Status</th><th>Cycle</th><th>Duration</th><th>Commit</th><th>Started</th><th>Details</th></tr></thead>
+            <tbody id="history-table"></tbody></table>
+        </div>
+    </div>
+
+    <!-- CHANGES -->
+    <div class="panel" id="panel-changes">
+        <h2 style="margin-bottom:8px">Change Summary</h2>
+        <div class="cards" style="margin-bottom:20px">
+            <div class="card"><h3>Feature Runs</h3><div class="val accent" id="ch-feature">0</div></div>
+            <div class="card"><h3>UX Runs</h3><div class="val purple" id="ch-ux" style="color:var(--purple)">0</div></div>
+            <div class="card"><h3>Tester Runs</h3><div class="val orange" id="ch-tester" style="color:var(--orange)">0</div></div>
+            <div class="card"><h3>Total Completed</h3><div class="val green" id="ch-total">0</div></div>
+        </div>
+        <h3 style="margin-bottom:12px;font-size:14px;color:var(--dim)">Recent Changes</h3>
+        <div id="changes-list"></div>
+    </div>
+
+    <!-- PROMPTS -->
+    <div class="panel" id="panel-prompts">
+        <h2 style="margin-bottom:12px">Agent Prompts</h2>
+        <p style="font-size:13px;color:var(--dim);margin-bottom:16px">Edit the prompts that drive each agent. Changes apply on next run.</p>
+        <div class="editor-tabs">
+            <div class="editor-tab active" id="ptab-feature" onclick="loadPrompt('feature')">🔨 Feature Agent</div>
+            <div class="editor-tab" id="ptab-ux" onclick="loadPrompt('ux')">🎨 UX Agent</div>
+            <div class="editor-tab" id="ptab-tester" onclick="loadPrompt('tester')">🧪 Tester Agent</div>
+        </div>
+        <textarea class="editor" id="prompt-editor" spellcheck="false"></textarea>
+        <div style="margin-top:12px;display:flex;gap:10px">
+            <button class="btn primary" onclick="savePrompt()">💾 Save Prompt</button>
+            <span style="font-size:12px;color:var(--dim);align-self:center" id="prompt-save-status"></span>
+        </div>
+    </div>
+
+    <!-- IDEAS & BUGS (side by side) -->
+    <div class="panel" id="panel-ideas-bugs">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <!-- IDEAS column -->
+            <div>
+                <h2 style="margin-bottom:8px">💡 Ideas</h2>
+                <p style="font-size:12px;color:var(--dim);margin-bottom:12px">Agents implement at least one idea per run.</p>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px">
+                    <input id="idea-title" placeholder="Title" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;margin-bottom:8px">
+                    <textarea id="idea-desc" placeholder="Description..." rows="2" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <select id="idea-priority" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+                            <option value="critical">🔴 Critical</option><option value="high">🟠 High</option><option value="medium" selected>🟡 Medium</option><option value="low">🟢 Low</option>
+                        </select>
+                        <select id="idea-agent" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+                            <option value="">Any</option><option value="feature">🔨 Feature</option><option value="ux">🎨 UX</option><option value="tester">🧪 Tester</option>
+                        </select>
+                        <button class="btn primary" onclick="addIdea()" style="font-size:12px;padding:6px 14px">➕ Add</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:10px">
+                    <button class="btn" onclick="loadIdeas()" style="font-size:11px;padding:4px 10px">All</button>
+                    <button class="btn" onclick="loadIdeas('pending')" style="font-size:11px;padding:4px 10px">Pending</button>
+                    <button class="btn" onclick="loadIdeas('done')" style="font-size:11px;padding:4px 10px">Done</button>
+                </div>
+                <div id="ideas-list" style="max-height:500px;overflow-y:auto"></div>
+            </div>
+
+            <!-- BUGS column -->
+            <div>
+                <h2 style="margin-bottom:8px">🐛 Bugs</h2>
+                <p style="font-size:12px;color:var(--dim);margin-bottom:12px">Found by Tester Agent or reported manually. Agents fix these first.</p>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px">
+                    <input id="bug-title" placeholder="Bug title" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;margin-bottom:8px">
+                    <textarea id="bug-desc" placeholder="Bug description..." rows="2" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <select id="bug-severity" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+                            <option value="critical">🔴 Critical</option><option value="high">🟠 High</option><option value="medium" selected>🟡 Medium</option><option value="low">🟢 Low</option>
+                        </select>
+                        <button class="btn primary" onclick="addBug()" style="font-size:12px;padding:6px 14px">🐛 Report</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:10px">
+                    <button class="btn" onclick="loadBugs()" style="font-size:11px;padding:4px 10px">All</button>
+                    <button class="btn" onclick="loadBugs('open')" style="font-size:11px;padding:4px 10px">Open</button>
+                    <button class="btn" onclick="loadBugs('fixed')" style="font-size:11px;padding:4px 10px">Fixed</button>
+                </div>
+                <div id="bugs-list" style="max-height:500px;overflow-y:auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIG -->
+    <div class="panel" id="panel-config">
+        <h2 style="margin-bottom:16px">Configuration</h2>
+        <div class="config-grid">
+            <div class="config-item">
+                <label>Delay Between Agents (seconds)</label>
+                <input type="number" id="cfg-delay-agents" min="5" max="3600">
+            </div>
+            <div class="config-item">
+                <label>Delay Between Cycles (seconds)</label>
+                <input type="number" id="cfg-delay-cycles" min="10" max="7200">
+            </div>
+            <div class="config-item">
+                <label>Max Retries Per Agent</label>
+                <input type="number" id="cfg-retries" min="1" max="5">
+            </div>
+        </div>
+        <button class="btn primary" style="margin-top:16px" onclick="saveConfig()">💾 Save Config</button>
+    </div>
+
+    <!-- GIT LOG -->
+    <div class="panel" id="panel-git">
+        <h2 style="margin-bottom:16px">Git Log</h2>
+        <button class="btn" onclick="loadGitLog()" style="margin-bottom:12px">🔄 Refresh</button>
+        <div class="git-log" id="git-log-content">Loading...</div>
+    </div>
+
+    <!-- README -->
+    <div class="panel" id="panel-readme">
+        <h2 style="margin-bottom:16px">Project Info — How to Use</h2>
+        <button class="btn" onclick="loadReadme()" style="margin-bottom:12px">🔄 Refresh</button>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;white-space:pre-wrap;font-size:13px;max-height:700px;overflow-y:auto;line-height:1.7" id="readme-content">Loading...</div>
+    </div>
+</div>
+
+<script>
+let currentPromptAgent = 'feature';
+let pollInterval;
+
+// ── Tab Switching ──
+function showTab(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    event.target.classList.add('active');
+    if (name === 'prompts') loadPrompt(currentPromptAgent);
+    if (name === 'git') loadGitLog();
+    if (name === 'readme') loadReadme();
+    if (name === 'ideas-bugs') { loadIdeas(); loadBugs(); }
+    if (name === 'bugs') loadBugs();
+    if (name === 'history') loadHistory();
+    if (name === 'changes') loadChanges();
+}
+
+// ── API Helpers ──
+async function api(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch('/api/' + path, opts);
+    return r.json();
+}
+
+function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+function fmtDuration(s) {
+    if (!s) return '—';
+    if (s < 60) return s + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+
+function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso + 'Z');
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// ── Loop Control ──
+async function startLoop() {
+    const r = await api('POST', 'loop/start');
+    toast(r.msg);
+    pollStatus();
+}
+
+async function stopLoop() {
+    const r = await api('POST', 'loop/stop');
+    toast(r.msg);
+    pollStatus();
+}
+
+async function runAgent(name) {
+    const r = await api('POST', `agent/${name}/run`);
+    toast(r.msg);
+    pollStatus();
+}
+
+// ── Status Polling ──
+async function pollStatus() {
+    try {
+        const s = await api('GET', 'status');
+        // Badge
+        const badge = document.getElementById('main-badge');
+        const st = s.status || 'idle';
+        badge.textContent = st.toUpperCase().replace(':', ': ');
+        badge.className = 'badge ' + (st.includes('running') ? 'running' : st === 'waiting' ? 'waiting' : st === 'stopped' ? 'stopped' : 'idle');
+
+        document.getElementById('cycle-count').textContent = s.cycle_count || 0;
+
+        // Buttons
+        document.getElementById('btn-start').disabled = s.loop_active;
+        document.getElementById('btn-stop').disabled = !s.loop_active;
+
+        // Agent cards
+        ['feature', 'ux', 'tester'].forEach(a => {
+            const card = document.getElementById('card-' + a);
+            const ind = document.getElementById('ind-' + a);
+            const stat = document.getElementById(a + '-status');
+            if (s.current_agent === a) {
+                card.classList.add('active');
+                ind.classList.add('on');
+                stat.textContent = 'Running...';
+            } else {
+                card.classList.remove('active');
+                ind.classList.remove('on');
+                stat.textContent = s.loop_active ? 'Waiting' : 'Idle';
+            }
+        });
+
+        // Stats
+        if (s.stats) {
+            document.getElementById('stat-total').textContent = s.stats.total_runs;
+            document.getElementById('stat-completed').textContent = s.stats.completed;
+            document.getElementById('stat-failed').textContent = s.stats.failed;
+            document.getElementById('stat-rate').textContent = s.stats.total_runs > 0 ? s.stats.success_rate + '%' : '—';
+        }
+
+        // Config
+        if (s.config) {
+            document.getElementById('cfg-delay-agents').value = s.config.delay_between_agents || 30;
+            document.getElementById('cfg-delay-cycles').value = s.config.delay_between_cycles || 120;
+            document.getElementById('cfg-retries').value = s.config.max_retries || 2;
+        }
+
+        // Recent runs
+        const runs = await api('GET', 'runs?limit=8');
+        const tbody = document.getElementById('recent-runs');
+        tbody.innerHTML = runs.map(r => `<tr>
+            <td>${r.id}</td>
+            <td>${r.agent === 'feature' ? '🔨' : r.agent === 'ux' ? '🎨' : '🧪'} ${r.agent}</td>
+            <td><span class="status-pill ${r.status}">${r.status}</span></td>
+            <td>${fmtDuration(r.duration_sec)}</td>
+            <td style="font-family:monospace;font-size:12px">${(r.commit_sha || '').substring(0, 30)}</td>
+            <td style="font-size:12px;color:var(--dim)">${fmtTime(r.finished_at || r.started_at)}</td>
+        </tr>`).join('');
+
+    } catch (e) {
+        console.error('Poll error:', e);
+    }
+}
+
+// ── History ──
+async function loadHistory() {
+    const runs = await api('GET', 'runs?limit=100');
+    document.getElementById('history-table').innerHTML = runs.map(r => `<tr>
+        <td>${r.id}</td>
+        <td>${r.agent === 'feature' ? '🔨' : r.agent === 'ux' ? '🎨' : '🧪'} ${r.agent}</td>
+        <td><span class="status-pill ${r.status}">${r.status}</span></td>
+        <td>${r.cycle}</td>
+        <td>${fmtDuration(r.duration_sec)}</td>
+        <td style="font-family:monospace;font-size:11px">${(r.commit_sha || '—').substring(0, 40)}</td>
+        <td style="font-size:12px">${fmtTime(r.started_at)}</td>
+        <td>${r.error_message ? '<span style="color:var(--red);font-size:12px">' + r.error_message + '</span>' : ''}</td>
+    </tr>`).join('');
+}
+
+// ── Changes ──
+async function loadChanges() {
+    const c = await api('GET', 'changes');
+    document.getElementById('ch-feature').textContent = c.feature_runs;
+    document.getElementById('ch-ux').textContent = c.ux_runs;
+    document.getElementById('ch-tester').textContent = c.tester_runs || 0;
+    document.getElementById('ch-total').textContent = c.total_completed;
+    document.getElementById('changes-list').innerHTML = (c.recent || []).map(r => `
+        <div class="change-entry">
+            <div class="meta">
+                <span>${r.agent === 'feature' ? '🔨' : r.agent === 'ux' ? '🎨' : '🧪'} <strong>${r.agent}</strong></span>
+                <span>${fmtTime(r.date)}</span>
+                <span>${fmtDuration(r.duration)}</span>
+                <span style="font-family:monospace">${r.commit}</span>
+            </div>
+            <pre>${r.summary || 'No details'}</pre>
+        </div>
+    `).join('') || '<p style="color:var(--dim)">No completed runs yet.</p>';
+}
+
+// ── Prompts ──
+async function loadPrompt(name) {
+    currentPromptAgent = name;
+    document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('ptab-' + name).classList.add('active');
+    const p = await api('GET', `prompts/${name}`);
+    document.getElementById('prompt-editor').value = p.content;
+    document.getElementById('prompt-save-status').textContent = '';
+}
+
+async function savePrompt() {
+    const content = document.getElementById('prompt-editor').value;
+    await api('PUT', `prompts/${currentPromptAgent}`, { content });
+    document.getElementById('prompt-save-status').textContent = '✅ Saved!';
+    toast('Prompt saved');
+}
+
+// ── Config ──
+async function saveConfig() {
+    await api('POST', 'config', {
+        delay_between_agents: document.getElementById('cfg-delay-agents').value,
+        delay_between_cycles: document.getElementById('cfg-delay-cycles').value,
+        max_retries: document.getElementById('cfg-retries').value,
+    });
+    toast('Config saved');
+}
+
+// ── Git Log ──
+async function loadGitLog() {
+    const g = await api('GET', 'git/log');
+    document.getElementById('git-log-content').innerHTML = (g.log || []).map(l => {
+        const parts = l.split(' ');
+        const sha = parts[0];
+        const msg = parts.slice(1).join(' ');
+        return `<div><span class="sha">${sha}</span>${msg}</div>`;
+    }).join('') || 'No commits found.';
+}
+
+// ── README ──
+async function loadReadme() {
+    const r = await api('GET', 'project/readme');
+    document.getElementById('readme-content').textContent = r.content;
+}
+
+// ── Ideas ──
+let ideasFilter = null;
+async function loadIdeas(status) {
+    ideasFilter = status || null;
+    const url = status ? `ideas?status=${status}` : 'ideas';
+    const ideas = await api('GET', url);
+    const container = document.getElementById('ideas-list');
+    if (!ideas.length) {
+        container.innerHTML = '<p style="color:var(--dim)">No ideas yet. Add one above!</p>';
+        return;
+    }
+    container.innerHTML = ideas.map(i => `
+        <div class="idea-card ${i.status === 'done' ? 'done' : ''}" style="padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <h4 style="font-size:13px;margin:0">${i.title}</h4>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <span class="priority-pill ${i.priority}" style="font-size:10px">${i.priority}</span>
+                    <span class="status-pill ${i.status}" style="font-size:10px">${i.status}</span>
+                    ${i.status === 'done' && i.implemented_by ? `<span style="font-size:10px;color:var(--dim)">by ${i.implemented_by}</span>` : ''}
+                </div>
+            </div>
+            <div style="font-size:12px;color:var(--dim);line-height:1.5">${i.description}</div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+                ${i.status === 'pending' ? `<button class="btn" onclick="markIdeaDone(${i.id})" style="font-size:10px;padding:2px 8px">✅ Done</button>` : ''}
+                ${i.status === 'done' ? `<button class="btn" onclick="reopenIdea(${i.id})" style="font-size:10px;padding:2px 8px">🔄</button>` : ''}
+                <button class="btn danger" onclick="deleteIdea(${i.id})" style="font-size:10px;padding:2px 8px">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addIdea() {
+    const title = document.getElementById('idea-title').value.trim();
+    const desc = document.getElementById('idea-desc').value.trim();
+    const priority = document.getElementById('idea-priority').value;
+    const agent = document.getElementById('idea-agent').value;
+    if (!title || !desc) { toast('Title and description required'); return; }
+    await api('POST', 'ideas', { title, description: desc, priority, assigned_agent: agent || null });
+    document.getElementById('idea-title').value = '';
+    document.getElementById('idea-desc').value = '';
+    toast('Idea added!');
+    loadIdeas(ideasFilter);
+}
+
+async function markIdeaDone(id) {
+    await api('PUT', `ideas/${id}`, { status: 'done', implemented_at: new Date().toISOString(), implemented_by: 'manual' });
+    toast('Idea marked done');
+    loadIdeas(ideasFilter);
+}
+
+async function reopenIdea(id) {
+    await api('PUT', `ideas/${id}`, { status: 'pending', implemented_at: null, implementation_notes: null });
+    loadIdeas(ideasFilter);
+}
+
+async function deleteIdea(id) {
+    if (!confirm('Delete this idea?')) return;
+    await api('DELETE', `ideas/${id}`);
+    toast('Idea deleted');
+    loadIdeas(ideasFilter);
+}
+
+// ── Bugs ──
+let bugsFilter = null;
+async function loadBugs(status) {
+    bugsFilter = status || null;
+    const url = status ? `bugs?status=${status}` : 'bugs';
+    const bugs = await api('GET', url);
+    const container = document.getElementById('bugs-list');
+    if (!bugs.length) {
+        container.innerHTML = '<p style="color:var(--dim)">No bugs found. The Tester Agent will report bugs here.</p>';
+        return;
+    }
+    container.innerHTML = bugs.map(b => `
+        <div class="idea-card ${b.status === 'fixed' ? 'done' : ''}" style="padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <h4 style="font-size:13px;margin:0">🐛 ${b.title}</h4>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <span class="priority-pill ${b.severity}" style="font-size:10px">${b.severity}</span>
+                    <span class="status-pill ${b.status === 'open' ? 'failed' : b.status === 'fixed' ? 'completed' : 'running'}" style="font-size:10px">${b.status}</span>
+                    ${b.status === 'fixed' && b.fixed_by ? `<span style="font-size:10px;color:var(--dim)">by ${b.fixed_by}</span>` : ''}
+                    ${b.found_by ? `<span style="font-size:10px;color:var(--dim)">(found by ${b.found_by})</span>` : ''}
+                </div>
+            </div>
+            <div style="font-size:12px;color:var(--dim);line-height:1.5">${b.description}</div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+                ${b.status === 'open' ? `<button class="btn" onclick="markBugFixed(${b.id})" style="font-size:10px;padding:2px 8px">✅ Fixed</button>` : ''}
+                ${b.status === 'open' ? `<button class="btn" onclick="markBugInProgress(${b.id})" style="font-size:10px;padding:2px 8px">🔧</button>` : ''}
+                ${b.status === 'fixed' ? `<button class="btn" onclick="reopenBug(${b.id})" style="font-size:10px;padding:2px 8px">🔄</button>` : ''}
+                <button class="btn danger" onclick="deleteBug(${b.id})" style="font-size:10px;padding:2px 8px">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addBug() {
+    const title = document.getElementById('bug-title').value.trim();
+    const desc = document.getElementById('bug-desc').value.trim();
+    const severity = document.getElementById('bug-severity').value;
+    if (!title || !desc) { toast('Title and description required'); return; }
+    await api('POST', 'bugs', {
+        title, description: desc, severity,
+        found_by: 'manual',
+    });
+    document.getElementById('bug-title').value = '';
+    document.getElementById('bug-desc').value = '';
+    toast('Bug reported!');
+    loadBugs(bugsFilter);
+}
+
+async function markBugFixed(id) {
+    await api('PUT', `bugs/${id}`, { status: 'fixed', fixed_at: new Date().toISOString(), fixed_by: 'manual' });
+    toast('Bug marked fixed');
+    loadBugs(bugsFilter);
+}
+
+async function markBugInProgress(id) {
+    await api('PUT', `bugs/${id}`, { status: 'in_progress' });
+    toast('Bug marked in progress');
+    loadBugs(bugsFilter);
+}
+
+async function reopenBug(id) {
+    await api('PUT', `bugs/${id}`, { status: 'open', fixed_at: null, fix_notes: null });
+    loadBugs(bugsFilter);
+}
+
+async function deleteBug(id) {
+    if (!confirm('Delete this bug?')) return;
+    await api('DELETE', `bugs/${id}`);
+    toast('Bug deleted');
+    loadBugs(bugsFilter);
+}
+
+// ── Init ──
+pollStatus();
+pollInterval = setInterval(pollStatus, 5000);
+</script>
+</body>
+</html>

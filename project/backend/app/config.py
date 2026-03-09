@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     gemma_model: str = "gemma-3-27b-it"
     imagen_model: str = "imagen-4-fast-generate"
     embedding_model: str = "gemini-embedding-001"
-    tts_model: str = "gemini-2.5-flash-native-audio-latest"
+    tts_model: str = "gemini-2.5-flash-preview-tts"
     live_model: str = "gemini-2.5-flash-native-audio-latest"
     
     # Rate Limiting

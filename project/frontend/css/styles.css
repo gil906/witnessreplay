@@ -15348,3 +15348,577 @@ textarea:disabled {
 .compeval-status-bad { color:#ef4444; font-size:0.65rem; font-weight:700; }
 .compeval-criteria h4, .compeval-risks h4, .compeval-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
 .compeval-summary { font-size:0.75rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ─── NARRATIVE ARC ANALYZER ──────────────────────────────────────────── */
+.narrarc-result { display:flex; flex-direction:column; gap:0.75rem; }
+.narrarc-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.narrarc-overall-score { font-size:1.6rem; font-weight:800; }
+.narrarc-overall-lbl { font-size:0.8rem; font-weight:600; }
+.narrarc-phases h4, .narrarc-tensions h4, .narrarc-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.narrarc-phase-row { display:grid; grid-template-columns:22px 1fr 100px 35px 70px; gap:0.4rem; align-items:center; margin-bottom:0.35rem; }
+.narrarc-phase-icon { font-size:0.85rem; }
+.narrarc-phase-info { display:flex; flex-direction:column; }
+.narrarc-phase-name { font-size:0.73rem; font-weight:600; color:#e2e8f0; }
+.narrarc-phase-theme { font-size:0.62rem; color:#64748b; }
+.narrarc-phase-bars { display:flex; flex-direction:column; gap:2px; }
+.narrarc-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:4px; }
+.narrarc-bar { height:100%; border-radius:3px; }
+.narrarc-phase-score { font-size:0.73rem; font-weight:700; text-align:right; }
+.narrarc-tone-badge { font-size:0.6rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:4px; padding:0.1rem 0.3rem; color:#94a3b8; }
+.narrarc-tension-tag { display:inline-block; font-size:0.65rem; background:#ef444422; color:#ef4444; border:1px solid #ef444444; border-radius:4px; padding:0.15rem 0.4rem; margin:0.15rem; }
+.narrarc-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ─── WITNESS PREPARATION QUALITY ─────────────────────────────────────── */
+.witprep-result { display:flex; flex-direction:column; gap:0.75rem; }
+.witprep-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.witprep-overall-score { font-size:1.6rem; font-weight:800; }
+.witprep-overall-lbl { font-size:0.8rem; font-weight:600; }
+.witprep-indicators h4, .witprep-gaps h4, .witprep-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.witprep-ind-row { display:grid; grid-template-columns:22px 1fr 90px 35px 65px; gap:0.4rem; align-items:center; margin-bottom:0.28rem; font-size:0.73rem; }
+.witprep-ind-name { color:#cbd5e1; }
+.witprep-ind-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.witprep-ind-bar { height:100%; border-radius:3px; }
+.witprep-ind-score { font-weight:700; text-align:right; }
+.witprep-rat-ex { font-size:0.62rem; color:#22c55e; }
+.witprep-rat-good { font-size:0.62rem; color:#60a5fa; }
+.witprep-rat-fair { font-size:0.62rem; color:#eab308; }
+.witprep-rat-poor { font-size:0.62rem; color:#ef4444; }
+.witprep-gap-tag { display:inline-block; font-size:0.65rem; background:#f9731622; color:#f97316; border:1px solid #f9731644; border-radius:4px; padding:0.15rem 0.4rem; margin:0.15rem; }
+.witprep-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ─── CONTRADICTION HEATMAP ────────────────────────────────────────────── */
+.conheat-result { display:flex; flex-direction:column; gap:0.75rem; }
+.conheat-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.conheat-overall-score { font-size:1.6rem; font-weight:800; }
+.conheat-overall-lbl { font-size:0.8rem; font-weight:600; }
+.conheat-sections h4, .conheat-targets h4, .conheat-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.conheat-section-row { display:grid; grid-template-columns:22px 1fr 80px 35px 65px 55px; gap:0.4rem; align-items:center; margin-bottom:0.3rem; }
+.conheat-section-icon { font-size:0.85rem; }
+.conheat-section-name { font-size:0.72rem; color:#cbd5e1; font-weight:500; }
+.conheat-heat-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.conheat-heat-bar { height:100%; border-radius:3px; }
+.conheat-heat-score { font-size:0.73rem; font-weight:700; text-align:right; }
+.conheat-heat-lbl { font-size:0.6rem; border-radius:4px; padding:0.1rem 0.3rem; text-align:center; }
+.conheat-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ─── CASE RISK ASSESSMENT ─────────────────────────────────────────────── */
+.caserisk-result { display:flex; flex-direction:column; gap:0.75rem; }
+.caserisk-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.caserisk-overall-score { font-size:1.6rem; font-weight:800; }
+.caserisk-overall-lbl { font-size:0.8rem; font-weight:700; }
+.caserisk-dimensions h4, .caserisk-critical h4, .caserisk-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.caserisk-dim-row { display:grid; grid-template-columns:22px 1fr 90px 35px 65px; gap:0.4rem; align-items:center; margin-bottom:0.28rem; }
+.caserisk-dim-name { font-size:0.73rem; color:#cbd5e1; }
+.caserisk-dim-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.caserisk-dim-bar { height:100%; border-radius:3px; }
+.caserisk-dim-score { font-size:0.73rem; font-weight:700; text-align:right; }
+.caserisk-risk-lbl { font-size:0.6rem; border-radius:4px; padding:0.1rem 0.3rem; text-align:center; }
+.caserisk-critical-tag { display:inline-block; font-size:0.65rem; background:#ef444422; color:#ef4444; border:1px solid #ef444444; border-radius:4px; padding:0.15rem 0.4rem; margin:0.15rem; }
+.caserisk-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ─── WITNESS AVAILABILITY RISK ─────────────────────────────────────────── */
+.availrisk-result { display:flex; flex-direction:column; gap:0.75rem; }
+.availrisk-overall { border:3px solid; border-radius:8px; padding:0.6rem 1rem; display:flex; align-items:center; gap:1rem; }
+.availrisk-overall-score { font-size:1.6rem; font-weight:800; }
+.availrisk-overall-lbl { font-size:0.8rem; font-weight:700; }
+.availrisk-factors h4, .availrisk-methods h4, .availrisk-actions h4 { font-size:0.78rem; color:#94a3b8; margin-bottom:0.35rem; }
+.availrisk-factor-row { display:grid; grid-template-columns:22px 1fr 90px 35px 65px; gap:0.4rem; align-items:center; margin-bottom:0.28rem; }
+.availrisk-factor-name { font-size:0.73rem; color:#cbd5e1; }
+.availrisk-factor-bar-bg { background:rgba(255,255,255,0.08); border-radius:3px; height:5px; }
+.availrisk-factor-bar { height:100%; border-radius:3px; }
+.availrisk-factor-score { font-size:0.73rem; font-weight:700; text-align:right; }
+.availrisk-risk-lbl { font-size:0.6rem; border-radius:4px; padding:0.1rem 0.3rem; text-align:center; }
+.availrisk-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Closing Argument Builder ─────────────────────────────── */
+.closarg-card { background:linear-gradient(135deg,rgba(124,58,237,0.10),rgba(99,102,241,0.06)); border:1px solid rgba(124,58,237,0.25); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.closarg-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; }
+.closarg-title { font-size:0.85rem; font-weight:700; color:#a78bfa; }
+.closarg-score { background:rgba(124,58,237,0.2); color:#c4b5fd; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.closarg-hook { font-size:0.78rem; color:#c4b5fd; font-style:italic; margin-bottom:0.7rem; padding:0.4rem 0.6rem; border-left:3px solid #7c3aed; }
+.closarg-themes { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; margin-bottom:0.6rem; }
+.closarg-theme { background:rgba(255,255,255,0.04); border-radius:6px; padding:0.4rem 0.5rem; }
+.closarg-theme-name { font-size:0.72rem; font-weight:600; color:#e2e8f0; }
+.closarg-theme-str { font-size:0.68rem; color:#94a3b8; }
+.closarg-theme-bar { height:4px; background:rgba(255,255,255,0.08); border-radius:2px; margin-top:0.2rem; }
+.closarg-theme-bar-fill { height:100%; border-radius:2px; background:#7c3aed; }
+.closarg-closing { font-size:0.77rem; color:#ddd6fe; font-weight:600; border-top:1px solid rgba(124,58,237,0.2); padding-top:0.5rem; }
+.closarg-type { font-size:0.68rem; color:#a78bfa; }
+.closarg-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; margin-top:0.4rem; }
+
+/* ── Timeline Reconstruction ─────────────────────────────── */
+.timerec-card { background:linear-gradient(135deg,rgba(16,185,129,0.10),rgba(5,150,105,0.06)); border:1px solid rgba(16,185,129,0.25); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.timerec-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; }
+.timerec-title { font-size:0.85rem; font-weight:700; color:#34d399; }
+.timerec-score { background:rgba(16,185,129,0.2); color:#6ee7b7; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.timerec-events { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.6rem; }
+.timerec-event { display:flex; align-items:flex-start; gap:0.5rem; padding:0.3rem 0.4rem; background:rgba(255,255,255,0.03); border-radius:5px; border-left:3px solid #10b981; }
+.timerec-event-time { font-size:0.68rem; color:#6ee7b7; white-space:nowrap; font-weight:600; min-width:60px; }
+.timerec-event-desc { font-size:0.73rem; color:#e2e8f0; flex:1; }
+.timerec-event-conf { font-size:0.62rem; border-radius:3px; padding:0.05rem 0.25rem; }
+.timerec-conf-high { background:rgba(34,197,94,0.2); color:#4ade80; }
+.timerec-conf-med { background:rgba(234,179,8,0.2); color:#fbbf24; }
+.timerec-conf-low { background:rgba(239,68,68,0.2); color:#f87171; }
+.timerec-gaps { display:flex; flex-direction:column; gap:0.25rem; margin-bottom:0.5rem; }
+.timerec-gap { font-size:0.72rem; color:#94a3b8; padding:0.25rem 0.4rem; border-left:2px solid #f97316; }
+.timerec-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Trauma Indicators ─────────────────────────────────── */
+.traumaind-card { background:linear-gradient(135deg,rgba(236,72,153,0.10),rgba(219,39,119,0.06)); border:1px solid rgba(236,72,153,0.25); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.traumaind-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; }
+.traumaind-title { font-size:0.85rem; font-weight:700; color:#f472b6; }
+.traumaind-prob { background:rgba(236,72,153,0.2); color:#fbb6ce; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.traumaind-type { font-size:0.75rem; color:#f9a8d4; margin-bottom:0.5rem; font-style:italic; }
+.traumaind-indicators { display:flex; flex-direction:column; gap:0.25rem; margin-bottom:0.5rem; }
+.traumaind-ind { display:flex; align-items:center; gap:0.4rem; padding:0.25rem 0.4rem; border-radius:4px; }
+.traumaind-ind-present { background:rgba(236,72,153,0.08); }
+.traumaind-ind-absent { background:rgba(255,255,255,0.02); opacity:0.6; }
+.traumaind-ind-name { font-size:0.72rem; font-weight:600; color:#e2e8f0; flex:1; }
+.traumaind-ind-sev { font-size:0.62rem; border-radius:3px; padding:0.05rem 0.25rem; }
+.traumaind-sev-high { background:rgba(239,68,68,0.2); color:#f87171; }
+.traumaind-sev-med { background:rgba(234,179,8,0.2); color:#fbbf24; }
+.traumaind-sev-low { background:rgba(34,197,94,0.2); color:#4ade80; }
+.traumaind-sev-none { background:rgba(148,163,184,0.1); color:#94a3b8; }
+.traumaind-credeffect { font-size:0.73rem; padding:0.3rem 0.4rem; border-radius:4px; margin-bottom:0.4rem; }
+.traumaind-cred-enhances { background:rgba(34,197,94,0.1); color:#4ade80; }
+.traumaind-cred-neutral { background:rgba(148,163,184,0.1); color:#94a3b8; }
+.traumaind-cred-diminishes { background:rgba(239,68,68,0.1); color:#f87171; }
+.traumaind-assessment { font-size:0.73rem; color:#f9a8d4; border-left:3px solid #ec4899; padding-left:0.5rem; margin-bottom:0.4rem; }
+.traumaind-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Corroboration Map ─────────────────────────────────── */
+.corrmap-card { background:linear-gradient(135deg,rgba(6,182,212,0.10),rgba(14,116,144,0.06)); border:1px solid rgba(6,182,212,0.25); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.corrmap-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; }
+.corrmap-title { font-size:0.85rem; font-weight:700; color:#22d3ee; }
+.corrmap-score { background:rgba(6,182,212,0.2); color:#67e8f9; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.corrmap-strength { font-size:0.75rem; font-style:italic; margin-bottom:0.5rem; }
+.corrmap-strong { color:#4ade80; } .corrmap-moderate { color:#fbbf24; } .corrmap-weak { color:#f97316; } .corrmap-uncorroborated { color:#ef4444; }
+.corrmap-points { display:flex; flex-direction:column; gap:0.25rem; margin-bottom:0.5rem; }
+.corrmap-point { display:grid; grid-template-columns:1fr auto auto; gap:0.3rem; align-items:center; padding:0.25rem 0.4rem; border-radius:4px; background:rgba(255,255,255,0.03); }
+.corrmap-claim { font-size:0.72rem; color:#e2e8f0; }
+.corrmap-type { font-size:0.62rem; color:#94a3b8; }
+.corrmap-status { font-size:0.62rem; border-radius:3px; padding:0.05rem 0.3rem; }
+.corrmap-corroborated { background:rgba(34,197,94,0.2); color:#4ade80; }
+.corrmap-contradicted { background:rgba(239,68,68,0.2); color:#f87171; }
+.corrmap-unverified { background:rgba(148,163,184,0.1); color:#94a3b8; }
+.corrmap-gaps { font-size:0.72rem; color:#f97316; margin-bottom:0.4rem; }
+.corrmap-gap-item { padding:0.15rem 0; border-left:2px solid #f97316; padding-left:0.4rem; margin-bottom:0.15rem; }
+.corrmap-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Impeachment Opportunities ─────────────────────────── */
+.impeach-card { background:linear-gradient(135deg,rgba(239,68,68,0.10),rgba(185,28,28,0.06)); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.impeach-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; }
+.impeach-title { font-size:0.85rem; font-weight:700; color:#f87171; }
+.impeach-score { background:rgba(239,68,68,0.2); color:#fca5a5; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.impeach-opportunities { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.impeach-opp { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.4rem 0.5rem; border-left:3px solid #ef4444; }
+.impeach-opp-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem; }
+.impeach-opp-method { font-size:0.73rem; font-weight:700; color:#f87171; }
+.impeach-opp-str { font-size:0.65rem; color:#94a3b8; }
+.impeach-opp-str-bar { height:3px; border-radius:2px; background:rgba(239,68,68,0.2); margin-bottom:0.2rem; }
+.impeach-opp-str-fill { height:100%; border-radius:2px; background:#ef4444; }
+.impeach-opp-q { font-size:0.7rem; color:#fca5a5; font-style:italic; }
+.impeach-opp-rule { font-size:0.62rem; color:#64748b; margin-top:0.1rem; }
+.impeach-order { display:flex; gap:0.3rem; flex-wrap:wrap; margin-bottom:0.4rem; }
+.impeach-order-item { font-size:0.68rem; background:rgba(239,68,68,0.1); color:#f87171; border-radius:4px; padding:0.1rem 0.4rem; }
+.impeach-strategy { font-size:0.73rem; color:#fca5a5; border-left:3px solid #ef4444; padding-left:0.5rem; margin-bottom:0.4rem; font-style:italic; }
+.impeach-summary { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Witness Psychology Profile ───────────────────────── */
+.witpsych-card { background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(109,40,217,0.06)); border:1px solid rgba(139,92,246,0.28); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.witpsych-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+.witpsych-title { font-size:0.85rem; font-weight:700; color:#a78bfa; }
+.witpsych-score { background:rgba(139,92,246,0.2); color:#c4b5fd; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.witpsych-summary { font-size:0.75rem; color:#c4b5fd; font-style:italic; margin-bottom:0.5rem; }
+.witpsych-traits { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.witpsych-trait { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.35rem 0.5rem; }
+.witpsych-trait-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem; font-size:0.72rem; color:#e2e8f0; }
+.witpsych-trait-val { font-size:0.7rem; font-weight:700; border-radius:4px; padding:0.05rem 0.3rem; }
+.witpsych-trait-high { background:rgba(34,197,94,0.15); color:#4ade80; }
+.witpsych-trait-mid { background:rgba(234,179,8,0.15); color:#facc15; }
+.witpsych-trait-low { background:rgba(239,68,68,0.15); color:#f87171; }
+.witpsych-trait-bar { height:3px; border-radius:2px; background:rgba(255,255,255,0.08); margin-bottom:0.1rem; }
+.witpsych-trait-fill { height:100%; border-radius:2px; }
+.witpsych-trait-fill.witpsych-trait-high { background:#22c55e; }
+.witpsych-trait-fill.witpsych-trait-mid { background:#eab308; }
+.witpsych-trait-fill.witpsych-trait-low { background:#ef4444; }
+.witpsych-trait-imp { font-size:0.65rem; color:#64748b; }
+.witpsych-stress { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.4rem 0.5rem; margin-bottom:0.4rem; border-left:3px solid #a78bfa; }
+.witpsych-stress-title { font-size:0.72rem; font-weight:700; color:#a78bfa; margin-bottom:0.2rem; }
+.witpsych-cred { display:flex; gap:0.6rem; flex-wrap:wrap; font-size:0.7rem; color:#94a3b8; margin-bottom:0.3rem; }
+.witpsych-jury { font-size:0.73rem; color:#94a3b8; margin-bottom:0.35rem; }
+.witpsych-flags { font-size:0.7rem; color:#f87171; background:rgba(239,68,68,0.08); border-radius:4px; padding:0.2rem 0.4rem; margin-bottom:0.3rem; }
+.witpsych-footer { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Statement Velocity Analysis ──────────────────────── */
+.stmtvel-card { background:linear-gradient(135deg,rgba(6,182,212,0.10),rgba(8,145,178,0.06)); border:1px solid rgba(6,182,212,0.28); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.stmtvel-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+.stmtvel-title { font-size:0.85rem; font-weight:700; color:#22d3ee; }
+.stmtvel-wpm { background:rgba(6,182,212,0.2); color:#67e8f9; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.stmtvel-profile { font-size:0.73rem; color:#94a3b8; margin-bottom:0.5rem; }
+.stmtvel-segments { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.stmtvel-seg { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.35rem 0.5rem; border-left:3px solid rgba(255,255,255,0.1); }
+.stmtvel-seg-anomaly { border-left-color:#f97316; background:rgba(249,115,22,0.06); }
+.stmtvel-seg-name { font-size:0.72rem; font-weight:600; color:#e2e8f0; margin-bottom:0.15rem; }
+.stmtvel-seg-bar { height:4px; border-radius:2px; background:rgba(255,255,255,0.08); margin-bottom:0.15rem; }
+.stmtvel-seg-fill { height:100%; border-radius:2px; background:#22d3ee; }
+.stmtvel-seg-anomaly .stmtvel-seg-fill { background:#f97316; }
+.stmtvel-seg-info { font-size:0.65rem; color:#64748b; }
+.stmtvel-pause { font-size:0.72rem; color:#94a3b8; background:rgba(255,255,255,0.03); border-radius:6px; padding:0.3rem 0.5rem; margin-bottom:0.3rem; }
+.stmtvel-targets { font-size:0.72rem; color:#f97316; background:rgba(249,115,22,0.08); border-radius:4px; padding:0.2rem 0.4rem; margin-bottom:0.3rem; }
+.stmtvel-footer { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Evidence Admissibility Risk ──────────────────────── */
+.evidadm-card { background:linear-gradient(135deg,rgba(245,158,11,0.10),rgba(180,83,9,0.06)); border:1px solid rgba(245,158,11,0.28); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.evidadm-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+.evidadm-title { font-size:0.85rem; font-weight:700; color:#fbbf24; }
+.evidadm-score { background:rgba(245,158,11,0.2); color:#fde68a; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.evidadm-alert { font-size:0.73rem; color:#f87171; background:rgba(239,68,68,0.1); border-radius:6px; padding:0.3rem 0.5rem; margin-bottom:0.5rem; }
+.evidadm-items { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.evidadm-item { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.35rem 0.5rem; }
+.evidadm-item-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem; }
+.evidadm-item-type { font-size:0.72rem; font-weight:600; color:#e2e8f0; }
+.evidadm-risk { font-size:0.65rem; font-weight:700; border-radius:4px; padding:0.05rem 0.3rem; }
+.evidadm-high { background:rgba(239,68,68,0.2); color:#f87171; }
+.evidadm-med { background:rgba(249,115,22,0.2); color:#fb923c; }
+.evidadm-low { background:rgba(34,197,94,0.2); color:#4ade80; }
+.evidadm-item-bar { height:4px; border-radius:2px; background:rgba(255,255,255,0.08); margin-bottom:0.15rem; }
+.evidadm-item-fill { height:100%; border-radius:2px; background:#fbbf24; }
+.evidadm-item-rule { font-size:0.65rem; color:#64748b; }
+.evidadm-item-action { font-size:0.65rem; color:#6ee7b7; margin-top:0.1rem; }
+.evidadm-motions { font-size:0.72rem; color:#fbbf24; background:rgba(245,158,11,0.08); border-radius:4px; padding:0.2rem 0.4rem; margin-bottom:0.3rem; }
+.evidadm-footer { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Trial Readiness Score ────────────────────────────── */
+.trialready-card { background:linear-gradient(135deg,rgba(34,197,94,0.10),rgba(21,128,61,0.06)); border:1px solid rgba(34,197,94,0.28); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.trialready-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+.trialready-title { font-size:0.85rem; font-weight:700; color:#4ade80; }
+.trialready-verdict { font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.trialready-ready { background:rgba(34,197,94,0.2); color:#4ade80; }
+.trialready-near { background:rgba(234,179,8,0.2); color:#facc15; }
+.trialready-notready { background:rgba(239,68,68,0.2); color:#f87171; }
+.trialready-score-big { font-size:2.2rem; font-weight:700; color:#4ade80; text-align:center; margin-bottom:0.6rem; line-height:1; }
+.trialready-dims { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.trialready-dim { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.3rem 0.5rem; }
+.trialready-dim-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.1rem; font-size:0.72rem; color:#e2e8f0; }
+.trialready-dim-status { font-size:0.62rem; font-weight:700; border-radius:4px; padding:0.05rem 0.3rem; }
+.trialready-dim-ready { background:rgba(34,197,94,0.2); color:#4ade80; }
+.trialready-dim-work { background:rgba(234,179,8,0.2); color:#facc15; }
+.trialready-dim-gap { background:rgba(239,68,68,0.2); color:#f87171; }
+.trialready-dim-bar { height:4px; border-radius:2px; background:rgba(255,255,255,0.08); }
+.trialready-dim-fill { height:100%; border-radius:2px; }
+.trialready-dim-fill.trialready-dim-ready { background:#22c55e; }
+.trialready-dim-fill.trialready-dim-work { background:#eab308; }
+.trialready-dim-fill.trialready-dim-gap { background:#ef4444; }
+.trialready-gaps { font-size:0.72rem; color:#f87171; background:rgba(239,68,68,0.08); border-radius:4px; padding:0.2rem 0.4rem; margin-bottom:0.4rem; }
+.trialready-checklist { display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.4rem; }
+.trialready-check-item { font-size:0.7rem; color:#94a3b8; padding:0.15rem 0.3rem; }
+.trialready-done { color:#6ee7b7; }
+.trialready-todo { color:#94a3b8; }
+.trialready-check-priority { font-size:0.62rem; color:#475569; }
+.trialready-eta { font-size:0.73rem; color:#fbbf24; margin-bottom:0.3rem; }
+.trialready-footer { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Linguistic Pattern Analysis ─────────────────────── */
+.linguist-card { background:linear-gradient(135deg,rgba(251,146,60,0.10),rgba(194,65,12,0.06)); border:1px solid rgba(251,146,60,0.28); border-radius:10px; padding:0.9rem; margin-bottom:0.5rem; }
+.linguist-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+.linguist-title { font-size:0.85rem; font-weight:700; color:#fb923c; }
+.linguist-risk { background:rgba(249,115,22,0.2); color:#fdba74; font-size:0.7rem; font-weight:700; border-radius:8px; padding:0.1rem 0.4rem; margin-left:auto; }
+.linguist-profile { font-size:0.75rem; color:#fdba74; font-style:italic; margin-bottom:0.3rem; }
+.linguist-dominant { font-size:0.72rem; color:#94a3b8; margin-bottom:0.5rem; }
+.linguist-patterns { display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem; }
+.linguist-pat { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.35rem 0.5rem; border-left:3px solid rgba(255,255,255,0.1); }
+.linguist-pat-high { border-left-color:#ef4444; }
+.linguist-pat-med { border-left-color:#f97316; }
+.linguist-pat-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.15rem; }
+.linguist-pat-name { font-size:0.72rem; font-weight:600; color:#e2e8f0; }
+.linguist-pat-freq { font-size:0.68rem; font-weight:700; color:#fb923c; background:rgba(249,115,22,0.15); border-radius:4px; padding:0.05rem 0.3rem; }
+.linguist-pat-bar { height:3px; border-radius:2px; background:rgba(255,255,255,0.08); margin-bottom:0.15rem; }
+.linguist-pat-fill { height:100%; border-radius:2px; background:#f97316; }
+.linguist-pat-sig { font-size:0.65rem; color:#64748b; }
+.linguist-pat-ex { font-size:0.65rem; color:#94a3b8; font-style:italic; margin-top:0.1rem; }
+.linguist-deception { font-size:0.72rem; color:#fbbf24; background:rgba(245,158,11,0.08); border-radius:4px; padding:0.2rem 0.4rem; margin-bottom:0.3rem; }
+.linguist-angles { background:rgba(255,255,255,0.03); border-radius:6px; padding:0.4rem 0.5rem; margin-bottom:0.4rem; }
+.linguist-angle { font-size:0.7rem; color:#94a3b8; padding:0.1rem 0; }
+.linguist-footer { font-size:0.73rem; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:0.4rem; }
+
+/* ── Reliability Score ─────────────────────────────────────────── */
+.reliscore-card { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid #4a90d9; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.reliscore-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.reliscore-badge { background: linear-gradient(135deg, #4a90d9, #7b68ee); color: #fff; border-radius: 50%; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 700; }
+.reliscore-grade { font-size: 2rem; font-weight: 800; color: #4a90d9; }
+.reliscore-factor { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.reliscore-factor-name { width: 180px; font-size: 0.82rem; color: #a0aec0; }
+.reliscore-bar { flex: 1; height: 8px; background: #2d3748; border-radius: 4px; overflow: hidden; }
+.reliscore-bar-fill { height: 100%; background: linear-gradient(90deg, #4a90d9, #63b3ed); border-radius: 4px; transition: width 0.6s ease; }
+.reliscore-decay { display: flex; gap: 8px; align-items: flex-end; height: 60px; margin-top: 12px; }
+.reliscore-decay-bar { flex: 1; background: linear-gradient(180deg, #4a90d9, #2b6cb0); border-radius: 3px 3px 0 0; min-height: 8px; transition: height 0.5s ease; }
+
+/* ── Legal Strategy ────────────────────────────────────────────── */
+.legstrat-card { background: linear-gradient(135deg, #1a1a2e 0%, #0d1b2a 100%); border: 1px solid #68d391; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.legstrat-angle { background: rgba(104, 211, 145, 0.08); border-left: 3px solid #68d391; border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 8px; }
+.legstrat-angle.defense { border-left-color: #fc8181; background: rgba(252, 129, 129, 0.08); }
+.legstrat-angle-name { font-weight: 600; font-size: 0.9rem; color: #e2e8f0; }
+.legstrat-angle-meta { font-size: 0.78rem; color: #a0aec0; margin-top: 4px; }
+.legstrat-strength { display: inline-block; background: #68d391; color: #1a1a2e; border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; }
+.legstrat-strength.defense { background: #fc8181; }
+.legstrat-pivot { background: rgba(255,255,255,0.04); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.83rem; color: #cbd5e0; }
+
+/* ── Memory Consistency ────────────────────────────────────────── */
+.memcon-card { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); border: 1px solid #a78bfa; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.memcon-segment { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(167,139,250,0.15); }
+.memcon-segment:last-child { border-bottom: none; }
+.memcon-segment-name { font-size: 0.85rem; color: #e2e8f0; }
+.memcon-score { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; }
+.memcon-score.high { background: rgba(72,187,120,0.2); color: #68d391; border: 2px solid #68d391; }
+.memcon-score.med { background: rgba(246,173,85,0.2); color: #f6ad55; border: 2px solid #f6ad55; }
+.memcon-score.low { background: rgba(252,129,129,0.2); color: #fc8181; border: 2px solid #fc8181; }
+.memcon-pattern-tag { background: rgba(167,139,250,0.15); color: #a78bfa; border-radius: 10px; padding: 2px 10px; font-size: 0.75rem; }
+.memcon-pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+/* ── Objection Predictor ───────────────────────────────────────── */
+.objpred-card { background: linear-gradient(135deg, #1a0a0a 0%, #2d1515 100%); border: 1px solid #fc8181; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.objpred-item { background: rgba(252,129,129,0.07); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid rgba(252,129,129,0.2); }
+.objpred-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.objpred-type { font-weight: 700; font-size: 0.9rem; color: #feb2b2; }
+.objpred-likelihood { font-size: 1.1rem; font-weight: 800; }
+.objpred-likelihood.high { color: #fc8181; }
+.objpred-likelihood.med { color: #f6ad55; }
+.objpred-likelihood.low { color: #68d391; }
+.objpred-rule { font-size: 0.75rem; background: rgba(252,129,129,0.2); color: #fc8181; border-radius: 8px; padding: 2px 8px; }
+.objpred-strategy { font-size: 0.8rem; color: #a0aec0; margin-top: 6px; font-style: italic; }
+.objpred-trigger { display: inline-block; background: rgba(255,255,255,0.06); border-radius: 4px; padding: 1px 7px; margin: 2px; font-size: 0.73rem; color: #718096; }
+
+/* ── Witness Influence ─────────────────────────────────────────── */
+.winflu-card { background: linear-gradient(135deg, #0a1628 0%, #1a2a4a 100%); border: 1px solid #f6ad55; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.winflu-vector { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px; background: rgba(246,173,85,0.06); border-radius: 8px; }
+.winflu-meter { flex: 1; height: 10px; background: #2d3748; border-radius: 5px; overflow: hidden; }
+.winflu-meter-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+.winflu-meter-fill.low { background: #68d391; }
+.winflu-meter-fill.med { background: #f6ad55; }
+.winflu-meter-fill.high { background: #fc8181; }
+.winflu-vector-name { min-width: 200px; font-size: 0.83rem; color: #e2e8f0; font-weight: 600; }
+.winflu-pct { min-width: 42px; text-align: right; font-weight: 700; font-size: 0.85rem; }
+.winflu-independence { text-align: center; padding: 16px; background: rgba(246,173,85,0.08); border-radius: 10px; margin: 14px 0; }
+.winflu-independence-score { font-size: 2.4rem; font-weight: 800; color: #f6ad55; }
+
+/* ── Behavioral Baseline ───────────────────────────────────────── */
+.bbase-card { background: linear-gradient(135deg, #0d1b2a 0%, #1a2d45 100%); border: 1px solid #63b3ed; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.bbase-metric { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; padding: 10px; background: rgba(99,179,237,0.06); border-radius: 8px; }
+.bbase-metric-name { min-width: 190px; font-size: 0.82rem; color: #e2e8f0; font-weight: 600; }
+.bbase-bars { flex: 1; }
+.bbase-baseline-bar { height: 6px; background: #4a5568; border-radius: 3px; margin-bottom: 3px; position: relative; }
+.bbase-observed-bar { height: 6px; border-radius: 3px; }
+.bbase-anomaly { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+.bbase-anomaly.yes { background: rgba(252,129,129,0.2); color: #fc8181; }
+.bbase-anomaly.no { background: rgba(104,211,145,0.2); color: #68d391; }
+
+/* ── Credibility Decay ─────────────────────────────────────────── */
+.creddecay-card { background: linear-gradient(135deg, #1a0a0a 0%, #2d1515 100%); border: 1px solid #fc8181; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.creddecay-segment { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 9px; background: rgba(252,129,129,0.06); border-radius: 8px; }
+.creddecay-segment-name { min-width: 150px; font-size: 0.82rem; color: #e2e8f0; font-weight: 600; }
+.creddecay-bar { flex: 1; height: 10px; background: #2d3748; border-radius: 5px; overflow: hidden; }
+.creddecay-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+.creddecay-score { min-width: 36px; text-align: right; font-weight: 700; font-size: 0.85rem; }
+.creddecay-event { font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; background: rgba(255,255,255,0.06); color: #a0aec0; }
+
+/* ── Narrative Coherence ───────────────────────────────────────── */
+.narrcoh-card { background: linear-gradient(135deg, #0a1a10 0%, #1a3020 100%); border: 1px solid #68d391; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.narrcoh-dim { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 9px 12px; background: rgba(104,211,145,0.06); border-radius: 8px; }
+.narrcoh-dim-name { font-size: 0.82rem; color: #e2e8f0; font-weight: 600; }
+.narrcoh-rating { font-size: 0.75rem; padding: 2px 9px; border-radius: 10px; font-weight: 700; }
+.narrcoh-rating.strong { background: rgba(104,211,145,0.2); color: #68d391; }
+.narrcoh-rating.moderate { background: rgba(246,173,85,0.2); color: #f6ad55; }
+.narrcoh-rating.weak { background: rgba(252,129,129,0.2); color: #fc8181; }
+.narrcoh-score { font-size: 1.0rem; font-weight: 800; min-width: 36px; text-align: right; }
+
+/* ── Stress Mapping ────────────────────────────────────────────── */
+.stressmap-card { background: linear-gradient(135deg, #1a1a0a 0%, #2d2a0a 100%); border: 1px solid #f6e05e; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.stressmap-topic { margin-bottom: 9px; padding: 10px; background: rgba(246,224,94,0.06); border-radius: 8px; }
+.stressmap-topic-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.stressmap-topic-name { font-size: 0.82rem; color: #e2e8f0; font-weight: 600; }
+.stressmap-bar { height: 8px; background: #2d3748; border-radius: 4px; overflow: hidden; }
+.stressmap-fill { height: 100%; border-radius: 4px; }
+.stressmap-fill.critical { background: #fc8181; }
+.stressmap-fill.elevated { background: #f6ad55; }
+.stressmap-fill.normal { background: #68d391; }
+.stressmap-category { font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: 700; }
+.stressmap-category.critical { background: rgba(252,129,129,0.2); color: #fc8181; }
+.stressmap-category.elevated { background: rgba(246,173,85,0.2); color: #f6ad55; }
+.stressmap-category.normal { background: rgba(104,211,145,0.2); color: #68d391; }
+
+/* ── Precedent Matcher ─────────────────────────────────────────── */
+.precmatch-card { background: linear-gradient(135deg, #0d0d1a 0%, #1a1a2d 100%); border: 1px solid #b794f4; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.precmatch-item { margin-bottom: 10px; padding: 12px; background: rgba(183,148,244,0.06); border-radius: 8px; border-left: 3px solid transparent; }
+.precmatch-item.direct { border-left-color: #b794f4; }
+.precmatch-item.analogous { border-left-color: #f6ad55; }
+.precmatch-item.peripheral { border-left-color: #4a5568; }
+.precmatch-case-name { font-size: 0.85rem; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+.precmatch-issue { font-size: 0.75rem; color: #a0aec0; margin-bottom: 6px; }
+.precmatch-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.precmatch-tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.precmatch-tag.prosecution { background: rgba(252,129,129,0.2); color: #fc8181; }
+.precmatch-tag.defense { background: rgba(104,211,145,0.2); color: #68d391; }
+.precmatch-tag.neutral { background: rgba(160,174,192,0.2); color: #a0aec0; }
+.precmatch-relevance { font-size: 1.0rem; font-weight: 800; color: #b794f4; }
+
+/* ── Demeanor / Case Theory / Jury / Evidence Chain / Prep Index cards ──── */
+.demeanor-card { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 16px; }
+.admin-stat-card { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; text-align: center; }
+.admin-stat-card .stat-value { font-size: 1.4rem; font-weight: 800; margin-bottom: 4px; }
+.admin-stat-card .stat-label { font-size: 0.68rem; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Witness Demeanor Analysis
+   ═══════════════════════════════════════════════════════════════ */
+.dmnr-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.dmnr-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.dmnr-score { font-size: 2.2rem; font-weight: 700; min-width: 70px; text-align: center; }
+.dmnr-score span { font-size: 0.85rem; opacity: 0.7; }
+.dmnr-profile { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; margin-bottom: 0.2rem; }
+.dmnr-assess { font-size: 0.72rem; color: #94a3b8; line-height: 1.4; }
+.dmnr-dims { margin-bottom: 0.6rem; }
+.dmnr-dims h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.6rem 0 0.4rem; }
+.dmnr-dim-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0; font-size: 0.72rem; }
+.dmnr-dim-name { min-width: 110px; color: #94a3b8; }
+.dmnr-bar-bg { flex: 1; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; }
+.dmnr-bar { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.dmnr-dim-score { font-weight: 600; min-width: 30px; text-align: right; font-size: 0.72rem; }
+.dmnr-rec { font-size: 0.72rem; color: #94a3b8; padding: 0.5rem; background: #111827; border-radius: 6px; line-height: 1.4; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Privilege & Admissibility Scanner
+   ═══════════════════════════════════════════════════════════════ */
+.privscan-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.privscan-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.privscan-flags { font-size: 2.2rem; font-weight: 700; min-width: 60px; text-align: center; }
+.privscan-flags span { font-size: 0.75rem; opacity: 0.7; display: block; }
+.privscan-risk { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+.privscan-admis { font-size: 0.68rem; color: #64748b; }
+.privscan-cats h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.privscan-cat-row { padding: 0.5rem; background: #111827; border-radius: 6px; margin-bottom: 0.4rem; }
+.privscan-cat-name { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
+.privscan-sev { font-size: 0.62rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.4rem; font-weight: 500; }
+.privscan-triggers { margin-top: 0.3rem; }
+.privscan-triggers span { display: block; font-size: 0.68rem; color: #94a3b8; }
+.privscan-rule { font-size: 0.62rem; color: #64748b; margin-top: 0.2rem; font-style: italic; }
+.privscan-motion { font-size: 0.75rem; color: #f59e0b; padding: 0.5rem; background: #f59e0b11; border: 1px solid #f59e0b33; border-radius: 6px; margin: 0.5rem 0; }
+.privscan-rec { font-size: 0.72rem; color: #94a3b8; padding: 0.5rem; background: #111827; border-radius: 6px; line-height: 1.4; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Testimony Readability Score
+   ═══════════════════════════════════════════════════════════════ */
+.rdblty-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.rdblty-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.rdblty-score { font-size: 2.2rem; font-weight: 700; min-width: 70px; text-align: center; }
+.rdblty-score span { font-size: 0.85rem; opacity: 0.7; }
+.rdblty-verdict { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 0.2rem; }
+.rdblty-stats { font-size: 0.68rem; color: #64748b; }
+.rdblty-dims { margin-bottom: 0.6rem; }
+.rdblty-dims h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.rdblty-dim { font-size: 0.72rem; color: #94a3b8; padding: 0.3rem 0; line-height: 1.4; }
+.rdblty-dim strong { color: #e2e8f0; }
+.rdblty-improve { margin-top: 0.4rem; }
+.rdblty-improve h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.rdblty-imp-item { font-size: 0.72rem; color: #94a3b8; padding: 0.15rem 0; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Corroboration Evidence Finder
+   ═══════════════════════════════════════════════════════════════ */
+.corrob-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.corrob-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.corrob-score { font-size: 2.2rem; font-weight: 700; min-width: 60px; text-align: center; }
+.corrob-score span { font-size: 0.95rem; opacity: 0.7; }
+.corrob-strength { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.15rem; }
+.corrob-stats { font-size: 0.68rem; color: #94a3b8; }
+.corrob-weak { font-size: 0.68rem; color: #64748b; margin-top: 0.1rem; }
+.corrob-types h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.corrob-type-row { padding: 0.5rem; background: #111827; border-radius: 6px; margin-bottom: 0.4rem; }
+.corrob-type-hdr { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.corrob-type-name { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
+.corrob-type-pri { font-size: 0.62rem; font-weight: 500; }
+.corrob-type-pct { font-size: 0.68rem; font-weight: 600; margin-left: auto; }
+.corrob-type-count { font-size: 0.62rem; color: #64748b; margin-top: 0.1rem; }
+.corrob-evidence { margin-top: 0.2rem; }
+.corrob-evidence span { display: block; font-size: 0.68rem; color: #94a3b8; }
+.corrob-plan { margin-top: 0.5rem; }
+.corrob-plan h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.corrob-plan-section { font-size: 0.72rem; color: #94a3b8; margin-bottom: 0.3rem; }
+.corrob-plan-section div { margin-left: 0.5rem; padding: 0.1rem 0; }
+.corrob-rec { font-size: 0.72rem; color: #94a3b8; padding: 0.5rem; background: #111827; border-radius: 6px; line-height: 1.4; margin-top: 0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Jury Instruction Drafter
+   ═══════════════════════════════════════════════════════════════ */
+.juryinst-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.juryinst-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid #8b5cf6; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.juryinst-count { font-size: 2.2rem; font-weight: 700; min-width: 50px; text-align: center; color: #8b5cf6; }
+.juryinst-count span { font-size: 0.7rem; opacity: 0.7; display: block; }
+.juryinst-type { font-size: 0.82rem; font-weight: 600; color: #e2e8f0; margin-bottom: 0.15rem; }
+.juryinst-cmplx { font-size: 0.68rem; color: #94a3b8; }
+.juryinst-cats { font-size: 0.68rem; color: #64748b; margin-top: 0.1rem; }
+.juryinst-list h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.juryinst-item { padding: 0.6rem; background: #111827; border-radius: 6px; margin-bottom: 0.4rem; border-left: 3px solid #8b5cf622; }
+.juryinst-item-hdr { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
+.juryinst-num { font-size: 0.68rem; color: #8b5cf6; font-weight: 700; }
+.juryinst-title { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
+.juryinst-cat { font-size: 0.6rem; color: #64748b; margin-left: auto; background: #1e293b; padding: 0.1rem 0.35rem; border-radius: 3px; }
+.juryinst-text { font-size: 0.72rem; color: #cbd5e1; line-height: 1.5; margin-bottom: 0.3rem; font-style: italic; }
+.juryinst-basis { font-size: 0.62rem; color: #64748b; }
+.juryinst-notes { margin-top: 0.5rem; }
+.juryinst-notes h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.juryinst-note { font-size: 0.72rem; color: #94a3b8; padding: 0.15rem 0; }
+.juryinst-rec { font-size: 0.72rem; color: #94a3b8; padding: 0.5rem; background: #111827; border-radius: 6px; line-height: 1.4; margin-top: 0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Witness Credibility Matrix
+   ═══════════════════════════════════════════════════════════════ */
+.credmatrix-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; }
+.credmatrix-header { display: flex; align-items: center; gap: 1rem; padding: 0.8rem; border-left: 4px solid #60a5fa; border-radius: 8px; background: #111827; margin-bottom: 0.8rem; }
+.credmatrix-overall { font-size: 2.2rem; font-weight: 700; min-width: 60px; text-align: center; }
+.credmatrix-witnesses { display: flex; flex-direction: column; gap: 0.4rem; }
+.credmatrix-witness-card { padding: 0.6rem; background: #111827; border-radius: 6px; border-left: 3px solid #60a5fa22; }
+.credmatrix-conflicts h4 { font-size: 0.78rem; color: #f87171; margin: 0.6rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Deposition Risk Scorecard
+   ═══════════════════════════════════════════════════════════════ */
+.deposrisk-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.deposrisk-categories h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.deposrisk-actions h4 { font-size: 0.78rem; color: #f87171; margin: 0.3rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Expert Witness Challenger
+   ═══════════════════════════════════════════════════════════════ */
+.expertchall-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.expertchall-header { display: flex; align-items: flex-start; gap: 1rem; padding: 0.8rem; background: #111827; border-radius: 8px; }
+.expertchall-factors h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.expertchall-questions h4 { font-size: 0.78rem; color: #60a5fa; margin: 0.6rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Timeline Gap Detector
+   ═══════════════════════════════════════════════════════════════ */
+.tlgaps-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.tlgaps-list h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.tlgaps-discovery h4 { font-size: 0.78rem; color: #60a5fa; margin: 0.5rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Emotional Arc Analyzer
+   ═══════════════════════════════════════════════════════════════ */
+.emoarc-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.emoarc-segments h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.emoarc-strategy h4 { font-size: 0.78rem; color: #fbbf24; margin: 0.5rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Deception Marker Detector
+   ═══════════════════════════════════════════════════════════════ */
+.deception-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.deception-categories h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.3rem; }
+.deception-followup h4 { font-size: 0.78rem; color: #60a5fa; margin: 0.5rem 0 0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Case Strength Meter
+   ═══════════════════════════════════════════════════════════════ */
+.casestr-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
+.casestr-pillars h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
+.casestr-priorities h4 { font-size: 0.78rem; color: #fbbf24; margin: 0.3rem 0 0.3rem; }

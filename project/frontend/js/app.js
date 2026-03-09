@@ -8035,6 +8035,13 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
         '/casenarr': async () => { await this._showCaseNarrative(); },
         '/swot': async () => { await this._showTestimonySwot(); },
         '/depocostv2': async () => { await this._showDepoCostV2(); },
+        '/credmatrix': async () => { await this.runCredibilityMatrix(); },
+        '/deposrisk': async () => { await this.runDepositionRisk(); },
+        '/expertchall': async () => { await this.runExpertChallenge(); },
+        '/tlgaps': async () => { await this.runTimelineGaps(); },
+        '/emoarc': async () => { await this.runEmotionalArc(); },
+        '/deception': async () => { await this.runDeceptionMarkers(); },
+        '/casestrength': async () => { await this.runCaseStrength(); },
         '/bias': async () => { await this._showBiasAnalysis(); },
         '/settlement': async () => { await this._showSettlementRisk(); },
         '/grandjury': async () => { await this._showGrandJuryReadiness(); },
@@ -8229,6 +8236,13 @@ WitnessReplayApp.prototype._showSlashHint = function() {
         { cmd: '/casenarr', desc: 'Case narrative builder' },
         { cmd: '/swot', desc: 'Testimony SWOT analysis' },
         { cmd: '/depocostv2', desc: 'Enhanced deposition cost estimate' },
+        { cmd: '/credmatrix', desc: 'Witness credibility matrix' },
+        { cmd: '/deposrisk', desc: 'Deposition risk scorecard' },
+        { cmd: '/expertchall', desc: 'Expert witness Daubert challenger' },
+        { cmd: '/tlgaps', desc: 'Timeline gap detector' },
+        { cmd: '/emoarc', desc: 'Emotional arc analyzer' },
+        { cmd: '/deception', desc: 'Deception marker detector' },
+        { cmd: '/casestrength', desc: 'Case strength meter' },
         { cmd: '/bias', desc: 'Cognitive bias analysis' },
         { cmd: '/settlement', desc: 'Settlement risk assessment' },
         { cmd: '/grandjury', desc: 'Grand jury readiness check' },
@@ -12406,8 +12420,8 @@ WitnessReplayApp.prototype._showExhibitTracker = async function() {
     } catch(e) { this.displaySystemMessage('❌ Could not track exhibits.'); }
 };
 
-// ── Memory Quality Handler ──────────────────────
-WitnessReplayApp.prototype._showMemoryQuality = async function() {
+// ── Memory Quality Handler (basic - uses /memory-quality endpoint) ──────────────────────
+WitnessReplayApp.prototype._showMemoryQualityBasic = async function() {
     if (!this.sessionId && !this.sessionId) { this.displaySystemMessage('⚠️ No active session.'); return; }
     const sid = this.sessionId || this.sessionId;
     try {
@@ -14333,7 +14347,7 @@ WitnessReplayApp.prototype._showStatementImportance = async function() {
 };
 
 // ─── Key Evidence Extractor ──────────────────────────────────────────────────
-WitnessApp.prototype.runKeyEvidenceExtractor = async function() {
+WitnessReplayApp.prototype.runKeyEvidenceExtractor = async function() {
     if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
     this.displaySystemMessage('🔍 Extracting key evidence items…');
     try {
@@ -14368,7 +14382,7 @@ WitnessApp.prototype.runKeyEvidenceExtractor = async function() {
 };
 
 // ─── Deception Indicators ────────────────────────────────────────────────────
-WitnessApp.prototype.runDeceptionIndicators = async function() {
+WitnessReplayApp.prototype.runDeceptionIndicators = async function() {
     if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
     this.displaySystemMessage('🎭 Analyzing deception indicators…');
     try {
@@ -14395,7 +14409,7 @@ WitnessApp.prototype.runDeceptionIndicators = async function() {
 };
 
 // ─── Jurisdiction Analysis ───────────────────────────────────────────────────
-WitnessApp.prototype.runJurisdictionAnalysis = async function() {
+WitnessReplayApp.prototype.runJurisdictionAnalysis = async function() {
     if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
     this.displaySystemMessage('⚖️ Analyzing jurisdiction and applicable laws…');
     try {
@@ -14430,7 +14444,7 @@ WitnessApp.prototype.runJurisdictionAnalysis = async function() {
 };
 
 // ─── Witness Reliability Matrix ───────────────────────────────────────────────
-WitnessApp.prototype.runReliabilityMatrix = async function() {
+WitnessReplayApp.prototype.runReliabilityMatrix = async function() {
     if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
     this.displaySystemMessage('📊 Building reliability matrix…');
     try {
@@ -14463,7 +14477,7 @@ WitnessApp.prototype.runReliabilityMatrix = async function() {
 };
 
 // ─── Defense Strategy Preview ─────────────────────────────────────────────────
-WitnessApp.prototype.runDefenseStrategyPreview = async function() {
+WitnessReplayApp.prototype.runDefenseStrategyPreview = async function() {
     if (!this.currentSessionId) { this.displaySystemMessage('❌ No active session. Start a session first.'); return; }
     this.displaySystemMessage('⚔️ Previewing likely defense strategies…');
     try {
@@ -15056,4 +15070,4777 @@ WitnessReplayApp.prototype.runCompetencyAssessment = async function() {
         html += '<div class="compeval-summary">' + d.summary + '</div></div>';
         this.addMessage('assistant', html);
     } catch(e) { this.addMessage('assistant', '❌ Competency assessment failed: ' + e.message); }
+};
+
+// ─── NARRATIVE ARC ANALYZER ──────────────────────────────────────────────────
+WitnessReplayApp.prototype.runNarrativeArc = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🎬 Analyzing narrative arc structure...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/narrative-arc-analysis');
+        const d = await r.json();
+        const nc = d.narrative_color;
+        let html = '<div class="narrarc-result">';
+        html += '<div class="narrarc-overall" style="border-color:' + nc + '">';
+        html += '<div class="narrarc-overall-score" style="color:' + nc + '">' + d.overall_coherence + '<span style="font-size:0.85rem">/100</span></div>';
+        html += '<div><div class="narrarc-overall-lbl" style="color:' + nc + '">' + d.narrative_strength + '</div>';
+        html += '<div style="font-size:0.72rem;color:#94a3b8;margin-top:0.1rem">Arc type: <strong>' + d.arc_type + '</strong></div>';
+        html += '<div style="font-size:0.68rem;color:#64748b;margin-top:0.1rem">' + d.arc_description + '</div></div></div>';
+        html += '<div class="narrarc-phases"><h4>📊 Narrative Phases</h4>';
+        d.phases.forEach(p => {
+            const sc = p.coherence >= 75 ? '#22c55e' : p.coherence >= 50 ? '#eab308' : '#ef4444';
+            html += '<div class="narrarc-phase-row">';
+            html += '<span class="narrarc-phase-icon">' + p.icon + '</span>';
+            html += '<div class="narrarc-phase-info"><div class="narrarc-phase-name">' + p.phase + '</div>';
+            html += '<div class="narrarc-phase-theme">' + p.key_theme + '</div></div>';
+            html += '<div class="narrarc-phase-bars">';
+            html += '<div style="font-size:0.62rem;color:#64748b">Coherence</div>';
+            html += '<div class="narrarc-bar-bg"><div class="narrarc-bar" style="width:' + p.coherence + '%;background:' + sc + '"></div></div>';
+            html += '<div style="font-size:0.62rem;color:#64748b;margin-top:2px">Density</div>';
+            html += '<div class="narrarc-bar-bg"><div class="narrarc-bar" style="width:' + p.detail_density + '%;background:#60a5fa"></div></div></div>';
+            html += '<span class="narrarc-phase-score" style="color:' + sc + '">' + p.coherence + '</span>';
+            html += '<span class="narrarc-tone-badge">' + p.emotional_tone + '</span></div>';
+        });
+        html += '</div>';
+        if (d.tension_points && d.tension_points.length > 0) {
+            html += '<div class="narrarc-tensions"><h4>⚠️ Tension Points (' + d.tension_count + ')</h4>';
+            d.tension_points.forEach(t => { html += '<span class="narrarc-tension-tag">' + t + '</span>'; });
+            html += '</div>';
+        }
+        html += '<div class="narrarc-actions"><h4>🎯 Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="narrarc-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Narrative arc analysis failed: ' + e.message); }
+};
+
+// ─── WITNESS PREPARATION QUALITY ─────────────────────────────────────────────
+WitnessReplayApp.prototype.runWitnessPreparation = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '📚 Assessing witness preparation quality...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/witness-preparation');
+        const d = await r.json();
+        const pc = d.preparation_color;
+        let html = '<div class="witprep-result">';
+        html += '<div class="witprep-overall" style="border-color:' + pc + '">';
+        html += '<div class="witprep-overall-score" style="color:' + pc + '">' + d.overall_preparation_score + '<span style="font-size:0.85rem">/100</span></div>';
+        html += '<div><div class="witprep-overall-lbl" style="color:' + pc + '">' + d.preparation_label + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.1rem">' + d.preparation_summary + '</div>';
+        const opc = d.over_preparation_level === 'High' ? '#ef4444' : d.over_preparation_level === 'Moderate' ? '#eab308' : '#22c55e';
+        html += '<div style="font-size:0.68rem;margin-top:0.2rem">Over-prep risk: <strong style="color:' + opc + '">' + d.over_preparation_level + ' (' + d.over_preparation_risk_pct + '%)</strong></div></div></div>';
+        html += '<div class="witprep-indicators"><h4>📋 Preparation Indicators</h4>';
+        d.indicators.forEach(ind => {
+            const sc = ind.score >= 80 ? '#22c55e' : ind.score >= 65 ? '#60a5fa' : ind.score >= 45 ? '#eab308' : '#ef4444';
+            const ratCls = ind.rating === 'Excellent' ? 'witprep-rat-ex' : ind.rating === 'Good' ? 'witprep-rat-good' : ind.rating === 'Fair' ? 'witprep-rat-fair' : 'witprep-rat-poor';
+            html += '<div class="witprep-ind-row" title="' + ind.description + '">';
+            html += '<span>' + ind.icon + '</span><span class="witprep-ind-name">' + ind.indicator + '</span>';
+            html += '<div class="witprep-ind-bar-bg"><div class="witprep-ind-bar" style="width:' + ind.score + '%;background:' + sc + '"></div></div>';
+            html += '<span class="witprep-ind-score" style="color:' + sc + '">' + ind.score + '</span>';
+            html += '<span class="' + ratCls + '">' + ind.rating + '</span></div>';
+        });
+        html += '</div>';
+        if (d.under_prepared_areas && d.under_prepared_areas.length > 0) {
+            html += '<div class="witprep-gaps"><h4>⚠️ Preparation Gaps (' + d.preparation_gaps + ')</h4>';
+            d.under_prepared_areas.forEach(g => { html += '<span class="witprep-gap-tag">' + g + '</span>'; });
+            html += '</div>';
+        }
+        html += '<div class="witprep-actions"><h4>🎯 Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="witprep-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Preparation quality assessment failed: ' + e.message); }
+};
+
+// ─── CONTRADICTION HEATMAP ───────────────────────────────────────────────────
+WitnessReplayApp.prototype.runContradictionHeatmap = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🔥 Generating contradiction heatmap...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/contradiction-heatmap');
+        const d = await r.json();
+        const hc = d.heat_color;
+        let html = '<div class="conheat-result">';
+        html += '<div class="conheat-overall" style="border-color:' + hc + '">';
+        html += '<div class="conheat-overall-score" style="color:' + hc + '">' + d.overall_heat_score + '<span style="font-size:0.85rem">/100</span></div>';
+        html += '<div><div class="conheat-overall-lbl" style="color:' + hc + '">' + d.heat_label + ' HEAT</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.1rem">' + d.total_conflicts_detected + ' total conflicts · ' + d.critical_section_count + ' critical sections</div>';
+        html += '<div style="font-size:0.68rem;color:#64748b;margin-top:0.1rem">Hottest: <strong>' + d.hottest_section + '</strong></div></div></div>';
+        html += '<div class="conheat-sections"><h4>🌡️ Section Heatmap</h4>';
+        d.sections.forEach(s => {
+            const w = Math.min(100, s.contradiction_score);
+            html += '<div class="conheat-section-row">';
+            html += '<span class="conheat-section-icon">' + s.icon + '</span>';
+            html += '<div class="conheat-section-name">' + s.section + '</div>';
+            html += '<div class="conheat-heat-bar-bg"><div class="conheat-heat-bar" style="width:' + w + '%;background:' + s.heat_color + '"></div></div>';
+            html += '<span class="conheat-heat-score" style="color:' + s.heat_color + '">' + s.contradiction_score + '</span>';
+            html += '<span class="conheat-heat-lbl" style="background:' + s.heat_color + '22;color:' + s.heat_color + ';border:1px solid ' + s.heat_color + '44">' + s.heat_level + '</span>';
+            html += '<span style="font-size:0.62rem;color:#64748b">' + s.total_conflicts + ' conflicts</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="conheat-targets"><h4>🎯 Top Exploitation Targets</h4>';
+        d.exploitation_targets.forEach((t, i) => {
+            html += '<div style="font-size:0.73rem;color:#94a3b8;margin-bottom:0.2rem">' + (i+1) + '. <strong>' + t.section + '</strong> — score ' + t.score + '/100, ' + t.conflicts + ' conflicts</div>';
+        });
+        html += '</div>';
+        html += '<div class="conheat-actions"><h4>⚔️ Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="conheat-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Contradiction heatmap failed: ' + e.message); }
+};
+
+// ─── WITNESS DEMEANOR ANALYSIS ──────────────────────────────────────────────
+WitnessReplayApp.prototype.runDemeanorAnalysis = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🎭 Analyzing witness demeanor patterns...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/demeanor-analysis');
+        const d = await r.json();
+        const sc = d.overall_demeanor_score;
+        const cl = sc >= 70 ? '#22c55e' : sc >= 45 ? '#f59e0b' : '#ef4444';
+        let html = '<div class="dmnr-result">';
+        html += '<div class="dmnr-header" style="border-color:' + cl + '">';
+        html += '<div class="dmnr-score" style="color:' + cl + '">' + sc + '<span>/100</span></div>';
+        html += '<div><div class="dmnr-profile">' + d.demeanor_profile + '</div>';
+        html += '<div class="dmnr-assess">' + d.assessment + '</div></div></div>';
+        const dims = d.dimensions;
+        html += '<div class="dmnr-dims"><h4>📊 Demeanor Dimensions</h4>';
+        const dimOrder = ['verbal_confidence', 'hesitation_patterns', 'formality_shifts', 'aggression_markers', 'cooperation_level'];
+        const dimIcons = {'verbal_confidence': '💪', 'hesitation_patterns': '⏸️', 'formality_shifts': '👔', 'aggression_markers': '⚡', 'cooperation_level': '🤝'};
+        const dimLabels = {'verbal_confidence': 'Verbal Confidence', 'hesitation_patterns': 'Hesitation Level', 'formality_shifts': 'Formality Shifts', 'aggression_markers': 'Aggression Markers', 'cooperation_level': 'Cooperation Level'};
+        dimOrder.forEach(k => {
+            const dim = dims[k]; if (!dim) return;
+            const s = dim.score; const w = Math.min(100, s);
+            const c = k === 'hesitation_patterns' || k === 'aggression_markers' ? (s <= 30 ? '#22c55e' : s <= 60 ? '#f59e0b' : '#ef4444') : (s >= 70 ? '#22c55e' : s >= 40 ? '#f59e0b' : '#ef4444');
+            html += '<div class="dmnr-dim-row"><span>' + dimIcons[k] + '</span><span class="dmnr-dim-name">' + dimLabels[k] + '</span>';
+            html += '<div class="dmnr-bar-bg"><div class="dmnr-bar" style="width:' + w + '%;background:' + c + '"></div></div>';
+            html += '<span class="dmnr-dim-score" style="color:' + c + '">' + s + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="dmnr-rec"><strong>📋 Recommendation:</strong> ' + d.recommendation + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Demeanor analysis failed: ' + e.message); }
+};
+
+// ─── PRIVILEGE & ADMISSIBILITY SCANNER ──────────────────────────────────────
+WitnessReplayApp.prototype.runPrivilegeScan = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🔐 Scanning for privileged & inadmissible content...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/privilege-scan');
+        const d = await r.json();
+        const rl = d.risk_level;
+        const cl = rl === 'critical' ? '#ef4444' : rl === 'elevated' ? '#f59e0b' : rl === 'moderate' ? '#3b82f6' : '#22c55e';
+        let html = '<div class="privscan-result">';
+        html += '<div class="privscan-header" style="border-color:' + cl + '">';
+        html += '<div class="privscan-flags" style="color:' + cl + '">' + d.total_flags + '<span> flags</span></div>';
+        html += '<div><div class="privscan-risk" style="color:' + cl + '">' + rl.toUpperCase() + ' RISK</div>';
+        html += '<div class="privscan-admis">~' + d.estimated_admissible_pct + '% estimated admissible</div></div></div>';
+        html += '<div class="privscan-cats"><h4>📋 Privilege Categories</h4>';
+        d.categories.forEach(c => {
+            const sc = c.severity === 'high' ? '#ef4444' : c.severity === 'medium' ? '#f59e0b' : c.severity === 'low' ? '#3b82f6' : '#64748b';
+            html += '<div class="privscan-cat-row">';
+            html += '<div class="privscan-cat-name">' + c.category + '</div>';
+            html += '<span class="privscan-sev" style="background:' + sc + '22;color:' + sc + ';border:1px solid ' + sc + '44">' + c.severity + ' (' + c.flag_count + ')</span>';
+            if (c.triggers && c.triggers.length) { html += '<div class="privscan-triggers">' + c.triggers.map(t => '<span>• ' + t + '</span>').join('') + '</div>'; }
+            html += '<div class="privscan-rule">' + c.rule_reference + '</div></div>';
+        });
+        html += '</div>';
+        if (d.motion_in_limine_needed) { html += '<div class="privscan-motion">⚠️ Motion in limine recommended for contested areas</div>'; }
+        html += '<div class="privscan-rec"><strong>📋</strong> ' + d.recommendation + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Privilege scan failed: ' + e.message); }
+};
+
+// ─── TESTIMONY READABILITY SCORE ────────────────────────────────────────────
+WitnessReplayApp.prototype.runReadabilityScore = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '📖 Calculating testimony readability...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/jury-readability');
+        const d = await r.json();
+        const sc = d.overall_readability_score;
+        const cl = sc >= 75 ? '#22c55e' : sc >= 55 ? '#3b82f6' : sc >= 35 ? '#f59e0b' : '#ef4444';
+        let html = '<div class="rdblty-result">';
+        html += '<div class="rdblty-header" style="border-color:' + cl + '">';
+        html += '<div class="rdblty-score" style="color:' + cl + '">' + sc + '<span>/100</span></div>';
+        html += '<div><div class="rdblty-verdict">' + d.jury_comprehension_estimate + '</div>';
+        html += '<div class="rdblty-stats">' + d.word_count + ' words · ' + d.sentence_count + ' sentences</div></div></div>';
+        const dims = d.dimensions;
+        html += '<div class="rdblty-dims"><h4>📊 Readability Dimensions</h4>';
+        html += '<div class="rdblty-dim"><span>📚</span> Grade Level: <strong>' + dims.grade_level.flesch_kincaid_grade + '</strong> — ' + dims.grade_level.interpretation + '</div>';
+        html += '<div class="rdblty-dim"><span>📝</span> Reading Ease: <strong>' + dims.flesch_reading_ease.score + '</strong> (' + dims.flesch_reading_ease.category + ')</div>';
+        html += '<div class="rdblty-dim"><span>🔬</span> Jargon Density: <strong>' + dims.jargon_density.score + '%</strong> — ' + dims.jargon_density.technical_terms_found + ' technical, ' + dims.jargon_density.legal_jargon_count + ' legal terms</div>';
+        html += '<div class="rdblty-dim"><span>📏</span> Avg Sentence Length: <strong>' + dims.sentence_complexity.avg_words_per_sentence + ' words</strong> — ' + dims.sentence_complexity.long_sentences_pct + '% long sentences</div>';
+        html += '<div class="rdblty-dim"><span>💡</span> Clarity Index: <strong>' + dims.clarity_index.score + '/100</strong> — ' + dims.clarity_index.passive_voice_pct + '% passive voice</div></div>';
+        html += '<div class="rdblty-improve"><h4>🔧 Top Improvements</h4>';
+        d.top_improvements.forEach(i => { html += '<div class="rdblty-imp-item">• ' + i + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Readability score failed: ' + e.message); }
+};
+
+// ─── CORROBORATION EVIDENCE FINDER ──────────────────────────────────────────
+WitnessReplayApp.prototype.runCorroborationFinder = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🔗 Identifying claims needing corroboration...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/corroboration-finder');
+        const d = await r.json();
+        const avg = d.avg_corroboration_pct;
+        const cl = avg >= 65 ? '#22c55e' : avg >= 40 ? '#f59e0b' : '#ef4444';
+        let html = '<div class="corrob-result">';
+        html += '<div class="corrob-header" style="border-color:' + cl + '">';
+        html += '<div class="corrob-score" style="color:' + cl + '">' + avg + '<span>%</span></div>';
+        html += '<div><div class="corrob-strength" style="color:' + cl + '">' + d.corroboration_strength + ' Corroboration</div>';
+        html += '<div class="corrob-stats">' + d.total_claims_identified + ' claims identified · ' + d.high_priority_gaps + ' high-priority gaps</div>';
+        html += '<div class="corrob-weak">Weakest: ' + d.weakest_area + '</div></div></div>';
+        html += '<div class="corrob-types"><h4>📋 Claim Categories</h4>';
+        d.claim_types.forEach(ct => {
+            const pc = ct.corroborated_pct >= 60 ? '#22c55e' : ct.corroborated_pct >= 35 ? '#f59e0b' : '#ef4444';
+            const prC = ct.priority === 'high' ? '#ef4444' : ct.priority === 'medium' ? '#f59e0b' : '#64748b';
+            html += '<div class="corrob-type-row">';
+            html += '<div class="corrob-type-hdr"><span class="corrob-type-name">' + ct.claim_type + '</span>';
+            html += '<span class="corrob-type-pri" style="color:' + prC + '">' + ct.priority + '</span>';
+            html += '<span class="corrob-type-pct" style="color:' + pc + '">' + ct.corroborated_pct + '% corroborated</span></div>';
+            html += '<div class="corrob-type-count">' + ct.claims_identified + ' claims</div>';
+            html += '<div class="corrob-evidence">' + ct.suggested_evidence.slice(0, 3).map(e => '<span>📎 ' + e + '</span>').join('') + '</div></div>';
+        });
+        html += '</div>';
+        const plan = d.evidence_collection_plan;
+        html += '<div class="corrob-plan"><h4>🎯 Evidence Collection Plan</h4>';
+        html += '<div class="corrob-plan-section"><strong>Immediate:</strong>';
+        plan.immediate_actions.forEach(a => { html += '<div>→ ' + a + '</div>'; });
+        html += '</div><div class="corrob-plan-section"><strong>Follow-up:</strong>';
+        plan.follow_up_actions.forEach(a => { html += '<div>→ ' + a + '</div>'; });
+        html += '</div></div>';
+        html += '<div class="corrob-rec"><strong>📋</strong> ' + d.recommendation + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Corroboration finder failed: ' + e.message); }
+};
+
+// ─── JURY INSTRUCTION DRAFTER ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runJuryInstructions = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '⚖️ Drafting jury instructions from testimony...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/jury-instructions');
+        const d = await r.json();
+        let html = '<div class="juryinst-result">';
+        html += '<div class="juryinst-header">';
+        html += '<div class="juryinst-count">' + d.total_instructions_drafted + '<span> instructions</span></div>';
+        html += '<div><div class="juryinst-type">Case Type: ' + d.case_type_detected.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + '</div>';
+        html += '<div class="juryinst-cmplx">Complexity: ' + d.complexity_level + '</div>';
+        html += '<div class="juryinst-cats">Categories: ' + d.categories.join(', ') + '</div></div></div>';
+        html += '<div class="juryinst-list"><h4>📜 Draft Instructions</h4>';
+        d.instructions.forEach(inst => {
+            html += '<div class="juryinst-item">';
+            html += '<div class="juryinst-item-hdr"><span class="juryinst-num">#' + inst.instruction_number + '</span>';
+            html += '<span class="juryinst-title">' + inst.title + '</span>';
+            html += '<span class="juryinst-cat">' + inst.category + '</span></div>';
+            html += '<div class="juryinst-text">' + inst.text + '</div>';
+            html += '<div class="juryinst-basis">Basis: ' + inst.basis + '</div></div>';
+        });
+        html += '</div>';
+        html += '<div class="juryinst-notes"><h4>📝 Notes</h4>';
+        d.notes.forEach(n => { html += '<div class="juryinst-note">• ' + n + '</div>'; });
+        html += '</div>';
+        html += '<div class="juryinst-rec"><strong>📋</strong> ' + d.recommendation + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Jury instruction drafter failed: ' + e.message); }
+};
+
+// ─── WITNESS CREDIBILITY MATRIX ──────────────────────────────────────────────
+WitnessReplayApp.prototype.runCredibilityMatrix = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '📊 Building multi-witness credibility matrix...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/credibility-matrix');
+        const d = await r.json();
+        const teamColor = d.team_credibility_rating === 'strong' ? '#4ade80' : d.team_credibility_rating === 'moderate' ? '#fbbf24' : '#f87171';
+        let html = '<div class="credmatrix-result">';
+        html += '<div class="credmatrix-header">';
+        html += '<div class="credmatrix-overall" style="color:' + teamColor + '">' + d.avg_credibility + '<span style="font-size:0.75rem">/100</span></div>';
+        html += '<div><div style="font-size:0.8rem;font-weight:600;color:' + teamColor + '">Team Credibility: ' + d.team_credibility_rating.toUpperCase() + '</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">' + d.witnesses_analyzed + ' witnesses · ' + d.dimensions_assessed + ' dimensions · Strongest: ' + d.strongest_witness + '</div></div></div>';
+        html += '<div class="credmatrix-witnesses">';
+        d.matrix.forEach(function(w) {
+            var wc = w.risk_level === 'low' ? '#4ade80' : w.risk_level === 'moderate' ? '#fbbf24' : '#f87171';
+            html += '<div class="credmatrix-witness-card">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+            html += '<span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">' + w.witness + '</span>';
+            html += '<span style="font-size:0.85rem;font-weight:700;color:' + wc + '">' + w.overall_credibility + '</span></div>';
+            html += '<div style="font-size:0.68rem;color:' + wc + ';margin-bottom:4px;">Risk: ' + w.risk_level + ' · ' + w.recommendation + '</div>';
+            html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            Object.entries(w.dimension_scores).forEach(function([dim, score]) {
+                var dc = score >= 75 ? '#4ade80' : score >= 55 ? '#60a5fa' : '#f87171';
+                html += '<span style="font-size:0.62rem;color:' + dc + ';background:' + dc + '18;padding:1px 5px;border-radius:3px;">' + dim.split(' ')[0] + ': ' + score + '</span>';
+            });
+            html += '</div>';
+            html += '<div style="font-size:0.65rem;color:#64748b;margin-top:3px;">✅ ' + w.strongest_dimension + ' · ⚠️ ' + w.weakest_dimension + '</div></div>';
+        });
+        html += '</div>';
+        if (d.critical_conflicts && d.critical_conflicts.length > 0) {
+            html += '<div class="credmatrix-conflicts"><h4>⚠️ Critical Conflicts</h4>';
+            d.critical_conflicts.forEach(function(c) {
+                html += '<div style="font-size:0.72rem;color:#f87171;padding:4px 0;">• ' + c.witness_a + ' vs ' + c.witness_b + ': Δ' + c.credibility_delta + ' pts — Conflicts on: ' + c.conflicting_dimensions.join(', ') + '</div>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Credibility matrix failed: ' + e.message); }
+};
+
+// ─── DEPOSITION RISK SCORECARD ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runDepositionRisk = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🎯 Generating deposition risk scorecard...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/deposition-risk');
+        const d = await r.json();
+        const rc = d.risk_level === 'critical' ? '#ef4444' : d.risk_level === 'high' ? '#f97316' : d.risk_level === 'moderate' ? '#fbbf24' : '#4ade80';
+        let html = '<div class="deposrisk-result">';
+        html += '<div class="deposrisk-header" style="border-left:3px solid ' + rc + ';padding-left:10px;margin-bottom:12px;">';
+        html += '<div style="font-size:1.6rem;font-weight:700;color:' + rc + '">' + d.overall_risk_score + '<span style="font-size:0.8rem;color:#94a3b8;">/100</span></div>';
+        html += '<div style="font-size:0.85rem;font-weight:600;color:' + rc + '">' + d.risk_level.toUpperCase() + ' RISK</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">Readiness: ' + d.readiness_for_deposition.replace(/_/g, ' ') + ' · Est. prep: ' + d.estimated_prep_hours + 'h</div></div>';
+        html += '<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:10px;font-style:italic;">' + d.risk_summary + '</div>';
+        html += '<div class="deposrisk-categories"><h4>📊 Risk Categories</h4>';
+        d.risk_categories.forEach(function(cat) {
+            var cc = cat.score >= 65 ? '#f87171' : cat.score >= 45 ? '#fbbf24' : '#4ade80';
+            var barW = cat.score;
+            html += '<div style="margin-bottom:8px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#e2e8f0;margin-bottom:2px;">';
+            html += '<span>' + cat.category + ' <span style="color:#64748b;">(weight: ' + Math.round(cat.weight * 100) + '%)</span></span>';
+            html += '<span style="color:' + cc + ';font-weight:600;">' + cat.score + '</span></div>';
+            html += '<div style="height:5px;background:#1e293b;border-radius:3px;"><div style="height:100%;width:' + barW + '%;background:' + cc + ';border-radius:3px;"></div></div>';
+            html += '<div style="font-size:0.65rem;color:#64748b;margin-top:2px;">' + cat.mitigation + '</div></div>';
+        });
+        html += '</div>';
+        html += '<div class="deposrisk-actions"><h4>🚨 Immediate Actions</h4>';
+        d.immediate_actions.forEach(function(a) { html += '<div style="font-size:0.72rem;color:#fbbf24;padding:3px 0;">⚡ ' + a + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Deposition risk scorecard failed: ' + e.message); }
+};
+
+// ─── EXPERT WITNESS CHALLENGER ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runExpertChallenge = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🔬 Analyzing expert witness under Daubert/Frye standards...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/daubert-analysis');
+        const d = await r.json();
+        const excColor = d.exclusion_probability_pct >= 60 ? '#4ade80' : d.exclusion_probability_pct >= 35 ? '#fbbf24' : '#f87171';
+        let html = '<div class="expertchall-result">';
+        html += '<div class="expertchall-header">';
+        html += '<div style="font-size:1.5rem;font-weight:700;color:' + excColor + '">' + d.exclusion_probability_pct + '%<span style="font-size:0.75rem;color:#94a3b8;"> exclusion prob.</span></div>';
+        html += '<div style="font-size:0.8rem;font-weight:600;color:' + excColor + '">' + d.overall_assessment.replace(/_/g, ' ').toUpperCase() + '</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">' + d.failed_factors_count + ' failed / ' + (d.failed_factors_count + d.passed_factors_count) + ' Daubert factors · Strategy: ' + d.cross_exam_strategy + '</div></div>';
+        html += '<div class="expertchall-factors"><h4>📋 Daubert/Frye Analysis</h4>';
+        d.daubert_factors.forEach(function(f) {
+            var fc = f.status === 'pass' ? '#4ade80' : '#f87171';
+            html += '<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #1e293b;">';
+            html += '<span style="color:' + fc + ';font-size:0.85rem;min-width:16px;">' + (f.status === 'pass' ? '✅' : '❌') + '</span>';
+            html += '<div style="flex:1;"><div style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">' + f.factor + ' <span style="color:#64748b;font-weight:400;">(' + f.standard + ')</span></div>';
+            html += '<div style="font-size:0.68rem;color:#a0aec0;">' + f.analysis + '</div>';
+            html += '<div style="font-size:0.65rem;color:#64748b;">Challenge strength: ' + f.challenge_strength + '%</div></div></div>';
+        });
+        html += '</div>';
+        if (d.motion_in_limine_recommended) {
+            html += '<div style="margin-top:10px;padding:8px;background:rgba(74,222,128,0.1);border-radius:6px;border:1px solid rgba(74,222,128,0.3);">';
+            html += '<div style="font-size:0.75rem;font-weight:600;color:#4ade80;">✅ Motion in Limine RECOMMENDED</div>';
+            d.motion_grounds.forEach(function(g) { html += '<div style="font-size:0.68rem;color:#a0aec0;margin-top:3px;">• ' + g + '</div>'; });
+            html += '</div>';
+        }
+        html += '<div class="expertchall-questions"><h4>❓ Key Deposition Questions</h4>';
+        d.deposition_questions_to_explore.forEach(function(q) { html += '<div style="font-size:0.72rem;color:#94a3b8;padding:2px 0;">→ ' + q + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Expert challenge analysis failed: ' + e.message); }
+};
+
+// ─── TIMELINE GAP DETECTOR ───────────────────────────────────────────────────
+WitnessReplayApp.prototype.runTimelineGaps = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '⏳ Detecting timeline gaps and unaccounted periods...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/timeline-gaps');
+        const d = await r.json();
+        const sevColor = d.gap_severity === 'critical' ? '#ef4444' : d.gap_severity === 'significant' ? '#f97316' : d.gap_severity === 'minor' ? '#fbbf24' : '#4ade80';
+        let html = '<div class="tlgaps-result">';
+        html += '<div class="tlgaps-header" style="display:flex;gap:16px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:10px 16px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid ' + sevColor + ';">';
+        html += '<div style="font-size:1.4rem;font-weight:700;color:' + sevColor + '">' + d.unaccounted_periods + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Unaccounted</div></div>';
+        html += '<div style="text-align:center;padding:10px 16px;background:rgba(0,0,0,0.2);border-radius:8px;">';
+        html += '<div style="font-size:1.4rem;font-weight:700;color:#fbbf24">' + d.partially_explained_periods + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Partial</div></div>';
+        html += '<div style="text-align:center;padding:10px 16px;background:rgba(0,0,0,0.2);border-radius:8px;">';
+        html += '<div style="font-size:1.4rem;font-weight:700;color:#4ade80">' + d.fully_explained_periods + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Explained</div></div>';
+        html += '<div style="text-align:center;padding:10px 16px;background:rgba(0,0,0,0.2);border-radius:8px;">';
+        html += '<div style="font-size:1.4rem;font-weight:700;color:#c084fc">' + d.total_gap_hours + 'h</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Gap Hours</div></div></div>';
+        html += '<div class="tlgaps-list"><h4>📅 Timeline Periods</h4>';
+        d.time_gaps.forEach(function(g) {
+            var gc = g.account_status === 'unaccounted' ? '#f87171' : g.account_status === 'partial' ? '#fbbf24' : '#4ade80';
+            var icon = g.account_status === 'unaccounted' ? '🔴' : g.account_status === 'partial' ? '🟡' : '🟢';
+            html += '<div style="padding:7px 0;border-bottom:1px solid #1e293b;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<span style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">' + icon + ' ' + g.period + '</span>';
+            html += '<span style="font-size:0.68rem;color:' + gc + ';text-transform:uppercase;">' + g.account_status + '</span></div>';
+            html += '<div style="font-size:0.65rem;color:#64748b;">' + g.start_time + ' → ' + g.end_time + ' (' + g.duration_hours + 'h)</div>';
+            if (g.witness_explanation) html += '<div style="font-size:0.68rem;color:#a0aec0;margin-top:2px;">💬 ' + g.witness_explanation + '</div>';
+            if (g.significance === 'high') html += '<div style="font-size:0.65rem;color:#f87171;margin-top:2px;">🔍 Evidence: ' + g.suggested_evidence + '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+        if (d.recommended_discovery.length > 0) {
+            html += '<div class="tlgaps-discovery"><h4>🔎 Recommended Discovery</h4>';
+            d.recommended_discovery.forEach(function(rd) { html += '<div style="font-size:0.72rem;color:#60a5fa;padding:2px 0;">→ ' + rd + '</div>'; });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Timeline gap detection failed: ' + e.message); }
+};
+
+// ─── EMOTIONAL ARC ANALYZER ──────────────────────────────────────────────────
+WitnessReplayApp.prototype.runEmotionalArc = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🌊 Analyzing emotional arc through testimony...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/emotion-journey');
+        const d = await r.json();
+        const volColor = d.emotional_volatility === 'high' ? '#f87171' : d.emotional_volatility === 'moderate' ? '#fbbf24' : '#4ade80';
+        const emoColors = { neutral:'#94a3b8', anxious:'#f97316', defensive:'#f87171', confident:'#4ade80', distressed:'#ef4444', evasive:'#c084fc', cooperative:'#60a5fa', hostile:'#dc2626' };
+        let html = '<div class="emoarc-result">';
+        html += '<div class="emoarc-header" style="display:flex;gap:12px;margin-bottom:12px;align-items:center;">';
+        html += '<div><div style="font-size:0.85rem;font-weight:600;color:' + volColor + '">' + d.emotional_profile + ' Profile</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">' + d.total_emotional_shifts + ' shifts · Volatility: ' + d.emotional_volatility + ' · Dominant: ' + d.dominant_emotion + '</div>';
+        html += '<div style="font-size:0.68rem;color:#60a5fa;margin-top:4px;">💡 ' + d.strategic_insight + '</div></div></div>';
+        html += '<div class="emoarc-segments"><h4>📈 Emotional Journey</h4>';
+        d.arc_segments.forEach(function(seg) {
+            var ec = emoColors[seg.dominant_emotion] || '#94a3b8';
+            var barW = Math.round(seg.intensity * 100);
+            html += '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #1e293b;">';
+            html += '<div style="min-width:130px;font-size:0.68rem;color:#a0aec0;">' + seg.label + '</div>';
+            html += '<div style="flex:1;height:12px;background:#1e293b;border-radius:3px;overflow:hidden;">';
+            html += '<div style="height:100%;width:' + barW + '%;background:' + ec + ';border-radius:3px;opacity:0.8;"></div></div>';
+            html += '<span style="min-width:80px;font-size:0.65rem;color:' + ec + '">' + seg.dominant_emotion + '</span>';
+            if (seg.shift) html += '<span style="color:#fbbf24;font-size:0.65rem;" title="Emotional shift">⇄</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+        html += '<div class="emoarc-strategy"><h4>🎯 Optimal Pressure Points</h4>';
+        d.optimal_questioning_order.forEach(function(phase, i) { html += '<div style="font-size:0.72rem;color:#fbbf24;padding:2px 0;">' + (i+1) + '. ' + phase + '</div>'; });
+        html += '</div>';
+        html += '<div style="display:flex;gap:8px;margin-top:8px;font-size:0.68rem;">';
+        html += '<span style="color:#94a3b8;">📉 Peak stress: <strong style="color:#f87171;">' + d.stress_peak_segment + '</strong></span>';
+        html += '<span style="color:#94a3b8;">📈 Peak composure: <strong style="color:#4ade80;">' + d.composure_peak_segment + '</strong></span></div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Emotional arc analysis failed: ' + e.message); }
+};
+
+// ─── DECEPTION MARKER DETECTOR ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runDeceptionMarkers = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '🕵️ Scanning for deception markers and truthfulness cues...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/deception-markers');
+        const d = await r.json();
+        const riskColor = d.deception_risk === 'high' ? '#f87171' : d.deception_risk === 'moderate' ? '#fbbf24' : '#4ade80';
+        let html = '<div class="deception-result">';
+        html += '<div class="deception-header" style="display:flex;gap:16px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:10px 20px;background:rgba(0,0,0,0.25);border-radius:8px;border-top:3px solid ' + riskColor + ';">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:' + riskColor + '">' + d.deception_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Deception Score</div>';
+        html += '<div style="font-size:0.7rem;color:' + riskColor + ';margin-top:2px;">' + d.deception_risk.toUpperCase() + ' RISK</div></div>';
+        html += '<div style="flex:1;"><div style="font-size:0.75rem;color:#e2e8f0;margin-bottom:4px;">📊 ' + d.total_markers_found + ' markers · Highest risk: ' + d.highest_risk_category + '</div>';
+        html += '<div style="font-size:0.72rem;color:#4ade80;margin-bottom:3px;">✅ Truthfulness cues present: ' + d.truthfulness_cues_present + '/' + d.truthfulness_cues.length + '</div>';
+        html += '<div style="font-size:0.7rem;color:#64748b;font-style:italic;">' + d.admissibility_note + '</div></div></div>';
+        html += '<div class="deception-categories"><h4>🔍 Marker Categories</h4>';
+        d.marker_categories.forEach(function(cat) {
+            var cc = cat.severity === 'high' ? '#f87171' : cat.severity === 'moderate' ? '#fbbf24' : '#94a3b8';
+            html += '<div style="padding:6px 0;border-bottom:1px solid #1e293b;">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:2px;">';
+            html += '<span style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">' + cat.category + '</span>';
+            html += '<span style="font-size:0.72rem;color:' + cc + '">' + cat.indicators_found + ' indicators · ' + cat.severity + '</span></div>';
+            html += '<div style="font-size:0.67rem;color:#64748b;">' + cat.description + '</div>';
+            if (cat.examples && cat.indicators_found > 0) html += '<div style="font-size:0.65rem;color:#94a3b8;margin-top:2px;font-style:italic;">"' + cat.examples[0] + '"</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+        if (d.recommended_follow_up.length > 0) {
+            html += '<div class="deception-followup"><h4>🎯 Follow-up Strategies</h4>';
+            d.recommended_follow_up.forEach(function(fu) { html += '<div style="font-size:0.72rem;color:#60a5fa;padding:2px 0;">→ ' + fu + '</div>'; });
+            html += '</div>';
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Deception marker detection failed: ' + e.message); }
+};
+
+// ─── CASE STRENGTH METER ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCaseStrength = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '💪 Measuring overall case strength...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/case-strength');
+        const d = await r.json();
+        const verdictColor = d.case_verdict === 'strong' ? '#4ade80' : d.case_verdict === 'moderate' ? '#fbbf24' : d.case_verdict === 'weak' ? '#f97316' : '#f87171';
+        let html = '<div class="casestr-result">';
+        html += '<div class="casestr-header" style="display:flex;gap:16px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 20px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + verdictColor + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + verdictColor + '">' + d.overall_strength_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Strength Score</div>';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:' + verdictColor + ';margin-top:2px;">' + d.case_verdict.toUpperCase() + '</div></div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.85rem;font-weight:600;color:#4ade80;margin-bottom:4px;">Win Probability: ' + d.estimated_win_probability_pct + '%</div>';
+        html += '<div style="height:8px;background:#1e293b;border-radius:4px;margin-bottom:8px;"><div style="height:100%;width:' + d.estimated_win_probability_pct + '%;background:' + verdictColor + ';border-radius:4px;"></div></div>';
+        html += '<div style="font-size:0.72rem;color:#60a5fa;margin-bottom:4px;">📋 ' + d.settlement_recommendation + '</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">✅ Strongest: ' + d.strongest_pillars.join(', ') + '</div>';
+        html += '<div style="font-size:0.7rem;color:#f87171;">⚠️ Weakest: ' + d.weakest_pillars.join(', ') + '</div></div></div>';
+        html += '<div class="casestr-pillars"><h4>🏛️ Case Pillars</h4>';
+        d.pillars.forEach(function(p) {
+            var pc = p.score >= 75 ? '#4ade80' : p.score >= 55 ? '#fbbf24' : '#f87171';
+            html += '<div style="margin-bottom:8px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:2px;">';
+            html += '<span style="color:#e2e8f0;">' + p.pillar + ' <span style="color:#64748b;">(wt: ' + Math.round(p.weight * 100) + '%)</span></span>';
+            html += '<span style="color:' + pc + ';font-weight:600;">' + p.score + '</span></div>';
+            html += '<div style="height:5px;background:#1e293b;border-radius:3px;"><div style="height:100%;width:' + p.score + '%;background:' + pc + ';border-radius:3px;"></div></div>';
+            html += '<div style="font-size:0.62rem;color:#64748b;margin-top:1px;">' + p.vulnerabilities.join(' · ') + '</div></div>';
+        });
+        html += '</div>';
+        html += '<div class="casestr-priorities"><h4>🎯 Immediate Priorities</h4>';
+        d.immediate_priorities.forEach(function(p) { html += '<div style="font-size:0.72rem;color:#fbbf24;padding:2px 0;">→ ' + p + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Case strength meter failed: ' + e.message); }
+};
+
+// ─── CASE RISK ASSESSMENT ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCaseRisk = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '⚠️ Running comprehensive case risk assessment...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/case-risk');
+        const d = await r.json();
+        const rc = d.risk_color;
+        let html = '<div class="caserisk-result">';
+        html += '<div class="caserisk-overall" style="border-color:' + rc + '">';
+        html += '<div class="caserisk-overall-score" style="color:' + rc + '">' + d.overall_risk_score + '<span style="font-size:0.85rem">/100</span></div>';
+        html += '<div><div class="caserisk-overall-lbl" style="color:' + rc + '">' + d.risk_label + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.1rem">' + d.strategy_recommendation + '</div>';
+        html += '<div style="font-size:0.68rem;color:#64748b;margin-top:0.1rem">' + d.critical_dimension_count + ' critical · ' + d.high_dimension_count + ' high-risk dimensions</div></div></div>';
+        html += '<div class="caserisk-dimensions"><h4>📊 Risk Dimensions</h4>';
+        d.dimensions.forEach(dim => {
+            const sc = dim.risk_color;
+            html += '<div class="caserisk-dim-row">';
+            html += '<span>' + dim.icon + '</span><span class="caserisk-dim-name">' + dim.dimension + '</span>';
+            html += '<div class="caserisk-dim-bar-bg"><div class="caserisk-dim-bar" style="width:' + dim.score + '%;background:' + sc + '"></div></div>';
+            html += '<span class="caserisk-dim-score" style="color:' + sc + '">' + dim.score + '</span>';
+            html += '<span class="caserisk-risk-lbl" style="background:' + sc + '22;color:' + sc + '">' + dim.risk_level + '</span></div>';
+        });
+        html += '</div>';
+        if (d.critical_dimensions && d.critical_dimensions.length > 0) {
+            html += '<div class="caserisk-critical"><h4>🚨 Critical Dimensions</h4>';
+            d.critical_dimensions.forEach(c => { html += '<span class="caserisk-critical-tag">' + c + '</span>'; });
+            html += '</div>';
+        }
+        html += '<div class="caserisk-actions"><h4>🎯 Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="caserisk-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Case risk assessment failed: ' + e.message); }
+};
+
+// ─── WITNESS AVAILABILITY RISK ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runAvailabilityRisk = async function() {
+    const sid = this.currentSessionId;
+    this.addMessage('assistant', '⏰ Analyzing witness availability risk...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/availability-risk');
+        const d = await r.json();
+        const ac = d.availability_color;
+        let html = '<div class="availrisk-result">';
+        html += '<div class="availrisk-overall" style="border-color:' + ac + '">';
+        html += '<div class="availrisk-overall-score" style="color:' + ac + '">' + d.overall_availability_risk + '<span style="font-size:0.85rem">/100</span></div>';
+        html += '<div><div class="availrisk-overall-lbl" style="color:' + ac + '">' + d.availability_label + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.1rem">' + d.availability_summary + '</div>';
+        html += '<div style="font-size:0.68rem;color:#64748b;margin-top:0.1rem">' + d.high_risk_factor_count + ' high-risk factor(s)</div></div></div>';
+        html += '<div class="availrisk-factors"><h4>⚠️ Risk Factors</h4>';
+        d.risk_factors.forEach(f => {
+            const fc = f.risk_color;
+            html += '<div class="availrisk-factor-row" title="' + f.description + '">';
+            html += '<span>' + f.icon + '</span><span class="availrisk-factor-name">' + f.factor + '</span>';
+            html += '<div class="availrisk-factor-bar-bg"><div class="availrisk-factor-bar" style="width:' + f.risk_score + '%;background:' + fc + '"></div></div>';
+            html += '<span class="availrisk-factor-score" style="color:' + fc + '">' + f.risk_score + '</span>';
+            html += '<span class="availrisk-risk-lbl" style="background:' + fc + '22;color:' + fc + '">' + f.risk_level + '</span></div>';
+        });
+        html += '</div>';
+        if (d.recommended_methods && d.recommended_methods.length > 0) {
+            html += '<div class="availrisk-methods"><h4>📋 Preservation Methods</h4>';
+            d.preservation_methods.forEach(m => {
+                if (m.recommended) {
+                    const mc = '#22c55e';
+                    html += '<div style="font-size:0.72rem;margin-bottom:0.2rem"><strong style="color:' + mc + '">✅ ' + m.method + '</strong> <span style="color:#64748b">— ' + m.urgency + '</span></div>';
+                } else {
+                    html += '<div style="font-size:0.72rem;margin-bottom:0.2rem;color:#475569">○ ' + m.method + '</div>';
+                }
+            });
+            html += '</div>';
+        }
+        html += '<div class="availrisk-actions"><h4>🎯 Recommended Actions</h4>';
+        d.recommended_actions.forEach(a => { html += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.2rem">• ' + a + '</div>'; });
+        html += '</div>';
+        html += '<div class="availrisk-summary">' + d.summary + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant', '❌ Availability risk analysis failed: ' + e.message); }
+};
+
+
+// ── Timeline Reconstruction ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runTimelineReconstruction = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🕐 Reconstructing event timeline...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/timeline-reconstruction`);
+        const d = await r.json();
+        let html = '<div class="timerec-card">';
+        html += '<div class="timerec-header"><span class="timerec-title">🕐 Timeline Reconstruction</span>';
+        html += `<span class="timerec-score">Coherence: ${d.timeline_coherence_score}/100</span></div>`;
+        if (d.critical_window) html += `<div style="font-size:0.73rem;color:#6ee7b7;margin-bottom:0.4rem;">⚡ Critical Window: ${d.critical_window}</div>`;
+        if (d.timeline_events?.length) {
+            html += '<div class="timerec-events">';
+            d.timeline_events.forEach(ev => {
+                const confClass = ev.witness_confidence === 'High' ? 'timerec-conf-high' : ev.witness_confidence === 'Medium' ? 'timerec-conf-med' : 'timerec-conf-low';
+                html += `<div class="timerec-event">`;
+                html += `<div class="timerec-event-time">${ev.time_reference}</div>`;
+                html += `<div class="timerec-event-desc">${ev.event}</div>`;
+                html += `<div class="timerec-event-conf ${confClass}">${ev.witness_confidence}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.gaps?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#f97316;margin-bottom:0.25rem;">⚠️ Timeline Gaps:</div>';
+            html += '<div class="timerec-gaps">';
+            d.gaps.forEach(g => { html += `<div class="timerec-gap">${g.gap_description} — ${g.significance} significance</div>`; });
+            html += '</div>';
+        }
+        html += `<div class="timerec-summary">Confidence: ${d.reconstruction_confidence} | Span: ${d.time_span}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Timeline reconstruction failed: ' + e.message); }
+};
+
+// ── Trauma Indicator Analysis ─────────────────────────────────────────────
+WitnessReplayApp.prototype.runTraumaIndicators = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🧠 Analyzing trauma indicators...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/trauma-indicators`);
+        const d = await r.json();
+        let html = '<div class="traumaind-card">';
+        html += '<div class="traumaind-header"><span class="traumaind-title">🧠 Trauma Indicator Analysis</span>';
+        html += `<span class="traumaind-prob">Trauma Prob: ${d.trauma_probability}%</span></div>`;
+        html += `<div class="traumaind-type">Type: ${d.trauma_type}</div>`;
+        const credClass = d.credibility_effect === 'Enhances' ? 'traumaind-cred-enhances' : d.credibility_effect === 'Diminishes' ? 'traumaind-cred-diminishes' : 'traumaind-cred-neutral';
+        html += `<div class="traumaind-credeffect ${credClass}">Credibility Effect: ${d.credibility_effect} ${d.reliability_adjustment ? '| ' + d.reliability_adjustment : ''}</div>`;
+        if (d.indicators?.length) {
+            html += '<div class="traumaind-indicators">';
+            d.indicators.forEach(ind => {
+                const sevClass = ind.severity === 'High' ? 'traumaind-sev-high' : ind.severity === 'Medium' ? 'traumaind-sev-med' : ind.severity === 'Low' ? 'traumaind-sev-low' : 'traumaind-sev-none';
+                html += `<div class="traumaind-ind ${ind.present ? 'traumaind-ind-present' : 'traumaind-ind-absent'}">`;
+                html += `<span style="font-size:0.8rem;">${ind.present ? '✅' : '⬜'}</span>`;
+                html += `<span class="traumaind-ind-name">${ind.indicator}</span>`;
+                html += `<span class="traumaind-ind-sev ${sevClass}">${ind.severity}</span>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.overall_assessment) html += `<div class="traumaind-assessment">${d.overall_assessment}</div>`;
+        if (d.protective_measures_needed?.length) {
+            html += '<div style="font-size:0.72rem;color:#f9a8d4;margin-bottom:0.3rem;font-weight:600;">Protective Measures:</div>';
+            d.protective_measures_needed.forEach(m => { html += `<div style="font-size:0.7rem;color:#94a3b8;padding:0.1rem 0.3rem;">• ${m}</div>`; });
+        }
+        html += `<div class="traumaind-summary">Expert Witness Recommended: ${d.expert_witness_recommended ? 'Yes ✅' : 'No'}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Trauma indicator analysis failed: ' + e.message); }
+};
+
+// ── Corroboration Map ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCorroborationMap = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🗺️ Mapping corroboration...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/corroboration-map`);
+        const d = await r.json();
+        let html = '<div class="corrmap-card">';
+        html += '<div class="corrmap-header"><span class="corrmap-title">🗺️ Corroboration Map</span>';
+        html += `<span class="corrmap-score">${d.overall_corroboration_score}/100</span></div>`;
+        const strLower = (d.corroboration_strength || '').toLowerCase().replace(' ', '');
+        html += `<div class="corrmap-strength corrmap-${strLower}">${d.corroboration_strength}</div>`;
+        if (d.corroboration_points?.length) {
+            html += '<div class="corrmap-points">';
+            d.corroboration_points.forEach(p => {
+                const stClass = p.corroboration_status === 'Corroborated' ? 'corrmap-corroborated' : p.corroboration_status === 'Contradicted' ? 'corrmap-contradicted' : 'corrmap-unverified';
+                html += `<div class="corrmap-point">`;
+                html += `<div class="corrmap-claim">${p.claim}</div>`;
+                html += `<div class="corrmap-type">${p.corroboration_type}</div>`;
+                html += `<div class="corrmap-status ${stClass}">${p.corroboration_status}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.evidence_gaps?.length) {
+            html += '<div class="corrmap-gaps"><div style="font-weight:600;color:#f97316;font-size:0.72rem;margin-bottom:0.25rem;">Evidence Gaps:</div>';
+            d.evidence_gaps.forEach(g => { html += `<div class="corrmap-gap-item">${g.claim} <span style="color:#ef4444;">(${g.risk_level})</span></div>`; });
+            html += '</div>';
+        }
+        if (d.recommended_evidence?.length) {
+            html += '<div style="font-size:0.72rem;color:#22d3ee;margin-bottom:0.3rem;font-weight:600;">Recommended Evidence:</div>';
+            d.recommended_evidence.forEach(e => { html += `<div style="font-size:0.7rem;color:#94a3b8;padding:0.1rem 0.3rem;">• ${e}</div>`; });
+        }
+        html += `<div class="corrmap-summary">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Corroboration map failed: ' + e.message); }
+};
+
+// ── Impeachment Opportunities ─────────────────────────────────────────────
+WitnessReplayApp.prototype.runImpeachmentOpportunities = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚡ Identifying impeachment opportunities...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/impeachment-opportunities`);
+        const d = await r.json();
+        let html = '<div class="impeach-card">';
+        html += '<div class="impeach-header"><span class="impeach-title">⚡ Impeachment Opportunities</span>';
+        html += `<span class="impeach-score">Impeach Score: ${d.impeachment_score}/100</span></div>`;
+        html += `<div style="font-size:0.73rem;color:#fca5a5;margin-bottom:0.4rem;">Risk Level: ${d.impeachment_risk_level}</div>`;
+        if (d.opportunities?.length) {
+            html += '<div class="impeach-opportunities">';
+            d.opportunities.slice(0, 4).forEach(op => {
+                html += '<div class="impeach-opp">';
+                html += `<div class="impeach-opp-header"><span class="impeach-opp-method">${op.method}</span><span class="impeach-opp-str">Strength: ${op.strength}/10</span></div>`;
+                html += `<div class="impeach-opp-str-bar"><div class="impeach-opp-str-fill" style="width:${(op.strength||5)*10}%"></div></div>`;
+                html += `<div class="impeach-opp-q">Q: "${op.suggested_question}"</div>`;
+                html += `<div class="impeach-opp-rule">${op.legal_ground}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.recommended_impeachment_order?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#f87171;margin-bottom:0.25rem;">Recommended Order:</div>';
+            html += '<div class="impeach-order">';
+            d.recommended_impeachment_order.forEach((item, i) => {
+                html += `<div class="impeach-order-item">${i+1}. ${item}</div>`;
+            });
+            html += '</div>';
+        }
+        if (d.strategic_notes) html += `<div class="impeach-strategy">${d.strategic_notes}</div>`;
+        html += `<div class="impeach-summary">Bias Score: ${d.bias_impeachment}/10 | ${d.character_impeachment || ''}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Impeachment opportunities failed: ' + e.message); }
+};
+
+// ── Witness Psychology Profile ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runWitnessPsychology = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🧬 Profiling witness psychology...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/witness-psychology`);
+        const d = await r.json();
+        let html = '<div class="witpsych-card">';
+        html += '<div class="witpsych-header"><span class="witpsych-title">🧬 Witness Psychology Profile</span>';
+        html += `<span class="witpsych-score">Reliability: ${d.overall_reliability_score}/100</span></div>`;
+        html += `<div class="witpsych-summary">${d.psychological_profile_summary}</div>`;
+        if (d.personality_traits?.length) {
+            html += '<div class="witpsych-traits">';
+            d.personality_traits.forEach(t => {
+                const cls = t.score >= 70 ? 'witpsych-trait-high' : t.score >= 45 ? 'witpsych-trait-mid' : 'witpsych-trait-low';
+                html += `<div class="witpsych-trait">`;
+                html += `<div class="witpsych-trait-header"><span>${t.icon} ${t.trait}</span><span class="witpsych-trait-val ${cls}">${t.score}</span></div>`;
+                html += `<div class="witpsych-trait-bar"><div class="witpsych-trait-fill ${cls}" style="width:${t.score}%"></div></div>`;
+                html += `<div class="witpsych-trait-imp">${t.legal_implication}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        const sp = d.stress_response_profile;
+        if (sp) {
+            html += `<div class="witpsych-stress">`;
+            html += `<div class="witpsych-stress-title">⚡ Stress Response</div>`;
+            html += `<div style="font-size:0.72rem;color:#94a3b8;">Anticipated: <b style="color:#fbbf24;">${sp.anticipated_response}</b> | Threshold: ${sp.pressure_threshold} | Vulnerability: ${sp.cross_exam_vulnerability}%</div>`;
+            html += `<div style="font-size:0.7rem;color:#6ee7b7;margin-top:0.3rem;">Approach: ${sp.recommended_approach}</div>`;
+            html += `</div>`;
+        }
+        const cp = d.credibility_psychology;
+        if (cp) {
+            html += `<div class="witpsych-cred"><span>Deception Risk: ${cp.deception_likelihood}%</span><span>Suggestibility: ${cp.suggestibility_index}/100</span><span>Bias Risk: ${cp.self_serving_bias_risk}</span></div>`;
+        }
+        const jp = d.jury_perception_prediction;
+        if (jp) {
+            html += `<div class="witpsych-jury">🎭 Jury Impact: <b style="color:#22d3ee;">${jp.overall_jury_impact}</b> | Likability: ${jp.likability_score} | Trust: ${jp.perceived_trustworthiness}</div>`;
+        }
+        if (d.risk_flags?.length) html += `<div class="witpsych-flags">⚠️ Risk Traits: ${d.risk_flags.join(', ')}</div>`;
+        html += `<div class="witpsych-footer">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness psychology failed: ' + e.message); }
+};
+
+// ── Statement Velocity Analysis ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runStatementVelocity = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','📊 Analyzing statement velocity...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/statement-velocity`);
+        const d = await r.json();
+        let html = '<div class="stmtvel-card">';
+        html += '<div class="stmtvel-header"><span class="stmtvel-title">📊 Statement Velocity Analysis</span>';
+        html += `<span class="stmtvel-wpm">${d.avg_velocity_wpm} WPM avg</span></div>`;
+        html += `<div class="stmtvel-profile">Profile: <b>${d.velocity_profile}</b> | Variance: ${d.velocity_variance}% | Anomalies: ${d.anomaly_count}</div>`;
+        if (d.segments?.length) {
+            html += '<div class="stmtvel-segments">';
+            d.segments.forEach(s => {
+                const anomClass = s.anomaly ? 'stmtvel-seg-anomaly' : 'stmtvel-seg-normal';
+                html += `<div class="stmtvel-seg ${anomClass}">`;
+                html += `<div class="stmtvel-seg-name">${s.segment} ${s.anomaly ? '⚠️' : ''}</div>`;
+                html += `<div class="stmtvel-seg-bar"><div class="stmtvel-seg-fill" style="width:${s.velocity}%"></div></div>`;
+                html += `<div class="stmtvel-seg-info">Velocity: ${s.velocity} | Pauses: ${s.pause_frequency}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        const pa = d.pause_analysis;
+        if (pa) {
+            html += `<div class="stmtvel-pause">⏸️ Pauses: ${pa.total_significant_pauses} significant | Avg ${pa.avg_pause_duration_sec}s | Pattern: ${pa.pause_pattern}</div>`;
+        }
+        if (d.cross_exam_targets?.length) {
+            html += `<div class="stmtvel-targets">🎯 Cross-Exam Targets: ${d.cross_exam_targets.join(' → ')}</div>`;
+        }
+        html += `<div class="stmtvel-footer">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Statement velocity failed: ' + e.message); }
+};
+
+// ── Evidence Admissibility Risk ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runEvidenceAdmissibility = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚖️ Assessing evidence admissibility...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/evidence-admissibility`);
+        const d = await r.json();
+        let html = '<div class="evidadm-card">';
+        html += '<div class="evidadm-header"><span class="evidadm-title">⚖️ Evidence Admissibility Risk</span>';
+        html += `<span class="evidadm-score">${d.overall_admissibility_score}/100 — ${d.admissibility_tier}</span></div>`;
+        if (d.high_risk_evidence_count > 0) {
+            html += `<div class="evidadm-alert">⚠️ ${d.high_risk_evidence_count} high-risk evidence item(s): ${d.high_risk_items?.join(', ')}</div>`;
+        }
+        if (d.evidence_items?.length) {
+            html += '<div class="evidadm-items">';
+            d.evidence_items.forEach(e => {
+                const riskCls = e.challenge_risk === 'High' ? 'evidadm-high' : e.challenge_risk === 'Medium' ? 'evidadm-med' : 'evidadm-low';
+                html += `<div class="evidadm-item">`;
+                html += `<div class="evidadm-item-header"><span class="evidadm-item-type">${e.evidence_type}</span><span class="evidadm-risk ${riskCls}">${e.challenge_risk} Risk</span></div>`;
+                html += `<div class="evidadm-item-bar"><div class="evidadm-item-fill" style="width:${e.admissibility_score}%"></div></div>`;
+                html += `<div class="evidadm-item-rule">${e.primary_rule} | Score: ${e.admissibility_score}/100</div>`;
+                if (e.strengthening_actions?.length) html += `<div class="evidadm-item-action">✅ ${e.strengthening_actions[0]}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.motions_in_limine_recommended?.length) {
+            html += `<div class="evidadm-motions">📋 Motions in Limine: ${d.motions_in_limine_recommended.join(', ')}</div>`;
+        }
+        html += `<div class="evidadm-footer">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Evidence admissibility failed: ' + e.message); }
+};
+
+// ── Trial Readiness Score ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runTrialReadiness = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🏛️ Scoring trial readiness...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/trial-readiness`);
+        const d = await r.json();
+        let html = '<div class="trialready-card">';
+        html += '<div class="trialready-header"><span class="trialready-title">🏛️ Trial Readiness Score</span>';
+        const verdictCls = d.readiness_verdict === 'Trial Ready' ? 'trialready-ready' : d.readiness_verdict === 'Nearly Ready' ? 'trialready-near' : 'trialready-notready';
+        html += `<span class="trialready-verdict ${verdictCls}">${d.readiness_verdict}</span></div>`;
+        html += `<div class="trialready-score-big">${d.trial_readiness_score}<span style="font-size:1rem;color:#94a3b8;">/100</span></div>`;
+        if (d.readiness_dimensions?.length) {
+            html += '<div class="trialready-dims">';
+            d.readiness_dimensions.forEach(dim => {
+                const stCls = dim.status === 'Ready' ? 'trialready-dim-ready' : dim.status === 'Needs Work' ? 'trialready-dim-work' : 'trialready-dim-gap';
+                html += `<div class="trialready-dim">`;
+                html += `<div class="trialready-dim-header"><span>${dim.dimension}</span><span class="trialready-dim-status ${stCls}">${dim.status}</span></div>`;
+                html += `<div class="trialready-dim-bar"><div class="trialready-dim-fill ${stCls}" style="width:${dim.score}%"></div></div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.critical_gaps?.length) html += `<div class="trialready-gaps">🚨 Critical Gaps: ${d.critical_gaps.join(', ')}</div>`;
+        if (d.preparation_checklist?.length) {
+            html += '<div class="trialready-checklist">';
+            d.preparation_checklist.slice(0, 4).forEach(item => {
+                html += `<div class="trialready-check-item ${item.done ? 'trialready-done' : 'trialready-todo'}">`;
+                html += `${item.done ? '✅' : '⬜'} <span class="trialready-check-priority">[${item.priority}]</span> ${item.item}`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.estimated_days_to_ready > 0) html += `<div class="trialready-eta">⏱️ Est. ${d.estimated_days_to_ready} days to trial-ready</div>`;
+        html += `<div class="trialready-footer">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Trial readiness failed: ' + e.message); }
+};
+
+// ── Linguistic Pattern Analysis ───────────────────────────────────────────────
+WitnessReplayApp.prototype.runLinguisticPatterns = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🔤 Analyzing linguistic patterns...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/linguistic-patterns`);
+        const d = await r.json();
+        let html = '<div class="linguist-card">';
+        html += '<div class="linguist-header"><span class="linguist-title">🔤 Linguistic Pattern Analysis</span>';
+        html += `<span class="linguist-risk">Risk: ${d.linguistic_risk_score}/100</span></div>`;
+        html += `<div class="linguist-profile">${d.linguistic_profile}</div>`;
+        html += `<div class="linguist-dominant">Dominant Pattern: <b>${d.dominant_pattern}</b> | Total Markers: ${d.total_linguistic_markers}</div>`;
+        if (d.patterns?.length) {
+            html += '<div class="linguist-patterns">';
+            d.patterns.forEach(p => {
+                const riskCls = p.risk === 'High' ? 'linguist-pat-high' : 'linguist-pat-med';
+                html += `<div class="linguist-pat ${riskCls}">`;
+                html += `<div class="linguist-pat-header"><span class="linguist-pat-name">${p.pattern}</span><span class="linguist-pat-freq">${p.frequency}×</span></div>`;
+                html += `<div class="linguist-pat-bar"><div class="linguist-pat-fill" style="width:${Math.min(100, p.frequency * 3)}%"></div></div>`;
+                html += `<div class="linguist-pat-sig">${p.legal_significance}</div>`;
+                html += `<div class="linguist-pat-ex">e.g. "${p.examples?.slice(0,2).join('", "')}"</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        const di = d.deception_linguistic_indicators;
+        if (di) {
+            html += `<div class="linguist-deception">🕵️ Deception Signals: Distancing ×${di.distancing_language_count} | Over-Qualification ×${di.over_qualification_count}`;
+            if (di.pronoun_avoidance) html += ' | ⚠️ Pronoun Avoidance';
+            if (di.story_complexity_anomaly) html += ' | ⚠️ Complexity Anomaly';
+            html += '</div>';
+        }
+        if (d.cross_exam_linguistic_angles?.length) {
+            html += '<div class="linguist-angles"><div style="font-weight:600;font-size:0.72rem;color:#f97316;margin-bottom:0.2rem;">Cross-Exam Angles:</div>';
+            d.cross_exam_linguistic_angles.forEach(a => { html += `<div class="linguist-angle">• ${a}</div>`; });
+            html += '</div>';
+        }
+        html += `<div class="linguist-footer">${d.summary}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Linguistic pattern analysis failed: ' + e.message); }
+};
+
+// ── Reliability Score ─────────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runReliabilityScore = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🎯 Calculating witness reliability score...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/reliability-score`);
+        const d = await r.json();
+        let html = '<div class="reliscore-card">';
+        html += '<div class="reliscore-header">';
+        html += `<div><div style="font-size:0.9rem;color:#a0aec0;margin-bottom:4px;">🎯 Witness Reliability Score</div>`;
+        const trustColor = d.trust_band === 'High' ? '#68d391' : (d.trust_band === 'Moderate' ? '#f6ad55' : '#fc8181');
+        html += `<div style="font-size:0.85rem;"><span style="color:${trustColor};font-weight:700;">${d.trust_band} Trust</span> · Fabrication Risk: ${(d.fabrication_probability * 100).toFixed(0)}%</div></div>`;
+        html += `<div style="text-align:center;"><div class="reliscore-grade">${d.reliability_grade}</div><div class="reliscore-badge">${d.overall_reliability_score}</div></div>`;
+        html += '</div>';
+        if (d.reliability_factors?.length) {
+            html += '<div style="margin-top:10px;">';
+            d.reliability_factors.forEach(f => {
+                const fillColor = f.score >= 75 ? '#68d391' : (f.score >= 55 ? '#f6ad55' : '#fc8181');
+                html += `<div class="reliscore-factor">`;
+                html += `<div class="reliscore-factor-name">${f.factor}</div>`;
+                html += `<div class="reliscore-bar"><div class="reliscore-bar-fill" style="width:${f.score}%;background:${fillColor}"></div></div>`;
+                html += `<div style="min-width:35px;text-align:right;font-size:0.8rem;font-weight:700;color:${fillColor};">${f.score}</div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+        if (d.decay_across_sessions?.length) {
+            html += '<div style="margin-top:12px;font-size:0.78rem;color:#a0aec0;margin-bottom:4px;">Reliability Across Sessions:</div>';
+            html += '<div class="reliscore-decay">';
+            const maxVal = Math.max(...d.decay_across_sessions.map(p => p.reliability));
+            d.decay_across_sessions.forEach(p => {
+                const h = Math.max(8, Math.round((p.reliability / maxVal) * 55));
+                const c = p.reliability >= 75 ? '#4a90d9' : (p.reliability >= 55 ? '#f6ad55' : '#fc8181');
+                html += `<div class="reliscore-decay-bar" style="height:${h}px;background:${c};" title="Session ${p.interview_session}: ${p.reliability}"></div>`;
+            });
+            html += '</div>';
+        }
+        if (d.primary_risk_areas?.length) {
+            html += '<div style="margin-top:12px;font-size:0.78rem;color:#a0aec0;margin-bottom:6px;">⚠️ Primary Risk Areas:</div>';
+            d.primary_risk_areas.forEach(ra => { html += `<div class="legstrat-pivot">• ${ra}</div>`; });
+        }
+        html += `<div style="font-size:0.8rem;color:#a0aec0;margin-top:10px;font-style:italic;">${d.admissibility_impact}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Reliability score failed: ' + e.message); }
+};
+
+// ── Legal Strategy Optimizer ──────────────────────────────────────────────────
+WitnessReplayApp.prototype.runLegalStrategy = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚖️ Optimizing legal strategy...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/legal-strategy`);
+        const d = await r.json();
+        let html = '<div class="legstrat-card">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">`;
+        html += `<span style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">⚖️ Legal Strategy Optimizer</span>`;
+        html += `<span style="background:rgba(104,211,145,0.2);color:#68d391;border-radius:8px;padding:4px 12px;font-size:0.8rem;font-weight:700;">${d.overall_strategic_posture}</span></div>`;
+        html += `<div style="display:flex;gap:16px;margin-bottom:14px;">`;
+        html += `<div style="text-align:center;flex:1;background:rgba(104,211,145,0.06);border-radius:8px;padding:10px;"><div style="font-size:1.6rem;font-weight:800;color:#68d391;">${d.strategy_confidence_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Confidence</div></div>`;
+        html += `<div style="text-align:center;flex:1;background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;"><div style="font-size:1.6rem;font-weight:800;color:#f6ad55;">${d.settlement_leverage_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Settlement Leverage</div></div></div>`;
+        html += '<div style="font-size:0.78rem;color:#68d391;font-weight:600;margin-bottom:8px;">PROSECUTION ANGLES</div>';
+        (d.prosecution_strategy_angles || []).forEach(a => {
+            html += `<div class="legstrat-angle">`;
+            html += `<div class="legstrat-angle-name"><span class="legstrat-strength">${a.strength}</span>${a.angle}</div>`;
+            html += `<div class="legstrat-angle-meta">${a.exploitation}</div>`;
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.78rem;color:#fc8181;font-weight:600;margin:10px 0 8px;">DEFENSE ANGLES</div>';
+        (d.defense_strategy_angles || []).forEach(a => {
+            html += `<div class="legstrat-angle defense">`;
+            html += `<div class="legstrat-angle-name"><span class="legstrat-strength defense">${a.strength}</span>${a.angle}</div>`;
+            html += `<div class="legstrat-angle-meta">${a.exploitation}</div>`;
+            html += '</div>';
+        });
+        if (d.key_strategic_pivots?.length) {
+            html += '<div style="font-size:0.78rem;color:#a0aec0;font-weight:600;margin:10px 0 6px;">KEY STRATEGIC PIVOTS</div>';
+            d.key_strategic_pivots.forEach(p => { html += `<div class="legstrat-pivot">💡 ${p}</div>`; });
+        }
+        html += `<div style="margin-top:12px;font-size:0.82rem;color:#a0aec0;font-style:italic;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px;">${d.trial_strategy_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Legal strategy failed: ' + e.message); }
+};
+
+// ── Memory Consistency Tracker ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runMemoryConsistency = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🧠 Analyzing memory consistency...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/memory-consistency`);
+        const d = await r.json();
+        let html = '<div class="memcon-card">';
+        const ratingColor = d.memory_integrity_rating === 'Reliable' ? '#68d391' : (d.memory_integrity_rating === 'Questionable' ? '#f6ad55' : '#fc8181');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🧠 Memory Consistency Tracker</div>`;
+        html += `<div style="font-size:0.82rem;color:${ratingColor};margin-top:4px;">${d.memory_integrity_rating} · Consistency: ${d.overall_memory_consistency}/100</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:1.8rem;font-weight:800;color:#a78bfa;">${d.overall_memory_consistency}</div>`;
+        html += `<div style="font-size:0.7rem;color:#a0aec0;">Overall Score</div></div></div>`;
+        if (d.memory_segments?.length) {
+            d.memory_segments.forEach(seg => {
+                const sc = seg.consistency_score;
+                const cls = sc >= 75 ? 'high' : (sc >= 55 ? 'med' : 'low');
+                html += `<div class="memcon-segment">`;
+                html += `<div class="memcon-segment-name">${seg.segment}<div style="font-size:0.73rem;color:#718096;">Changes: ${seg.change_count}</div></div>`;
+                html += `<span class="memcon-pattern-tag">${seg.pattern}</span>`;
+                html += `<div class="memcon-score ${cls}">${sc}</div>`;
+                html += '</div>';
+            });
+        }
+        const contamColor = d.source_contamination_risk === 'Low' ? '#68d391' : (d.source_contamination_risk === 'Medium' ? '#f6ad55' : '#fc8181');
+        html += `<div style="display:flex;gap:16px;margin-top:14px;margin-bottom:12px;">`;
+        html += `<div style="flex:1;background:rgba(167,139,250,0.08);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#a78bfa;">${(d.retrograde_fabrication_risk * 100).toFixed(0)}%</div><div style="font-size:0.72rem;color:#a0aec0;">Fabrication Risk</div></div>`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:${contamColor};">${d.source_contamination_risk}</div><div style="font-size:0.72rem;color:#a0aec0;">Contamination Risk</div></div></div>`;
+        if (d.memory_enhancement_patterns?.length) {
+            html += '<div style="font-size:0.78rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">MEMORY PATTERNS:</div>';
+            d.memory_enhancement_patterns.forEach(p => {
+                const detColor = p.detected ? '#fc8181' : '#718096';
+                html += `<div class="memcon-pattern-row"><span style="font-size:0.82rem;color:${detColor};">${p.detected ? '⚠️' : '✓'} ${p.pattern}</span><span style="font-size:0.76rem;color:#718096;max-width:200px;text-align:right;">${p.impact}</span></div>`;
+            });
+        }
+        if (d.expert_testimony_needed) html += `<div style="margin-top:10px;background:rgba(252,129,129,0.1);border-radius:6px;padding:8px;font-size:0.8rem;color:#fc8181;">⚠️ Expert memory testimony recommended for this session</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Memory consistency failed: ' + e.message); }
+};
+
+// ── Objection Predictor ───────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runObjectionPredictor = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🚫 Predicting trial objections...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/objection-predictor`);
+        const d = await r.json();
+        let html = '<div class="objpred-card">';
+        const riskColor = d.risk_level === 'High' ? '#fc8181' : (d.risk_level === 'Medium' ? '#f6ad55' : '#68d391');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🚫 Objection Predictor</div>`;
+        html += `<div style="font-size:0.82rem;color:${riskColor};margin-top:4px;">${d.risk_level} Risk · ${d.total_predicted_objections} high-likelihood objections</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:1.8rem;font-weight:800;color:#fc8181;">${d.overall_objection_risk_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Risk Score</div></div></div>`;
+        (d.objection_predictions || []).slice(0, 4).forEach(obj => {
+            const lkCls = obj.likelihood >= 65 ? 'high' : (obj.likelihood >= 45 ? 'med' : 'low');
+            html += `<div class="objpred-item">`;
+            html += `<div class="objpred-header-row"><span class="objpred-type">${obj.objection_type}</span><div><span class="objpred-likelihood ${lkCls}">${obj.likelihood}%</span><span class="objpred-rule">${obj.fre_rule}</span></div></div>`;
+            html += `<div>${(obj.trigger_phrases || []).slice(0, 3).map(t => `<span class="objpred-trigger">"${t}"</span>`).join('')}</div>`;
+            html += `<div class="objpred-strategy">💡 ${obj.response_strategy}</div>`;
+            html += '</div>';
+        });
+        if (d.motions_in_limine_recommended?.length) {
+            html += '<div style="font-size:0.78rem;color:#fc8181;font-weight:600;margin:10px 0 6px;">MOTIONS IN LIMINE:</div>';
+            d.motions_in_limine_recommended.forEach(m => { html += `<div class="legstrat-pivot">📋 ${m}</div>`; });
+        }
+        html += `<div style="margin-top:10px;font-size:0.8rem;color:#a0aec0;">Sustained objection probability: <strong style="color:#fc8181;">${(d.sustained_objection_probability * 100).toFixed(0)}%</strong></div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Objection predictor failed: ' + e.message); }
+};
+
+// ── Witness Influence Analysis ────────────────────────────────────────────────
+WitnessReplayApp.prototype.runWitnessInfluence = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🔮 Analyzing witness influence vectors...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/witness-influence`);
+        const d = await r.json();
+        let html = '<div class="winflu-card">';
+        const intgColor = d.influence_integrity_rating === 'Clean' ? '#68d391' : (d.influence_integrity_rating.includes('Moderate') ? '#f6ad55' : '#fc8181');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🔮 Witness Influence Analysis</div>`;
+        html += `<div style="font-size:0.82rem;color:${intgColor};margin-top:4px;">${d.influence_integrity_rating}</div></div>`;
+        html += `<div class="winflu-independence"><div class="winflu-independence-score">${d.independence_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Independence</div></div></div>`;
+        html += `<div style="font-size:0.82rem;color:#a0aec0;margin-bottom:6px;">Dominant: <strong style="color:#f6ad55;">${d.dominant_influence_vector}</strong> · ${d.testimony_autonomy_rating}</div>`;
+        (d.influence_vectors || []).forEach(v => {
+            const cls = v.risk === 'Low' ? 'low' : (v.risk === 'Medium' ? 'med' : 'high');
+            html += `<div class="winflu-vector">`;
+            html += `<div class="winflu-vector-name">${v.vector}</div>`;
+            html += `<div class="winflu-meter"><div class="winflu-meter-fill ${cls}" style="width:${v.detected_level}%"></div></div>`;
+            html += `<div class="winflu-pct" style="color:${cls === 'low' ? '#68d391' : (cls === 'med' ? '#f6ad55' : '#fc8181')}">${v.detected_level}%</div>`;
+            html += '</div>';
+        });
+        if (d.cross_exam_influence_angles?.length) {
+            html += '<div style="font-size:0.78rem;color:#f6ad55;font-weight:600;margin:10px 0 6px;">CROSS-EXAM ANGLES:</div>';
+            d.cross_exam_influence_angles.forEach(a => { html += `<div class="legstrat-pivot">• ${a}</div>`; });
+        }
+        if (d.protective_measures?.length) {
+            html += '<div style="font-size:0.78rem;color:#68d391;font-weight:600;margin:10px 0 6px;">PROTECTIVE MEASURES:</div>';
+            d.protective_measures.forEach(m => { html += `<div class="legstrat-pivot">🛡️ ${m}</div>`; });
+        }
+        html += `<div style="margin-top:10px;font-size:0.78rem;color:#718096;font-style:italic;">${d.admissibility_impact}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness influence analysis failed: ' + e.message); }
+};
+
+// ── Behavioral Baseline Analysis ──────────────────────────────────────────────
+WitnessReplayApp.prototype.runBehavioralBaseline = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🎭 Analyzing behavioral baseline...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/behavioral-baseline`);
+        const d = await r.json();
+        let html = '<div class="bbase-card">';
+        const intgColor = d.overall_behavioral_integrity === 'Reliable' ? '#68d391' : (d.overall_behavioral_integrity === 'Questionable' ? '#f6ad55' : '#fc8181');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🎭 Behavioral Baseline Analysis</div>`;
+        html += `<div style="font-size:0.82rem;color:${intgColor};margin-top:4px;">${d.overall_behavioral_integrity} · ${d.anomaly_count} anomalies detected</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:1.8rem;font-weight:800;color:#63b3ed;">${d.behavioral_consistency_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Consistency</div></div></div>`;
+        (d.behavioral_metrics || []).forEach(m => {
+            const obsW = m.observed_value;
+            const obsColor = m.anomaly_detected ? '#fc8181' : '#63b3ed';
+            html += `<div class="bbase-metric">`;
+            html += `<div class="bbase-metric-name">${m.behavior}<div style="font-size:0.7rem;color:#718096;">${m.interpretation}</div></div>`;
+            html += `<div class="bbase-bars" style="flex:1;">`;
+            html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;"><div style="font-size:0.7rem;color:#718096;min-width:55px;">Baseline</div><div style="flex:1;height:5px;background:#4a5568;border-radius:3px;"><div style="width:${m.baseline_norm}%;height:100%;background:#4a5568;border-radius:3px;"></div></div><span style="font-size:0.72rem;color:#718096;">${m.baseline_norm}</span></div>`;
+            html += `<div style="display:flex;align-items:center;gap:6px;"><div style="font-size:0.7rem;color:#a0aec0;min-width:55px;">Observed</div><div style="flex:1;height:5px;background:#2d3748;border-radius:3px;"><div style="width:${obsW}%;height:100%;background:${obsColor};border-radius:3px;"></div></div><span style="font-size:0.72rem;color:${obsColor};">${m.observed_value}</span></div>`;
+            html += `</div>`;
+            html += `<span class="bbase-anomaly ${m.anomaly_detected ? 'yes' : 'no'}">${m.anomaly_detected ? '⚠️' : '✓'}</span>`;
+            html += '</div>';
+        });
+        html += `<div style="display:flex;gap:14px;margin-top:14px;">`;
+        html += `<div style="flex:1;background:rgba(252,129,129,0.08);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.3rem;font-weight:700;color:#fc8181;">${(d.deception_probability*100).toFixed(0)}%</div><div style="font-size:0.72rem;color:#a0aec0;">Deception Prob.</div></div>`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:${d.coaching_signature_detected ? '#fc8181' : '#68d391'};">${d.coaching_signature_detected ? '⚠️ Detected' : '✓ Clear'}</div><div style="font-size:0.72rem;color:#a0aec0;">Coaching Signature</div></div>`;
+        html += '</div>';
+        if (d.recommendations?.length) {
+            html += '<div style="font-size:0.78rem;color:#63b3ed;font-weight:600;margin:12px 0 6px;">RECOMMENDATIONS:</div>';
+            d.recommendations.forEach(rec => { html += `<div class="legstrat-pivot">• ${rec}</div>`; });
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Behavioral baseline failed: ' + e.message); }
+};
+
+// ── Credibility Decay Tracker ─────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCredibilityDecay = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','📉 Tracking credibility decay...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/credibility-decay`);
+        const d = await r.json();
+        let html = '<div class="creddecay-card">';
+        const classColor = d.decay_classification === 'Declining' ? '#fc8181' : (d.decay_classification === 'Improving' ? '#68d391' : '#f6ad55');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">📉 Credibility Decay Tracker</div>`;
+        html += `<div style="font-size:0.82rem;color:${classColor};margin-top:4px;">${d.decay_classification} · Net Change: ${d.net_credibility_change > 0 ? '-' : '+'}${Math.abs(d.net_credibility_change)}</div></div>`;
+        html += `<div style="text-align:center;">`;
+        html += `<div style="font-size:0.8rem;color:#a0aec0;">Start <strong style="color:#68d391;">${d.initial_credibility}</strong> → End <strong style="color:${classColor};">${d.final_credibility}</strong></div></div></div>`;
+        (d.decay_curve || []).forEach(seg => {
+            const sc = seg.credibility_score;
+            const fillColor = sc >= 70 ? '#68d391' : (sc >= 50 ? '#f6ad55' : '#fc8181');
+            const impactColor = seg.impact === 'Positive' ? '#68d391' : (seg.impact === 'Negative' ? '#fc8181' : '#718096');
+            html += `<div class="creddecay-segment">`;
+            html += `<div class="creddecay-segment-name">${seg.segment}</div>`;
+            html += `<div class="creddecay-bar"><div class="creddecay-fill" style="width:${sc}%;background:${fillColor};"></div></div>`;
+            html += `<div class="creddecay-score" style="color:${fillColor};">${sc}</div>`;
+            html += `<span class="creddecay-event" style="color:${impactColor};">${seg.key_event}</span>`;
+            html += '</div>';
+        });
+        html += `<div style="margin-top:12px;background:rgba(252,129,129,0.08);border-radius:8px;padding:10px;font-size:0.82rem;color:#e2e8f0;">`;
+        html += `<strong style="color:#f6ad55;">Jury Projection:</strong> ${d.jury_impact_projection}</div>`;
+        if (d.strategic_recommendations?.length) {
+            html += '<div style="font-size:0.78rem;color:#fc8181;font-weight:600;margin:12px 0 6px;">STRATEGY:</div>';
+            d.strategic_recommendations.forEach(rec => { html += `<div class="legstrat-pivot">• ${rec}</div>`; });
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Credibility decay failed: ' + e.message); }
+};
+
+// ── Narrative Coherence Score ─────────────────────────────────────────────────
+WitnessReplayApp.prototype.runNarrativeCoherence = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','📖 Scoring narrative coherence...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/narrative-coherence`);
+        const d = await r.json();
+        let html = '<div class="narrcoh-card">';
+        const ratingColor = d.coherence_rating.includes('Highly') ? '#68d391' : (d.coherence_rating.includes('Moderately') ? '#f6ad55' : '#fc8181');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">📖 Narrative Coherence Score</div>`;
+        html += `<div style="font-size:0.82rem;color:${ratingColor};margin-top:4px;">${d.coherence_rating} · ${d.total_gaps_detected} gaps detected</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:#68d391;">${d.narrative_coherence_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Coherence</div></div></div>`;
+        (d.dimension_breakdown || []).forEach(dim => {
+            const ratingClass = dim.rating.toLowerCase();
+            html += `<div class="narrcoh-dim">`;
+            html += `<div class="narrcoh-dim-name">${dim.dimension}<div style="font-size:0.72rem;color:#718096;">${dim.description}</div></div>`;
+            html += `<div style="display:flex;align-items:center;gap:8px;">`;
+            html += `<span class="narrcoh-rating ${ratingClass}">${dim.rating}</span>`;
+            html += `<span class="narrcoh-score" style="color:${dim.score>=75?'#68d391':(dim.score>=55?'#f6ad55':'#fc8181')};">${dim.score}</span>`;
+            html += `</div></div>`;
+        });
+        html += `<div style="margin-top:12px;background:rgba(104,211,145,0.08);border-radius:8px;padding:10px;font-size:0.82rem;">`;
+        html += `<div style="color:#68d391;font-weight:600;margin-bottom:4px;">SCHEMA ANALYSIS:</div><div style="color:#a0aec0;">${d.schema_theory_alignment}</div></div>`;
+        if (d.cross_exam_vulnerability_areas?.length) {
+            html += '<div style="font-size:0.78rem;color:#fc8181;font-weight:600;margin:12px 0 6px;">CROSS-EXAM TARGETS:</div>';
+            d.cross_exam_vulnerability_areas.forEach(area => { html += `<div class="legstrat-pivot">⚡ ${area}</div>`; });
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Narrative coherence failed: ' + e.message); }
+};
+
+// ── Witness Stress Mapping ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runStressMapping = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🌡️ Mapping witness stress profile...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/stress-mapping`);
+        const d = await r.json();
+        let html = '<div class="stressmap-card">';
+        const stressColor = d.stress_classification.includes('High') ? '#fc8181' : (d.stress_classification.includes('Moderate') ? '#f6ad55' : '#68d391');
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🌡️ Witness Stress Mapping</div>`;
+        html += `<div style="font-size:0.82rem;color:${stressColor};margin-top:4px;">${d.stress_classification}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:1.8rem;font-weight:800;color:#f6e05e;">${d.overall_stress_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Stress Index</div></div></div>`;
+        html += `<div style="font-size:0.82rem;color:#a0aec0;margin-bottom:10px;">Peak topic: <strong style="color:#fc8181;">${d.peak_stress_topic}</strong> (${d.peak_stress_level})</div>`;
+        (d.stress_map || []).forEach(topic => {
+            const catClass = topic.stress_category.toLowerCase();
+            html += `<div class="stressmap-topic">`;
+            html += `<div class="stressmap-topic-header"><span class="stressmap-topic-name">${topic.topic}</span><div style="display:flex;align-items:center;gap:6px;"><span class="stressmap-category ${catClass}">${topic.stress_category}</span><span style="font-weight:800;color:${catClass==='critical'?'#fc8181':(catClass==='elevated'?'#f6ad55':'#68d391')};font-size:0.85rem;">${topic.stress_level}</span></div></div>`;
+            html += `<div class="stressmap-bar"><div class="stressmap-fill ${catClass}" style="width:${topic.stress_level}%;"></div></div>`;
+            if (topic.avoidance_detected) html += `<div style="font-size:0.72rem;color:#fc8181;margin-top:4px;">⚠️ Avoidance behavior detected</div>`;
+            html += '</div>';
+        });
+        if (d.cross_exam_hot_zones?.length) {
+            html += '<div style="font-size:0.78rem;color:#f6e05e;font-weight:600;margin:10px 0 6px;">CROSS-EXAM HOT ZONES:</div>';
+            d.cross_exam_hot_zones.forEach(zone => { html += `<div class="legstrat-pivot">🎯 ${zone}</div>`; });
+        }
+        html += `<div style="margin-top:10px;font-size:0.8rem;color:#a0aec0;">Pattern: <em>${d.stress_pattern}</em></div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Stress mapping failed: ' + e.message); }
+};
+
+// ── Case Precedent Matcher ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runPrecedentMatcher = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚖️ Matching legal precedents...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/precedent-matcher`);
+        const d = await r.json();
+        let html = '<div class="precmatch-card">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">⚖️ Case Precedent Matcher</div>`;
+        html += `<div style="font-size:0.82rem;color:#b794f4;margin-top:4px;">${d.total_precedents_matched} precedents matched · Priority: ${d.research_priority}</div></div>`;
+        html += `<div style="display:flex;gap:10px;"><div style="text-align:center;padding:8px 12px;background:rgba(252,129,129,0.1);border-radius:8px;"><div style="font-weight:700;color:#fc8181;">${d.prosecution_favorable_count}</div><div style="font-size:0.7rem;color:#a0aec0;">Pros.</div></div>`;
+        html += `<div style="text-align:center;padding:8px 12px;background:rgba(104,211,145,0.1);border-radius:8px;"><div style="font-weight:700;color:#68d391;">${d.defense_favorable_count}</div><div style="font-size:0.7rem;color:#a0aec0;">Def.</div></div></div></div>`;
+        (d.precedent_matches || []).forEach(p => {
+            const appClass = p.applicability.toLowerCase();
+            const favClass = p.favorable_to.toLowerCase();
+            html += `<div class="precmatch-item ${appClass}">`;
+            html += `<div style="display:flex;justify-content:space-between;align-items:flex-start;">`;
+            html += `<div class="precmatch-case-name">${p.case_name}</div>`;
+            html += `<span class="precmatch-relevance">${p.relevance_score}%</span></div>`;
+            html += `<div class="precmatch-issue">${p.issue}</div>`;
+            html += `<div class="precmatch-tags">`;
+            html += `<span class="precmatch-tag ${favClass}">${p.favorable_to}</span>`;
+            html += `<span class="precmatch-tag neutral">${p.applicability}</span>`;
+            html += `<span class="precmatch-tag neutral">${p.citation_strength}</span>`;
+            html += `</div></div>`;
+        });
+        if (d.motion_opportunities?.length) {
+            html += '<div style="font-size:0.78rem;color:#b794f4;font-weight:600;margin:12px 0 6px;">MOTION OPPORTUNITIES:</div>';
+            d.motion_opportunities.forEach(m => { html += `<div class="legstrat-pivot">📋 ${m}</div>`; });
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Precedent matcher failed: ' + e.message); }
+};
+
+// ── Witness Demeanor Score ────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runDemeanorScore = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🎭 Analyzing witness demeanor indicators...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/demeanor-score`);
+        const d = await r.json();
+        const scoreColor = d.overall_demeanor_score >= 75 ? '#68d391' : (d.overall_demeanor_score >= 55 ? '#f6ad55' : '#fc8181');
+        let html = '<div class="demeanor-card" style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🎭 Witness Demeanor Score</div>`;
+        html += `<div style="font-size:0.82rem;color:${scoreColor};margin-top:4px;">${d.credibility_signal} · ${d.jury_first_impression}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${scoreColor};">${d.overall_demeanor_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Demeanor</div></div></div>`;
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">`;
+        html += `<div style="background:rgba(252,129,129,0.08);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;color:#fc8181;">${d.deception_risk_pct}%</div><div style="font-size:0.7rem;color:#a0aec0;">Deception Risk</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:1rem;font-weight:700;color:#b794f4;">${d.coaching_impact}</div><div style="font-size:0.7rem;color:#a0aec0;">Coaching Impact</div></div>`;
+        html += '</div>';
+        (d.demeanor_indicators || []).forEach(ind => {
+            const pct = ind.score;
+            const barColor = pct >= 70 ? '#68d391' : (pct >= 50 ? '#f6ad55' : '#fc8181');
+            html += `<div style="margin-bottom:8px;">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#a0aec0;margin-bottom:3px;"><span>${ind.icon} ${ind.indicator}</span><span style="color:${barColor};">${ind.signal} · ${pct}</span></div>`;
+            html += `<div style="height:5px;background:#2d3748;border-radius:3px;"><div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;"></div></div>`;
+            html += '</div>';
+        });
+        if (d.cross_exam_demeanor_targets?.length) {
+            html += `<div style="margin-top:12px;font-size:0.78rem;color:#f6ad55;font-weight:600;">CROSS-EXAM DEMEANOR TARGETS:</div>`;
+            d.cross_exam_demeanor_targets.forEach(t => { html += `<div style="font-size:0.78rem;color:#e2e8f0;padding:4px 0;">→ ${t}</div>`; });
+        }
+        html += `<div style="margin-top:10px;font-size:0.75rem;color:#718096;">Trend: ${d.demeanor_consistency_trend}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Demeanor score failed: ' + e.message); }
+};
+
+// ── Case Theory Evaluator ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runCaseTheory = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚖️ Evaluating case theories...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/case-theory`);
+        const d = await r.json();
+        const advColor = d.case_advantage === 'Prosecution' ? '#fc8181' : (d.case_advantage === 'Defense' ? '#68d391' : '#f6ad55');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">⚖️ Case Theory Evaluator</div>`;
+        html += `<div style="font-size:0.82rem;color:${advColor};margin-top:4px;">Advantage: ${d.case_advantage} · Conv. Est: ${d.conviction_probability_estimate}%</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${advColor};">${d.prosecution_theory_strength}</div><div style="font-size:0.7rem;color:#a0aec0;">Pros. Strength</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">PROSECUTION PILLARS</div>`;
+        (d.prosecution_pillars || []).forEach(p => {
+            const pColor = p.strength >= 70 ? '#68d391' : (p.strength >= 45 ? '#f6ad55' : '#fc8181');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:0.8rem;">`;
+            html += `<span style="color:#e2e8f0;">${p.pillar}</span>`;
+            html += `<span style="color:${pColor};">${p.strength} · ${p.vulnerability}</span></div>`;
+        });
+        html += `<div style="font-size:0.8rem;color:#b794f4;font-weight:600;margin:10px 0 8px;">TOP DEFENSE THEORIES</div>`;
+        (d.defense_theories || []).slice(0,3).forEach(t => {
+            const vColor = t.viability >= 65 ? '#fc8181' : (t.viability >= 40 ? '#f6ad55' : '#68d391');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:0.78rem;">`;
+            html += `<span style="color:#e2e8f0;">${t.theory}</span><span style="color:${vColor};">${t.viability}% · ${t.jury_receptivity}</span></div>`;
+        });
+        if (d.critical_weaknesses?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(252,129,129,0.08);border-radius:6px;"><div style="font-size:0.75rem;color:#fc8181;font-weight:600;">CRITICAL WEAKNESSES:</div>`;
+            d.critical_weaknesses.forEach(w => { html += `<div style="font-size:0.75rem;color:#e2e8f0;">⚠️ ${w}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="margin-top:10px;display:flex;gap:10px;">`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#f6ad55;">${d.settlement_pressure_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Settlement Pressure</div></div>`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center;"><div style="font-size:0.9rem;font-weight:700;color:${d.theory_pivot_recommended ? '#fc8181' : '#68d391'};">${d.theory_pivot_recommended ? 'Recommended' : 'Not Needed'}</div><div style="font-size:0.7rem;color:#a0aec0;">Theory Pivot</div></div>`;
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Case theory failed: ' + e.message); }
+};
+
+// ── Jury Impact Predictor ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runJuryImpact = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','👥 Predicting jury impact...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/jury-impact`);
+        const d = await r.json();
+        const vColor = d.predicted_verdict_lean === 'Guilty' ? '#fc8181' : (d.predicted_verdict_lean === 'Not Guilty' ? '#68d391' : '#f6ad55');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">👥 Jury Impact Predictor</div>`;
+        html += `<div style="font-size:0.82rem;color:${vColor};margin-top:4px;">${d.predicted_verdict_lean} · Hung Risk: ${d.hung_jury_probability}%</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${vColor};">${d.overall_jury_impact_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Impact Score</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">DELIBERATION FACTORS</div>`;
+        (d.deliberation_factors || []).forEach(f => {
+            const fc = f.current_score >= 70 ? '#68d391' : (f.current_score >= 50 ? '#f6ad55' : '#fc8181');
+            html += `<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#a0aec0;margin-bottom:3px;"><span>${f.factor} <span style="color:#718096;">(wt: ${f.weight}%)</span></span><span style="color:${fc};">${f.current_score}</span></div>`;
+            html += `<div style="height:5px;background:#2d3748;border-radius:3px;"><div style="width:${f.current_score}%;height:100%;background:${fc};border-radius:3px;"></div></div></div>`;
+        });
+        html += `<div style="font-size:0.8rem;color:#68d391;font-weight:600;margin:10px 0 6px;">KEY PERSUASION MOMENTS</div>`;
+        (d.key_persuasion_moments || []).forEach(m => {
+            const mc = m.score >= 70 ? '#68d391' : (m.score >= 50 ? '#f6ad55' : '#fc8181');
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;"><span style="color:#e2e8f0;">${m.moment}</span><span style="color:${mc};">${m.score}</span></div>`;
+        });
+        if (d.jury_selection_priorities?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(99,179,237,0.08);border-radius:6px;font-size:0.75rem;color:#63b3ed;">`;
+            d.jury_selection_priorities.forEach(p => { html += `<div>• ${p}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="margin-top:10px;font-size:0.75rem;color:${d.shadow_jury_recommendation ? '#f6ad55' : '#718096'};">Shadow Jury: ${d.shadow_jury_recommendation ? '⚠️ Recommended' : '✓ Not Needed'}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Jury impact failed: ' + e.message); }
+};
+
+// ── Evidence Chain Mapper ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runEvidenceChain = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🔗 Mapping evidence chain...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/evidence-chain`);
+        const d = await r.json();
+        const intgColor = d.chain_integrity_score >= 70 ? '#68d391' : (d.chain_integrity_score >= 45 ? '#f6ad55' : '#fc8181');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🔗 Evidence Chain Mapper</div>`;
+        html += `<div style="font-size:0.82rem;color:${intgColor};margin-top:4px;">${d.prosecution_chain_verdict} · ${d.chain_completeness_pct}% complete</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${intgColor};">${d.chain_integrity_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Integrity</div></div></div>`;
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">`;
+        html += `<div style="background:rgba(104,211,145,0.08);border-radius:6px;padding:8px;text-align:center;"><div style="font-weight:700;color:#68d391;">${d.authenticated_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Authenticated</div></div>`;
+        html += `<div style="background:rgba(246,173,85,0.08);border-radius:6px;padding:8px;text-align:center;"><div style="font-weight:700;color:#f6ad55;">${d.disputed_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Disputed</div></div>`;
+        html += `<div style="background:rgba(252,129,129,0.08);border-radius:6px;padding:8px;text-align:center;"><div style="font-weight:700;color:#fc8181;">${d.missing_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Missing</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.78rem;color:#63b3ed;font-weight:600;margin-bottom:7px;">EVIDENCE NODES</div>`;
+        (d.evidence_chain || []).forEach(n => {
+            const authColor = n.authentication_status === 'Authenticated' ? '#68d391' : (n.authentication_status === 'Disputed' ? '#f6ad55' : (n.authentication_status === 'Missing' ? '#fc8181' : '#a0aec0'));
+            const supColor = n.suppression_risk === 'High' ? '#fc8181' : (n.suppression_risk === 'Medium' ? '#f6ad55' : '#68d391');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.78rem;">`;
+            html += `<div style="flex:1;"><span style="color:#718096;">${n.node_id}</span> <span style="color:#e2e8f0;">${n.type}</span></div>`;
+            html += `<div style="display:flex;gap:6px;"><span style="color:${authColor};">${n.authentication_status}</span><span style="color:${supColor};">${n.suppression_risk !== 'None' ? '⚠️'+n.suppression_risk : '✓'}</span></div>`;
+            html += '</div>';
+        });
+        if (d.chain_gaps?.length) {
+            html += `<div style="margin-top:12px;font-size:0.78rem;color:#fc8181;font-weight:600;">CHAIN GAPS (${d.critical_gaps_count} critical)</div>`;
+            d.chain_gaps.forEach(g => {
+                const gc = g.severity === 'Critical' ? '#fc8181' : (g.severity === 'High' ? '#f6ad55' : '#a0aec0');
+                html += `<div style="padding:4px 0;font-size:0.75rem;color:${gc};">⚠️ ${g.gap} <span style="color:#718096;">[${g.severity}${g.fillable ? ' · Fillable' : ''}]</span></div>`;
+            });
+        }
+        html += `<div style="margin-top:10px;font-size:0.75rem;color:#718096;">Strongest: ${d.strongest_link} · Weakest: ${d.weakest_link}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Evidence chain failed: ' + e.message); }
+};
+
+// ── Witness Preparation Index ─────────────────────────────────────────────────
+WitnessReplayApp.prototype.runPrepIndex = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','📋 Assessing witness preparation...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/prep-index`);
+        const d = await r.json();
+        const readColor = d.prep_readiness_level === 'Trial-Ready' ? '#68d391' : (d.prep_readiness_level === 'Needs Work' ? '#f6ad55' : '#fc8181');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">📋 Witness Preparation Index</div>`;
+        html += `<div style="font-size:0.82rem;color:${readColor};margin-top:4px;">${d.prep_readiness_level} · ${d.days_prep_recommended}d recommended</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${readColor};">${d.overall_prep_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Prep Score</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">PREPARATION DIMENSIONS</div>`;
+        (d.dimensions || []).forEach(dim => {
+            const dc = dim.score >= 75 ? '#68d391' : (dim.score >= 55 ? '#f6ad55' : '#fc8181');
+            html += `<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px;">`;
+            html += `<span style="color:#e2e8f0;">${dim.dimension}</span><span style="color:${dc};">${dim.score} · ${dim.assessment}</span></div>`;
+            html += `<div style="height:5px;background:#2d3748;border-radius:3px;"><div style="width:${dim.score}%;height:100%;background:${dc};border-radius:3px;"></div></div></div>`;
+        });
+        if (d.critical_vulnerabilities?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(252,129,129,0.08);border-radius:6px;"><div style="font-size:0.75rem;color:#fc8181;font-weight:600;">CRITICAL VULNERABILITIES:</div>`;
+            d.critical_vulnerabilities.forEach(v => { html += `<div style="font-size:0.75rem;color:#e2e8f0;">⚠️ ${v}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="font-size:0.8rem;color:#b794f4;font-weight:600;margin:10px 0 6px;">PREP TASKS (${d.pending_tasks_count} pending · ${d.estimated_total_prep_hours}h remaining)</div>`;
+        (d.prep_tasks || []).forEach(t => {
+            const tc = t.status === 'Complete' ? '#68d391' : (t.status === 'In Progress' ? '#f6ad55' : '#a0aec0');
+            const pc = t.priority === 'Critical' ? '#fc8181' : (t.priority === 'High' ? '#f6ad55' : '#718096');
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${t.task}</span><span style="color:${tc};">${t.status}</span></div>`;
+        });
+        html += `<div style="margin-top:10px;display:flex;gap:8px;font-size:0.75rem;">`;
+        html += `<div style="color:${d.mock_exam_recommended ? '#f6ad55' : '#718096'};">${d.mock_exam_recommended ? '⚠️ Mock Exam Recommended' : '✓ Mock Exam Optional'}</div>`;
+        html += `<div style="color:${d.expert_coaching_recommended ? '#fc8181' : '#718096'};">${d.expert_coaching_recommended ? '🎯 Expert Coaching Needed' : ''}</div>`;
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Prep index failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runFatigueAnalysis = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','😴 Analyzing witness fatigue patterns...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/fatigue-analysis`);
+        const d = await r.json();
+        const fc = d.overall_fatigue_index > 65 ? '#fc8181' : (d.overall_fatigue_index > 40 ? '#f6ad55' : '#68d391');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">😴 Witness Fatigue Analysis</div>`;
+        html += `<div style="font-size:0.82rem;color:${fc};margin-top:4px;">${d.fatigue_classification} Impact · Peak: ${d.peak_fatigue_segment}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${fc};">${d.overall_fatigue_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Fatigue Index</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">FATIGUE PROGRESSION</div>`;
+        (d.fatigue_progression || []).slice(0,6).forEach(seg => {
+            const sc = seg.fatigue_index > 65 ? '#fc8181' : (seg.fatigue_index > 40 ? '#f6ad55' : '#68d391');
+            html += `<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:0.76rem;margin-bottom:2px;">`;
+            html += `<span style="color:#a0aec0;">${seg.segment}</span><span style="color:${sc};">Fatigue: ${seg.fatigue_index} · Latency: ${seg.response_latency_ms}ms</span></div>`;
+            html += `<div style="height:5px;background:#2d3748;border-radius:3px;"><div style="width:${Math.min(seg.fatigue_index,100)}%;height:100%;background:${sc};border-radius:3px;"></div></div></div>`;
+        });
+        html += `<div style="font-size:0.8rem;color:#b794f4;font-weight:600;margin:10px 0 6px;">FATIGUE INDICATORS (${d.active_indicators_count} active)</div>`;
+        (d.fatigue_indicators || []).forEach(ind => {
+            if (ind.detected) {
+                const ic = ind.severity === 'Critical' ? '#fc8181' : (ind.severity === 'High' ? '#f6ad55' : '#63b3ed');
+                html += `<div style="font-size:0.76rem;color:${ic};padding:3px 0;">⚠️ ${ind.indicator} <span style="color:#718096;">[${ind.severity}]</span></div>`;
+            }
+        });
+        if (d.recommendations?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(99,179,237,0.08);border-radius:6px;"><div style="font-size:0.75rem;color:#63b3ed;font-weight:600;">RECOMMENDATIONS:</div>`;
+            d.recommendations.forEach(rec => { html += `<div style="font-size:0.75rem;color:#e2e8f0;padding:2px 0;">→ ${rec}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="margin-top:8px;font-size:0.75rem;color:#718096;">Optimal session: ${d.optimal_session_length_hours}h · Break: ${d.break_frequency_recommendation} · ${d.admissibility_concern ? '⚠️ Admissibility Concern' : '✓ No admissibility concern'}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Fatigue analysis failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runCaseComplexity = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🔢 Calculating case complexity index...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/case-complexity`);
+        const d = await r.json();
+        const tc = d.complexity_tier === 'Mega-Complex' ? '#9f7aea' : (d.complexity_tier === 'High' ? '#fc8181' : (d.complexity_tier === 'Medium' ? '#f6ad55' : '#68d391'));
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🔢 Case Complexity Index</div>`;
+        html += `<div style="font-size:0.82rem;color:${tc};margin-top:4px;">${d.complexity_tier} · Driver: ${d.primary_complexity_driver}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${tc};">${d.case_complexity_score}</div><div style="font-size:0.7rem;color:#a0aec0;">Complexity</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">COMPLEXITY FACTORS</div>`;
+        (d.complexity_factors || []).forEach(f => {
+            const fc = f.complexity_contribution > 30 ? '#fc8181' : (f.complexity_contribution > 18 ? '#f6ad55' : '#68d391');
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.76rem;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${f.factor}</span><span style="color:${fc};">${f.complexity_contribution}/100 (${f.weight}% weight)</span></div>`;
+        });
+        html += `<div style="font-size:0.8rem;color:#b794f4;font-weight:600;margin:10px 0 6px;">RESOURCE ESTIMATES</div>`;
+        const re = d.resource_estimates || {};
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.75rem;">`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Trial Days</div><div style="color:#e2e8f0;font-weight:600;">${re.estimated_trial_days}</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Est. Cost</div><div style="color:#f6ad55;font-weight:600;">$${re.estimated_total_cost_k}k</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Atty Hours</div><div style="color:#e2e8f0;font-weight:600;">${re.attorney_hours_estimate}h</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Team Size</div><div style="color:#e2e8f0;font-weight:600;">${re.recommended_team_size} attorneys</div></div>`;
+        html += '</div>';
+        if (d.simplification_opportunities?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(104,211,145,0.08);border-radius:6px;"><div style="font-size:0.75rem;color:#68d391;font-weight:600;">SIMPLIFICATION OPPORTUNITIES:</div>`;
+            d.simplification_opportunities.forEach(op => { html += `<div style="font-size:0.75rem;color:#e2e8f0;padding:2px 0;">→ ${op}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="margin-top:8px;font-size:0.75rem;color:#718096;">${d.judicial_assignment_recommendation} · ADR: ${d.adr_recommended ? d.adr_type_recommended : 'Not recommended'}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Complexity assessment failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runAppealProbability = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚖️ Assessing appeal probability...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/appeal-probability`);
+        const d = await r.json();
+        const ac = d.appeal_viability === 'High' ? '#fc8181' : (d.appeal_viability === 'Moderate' ? '#f6ad55' : '#68d391');
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">⚖️ Appeal Probability Assessment</div>`;
+        html += `<div style="font-size:0.82rem;color:${ac};margin-top:4px;">${d.appeal_viability} Viability · Reversal: ${d.reversal_probability_pct}%</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${ac};">${d.overall_appeal_probability_pct}%</div><div style="font-size:0.7rem;color:#a0aec0;">Appeal Prob.</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">APPEAL GROUNDS</div>`;
+        (d.appeal_grounds || []).forEach(g => {
+            const gc = g.probability_pct > 50 ? '#fc8181' : (g.probability_pct > 30 ? '#f6ad55' : '#68d391');
+            const pc = g.preservation_status === 'Preserved' ? '#68d391' : (g.preservation_status === 'Partial' ? '#f6ad55' : '#fc8181');
+            html += `<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;font-size:0.76rem;margin-bottom:2px;">`;
+            html += `<span style="color:#e2e8f0;">${g.ground}</span><span style="color:${gc};">${g.probability_pct}% · <span style="color:${pc};">${g.preservation_status}</span></span></div>`;
+            html += `<div style="height:4px;background:#2d3748;border-radius:3px;"><div style="width:${g.probability_pct}%;height:100%;background:${gc};border-radius:3px;"></div></div></div>`;
+        });
+        html += `<div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.75rem;">`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Preserved Grounds</div><div style="color:#68d391;font-weight:600;">${d.preserved_grounds_count}</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Waived Grounds</div><div style="color:#fc8181;font-weight:600;">${d.waived_grounds_count}</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Timeline</div><div style="color:#e2e8f0;font-weight:600;">${d.estimated_appellate_timeline_months}mo</div></div>`;
+        html += `<div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;"><div style="color:#a0aec0;">Est. Cost</div><div style="color:#f6ad55;font-weight:600;">$${d.estimated_appellate_cost_k}k</div></div>`;
+        html += '</div>';
+        if (d.strategic_recommendations?.length) {
+            html += `<div style="margin-top:10px;padding:8px;background:rgba(183,148,244,0.08);border-radius:6px;"><div style="font-size:0.75rem;color:#b794f4;font-weight:600;">STRATEGIC RECOMMENDATIONS:</div>`;
+            d.strategic_recommendations.forEach(rec => { html += `<div style="font-size:0.75rem;color:#e2e8f0;padding:2px 0;">→ ${rec}</div>`; });
+            html += '</div>';
+        }
+        html += `<div style="margin-top:8px;font-size:0.75rem;color:#718096;">Certiorari likelihood: ${d.certiorari_likelihood_pct}%</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Appeal assessment failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runDamagesEstimate = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','💰 Calculating damages estimate...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/damages-estimate`);
+        const d = await r.json();
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="margin-bottom:14px;"><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">�� Damages Estimation Calculator</div>`;
+        html += `<div style="font-size:0.82rem;color:#f6ad55;margin-top:4px;">Most Likely Verdict: $${(d.most_likely_verdict_k||0).toLocaleString()}k · Punitive Risk: ${d.punitive_risk_level}</div></div>`;
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px;">`;
+        html += `<div style="background:rgba(104,211,145,0.1);padding:10px;border-radius:8px;text-align:center;"><div style="color:#68d391;font-size:1.1rem;font-weight:800;">$${(d.total_damages_range_k?.low||0).toLocaleString()}k</div><div style="font-size:0.68rem;color:#a0aec0;">Low</div></div>`;
+        html += `<div style="background:rgba(246,173,85,0.1);padding:10px;border-radius:8px;text-align:center;"><div style="color:#f6ad55;font-size:1.1rem;font-weight:800;">$${(d.total_damages_range_k?.mid||0).toLocaleString()}k</div><div style="font-size:0.68rem;color:#a0aec0;">Mid</div></div>`;
+        html += `<div style="background:rgba(252,129,129,0.1);padding:10px;border-radius:8px;text-align:center;"><div style="color:#fc8181;font-size:1.1rem;font-weight:800;">$${(d.total_damages_range_k?.high||0).toLocaleString()}k</div><div style="font-size:0.68rem;color:#a0aec0;">High</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">DAMAGE CATEGORIES</div>`;
+        (d.damage_categories || []).forEach(cat => {
+            const pc = cat.probability_pct > 70 ? '#68d391' : (cat.probability_pct > 45 ? '#f6ad55' : '#a0aec0');
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${cat.subcategory}</span>`;
+            html += `<span style="color:#a0aec0;">$${cat.low_k}k–$${cat.high_k}k · <span style="color:${pc};">${cat.probability_pct}%</span></span></div>`;
+        });
+        html += `<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.75rem;">`;
+        html += `<div style="background:rgba(104,211,145,0.08);padding:8px;border-radius:6px;"><div style="color:#68d391;font-size:0.68rem;">SETTLEMENT RECOMMEND</div><div style="color:#68d391;font-weight:700;font-size:0.9rem;">$${(d.settlement_recommendation_k||0).toLocaleString()}k</div></div>`;
+        html += `<div style="background:rgba(252,129,129,0.08);padding:8px;border-radius:6px;"><div style="color:#fc8181;font-size:0.68rem;">WALKAWAY MINIMUM</div><div style="color:#fc8181;font-weight:700;font-size:0.9rem;">$${(d.settlement_walkaway_k||0).toLocaleString()}k</div></div>`;
+        html += '</div>';
+        if (d.expert_economist_recommended) {
+            html += `<div style="margin-top:8px;font-size:0.75rem;color:#f6ad55;">💡 Expert economist recommended for damages presentation</div>`;
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Damages estimate failed: ' + e.message); }
+};
+
+
+WitnessReplayApp.prototype.runRecantationRisk = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','⚠️ Assessing witness recantation risk...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/recantation-risk`);
+        const d = await r.json();
+        const rc = d.risk_level === 'Critical' ? '#fc8181' : d.risk_level === 'High' ? '#f6ad55' : d.risk_level === 'Moderate' ? '#ecc94b' : '#68d391';
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">⚠️ Recantation Risk Assessment</div>`;
+        html += `<div style="font-size:0.82rem;color:${rc};margin-top:4px;">${d.risk_level} Risk · Primary: ${d.highest_risk_factor}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${rc};">${d.overall_recantation_risk_pct}%</div><div style="font-size:0.7rem;color:#a0aec0;">Recantation Risk</div></div></div>`;
+        if (d.immediate_action_required) html += `<div style="padding:6px;background:rgba(252,129,129,0.1);border-radius:6px;font-size:0.75rem;color:#fc8181;margin-bottom:10px;">🚨 Immediate intervention required — consider testimony preservation deposition</div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">RISK FACTORS</div>`;
+        (d.risk_factors || []).forEach(f => {
+            const fc = f.score > 65 ? '#fc8181' : f.score > 40 ? '#f6ad55' : '#68d391';
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${f.factor}</span><div style="display:flex;align-items:center;gap:8px;"><div style="width:80px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;"><div style="width:${f.score}%;height:100%;background:${fc};border-radius:2px;"></div></div><span style="color:${fc};width:32px;text-align:right;">${f.score}</span></div></div>`;
+        });
+        html += `<div style="font-size:0.8rem;color:#fc8181;font-weight:600;margin:10px 0 6px;">⚠️ WARNING SIGNS</div>`;
+        (d.warning_signs_detected || []).forEach(w => { html += `<div style="font-size:0.72rem;color:#fed7d7;padding:2px 0;">• ${w}</div>`; });
+        html += `<div style="font-size:0.8rem;color:#68d391;font-weight:600;margin:10px 0 6px;">🛡️ MITIGATION STRATEGIES</div>`;
+        (d.mitigation_strategies || []).slice(0,3).forEach(m => {
+            const pc = m.priority === 'Critical' ? '#fc8181' : m.priority === 'High' ? '#f6ad55' : '#a0aec0';
+            html += `<div style="font-size:0.72rem;color:#e2e8f0;padding:2px 0;">[<span style="color:${pc};">${m.priority}</span>] ${m.strategy} — <span style="color:#68d391;">${m.estimated_impact}</span></div>`;
+        });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Recantation risk assessment failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runCostOptimizer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','💡 Optimizing deposition cost strategy...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/cost-optimizer`);
+        const d = await r.json();
+        const ec = d.efficiency_rating === 'Excellent' ? '#68d391' : d.efficiency_rating === 'Good' ? '#9ae6b4' : d.efficiency_rating === 'Fair' ? '#f6ad55' : '#fc8181';
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">💡 Deposition Cost Optimizer</div>`;
+        html += `<div style="font-size:0.82rem;color:#68d391;margin-top:4px;">Save $${d.potential_savings_k}k (${d.savings_pct}%) · Efficiency: ${d.efficiency_rating}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:#68d391;">$${d.potential_savings_k}k</div><div style="font-size:0.7rem;color:#a0aec0;">Potential Savings</div></div></div>`;
+        html += `<div style="display:flex;gap:12px;margin-bottom:12px;">`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.03);padding:8px;border-radius:6px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#fc8181;">$${d.current_estimated_cost_k}k</div><div style="font-size:0.68rem;color:#a0aec0;">Current Cost</div></div>`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.03);padding:8px;border-radius:6px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#68d391;">$${d.optimized_cost_k}k</div><div style="font-size:0.68rem;color:#a0aec0;">Optimized Cost</div></div>`;
+        html += `<div style="flex:1;background:rgba(255,255,255,0.03);padding:8px;border-radius:6px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:${ec};">${d.efficiency_score}</div><div style="font-size:0.68rem;color:#a0aec0;">Efficiency Score</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">OPTIMIZATION STRATEGIES</div>`;
+        (d.optimization_strategies || []).forEach(s => {
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${s.strategy}</span><span style="color:#68d391;font-weight:600;">-${s.savings_pct}%</span></div>`;
+        });
+        html += `<div style="margin-top:8px;font-size:0.72rem;color:#b794f4;">🏆 Best Strategy: ${d.top_strategy}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Cost optimizer failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runKeyMoments = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🎯 Detecting key testimony moments...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/key-moments`);
+        const d = await r.json();
+        const bc = d.testimony_overall_balance === 'Prosecution-Favorable' ? '#fc8181' : d.testimony_overall_balance === 'Defense-Favorable' ? '#68d391' : '#ecc94b';
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🎯 Key Moment Detector</div>`;
+        html += `<div style="font-size:0.82rem;color:${bc};margin-top:4px;">${d.testimony_overall_balance} · ${d.critical_moments} Critical Moments</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:#e2e8f0;">${d.total_key_moments}</div><div style="font-size:0.7rem;color:#a0aec0;">Key Moments</div></div></div>`;
+        html += `<div style="display:flex;gap:12px;margin-bottom:12px;">`;
+        html += `<div style="flex:1;text-align:center;padding:6px;background:rgba(252,129,129,0.08);border-radius:6px;"><div style="font-size:1rem;font-weight:700;color:#fc8181;">${d.prosecution_favorable_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Prosecution Favorable</div></div>`;
+        html += `<div style="flex:1;text-align:center;padding:6px;background:rgba(104,211,145,0.08);border-radius:6px;"><div style="font-size:1rem;font-weight:700;color:#68d391;">${d.defense_favorable_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Defense Favorable</div></div>`;
+        html += `<div style="flex:1;text-align:center;padding:6px;background:rgba(183,148,246,0.08);border-radius:6px;"><div style="font-size:1rem;font-weight:700;color:#b794f4;">${d.clip_worthy_count}</div><div style="font-size:0.68rem;color:#a0aec0;">Clip-Worthy</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">TOP MOMENTS (by impact)</div>`;
+        (d.moments || []).slice(0,6).forEach(m => {
+            const mc = m.significance === 'Critical' ? '#fc8181' : m.significance === 'High' ? '#f6ad55' : '#ecc94b';
+            const fc = m.favorable_to === 'Prosecution' ? '#fc8181' : m.favorable_to === 'Defense' ? '#68d391' : '#a0aec0';
+            html += `<div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:6px;margin-bottom:6px;">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px;">`;
+            html += `<span style="color:#e2e8f0;font-weight:600;">${m.type}</span><span style="color:${mc};">${m.significance} · ${m.impact_score}</span></div>`;
+            html += `<div style="font-size:0.72rem;color:#a0aec0;">⏱ ${m.timestamp_minutes} min · Favors: <span style="color:${fc};">${m.favorable_to}</span> · ${m.recommended_action}</div></div>`;
+        });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Key moment detection failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runBiasAssessment = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','🧠 Assessing witness cognitive biases...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/bias-assessment`);
+        const d = await r.json();
+        const sc = d.bias_severity === 'Severe' ? '#fc8181' : d.bias_severity === 'Significant' ? '#f6ad55' : d.bias_severity === 'Moderate' ? '#ecc94b' : '#68d391';
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">🧠 Witness Bias Assessment</div>`;
+        html += `<div style="font-size:0.82rem;color:${sc};margin-top:4px;">${d.bias_severity} Bias · Primary: ${d.primary_bias?.bias || 'N/A'}</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:${sc};">${d.overall_bias_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Bias Index</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">BIAS ASSESSMENTS</div>`;
+        (d.bias_assessments || []).forEach(b => {
+            const bc2 = b.score > 60 ? '#fc8181' : b.score > 35 ? '#f6ad55' : '#68d391';
+            const catColor = b.category === 'Cognitive' ? '#63b3ed' : b.category === 'Social' ? '#b794f4' : b.category === 'Motivational' ? '#f6ad55' : '#68d391';
+            html += `<div style="display:flex;align-items:center;gap:8px;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:${catColor};width:20px;font-size:0.65rem;">${b.category[0]}</span>`;
+            html += `<span style="color:#e2e8f0;flex:1;">${b.bias}</span>`;
+            html += `<div style="width:70px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;"><div style="width:${b.score}%;height:100%;background:${bc2};border-radius:2px;"></div></div>`;
+            html += `<span style="color:${bc2};width:30px;text-align:right;">${b.score}</span></div>`;
+        });
+        if (d.expert_psychology_witness_recommended) {
+            html += `<div style="margin-top:10px;padding:6px;background:rgba(183,148,246,0.1);border-radius:6px;font-size:0.72rem;color:#b794f4;">🧠 Expert psychology witness recommended — bias index exceeds threshold</div>`;
+        }
+        html += `<div style="font-size:0.8rem;color:#b794f4;font-weight:600;margin:10px 0 6px;">CROSS-EXAM ANGLES</div>`;
+        (d.cross_examination_angles || []).forEach(a => {
+            html += `<div style="font-size:0.72rem;color:#e2e8f0;padding:2px 0;">• [${a.bias_targeted}] ${a.question_approach} — <span style="color:#68d391;">${a.effectiveness}% effective</span></div>`;
+        });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Bias assessment failed: ' + e.message); }
+};
+
+WitnessReplayApp.prototype.runCrossExamBlueprint = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Start a session first.'); return; }
+    this.addMessage('assistant','📋 Generating cross-examination blueprint...');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSessionId}/cross-exam-blueprint`);
+        const d = await r.json();
+        let html = '<div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px;">';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">`;
+        html += `<div><div style="font-size:0.95rem;font-weight:700;color:#e2e8f0;">📋 Cross-Examination Blueprint</div>`;
+        html += `<div style="font-size:0.82rem;color:#63b3ed;margin-top:4px;">${d.total_estimated_minutes} min · ${d.total_questions} questions · ${d.overall_blueprint_effectiveness}% effectiveness</div></div>`;
+        html += `<div style="text-align:center;"><div style="font-size:2rem;font-weight:800;color:#63b3ed;">${d.overall_blueprint_effectiveness}</div><div style="font-size:0.7rem;color:#a0aec0;">Effectiveness</div></div></div>`;
+        html += `<div style="font-size:0.8rem;color:#63b3ed;font-weight:600;margin-bottom:8px;">EXAMINATION SECTIONS</div>`;
+        (d.sections || []).forEach(s => {
+            const rc = s.risk_level === 'High' ? '#fc8181' : s.risk_level === 'Medium' ? '#f6ad55' : '#68d391';
+            const eff = s.effectiveness_score;
+            html += `<div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:6px;margin-bottom:6px;">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px;">`;
+            html += `<span style="color:#e2e8f0;font-weight:600;">${s.order}. ${s.section}</span>`;
+            html += `<span style="font-size:0.7rem;"><span style="color:${rc};">${s.risk_level} Risk</span> · <span style="color:#9ae6b4;">${eff}%</span></span></div>`;
+            html += `<div style="font-size:0.72rem;color:#a0aec0;">⏱ ~${s.estimated_minutes} min · ${s.question_count} Q's · ${s.objective}</div>`;
+            if (s.sample_questions?.[0]) html += `<div style="font-size:0.7rem;color:#718096;margin-top:3px;font-style:italic;">"${s.sample_questions[0]}"</div>`;
+            html += '</div>';
+        });
+        if ((d.danger_zones || []).length) {
+            html += `<div style="font-size:0.8rem;color:#fc8181;font-weight:600;margin:10px 0 4px;">⚠️ DANGER ZONES</div>`;
+            d.danger_zones.forEach(dz => { html += `<div style="font-size:0.72rem;color:#fed7d7;padding:2px 0;">• ${dz}</div>`; });
+        }
+        html += `<div style="margin-top:10px;display:flex;gap:8px;font-size:0.7rem;color:#a0aec0;">`;
+        html += `<span>🎯 Open: ${d.opening_strategy}</span></div>`;
+        html += `<div style="font-size:0.7rem;color:#a0aec0;margin-top:4px;">⏱ Est. prep: ${d.estimated_attorney_prep_hours} hrs</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Cross-exam blueprint failed: ' + e.message); }
+};
+
+// ── Credibility Timeline ──
+WitnessReplayApp.prototype.runCredibilityTimeline = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','📈 Analyze witness credibility timeline');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/credibility-timeline`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(52,211,153,0.1));border-radius:12px;padding:14px;border:1px solid rgba(96,165,250,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">📈 Witness Credibility Timeline</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">${d.starting_credibility}→${d.final_credibility}</div><div style="font-size:0.7rem;color:#a0aec0;">Start → End</div></div>`;
+        const trendColor = d.overall_trend === 'improving' ? '#4ade80' : d.overall_trend === 'declining' ? '#f87171' : '#fbbf24';
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:${trendColor};">${d.overall_trend.toUpperCase()}</div><div style="font-size:0.7rem;color:#a0aec0;">Overall Trend</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#a78bfa;">${d.trust_volatility_index}</div><div style="font-size:0.7rem;color:#a0aec0;">Volatility Index</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.8rem;margin-bottom:6px;">🔝 Peak: <strong>${d.peak_credibility.score}</strong> at ${d.peak_credibility.segment} | 🔻 Trough: <strong>${d.trough_credibility.score}</strong> at ${d.trough_credibility.segment}</div>`;
+        if (d.inflection_points.length > 0) {
+            html += '<div style="font-size:0.75rem;color:#fbbf24;margin-bottom:6px;">⚡ Inflection Points:</div>';
+            d.inflection_points.forEach(ip => {
+                const icon = ip.direction === 'drop' ? '📉' : '📈';
+                html += `<div style="font-size:0.72rem;color:#e2e8f0;margin-left:8px;">${icon} ${ip.segment_label}: ${ip.direction} (${ip.magnitude.toFixed(1)}pts) — ${ip.likely_cause}</div>`;
+            });
+        }
+        html += `<div style="margin-top:8px;font-size:0.72rem;color:#a0aec0;">💡 ${d.jury_trust_advisory}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Credibility timeline failed: ' + e.message); }
+};
+
+// ── Deposition Summary Generator ──
+WitnessReplayApp.prototype.runDepositionSummary = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','📝 Generate deposition summary');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/deposition-summary`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(96,165,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(251,191,36,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">📝 Deposition Executive Summary</div>';
+        html += `<div style="font-size:0.82rem;color:#e2e8f0;margin-bottom:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;">${d.executive_summary}</div>`;
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">${d.deposition_duration_hours}h</div><div style="font-size:0.65rem;color:#a0aec0;">Duration</div></div>`;
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">${d.transcript_pages}pg</div><div style="font-size:0.65rem;color:#a0aec0;">Pages</div></div>`;
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.overall_deposition_grade}</div><div style="font-size:0.65rem;color:#a0aec0;">Grade</div></div>`;
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.critical_findings_count}</div><div style="font-size:0.65rem;color:#a0aec0;">Critical</div></div>`;
+        html += '</div>';
+        html += '<div style="font-size:0.75rem;color:#fbbf24;margin-bottom:4px;">📌 Key Findings:</div>';
+        d.key_findings.slice(0, 4).forEach(f => {
+            const sigColor = f.significance === 'critical' ? '#f87171' : f.significance === 'high' ? '#fbbf24' : '#4ade80';
+            html += `<div style="font-size:0.72rem;color:#e2e8f0;margin-left:8px;margin-bottom:2px;"><span style="color:${sigColor};">●</span> ${f.finding}</div>`;
+        });
+        html += '<div style="font-size:0.75rem;color:#60a5fa;margin-top:6px;margin-bottom:4px;">💬 Critical Quotes:</div>';
+        d.critical_quotes.slice(0, 2).forEach(q => {
+            html += `<div style="font-size:0.7rem;color:#cbd5e1;margin-left:8px;font-style:italic;margin-bottom:2px;">"${q.quote}" <span style="color:#a0aec0;">(p.${q.page})</span></div>`;
+        });
+        html += `<div style="font-size:0.75rem;color:#4ade80;margin-top:6px;">📋 Action Items: ${d.action_items.length} (${d.action_items_by_priority.critical} critical, ${d.action_items_by_priority.high} high)</div>`;
+        html += `<div style="font-size:0.7rem;color:#a0aec0;margin-top:4px;">📅 Next: Depose ${d.recommended_next_deposition}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Deposition summary failed: ' + e.message); }
+};
+
+// ── Testimony Pattern Analyzer ──
+WitnessReplayApp.prototype.runTestimonyPatterns = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🔍 Analyze testimony patterns');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/testimony-patterns`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(167,139,250,0.1),rgba(248,113,113,0.1));border-radius:12px;padding:14px;border:1px solid rgba(167,139,250,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🔍 Testimony Pattern Analysis</div>';
+        const riskColor = d.deception_risk_level === 'high' ? '#f87171' : d.deception_risk_level === 'moderate' ? '#fbbf24' : '#4ade80';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:${riskColor};">${d.overall_deception_risk_pct}%</div><div style="font-size:0.7rem;color:#a0aec0;">Deception Risk</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#a78bfa;">${d.patterns_detected}</div><div style="font-size:0.7rem;color:#a0aec0;">Patterns Found</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">${d.linguistic_sophistication_score}/10</div><div style="font-size:0.7rem;color:#a0aec0;">Sophistication</div></div>`;
+        html += '</div>';
+        d.pattern_analysis.forEach(p => {
+            const sevColor = p.severity === 'high' ? '#f87171' : p.severity === 'moderate' ? '#fbbf24' : '#4ade80';
+            html += `<div style="margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${sevColor};">`;
+            html += `<div style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${p.display_name} <span style="color:${sevColor};font-size:0.7rem;">${p.frequency_per_page}/pg</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;">${p.legal_implication}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="margin-top:6px;font-size:0.72rem;color:#fbbf24;">💡 ${d.cross_exam_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Testimony patterns failed: ' + e.message); }
+};
+
+// ── Strategic Question Generator ──
+WitnessReplayApp.prototype.runStrategicQuestions = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','❓ Generate strategic follow-up questions');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/strategic-questions`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(74,222,128,0.1),rgba(96,165,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(74,222,128,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">❓ Strategic Questions</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#4ade80;">${d.total_questions_generated}</div><div style="font-size:0.7rem;color:#a0aec0;">Questions</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#f87171;">${d.critical_priority_count}</div><div style="font-size:0.7rem;color:#a0aec0;">Critical Priority</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">${d.estimated_examination_time_minutes}m</div><div style="font-size:0.7rem;color:#a0aec0;">Est. Time</div></div>`;
+        html += '</div>';
+        d.questions.slice(0, 5).forEach(q => {
+            const priColor = q.priority === 'critical' ? '#f87171' : q.priority === 'high' ? '#fbbf24' : '#4ade80';
+            const riskIcon = q.risk_level === 'high' ? '🔴' : q.risk_level === 'medium' ? '🟡' : '🟢';
+            html += `<div style="margin-bottom:8px;padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${priColor};">`;
+            html += `<div style="font-size:0.72rem;color:#a0aec0;margin-bottom:2px;">${q.category.replace(/_/g,' ').toUpperCase()} ${riskIcon}</div>`;
+            html += `<div style="font-size:0.78rem;color:#e2e8f0;font-style:italic;">"${q.question}"</div>`;
+            html += `<div style="font-size:0.68rem;color:#a78bfa;margin-top:2px;">🎯 ${q.expected_yield}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:4px;">💡 ${d.strategic_note}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Strategic questions failed: ' + e.message); }
+};
+
+// ── Case Outcome Simulator ──
+WitnessReplayApp.prototype.runOutcomeSimulator = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🎲 Run case outcome simulation');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/outcome-simulator`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(248,113,113,0.1),rgba(251,191,36,0.1));border-radius:12px;padding:14px;border:1px solid rgba(248,113,113,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🎲 Case Outcome Simulator</div>';
+        html += `<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:8px;">${d.simulations_run.toLocaleString()} Monte Carlo simulations</div>`;
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.verdict_distribution.plaintiff_verdict_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Plaintiff Win</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.verdict_distribution.defense_verdict_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Defense Win</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.verdict_distribution.settlement_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Settlement</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">${d.verdict_distribution.mistrial_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Mistrial</div></div>`;
+        html += '</div>';
+        html += `<div style="padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:8px;">`;
+        html += `<div style="font-size:0.78rem;color:#e2e8f0;">💰 Damages Forecast: $${d.damages_forecast_k.low}K — $${d.damages_forecast_k.median}K — $${d.damages_forecast_k.high}K</div>`;
+        html += `<div style="font-size:0.72rem;color:#4ade80;">Expected Value: $${Math.round(d.expected_value_k)}K | Settlement Zone: $${d.settlement_zone_k.floor}K–$${d.settlement_zone_k.ceiling}K</div>`;
+        html += '</div>';
+        html += '<div style="font-size:0.75rem;color:#fbbf24;margin-bottom:4px;">📊 Sensitivity Analysis:</div>';
+        d.sensitivity_analysis.slice(0, 3).forEach(s => {
+            html += `<div style="font-size:0.7rem;color:#e2e8f0;margin-left:8px;">+${s.win_probability_delta_pct}% win prob ← improve "${s.factor}" (${s.improvement_feasibility} feasibility)</div>`;
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Outcome simulator failed: ' + e.message); }
+};
+
+// ── Jury Selection Advisor ──
+WitnessReplayApp.prototype.runJurySelection = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','👥 Run jury selection analysis');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/jury-selection`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(96,165,250,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">👥 Jury Selection Advisor</div>';
+        const favColor = d.jury_favorability_rating === 'favorable' ? '#4ade80' : d.jury_favorability_rating === 'neutral' ? '#fbbf24' : '#f87171';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:${favColor};">${d.jury_composition_score}%</div><div style="font-size:0.7rem;color:#a0aec0;">Favorability</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#4ade80;">${d.recommended_keeps}</div><div style="font-size:0.7rem;color:#a0aec0;">Keep</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#f87171;">${d.recommended_strikes}</div><div style="font-size:0.7rem;color:#a0aec0;">Strike</div></div>`;
+        html += '</div>';
+        d.juror_profiles.slice(0, 5).forEach(j => {
+            const strikeColor = j.strike_recommendation === 'keep' ? '#4ade80' : j.strike_recommendation === 'peremptory' ? '#f87171' : '#fbbf24';
+            const strikeIcon = j.strike_recommendation === 'keep' ? '✅' : '❌';
+            html += `<div style="margin-bottom:6px;padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${strikeColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;"><span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${strikeIcon} ${j.archetype}</span><span style="font-size:0.72rem;color:${strikeColor};">${j.favorability_pct}%</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;">${j.demographic}</div>`;
+            html += `<div style="font-size:0.68rem;color:#a78bfa;margin-top:2px;">Bias: ${j.bias_tendency}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Jury selection failed: ' + e.message); }
+};
+
+// ── Evidence Gap Analyzer ──
+WitnessReplayApp.prototype.runEvidenceGaps = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🔍 Analyze evidence gaps');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/evidence-gaps`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(248,113,113,0.1),rgba(251,191,36,0.1));border-radius:12px;padding:14px;border:1px solid rgba(248,113,113,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🔍 Evidence Gap Analyzer</div>';
+        const compColor = d.completeness_rating === 'strong' ? '#4ade80' : d.completeness_rating === 'adequate' ? '#fbbf24' : '#f87171';
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:${compColor};">${d.evidence_completeness_score}%</div><div style="font-size:0.65rem;color:#a0aec0;">Complete</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.total_gaps_identified}</div><div style="font-size:0.65rem;color:#a0aec0;">Gaps</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.critical_gaps}</div><div style="font-size:0.65rem;color:#a0aec0;">Critical</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">$${d.total_remediation_cost_k}K</div><div style="font-size:0.65rem;color:#a0aec0;">Fix Cost</div></div>`;
+        html += '</div>';
+        d.gap_categories.forEach(cat => {
+            html += `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:6px;">`;
+            html += `<div style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${cat.icon} ${cat.category} (${cat.gaps.length} gaps)</div>`;
+            cat.gaps.forEach(g => {
+                const sevColor = g.severity === 'critical' ? '#f87171' : g.severity === 'high' ? '#fbbf24' : '#4ade80';
+                html += `<div style="font-size:0.68rem;color:#a0aec0;margin-left:12px;border-left:2px solid ${sevColor};padding-left:6px;margin-top:3px;">${g.description} <span style="color:${sevColor};">(${g.severity} −${g.impact_on_case_pct}%)</span></div>`;
+            });
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Evidence gap analysis failed: ' + e.message); }
+};
+
+// ── Witness Comparison Matrix ──
+WitnessReplayApp.prototype.runWitnessComparison = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','⚖️ Run witness comparison');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/witness-comparison`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(74,222,128,0.1),rgba(96,165,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(74,222,128,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">⚖️ Witness Comparison Matrix</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">${d.overall_agreement_score}%</div><div style="font-size:0.65rem;color:#a0aec0;">Agreement</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.strong_consensus_count}</div><div style="font-size:0.65rem;color:#a0aec0;">Consensus</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.disputed_facts_count}</div><div style="font-size:0.65rem;color:#a0aec0;">Disputed</div></div>`;
+        html += '</div>';
+        d.witnesses.forEach(w => {
+            const relColor = w.composite_reliability > 70 ? '#4ade80' : w.composite_reliability > 50 ? '#fbbf24' : '#f87171';
+            html += `<div style="margin-bottom:6px;padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${relColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;"><span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${w.witness_name}</span><span style="font-size:0.72rem;color:${relColor};">Reliability: ${w.composite_reliability}</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;">Cred: ${w.credibility_score} | Consist: ${w.consistency_score} | Detail: ${w.detail_richness_score} | Contradictions: ${w.contradictions_found}</div>`;
+            html += `<div style="font-size:0.68rem;color:#4ade80;">✅ ${w.key_strength}</div><div style="font-size:0.68rem;color:#f87171;">⚠️ ${w.key_weakness}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness comparison failed: ' + e.message); }
+};
+
+// ── Testimony Redaction Assistant ──
+WitnessReplayApp.prototype.runRedactionAssistant = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🔒 Run redaction analysis');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/redaction-assistant`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(167,139,250,0.1),rgba(248,113,113,0.1));border-radius:12px;padding:14px;border:1px solid rgba(167,139,250,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🔒 Redaction Assistant</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">${d.total_redactions_suggested}</div><div style="font-size:0.65rem;color:#a0aec0;">Redactions</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.auto_redactable_count}</div><div style="font-size:0.65rem;color:#a0aec0;">Auto</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.manual_review_required}</div><div style="font-size:0.65rem;color:#a0aec0;">Manual</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.critical_redactions}</div><div style="font-size:0.65rem;color:#a0aec0;">Critical</div></div>`;
+        html += '</div>';
+        d.redaction_categories.forEach(cat => {
+            const priColor = cat.priority === 'critical' ? '#f87171' : cat.priority === 'high' ? '#fbbf24' : '#a78bfa';
+            html += `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${priColor};">`;
+            html += `<div style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${cat.icon} ${cat.category} (${cat.items.length})</div>`;
+            cat.items.forEach(item => {
+                const autoTag = item.auto_redactable ? '<span style="color:#4ade80;font-size:0.6rem;">AUTO</span>' : '<span style="color:#fbbf24;font-size:0.6rem;">REVIEW</span>';
+                html += `<div style="font-size:0.68rem;color:#a0aec0;margin-left:12px;margin-top:2px;">p.${item.page} L${item.line}: "${item.text_snippet.substring(0,40)}..." ${autoTag} (${item.confidence_pct}%)</div>`;
+            });
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">⏱️ Est. review: ${d.estimated_review_time_minutes}min | 💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Redaction analysis failed: ' + e.message); }
+};
+
+// ── Case Law Research ──
+WitnessReplayApp.prototype.runCaseLawResearch = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','📚 Find relevant case law');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/case-law-research`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(96,165,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(251,191,36,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">📚 Legal Citation Finder</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.total_citations_found}</div><div style="font-size:0.65rem;color:#a0aec0;">Citations</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.high_relevance_count}</div><div style="font-size:0.65rem;color:#a0aec0;">High Relevance</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">${d.research_completeness_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Research Done</div></div>`;
+        html += '</div>';
+        d.citations.slice(0, 5).forEach(c => {
+            const relColor = c.relevance_score >= 80 ? '#4ade80' : c.relevance_score >= 60 ? '#fbbf24' : '#a0aec0';
+            html += `<div style="margin-bottom:6px;padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${relColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;"><span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${c.case_name}</span><span style="font-size:0.68rem;color:${relColor};">${c.relevance_score}%</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#fbbf24;">${c.citation} (${c.year})</div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;margin-top:2px;">📋 ${c.key_holding.substring(0,80)}...</div>`;
+            html += `<div style="font-size:0.68rem;color:#a78bfa;">🎯 ${c.application}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.strategic_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Legal citation search failed: ' + e.message); }
+};
+
+// ── Witness Coaching Detector ──
+WitnessReplayApp.prototype.runCoachingDetector = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🎭 Detect coaching indicators');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/coaching-detector`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(251,191,36,0.1));border-radius:12px;padding:14px;border:1px solid rgba(239,68,68,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🎭 Witness Coaching Detector</div>';
+        const sevColor = d.severity === 'high' ? '#f87171' : d.severity === 'moderate' ? '#fbbf24' : '#4ade80';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:${sevColor};">${d.overall_coaching_score}</div><div style="font-size:0.65rem;color:#a0aec0;">Coaching Score</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.coaching_probability_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Probability</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.high_risk_indicators}/${d.indicators_analyzed}</div><div style="font-size:0.65rem;color:#a0aec0;">High Risk</div></div>`;
+        html += '</div>';
+        d.indicators.forEach(ind => {
+            const iColor = ind.score > 60 ? '#f87171' : ind.score > 40 ? '#fbbf24' : '#4ade80';
+            html += `<div style="margin-bottom:5px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${iColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;"><span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${ind.indicator}</span><span style="font-size:0.68rem;color:${iColor};font-weight:700;">${ind.score}/100</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;">${ind.description.substring(0,80)}</div>`;
+            html += `<div style="font-size:0.65rem;color:#a78bfa;margin-top:2px;">📌 ${ind.examples[0].substring(0,70)}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#fbbf24;margin-top:8px;">⚖️ ${d.legal_note}</div>`;
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:4px;">💡 ${d.recommendations[0]}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Coaching detection failed: ' + e.message); }
+};
+
+// ── Deposition Transcript Index ──
+WitnessReplayApp.prototype.runTranscriptIndex = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','📑 Index deposition transcript');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/transcript-index`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(139,92,246,0.1));border-radius:12px;padding:14px;border:1px solid rgba(96,165,250,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">📑 Transcript Index</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">${d.total_topics_indexed}</div><div style="font-size:0.65rem;color:#a0aec0;">Topics</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.topics_with_contradictions}</div><div style="font-size:0.65rem;color:#a0aec0;">Contradictions</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.index_completeness_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Indexed</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">${d.estimated_deposition_pages}</div><div style="font-size:0.65rem;color:#a0aec0;">Pages</div></div>`;
+        html += '</div>';
+        d.topics.slice(0, 5).forEach(t => {
+            const tColor = t.relevance >= 80 ? '#4ade80' : t.relevance >= 60 ? '#fbbf24' : '#a0aec0';
+            html += `<div style="margin-bottom:5px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:6px;border-left:3px solid ${tColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;"><span style="font-size:0.78rem;font-weight:600;color:#e2e8f0;">${t.topic}</span><span style="font-size:0.68rem;color:${tColor};">${t.relevance}%</span></div>`;
+            html += `<div style="font-size:0.68rem;color:#a0aec0;">Pages: ${t.page_refs.join(', ')} | Sentiment: ${t.sentiment}${t.contradiction_flag ? ' | ⚠️ Contradiction' : ''}</div>`;
+            html += `<div style="font-size:0.65rem;color:#a78bfa;margin-top:2px;">📌 ${t.key_excerpts[0].substring(0,75)}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">🔑 Top keywords: ${d.keyword_index.slice(0,3).map(k => k.keyword + '(' + k.frequency + ')').join(', ')} | Searchability: ${d.searchability_score}/10</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Transcript indexing failed: ' + e.message); }
+};
+
+// ── Settlement Value Calculator ──
+WitnessReplayApp.prototype.runSettlementCalculator = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','💲 Calculate settlement value');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/settlement-calculator`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(74,222,128,0.1),rgba(251,191,36,0.1));border-radius:12px;padding:14px;border:1px solid rgba(74,222,128,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">💲 Settlement Value Calculator</div>';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1rem;font-weight:700;color:#fbbf24;">$${d.settlement_range_k.low}K</div><div style="font-size:0.65rem;color:#a0aec0;">Low</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">$${d.settlement_range_k.mid}K</div><div style="font-size:0.65rem;color:#a0aec0;">Mid (Target)</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1rem;font-weight:700;color:#60a5fa;">$${d.settlement_range_k.high}K</div><div style="font-size:0.65rem;color:#a0aec0;">High</div></div>`;
+        html += '</div>';
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:8px;font-size:0.78rem;"><span style="color:#a78bfa;">Trial Value: $${d.trial_verdict_estimate_k}K</span> | <span style="color:#fbbf24;">Confidence: ${d.settlement_confidence_pct}%</span></div>`;
+        d.factors.forEach(f => {
+            const fColor = f.score >= 75 ? '#4ade80' : f.score >= 50 ? '#fbbf24' : '#f87171';
+            const barW = Math.min(f.score, 100);
+            html += `<div style="margin-bottom:4px;padding:4px 8px;background:rgba(0,0,0,0.1);border-radius:4px;">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.72rem;"><span style="color:#e2e8f0;">${f.factor}</span><span style="color:${fColor};font-weight:600;">${f.score}/100 (${f.impact_direction})</span></div>`;
+            html += `<div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:2px;"><div style="height:100%;width:${barW}%;background:${fColor};border-radius:2px;"></div></div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">🎯 Sweet spot: $${d.negotiation_zone.sweet_spot_k}K | Risk-adjusted: $${d.risk_adjusted_value_k}K</div>`;
+        html += `<div style="font-size:0.72rem;color:#fbbf24;margin-top:3px;">💡 ${d.recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Settlement calculation failed: ' + e.message); }
+};
+
+// ── Testimony Authenticity Scorer ──
+WitnessReplayApp.prototype.runAuthenticityScore = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','✅ Score testimony authenticity');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/authenticity-score`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(74,222,128,0.1),rgba(96,165,250,0.1));border-radius:12px;padding:14px;border:1px solid rgba(74,222,128,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">✅ Testimony Authenticity Analysis</div>';
+        const aColor = d.overall_authenticity_score > 70 ? '#4ade80' : d.overall_authenticity_score > 45 ? '#fbbf24' : '#f87171';
+        html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:${aColor};">${d.overall_authenticity_score}</div><div style="font-size:0.65rem;color:#a0aec0;">Auth Score</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.strong_authenticity_markers}</div><div style="font-size:0.65rem;color:#a0aec0;">Strong Markers</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">${d.fabrication_risk_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Fab. Risk</div></div>`;
+        html += '</div>';
+        html += `<div style="text-align:center;padding:6px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:8px;font-size:0.82rem;font-weight:600;color:${aColor};">Assessment: ${d.authenticity_assessment.toUpperCase()}</div>`;
+        d.dimensions.forEach(dim => {
+            const dColor = dim.score > 70 ? '#4ade80' : dim.score > 45 ? '#fbbf24' : '#f87171';
+            html += `<div style="margin-bottom:4px;padding:5px 8px;background:rgba(0,0,0,0.12);border-radius:5px;border-left:3px solid ${dColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.72rem;"><span style="color:#e2e8f0;">${dim.dimension}</span><span style="color:${dColor};font-weight:600;">${dim.score}/100</span></div>`;
+            html += `<div style="font-size:0.65rem;color:#a0aec0;margin-top:1px;">${dim.finding.substring(0,80)}</div>`;
+            html += '</div>';
+        });
+        html += `<div style="font-size:0.72rem;color:#a78bfa;margin-top:6px;">📊 CBCA: ${d.cbca_alignment}</div>`;
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:3px;">💡 ${d.expert_testimony_recommendation}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Authenticity scoring failed: ' + e.message); }
+};
+
+// ── Witness Relationship Mapper ──
+WitnessReplayApp.prototype.runWitnessRelationships = async function() {
+    if (!this.currentSession) return this.addMessage('assistant','⚠️ Start a session first.');
+    this.addMessage('user','🔗 Map witness relationships');
+    try {
+        const r = await fetch(`/api/sessions/${this.currentSession}/witness-relationships`);
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let html = '<div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(236,72,153,0.1));border-radius:12px;padding:14px;border:1px solid rgba(139,92,246,0.2);">';
+        html += '<div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;">🔗 Witness Relationship Map</div>';
+        const nColor = d.network_collusion_risk === 'high' ? '#f87171' : d.network_collusion_risk === 'moderate' ? '#fbbf24' : '#4ade80';
+        html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">${d.total_witnesses}</div><div style="font-size:0.65rem;color:#a0aec0;">Witnesses</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">${d.total_relationships}</div><div style="font-size:0.65rem;color:#a0aec0;">Links</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:${nColor};">${d.avg_collusion_risk_pct}%</div><div style="font-size:0.65rem;color:#a0aec0;">Collusion Risk</div></div>`;
+        html += `<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">${d.independence_score}%</div><div style="font-size:0.65rem;color:#a0aec0;">Independence</div></div>`;
+        html += '</div>';
+        d.relationships.forEach(rel => {
+            const rColor = rel.collusion_risk > 50 ? '#f87171' : rel.collusion_risk > 25 ? '#fbbf24' : '#4ade80';
+            html += `<div style="margin-bottom:4px;padding:5px 8px;background:rgba(0,0,0,0.12);border-radius:5px;border-left:3px solid ${rColor};">`;
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.72rem;"><span style="color:#e2e8f0;">${rel.from} ↔ ${rel.to} (${rel.type})</span><span style="color:${rColor};font-weight:600;">Risk: ${rel.collusion_risk}%</span></div>`;
+            html += `<div style="font-size:0.65rem;color:#a0aec0;">Shared elements: ${rel.shared_narrative_elements} | ${rel.detail.substring(0,65)}</div>`;
+            html += '</div>';
+        });
+        d.collusion_indicators.forEach(ci => {
+            const ciColor = ci.severity === 'high' ? '#f87171' : ci.severity === 'medium' ? '#fbbf24' : '#4ade80';
+            html += `<div style="font-size:0.68rem;padding:2px 8px;"><span style="color:${ciColor};">●</span> <span style="color:#e2e8f0;">${ci.indicator}</span>: <span style="color:#a0aec0;">${ci.detail.substring(0,60)}</span></div>`;
+        });
+        html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">💡 ${d.recommendation.substring(0,100)}</div>`;
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Relationship mapping failed: ' + e.message); }
+};
+
+// ─── IMPEACHMENT STRATEGY PLANNER ────────────────────────────────────────────
+WitnessReplayApp.prototype.runImpeachmentPlanner = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '⚔️ Building impeachment strategy plan...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/impeachment-planner');
+        const d = await r.json();
+        const sc = d.overall_impeachment_strength >= 80 ? '#f87171' : d.overall_impeachment_strength >= 65 ? '#fbbf24' : '#60a5fa';
+        let html = '<div class="impeach-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + sc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + sc + '">' + d.overall_impeachment_strength + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Impeachment Strength</div>';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:' + sc + ';text-transform:uppercase;">' + d.strength_rating + '</div></div>';
+        html += '<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">' + d.total_inconsistencies_found + '</div><div style="font-size:0.6rem;color:#a0aec0;">Inconsistencies</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">' + d.total_document_contradictions + '</div><div style="font-size:0.6rem;color:#a0aec0;">Doc Contradictions</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">' + d.bias_leverage_points.length + '</div><div style="font-size:0.6rem;color:#a0aec0;">Bias Points</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">' + d.estimated_total_time_minutes + 'm</div><div style="font-size:0.6rem;color:#a0aec0;">Est. Time</div></div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#f87171;font-size:0.8rem;margin:8px 0 4px;">⚡ Prior Inconsistent Statements</h4>';
+        d.prior_inconsistent_statements.forEach(function(w) {
+            html += '<div style="margin-bottom:6px;"><div style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">' + w.witness + ' (' + w.total_count + ' found)</div>';
+            w.inconsistencies.slice(0,2).forEach(function(inc) {
+                var isc = inc.impeachment_strength === 'devastating' ? '#f87171' : inc.impeachment_strength === 'strong' ? '#fbbf24' : '#60a5fa';
+                html += '<div style="margin:2px 0 2px 8px;padding:4px 8px;background:rgba(0,0,0,0.12);border-radius:5px;border-left:3px solid ' + isc + ';">';
+                html += '<div style="font-size:0.68rem;color:#e2e8f0;">' + inc.topic + ' <span style="color:' + isc + ';font-weight:600;">(' + inc.impeachment_strength + ')</span></div>';
+                html += '<div style="font-size:0.62rem;color:#94a3b8;">📄 ' + inc.contradicting_source + '</div>';
+                html += '<div style="font-size:0.62rem;color:#60a5fa;">💡 ' + inc.recommended_approach + '</div></div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#fbbf24;font-size:0.8rem;margin:8px 0 4px;">📋 Optimal Questioning Sequence</h4>';
+        d.optimal_questioning_sequence.slice(0,5).forEach(function(s) {
+            html += '<div style="font-size:0.7rem;padding:2px 0;color:#e2e8f0;"><span style="color:#60a5fa;font-weight:600;">' + s.order + '.</span> ' + s.phase + ' <span style="color:#94a3b8;">(' + s.estimated_duration_minutes + ' min)</span></div>';
+        });
+        html += '<div style="margin-top:6px;font-size:0.68rem;color:#a0aec0;">⚔️ ' + d.strategic_notes[0] + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Impeachment planner failed: ' + e.message); }
+};
+
+// ─── WITNESS PREP REPORT ─────────────────────────────────────────────────────
+WitnessReplayApp.prototype.runWitnessPrepReport = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '📋 Generating witness preparation report...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/witness-prep-report');
+        const d = await r.json();
+        const gc = d.readiness_grade === 'A' ? '#4ade80' : d.readiness_grade === 'B' ? '#60a5fa' : d.readiness_grade === 'C' ? '#fbbf24' : '#f87171';
+        let html = '<div class="witprep-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + gc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + gc + '">' + d.witness_readiness_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Readiness Score</div>';
+        html += '<div style="font-size:1.2rem;font-weight:700;color:' + gc + ';">Grade: ' + d.readiness_grade + '</div></div>';
+        html += '<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#f87171;">' + d.critical_vulnerabilities + '</div><div style="font-size:0.6rem;color:#a0aec0;">Critical Vulns</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">' + d.vulnerability_count + '</div><div style="font-size:0.6rem;color:#a0aec0;">Total Vulns</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#a78bfa;">' + d.total_practice_questions + '</div><div style="font-size:0.6rem;color:#a0aec0;">Practice Qs</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#60a5fa;">' + d.total_prep_hours_recommended + 'h</div><div style="font-size:0.6rem;color:#a0aec0;">Prep Hours</div></div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#f87171;font-size:0.8rem;margin:8px 0 4px;">🛡️ Vulnerability Areas</h4>';
+        d.vulnerability_areas.forEach(function(v) {
+            var vc = v.severity === 'critical' ? '#f87171' : v.severity === 'high' ? '#fbbf24' : v.severity === 'moderate' ? '#60a5fa' : '#4ade80';
+            html += '<div style="margin-bottom:4px;padding:4px 8px;background:rgba(0,0,0,0.12);border-radius:5px;border-left:3px solid ' + vc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.72rem;">';
+            html += '<span style="color:#e2e8f0;">' + v.area + '</span><span style="color:' + vc + ';font-weight:600;">' + v.severity.toUpperCase() + '</span></div>';
+            html += '<div style="font-size:0.62rem;color:#94a3b8;">💡 ' + v.mitigation_strategy + '</div></div>';
+        });
+        html += '<h4 style="color:#fbbf24;font-size:0.8rem;margin:8px 0 4px;">⚠️ Opposing Counsel Tactics</h4>';
+        d.opposing_counsel_anticipated_tactics.slice(0,4).forEach(function(t) {
+            html += '<div style="font-size:0.68rem;padding:2px 0;"><span style="color:#f87171;">⚡ ' + t.tactic + '</span> → <span style="color:#4ade80;">' + t.defense + '</span></div>';
+        });
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">🎯 Top 3 Priorities</h4>';
+        d.top_3_priorities.forEach(function(p, i) { html += '<div style="font-size:0.7rem;color:#e2e8f0;padding:1px 0;">' + (i+1) + '. ' + p + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness prep report failed: ' + e.message); }
+};
+
+// ─── MOTION IN LIMINE GENERATOR ──────────────────────────────────────────────
+WitnessReplayApp.prototype.runMotionGenerator = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '📜 Generating motions in limine...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/motion-generator');
+        const d = await r.json();
+        let html = '<div class="motion-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #a78bfa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#a78bfa;">' + d.total_motions_generated + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Motions Generated</div></div>';
+        html += '<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#4ade80;">' + d.strong_motions + '</div><div style="font-size:0.6rem;color:#a0aec0;">Strong Motions</div></div>';
+        html += '<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.2rem;font-weight:700;color:#fbbf24;">' + d.avg_success_probability + '%</div><div style="font-size:0.6rem;color:#a0aec0;">Avg Success</div></div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">📜 Generated Motions</h4>';
+        d.motions.forEach(function(m) {
+            var mc = m.strength === 'strong' ? '#4ade80' : m.strength === 'moderate' ? '#fbbf24' : '#f87171';
+            html += '<div style="margin-bottom:6px;padding:5px 8px;background:rgba(0,0,0,0.12);border-radius:5px;border-left:3px solid ' + mc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.75rem;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;">' + m.motion_type + '</span>';
+            html += '<span style="color:' + mc + ';font-weight:600;">' + m.success_probability + '% (' + m.strength + ')</span></div>';
+            html += '<div style="font-size:0.65rem;color:#60a5fa;">⚖️ ' + m.legal_basis + '</div>';
+            html += '<div style="font-size:0.62rem;color:#94a3b8;margin-top:2px;">' + m.argument_summary.substring(0,120) + '...</div>';
+            html += '<div style="font-size:0.6rem;color:#a0aec0;margin-top:2px;">📅 File by: ' + m.filing_deadline_recommendation + '</div></div>';
+        });
+        html += '<div style="margin-top:8px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:6px;">';
+        html += '<div style="font-size:0.72rem;font-weight:600;color:#a78bfa;">📋 Filing Strategy</div>';
+        html += '<div style="font-size:0.65rem;color:#e2e8f0;">' + d.filing_strategy.recommended_order + '</div>';
+        html += '<div style="font-size:0.62rem;color:#94a3b8;">' + d.filing_strategy.timing + '</div></div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Motion generator failed: ' + e.message); }
+};
+
+// ─── JURY VERDICT PREDICTOR ──────────────────────────────────────────────────
+WitnessReplayApp.prototype.runVerdictPredictor = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🔮 Predicting jury verdict...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/verdict-predictor');
+        const d = await r.json();
+        const pColor = d.plaintiff_win_probability >= 55 ? '#4ade80' : d.plaintiff_win_probability >= 45 ? '#fbbf24' : '#f87171';
+        let html = '<div class="verdict-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + pColor + ';">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:' + pColor + '">' + d.plaintiff_win_probability + '%</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Plaintiff Win</div>';
+        html += '<div style="font-size:0.7rem;color:#94a3b8;">' + d.confidence_interval + ' CI</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:#60a5fa;">' + d.defense_win_probability + '%</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Defense Win</div></div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.75rem;color:#a78bfa;font-weight:600;">Expected Value: ' + d.expected_value + '</div>';
+        html += '<div style="font-size:0.68rem;color:#4ade80;margin-top:4px;">Settlement Range: ' + d.settlement_recommendation.optimal_range + '</div>';
+        html += '<div style="font-size:0.62rem;color:#94a3b8;">Timing: ' + d.settlement_recommendation.timing + '</div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">⚖️ Verdict Factors</h4>';
+        d.verdict_factors.forEach(function(f) {
+            var fc = f.favors === 'plaintiff' ? '#4ade80' : '#60a5fa';
+            html += '<div style="margin-bottom:4px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;">';
+            html += '<span style="color:#e2e8f0;">' + f.factor + ' <span style="color:#64748b;">(' + Math.round(f.weight*100) + '%)</span></span>';
+            html += '<span style="color:' + fc + ';font-weight:600;">' + f.score + ' → ' + f.favors + '</span></div>';
+            html += '<div style="height:4px;background:#1e293b;border-radius:2px;"><div style="height:100%;width:' + f.score + '%;background:' + fc + ';border-radius:2px;"></div></div></div>';
+        });
+        html += '<h4 style="color:#fbbf24;font-size:0.8rem;margin:8px 0 4px;">🎲 Damages Scenarios</h4>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">';
+        Object.keys(d.damages_scenarios).forEach(function(k) {
+            var ds = d.damages_scenarios[k];
+            html += '<div style="padding:4px 8px;background:rgba(0,0,0,0.12);border-radius:4px;font-size:0.68rem;">';
+            html += '<span style="color:#94a3b8;">' + k.replace(/_/g,' ') + ':</span> <span style="color:#e2e8f0;font-weight:600;">' + ds.amount + '</span> <span style="color:#64748b;">(' + ds.probability + '%)</span></div>';
+        });
+        html += '</div>';
+        html += '<div style="margin-top:6px;font-size:0.65rem;color:#a0aec0;">🧠 ' + d.jury_psychology_insights[0] + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Verdict predictor failed: ' + e.message); }
+};
+
+// ─── TESTIMONY RELIABILITY INDEX ─────────────────────────────────────────────
+WitnessReplayApp.prototype.runReliabilityIndex = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '📏 Calculating testimony reliability index...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/reliability-index');
+        const d = await r.json();
+        const gc = d.reliability_grade === 'A' ? '#4ade80' : d.reliability_grade === 'B' ? '#60a5fa' : d.reliability_grade === 'C' ? '#fbbf24' : '#f87171';
+        let html = '<div class="reliability-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + gc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + gc + '">' + d.composite_reliability_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Reliability Score</div>';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:' + gc + ';">' + d.reliability_label + '</div></div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.75rem;color:#4ade80;margin-bottom:4px;">✅ Strongest: ' + d.strongest_area + '</div>';
+        html += '<div style="font-size:0.75rem;color:#f87171;margin-bottom:4px;">⚠️ Weakest: ' + d.weakest_area + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;">Benchmark: ' + d.comparison_to_benchmark.assessment + ' (P' + d.comparison_to_benchmark.percentile + ')</div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">📊 Reliability Dimensions</h4>';
+        d.dimensions.forEach(function(dim) {
+            var dc = dim.score >= 75 ? '#4ade80' : dim.score >= 55 ? '#fbbf24' : '#f87171';
+            html += '<div style="margin-bottom:6px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.72rem;margin-bottom:2px;">';
+            html += '<span style="color:#e2e8f0;">' + dim.dimension + ' <span style="color:#64748b;">(' + Math.round(dim.weight*100) + '%)</span></span>';
+            html += '<span style="color:' + dc + ';font-weight:600;">' + dim.score + '</span></div>';
+            html += '<div style="height:5px;background:#1e293b;border-radius:3px;"><div style="height:100%;width:' + dim.score + '%;background:' + dc + ';border-radius:3px;"></div></div>';
+            html += '<div style="font-size:0.6rem;color:#94a3b8;margin-top:1px;">' + dim.assessment + '</div></div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">👤 Witness Breakdowns</h4>';
+        d.witness_breakdowns.forEach(function(w) {
+            var wc = w.grade === 'A' ? '#4ade80' : w.grade === 'B' ? '#60a5fa' : w.grade === 'C' ? '#fbbf24' : '#f87171';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:2px 0;">';
+            html += '<span style="color:#e2e8f0;">' + w.witness + '</span>';
+            html += '<span><span style="color:' + wc + ';font-weight:600;">' + w.reliability_score + ' (' + w.grade + ')</span> <span style="color:#64748b;">' + w.key_concern + '</span></span></div>';
+        });
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.65rem;color:#60a5fa;padding:1px 0;">💡 ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Reliability index failed: ' + e.message); }
+};
+
+// ── Expert Witness Evaluator ─────────────────────────────────────
+WitnessReplayApp.prototype.runExpertEvaluator = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🎓 Evaluating expert witnesses...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/expert-evaluator');
+        const d = await r.json();
+        let html = '<div class="expert-eval-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #a78bfa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#a78bfa">' + d.experts_evaluated + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Experts Evaluated</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #4ade80;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#4ade80">' + d.average_expert_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Avg Score</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">👨‍🔬 Expert Evaluations</h4>';
+        d.expert_evaluations.forEach(function(ex) {
+            var ec = ex.overall_score >= 75 ? '#4ade80' : ex.overall_score >= 60 ? '#fbbf24' : '#f87171';
+            var rc = ex.recommendation === 'Retain' ? '#4ade80' : ex.recommendation === 'Strengthen' ? '#fbbf24' : '#f87171';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid ' + ec + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.78rem;">' + ex.name + ' — ' + ex.specialty + '</span>';
+            html += '<span style="color:' + ec + ';font-weight:700;font-size:0.85rem;">' + ex.overall_score + '</span></div>';
+            html += '<div style="display:flex;gap:8px;font-size:0.65rem;margin-bottom:4px;">';
+            html += '<span style="color:#94a3b8;">Quals: <b style="color:#e2e8f0">' + ex.qualifications.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Method: <b style="color:#e2e8f0">' + ex.methodology.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Persuade: <b style="color:#e2e8f0">' + ex.persuasiveness.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Vuln: <b style="color:#f87171">' + ex.cross_exam_vulnerabilities.vulnerability_score + '</b></span></div>';
+            html += '<div style="font-size:0.62rem;color:#94a3b8;">Daubert: ' + ex.methodology.daubert_compliance + '% | Jury Appeal: ' + ex.persuasiveness.jury_appeal + ' | Rec: <b style="color:' + rc + '">' + ex.recommendation + '</b></div>';
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.68rem;color:#60a5fa;margin-top:6px;">🏆 Strongest: ' + d.overall_expert_strategy.strongest_expert + ' | ⚠️ Weakest: ' + d.overall_expert_strategy.weakest_link + '</div>';
+        html += '<div style="font-size:0.62rem;color:#94a3b8;">Est. prep hours: ' + d.overall_expert_strategy.estimated_prep_hours + 'h</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Expert evaluation failed: ' + e.message); }
+};
+
+// ── Closing Argument Builder ─────────────────────────────────────
+WitnessReplayApp.prototype.runClosingArgument = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🎤 Building closing argument outline...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/closing-argument-builder');
+        const d = await r.json();
+        var sc = d.argument_strength >= 80 ? '#4ade80' : d.argument_strength >= 60 ? '#fbbf24' : '#f87171';
+        let html = '<div class="closing-arg-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + sc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + sc + '">' + d.argument_strength + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Argument Strength</div></div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.72rem;color:#e2e8f0;">⏱ Duration: <b>' + d.estimated_total_duration_min + ' min</b></div>';
+        html += '<div style="font-size:0.72rem;color:#e2e8f0;">📑 Exhibits: <b>' + d.exhibits_to_reference + '</b> | Quotes: <b>' + d.key_quotes_to_use + '</b></div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;">Jury instruction alignment: ' + d.jury_instruction_alignment + '%</div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#fbbf24;font-size:0.8rem;margin:8px 0 4px;">🎯 Core Themes</h4>';
+        d.core_themes.forEach(function(t) { html += '<div style="font-size:0.68rem;color:#e2e8f0;padding:1px 0;">• ' + t + '</div>'; });
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">📋 Argument Sections</h4>';
+        d.argument_sections.forEach(function(s) {
+            var ssc = s.strength_rating === 'Strong' ? '#4ade80' : s.strength_rating === 'Moderate' ? '#fbbf24' : '#f87171';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.68rem;padding:2px 0;">';
+            html += '<span style="color:#e2e8f0;">' + s.section + ' (' + s.estimated_duration_min + 'min)</span>';
+            html += '<span style="color:' + ssc + ';">' + s.strength_rating + '</span></div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">🎭 Emotional Arc</h4>';
+        html += '<div style="font-size:0.68rem;color:#e2e8f0;">Open: <b>' + d.emotional_arc.opening_tone + '</b> → Middle: <b>' + d.emotional_arc.middle_tone + '</b> → Close: <b>' + d.emotional_arc.closing_tone + '</b></div>';
+        html += '<h4 style="color:#f87171;font-size:0.8rem;margin:8px 0 4px;">⚔️ Rebuttal Points</h4>';
+        d.rebuttal_points.forEach(function(rp) {
+            html += '<div style="font-size:0.65rem;padding:2px 0;"><span style="color:#f87171;">❌ ' + rp.defense_argument + '</span> → <span style="color:#4ade80;">✅ ' + rp.rebuttal + '</span> <span style="color:#94a3b8;">(' + rp.effectiveness + '%)</span></div>';
+        });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Closing argument failed: ' + e.message); }
+};
+
+// ── Mediation Readiness Assessment ───────────────────────────────
+WitnessReplayApp.prototype.runMediationReadiness = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🤝 Assessing mediation readiness...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/mediation-readiness');
+        const d = await r.json();
+        var gc = d.readiness_grade === 'A' ? '#4ade80' : d.readiness_grade === 'B' ? '#60a5fa' : d.readiness_grade === 'C' ? '#fbbf24' : '#f87171';
+        let html = '<div class="mediation-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + gc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + gc + '">' + d.mediation_readiness_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Readiness (Grade ' + d.readiness_grade + ')</div></div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:' + gc + ';">' + d.recommendation + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;">Timing: ' + d.optimal_mediation_timing + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;">Mediator: ' + d.mediator_profile_suggestion.style + ' / ' + d.mediator_profile_suggestion.expertise_needed + '</div>';
+        html += '</div></div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">📊 Readiness Factors</h4>';
+        d.readiness_factors.forEach(function(f) {
+            var fc = f.score >= 70 ? '#4ade80' : f.score >= 50 ? '#fbbf24' : '#f87171';
+            html += '<div style="margin-bottom:5px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;">';
+            html += '<span style="color:#e2e8f0;">' + f.factor + '</span><span style="color:' + fc + ';font-weight:600;">' + f.score + '</span></div>';
+            html += '<div style="height:4px;background:#1e293b;border-radius:2px;"><div style="height:100%;width:' + f.score + '%;background:' + fc + ';border-radius:2px;"></div></div>';
+            html += '<div style="font-size:0.6rem;color:#94a3b8;">' + f.detail + '</div></div>';
+        });
+        html += '<h4 style="color:#4ade80;font-size:0.8rem;margin:8px 0 4px;">💰 Settlement Range</h4>';
+        html += '<div style="font-size:0.72rem;color:#e2e8f0;">$' + d.settlement_range.low.toLocaleString() + ' — <b>$' + d.settlement_range.midpoint.toLocaleString() + '</b> — $' + d.settlement_range.high.toLocaleString() + '</div>';
+        html += '<h4 style="color:#fbbf24;font-size:0.8rem;margin:8px 0 4px;">✅ Pre-Mediation Checklist</h4>';
+        d.pre_mediation_checklist.forEach(function(c) {
+            var ci = c.status === 'Done' ? '✅' : c.status === 'In Progress' ? '🔄' : '⬜';
+            html += '<div style="font-size:0.65rem;color:#e2e8f0;padding:1px 0;">' + ci + ' ' + c.item + '</div>';
+        });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Mediation readiness failed: ' + e.message); }
+};
+
+// ── Witness Sequencing Optimizer ─────────────────────────────────
+WitnessReplayApp.prototype.runWitnessSequencing = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🔢 Optimizing witness presentation order...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/witness-sequencing');
+        const d = await r.json();
+        let html = '<div class="witness-seq-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#60a5fa">' + d.total_witnesses + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Witnesses</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #fbbf24;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#fbbf24">' + d.estimated_trial_days + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Trial Days</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #4ade80;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#4ade80">' + d.confidence_in_order + '%</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Confidence</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">📋 Optimal Witness Sequence</h4>';
+        d.optimal_sequence.forEach(function(w) {
+            var roleColor = w.strategic_role === 'Opening anchor' ? '#4ade80' : w.strategic_role === 'Closing anchor' ? '#a78bfa' : '#94a3b8';
+            var riskColor = w.cross_exam_risk === 'Low' ? '#4ade80' : w.cross_exam_risk === 'Medium' ? '#fbbf24' : '#f87171';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:6px 10px;margin-bottom:5px;border-left:3px solid ' + roleColor + ';">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.72rem;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;">#' + w.presentation_order + ' ' + w.name + '</span>';
+            html += '<span style="color:' + roleColor + ';font-size:0.65rem;">' + w.strategic_role + '</span></div>';
+            html += '<div style="font-size:0.62rem;color:#94a3b8;">' + w.role + ' | Impact: ' + w.impact_score + ' | ' + w.estimated_duration_hours + 'h | Cross Risk: <span style="color:' + riskColor + '">' + w.cross_exam_risk + '</span></div>';
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:6px;">Strategy: ' + d.sequencing_strategy.approach + ' — ' + d.sequencing_strategy.rationale + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness sequencing failed: ' + e.message); }
+};
+
+// ── Discovery Deficiency Analyzer ────────────────────────────────
+WitnessReplayApp.prototype.runDiscoveryDeficiency = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🔎 Analyzing discovery deficiencies...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/discovery-deficiency');
+        const d = await r.json();
+        var gc = d.completeness_grade === 'A' ? '#4ade80' : d.completeness_grade === 'B' ? '#60a5fa' : d.completeness_grade === 'C' ? '#fbbf24' : '#f87171';
+        let html = '<div class="discovery-def-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + gc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + gc + '">' + d.overall_discovery_completeness + '%</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Completeness (Grade ' + d.completeness_grade + ')</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #f87171;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#f87171">' + d.total_gaps_identified + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Gaps Found</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">📂 Category Completeness</h4>';
+        d.categories.forEach(function(cat) {
+            var cc = cat.completeness >= 75 ? '#4ade80' : cat.completeness >= 55 ? '#fbbf24' : '#f87171';
+            html += '<div style="margin-bottom:5px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;">';
+            html += '<span style="color:#e2e8f0;">' + cat.category + '</span><span style="color:' + cc + ';font-weight:600;">' + cat.completeness + '%</span></div>';
+            html += '<div style="height:4px;background:#1e293b;border-radius:2px;"><div style="height:100%;width:' + cat.completeness + '%;background:' + cc + ';border-radius:2px;"></div></div>';
+            cat.gaps.forEach(function(g) { html += '<div style="font-size:0.6rem;color:#f87171;padding-left:8px;">⚠ ' + g + '</div>'; });
+            html += '</div>';
+        });
+        if (d.critical_gaps.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.8rem;margin:8px 0 4px;">🚨 Critical Gaps</h4>';
+            d.critical_gaps.slice(0, 5).forEach(function(cg) {
+                html += '<div style="font-size:0.65rem;padding:2px 0;"><span style="color:#fbbf24;">[' + cg.urgency + ']</span> <span style="color:#e2e8f0;">' + cg.gap + '</span> → <span style="color:#60a5fa;">' + cg.remedy + '</span> <span style="color:#94a3b8;">(impact: ' + cg.impact_on_case + ')</span></div>';
+            });
+        }
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-top:6px;">Est. cost: $' + d.estimated_cost_to_close_gaps.toLocaleString() + ' | ' + d.estimated_time_to_close_days + ' days</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Discovery deficiency failed: ' + e.message); }
+};
+
+// ── Jury Perception Analyzer ──────────────────────────────────
+WitnessReplayApp.prototype.runJuryPerception = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '🎭 Analyzing jury perception of witnesses...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/jury-perception');
+        const d = await r.json();
+        var gc = d.overall_case_perception === 'Strong' ? '#4ade80' : d.overall_case_perception === 'Moderate' ? '#fbbf24' : '#f87171';
+        let html = '<div class="jury-perception-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #a78bfa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#a78bfa">' + d.witnesses_analyzed + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Witnesses</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + gc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + gc + '">' + d.average_jury_appeal + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Avg Appeal</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:1.5rem;font-weight:700;color:' + gc + '">' + d.overall_case_perception + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Case Perception</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">🎭 Witness Perceptions</h4>';
+        d.witness_perceptions.forEach(function(wp) {
+            var ac = wp.overall_jury_appeal >= 75 ? '#4ade80' : wp.overall_jury_appeal >= 55 ? '#fbbf24' : '#f87171';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid ' + ac + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.78rem;">' + wp.witness + ' (Grade: ' + wp.appeal_grade + ')</span>';
+            html += '<span style="color:' + ac + ';font-weight:700;font-size:0.85rem;">' + wp.overall_jury_appeal + '</span></div>';
+            html += '<div style="display:flex;gap:8px;font-size:0.65rem;margin-bottom:4px;">';
+            html += '<span style="color:#94a3b8;">Language: <b style="color:#e2e8f0">' + wp.language_accessibility.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Emotion: <b style="color:#e2e8f0">' + wp.emotional_resonance.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Credibility: <b style="color:#e2e8f0">' + wp.credibility_perception.score + '</b></span>';
+            html += '<span style="color:#94a3b8;">Likability: <b style="color:#e2e8f0">' + wp.likability.score + '</b></span></div>';
+            html += '<div style="font-size:0.62rem;color:#94a3b8;">Dominant emotion: ' + wp.emotional_resonance.dominant_emotion + ' | Clarity: ' + wp.language_accessibility.clarity_rating + ' | Confidence: ' + wp.credibility_perception.confidence_level + '</div>';
+            if (wp.risk_factors.length > 0) {
+                html += '<div style="font-size:0.6rem;color:#f87171;margin-top:2px;">⚠️ ' + wp.risk_factors.join(' | ') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.68rem;color:#60a5fa;margin-top:6px;">🌟 Best: ' + d.strategic_insights.strongest_witness + ' | ⚠️ Weakest: ' + d.strategic_insights.weakest_witness + '</div>';
+        html += '<div style="font-size:0.62rem;color:#94a3b8;">Jury focus: ' + d.strategic_insights.jury_selection_focus.join(', ') + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Jury perception analysis failed: ' + e.message); }
+};
+
+// ── Legal Standard Matcher ────────────────────────────────────
+WitnessReplayApp.prototype.runLegalStandardMatcher = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '⚖️ Matching testimony to legal standards...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/legal-standard-matcher');
+        const d = await r.json();
+        var rc = d.overall_readiness === 'Trial Ready' ? '#4ade80' : d.overall_readiness === 'Needs Work' ? '#fbbf24' : '#f87171';
+        let html = '<div class="legal-standard-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#60a5fa">' + d.claims_analyzed + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Claims Analyzed</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + rc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + rc + '">' + d.overall_elements_satisfaction + '%</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Elements Met</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + rc + ';">';
+        html += '<div style="font-size:1.5rem;font-weight:700;color:' + rc + '">' + d.overall_readiness + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Readiness</div></div>';
+        html += '</div>';
+        d.claims.forEach(function(claim) {
+            var cc = claim.overall_strength === 'Strong' ? '#4ade80' : claim.overall_strength === 'Moderate' ? '#fbbf24' : '#f87171';
+            html += '<div style="background:rgba(0,0,0,0.15);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid ' + cc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.78rem;">📋 ' + claim.claim_type + '</span>';
+            html += '<span style="color:' + cc + ';font-weight:700;font-size:0.75rem;">' + claim.elements_satisfied + '/' + claim.elements_total + ' (' + claim.completion_pct + '%)</span></div>';
+            claim.elements.forEach(function(el) {
+                var sc = el.status === 'Fully Supported' ? '#4ade80' : el.status === 'Partially Supported' ? '#60a5fa' : el.status === 'Weak Evidence' ? '#fbbf24' : '#f87171';
+                var icon = el.status === 'Fully Supported' ? '✅' : el.status === 'Partially Supported' ? '🔵' : el.status === 'Weak Evidence' ? '⚠️' : '❌';
+                html += '<div style="font-size:0.62rem;padding:2px 0;display:flex;justify-content:space-between;">';
+                html += '<span style="color:#e2e8f0;">' + icon + ' ' + el.element + '</span>';
+                html += '<span style="color:' + sc + ';font-weight:600;">' + el.status + ' (' + el.confidence + '%)</span></div>';
+            });
+            html += '</div>';
+        });
+        if (d.priority_gaps.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.75rem;margin:8px 0 4px;">🚨 Priority Gaps</h4>';
+            d.priority_gaps.forEach(function(g) {
+                html += '<div style="font-size:0.62rem;color:#fbbf24;padding:1px 0;">• ' + g.claim + ' → ' + g.element + ': ' + (g.remediation || 'No remedy specified') + '</div>';
+            });
+        }
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Legal standard matching failed: ' + e.message); }
+};
+
+// ── Witness Fatigue Detector ──────────────────────────────────
+WitnessReplayApp.prototype.runWitnessFatigue = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '😴 Detecting witness fatigue patterns...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/witness-fatigue');
+        const d = await r.json();
+        var fc = d.overall_fatigue_risk === 'High' ? '#f87171' : d.overall_fatigue_risk === 'Moderate' ? '#fbbf24' : '#4ade80';
+        let html = '<div class="fatigue-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #a78bfa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#a78bfa">' + d.witnesses_analyzed + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Witnesses</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + fc + ';">';
+        html += '<div style="font-size:2rem;font-weight:700;color:' + fc + '">' + d.average_fatigue_score + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Avg Fatigue</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + fc + ';">';
+        html += '<div style="font-size:1.5rem;font-weight:700;color:' + fc + '">' + d.overall_fatigue_risk + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Risk Level</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">😴 Fatigue Analysis</h4>';
+        d.fatigue_analyses.forEach(function(fa) {
+            var wc = fa.fatigue_level === 'High' ? '#f87171' : fa.fatigue_level === 'Moderate' ? '#fbbf24' : '#4ade80';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid ' + wc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.78rem;">' + fa.witness + ' (' + fa.fatigue_level + ')</span>';
+            html += '<span style="color:' + wc + ';font-weight:700;font-size:0.85rem;">' + fa.fatigue_score + '</span></div>';
+            html += '<div style="display:flex;gap:8px;font-size:0.65rem;margin-bottom:4px;">';
+            html += '<span style="color:#94a3b8;">Onset: <b style="color:#e2e8f0">min ' + fa.estimated_onset_minute + '</b></span>';
+            html += '<span style="color:#94a3b8;">Duration: <b style="color:#e2e8f0">' + fa.total_testimony_duration_min + 'min</b></span>';
+            html += '<span style="color:#94a3b8;">Detail drop: <b style="color:#f87171">' + fa.indicators.detail_degradation + '%</b></span>';
+            html += '<span style="color:#94a3b8;">Hedging: <b style="color:#fbbf24">+' + fa.indicators.hedging_increase_pct + '%</b></span></div>';
+            html += '<div style="font-size:0.6rem;color:#94a3b8;margin-bottom:2px;">Hedging: "' + fa.hedging_phrases_detected.slice(0, 3).join('", "') + '"</div>';
+            html += '<div style="font-size:0.6rem;color:#60a5fa;">' + fa.recommendations.slice(0, 2).join(' • ') + '</div>';
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.62rem;color:#94a3b8;margin-top:4px;">' + d.scheduling_suggestions.join(' | ') + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Fatigue detection failed: ' + e.message); }
+};
+
+// ── Deposition Cost Estimator ─────────────────────────────────
+WitnessReplayApp.prototype.runDepositionCostEstimator = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '💰 Estimating deposition costs...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/deposition-cost-estimator');
+        const d = await r.json();
+        let html = '<div class="depo-cost-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #4ade80;">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:#4ade80">$' + d.total_estimated_cost.toLocaleString() + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Total Est. Cost</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:#60a5fa">$' + d.amount_spent.toLocaleString() + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Spent</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #fbbf24;">';
+        html += '<div style="font-size:1.8rem;font-weight:700;color:#fbbf24">$' + d.remaining_budget_needed.toLocaleString() + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Remaining</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#a78bfa;font-size:0.8rem;margin:8px 0 4px;">📋 Depositions (' + d.completed + '/' + d.total_depositions + ' complete)</h4>';
+        d.depositions.forEach(function(dep) {
+            var sc = dep.status === 'Completed' ? '#4ade80' : dep.status === 'In Progress' ? '#60a5fa' : dep.status === 'Scheduled' ? '#fbbf24' : '#94a3b8';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:6px 10px;margin-bottom:6px;border-left:3px solid ' + sc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.72rem;">' + dep.deposition + ' — ' + dep.witness_type + '</span>';
+            html += '<span style="color:#4ade80;font-weight:700;font-size:0.75rem;">$' + dep.total_cost.toLocaleString() + '</span></div>';
+            html += '<div style="display:flex;gap:6px;font-size:0.6rem;">';
+            html += '<span style="color:' + sc + ';">● ' + dep.status + '</span>';
+            html += '<span style="color:#94a3b8;">' + dep.estimated_hours + 'h</span>';
+            html += '<span style="color:#94a3b8;">' + dep.page_estimate + ' pages</span>';
+            html += '<span style="color:#94a3b8;">Complexity: ' + dep.complexity + '</span></div>';
+            html += '</div>';
+        });
+        if (d.savings_opportunities.length > 0) {
+            html += '<h4 style="color:#fbbf24;font-size:0.75rem;margin:8px 0 4px;">💡 Savings Opportunities</h4>';
+            d.savings_opportunities.forEach(function(s) {
+                html += '<div style="font-size:0.6rem;color:#fbbf24;padding:1px 0;">• ' + s + '</div>';
+            });
+        }
+        html += '<div style="font-size:0.62rem;color:#94a3b8;margin-top:4px;">Avg cost/depo: $' + d.cost_summary.avg_cost_per_deposition.toLocaleString() + ' | Highest: ' + d.cost_summary.highest_cost_depo + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Cost estimation failed: ' + e.message); }
+};
+
+// ── Testimony Anchor Points ───────────────────────────────────
+WitnessReplayApp.prototype.runTestimonyAnchors = async function() {
+    const sid = this.currentSessionId;
+    if (!sid) { this.addMessage('assistant','⚠️ No active session.'); return; }
+    this.addMessage('assistant', '⚓ Extracting testimony anchor points...');
+    try {
+        const r = await fetch('/api/sessions/' + sid + '/testimony-anchors');
+        const d = await r.json();
+        var fc = d.narrative_foundation === 'Solid' ? '#4ade80' : d.narrative_foundation === 'Adequate' ? '#fbbf24' : '#f87171';
+        let html = '<div class="anchors-result">';
+        html += '<div style="display:flex;gap:12px;margin-bottom:12px;">';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #60a5fa;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#60a5fa">' + d.total_anchors + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Total Anchors</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid #4ade80;">';
+        html += '<div style="font-size:2rem;font-weight:700;color:#4ade80">' + d.undisputed_count + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Undisputed</div></div>';
+        html += '<div style="text-align:center;padding:12px 18px;background:rgba(0,0,0,0.25);border-radius:10px;border-top:3px solid ' + fc + ';">';
+        html += '<div style="font-size:1.5rem;font-weight:700;color:' + fc + '">' + d.narrative_foundation + '</div>';
+        html += '<div style="font-size:0.65rem;color:#a0aec0;">Foundation</div></div>';
+        html += '</div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.8rem;margin:8px 0 4px;">⚓ Top Anchor Points</h4>';
+        d.top_anchors.forEach(function(a) {
+            var ac = a.reliability === 'Undisputed' ? '#4ade80' : a.reliability === 'Strong' ? '#60a5fa' : a.reliability === 'Moderate' ? '#fbbf24' : '#f87171';
+            html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:6px;border-left:3px solid ' + ac + ';">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">';
+            html += '<span style="color:#e2e8f0;font-size:0.7rem;">' + a.anchor_text + '</span>';
+            html += '<span style="color:' + ac + ';font-weight:700;font-size:0.75rem;">' + a.strength + '</span></div>';
+            html += '<div style="display:flex;gap:8px;font-size:0.6rem;">';
+            html += '<span style="color:' + ac + ';">' + a.reliability + '</span>';
+            html += '<span style="color:#94a3b8;">Category: ' + a.category + '</span>';
+            html += '<span style="color:#94a3b8;">Sources: ' + a.corroborating_sources + '</span>';
+            html += '<span style="color:#94a3b8;">Importance: ' + a.narrative_importance + '</span></div>';
+            html += '</div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.75rem;margin:8px 0 4px;">🔄 Pivot Points</h4>';
+        d.pivot_points.forEach(function(p) {
+            var pc = p.impact_level === 'Case-Defining' ? '#f87171' : p.impact_level === 'Major' ? '#fbbf24' : '#60a5fa';
+            html += '<div style="font-size:0.62rem;padding:2px 0;color:#e2e8f0;">• <b style="color:' + pc + '">[' + p.impact_level + ']</b> ' + p.description + ' <span style="color:#94a3b8;">(supported by ' + p.supported_by + ' sources, vuln: ' + p.vulnerability + ')</span></div>';
+        });
+        html += '<div style="font-size:0.62rem;color:#94a3b8;margin-top:4px;">Strongest category: ' + d.narrative_strategy.strongest_category + ' | Build from: ' + d.narrative_strategy.build_from.substring(0, 60) + '...</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Anchor extraction failed: ' + e.message); }
+};
+
+// ── Privilege Log Generator ─────────────────────────────────────
+WitnessReplayApp.prototype.runPrivilegeLogGenerator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🔒 Generate Privilege Log');
+    this.addMessage('assistant', '🔒 Generating privilege log...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/privilege-log-generator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">🔒 Privilege Log Generator</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Total Items: <b>' + d.total_privileged_items + '</b></span>';
+        html += '<span style="color:#34d399;">Strong: <b>' + d.strong_privilege_count + '</b></span>';
+        html += '<span style="color:#f87171;">High Risk: <b>' + d.high_waiver_risk_count + '</b></span>';
+        html += '<span style="color:#fbbf24;">Avg Confidence: <b>' + d.avg_privilege_confidence + '%</b></span></div>';
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">📋 Privilege Log Entries</h4>';
+        d.privilege_log_entries.slice(0, 8).forEach(function(e) {
+            var sc = e.privilege_strength === 'Strong' ? '#34d399' : e.privilege_strength === 'Moderate' ? '#fbbf24' : '#f87171';
+            var wc = e.waiver_risk === 'High' ? '#f87171' : e.waiver_risk === 'Moderate' ? '#fbbf24' : '#34d399';
+            html += '<div style="border-left:2px solid ' + sc + ';padding:2px 0 2px 6px;margin:3px 0;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.68rem;">';
+            html += '<span style="color:#e2e8f0;"><b>' + e.document_reference + '</b> — ' + e.privilege_type + '</span>';
+            html += '<span style="color:' + sc + ';font-weight:700;">' + e.confidence + '%</span></div>';
+            html += '<div style="font-size:0.6rem;color:#94a3b8;">' + e.description + '</div>';
+            html += '<div style="display:flex;gap:8px;font-size:0.58rem;margin-top:1px;">';
+            html += '<span style="color:' + sc + ';">Strength: ' + e.privilege_strength + '</span>';
+            html += '<span style="color:' + wc + ';">Waiver Risk: ' + e.waiver_risk + '</span>';
+            html += '<span style="color:#94a3b8;">Action: ' + e.recommended_action + '</span></div></div>';
+        });
+        if (d.critical_waiver_alerts && d.critical_waiver_alerts.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">⚠️ Waiver Alerts</h4>';
+            d.critical_waiver_alerts.forEach(function(a) {
+                html += '<div style="font-size:0.6rem;color:#fbbf24;padding:1px 0;">• Entry #' + a.entry_number + ' (' + a.privilege_type + ') — Risk: ' + a.waiver_risk + '</div>';
+            });
+        }
+        html += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(r) { html += '<div style="font-size:0.6rem;color:#94a3b8;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Privilege log generation failed: ' + e.message); }
+};
+
+// ── Trial Exhibit Planner ───────────────────────────────────────
+WitnessReplayApp.prototype.runTrialExhibitPlanner = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '📎 Plan Trial Exhibits');
+    this.addMessage('assistant', '📎 Planning trial exhibit strategy...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/trial-exhibit-planner');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">📎 Trial Exhibit Planner</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Total Exhibits: <b>' + d.total_exhibits + '</b></span>';
+        html += '<span style="color:#34d399;">High Relevance: <b>' + d.high_relevance_count + '</b></span>';
+        html += '<span style="color:#fbbf24;">Avg Admissibility: <b>' + d.avg_admissibility_confidence + '%</b></span></div>';
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">📋 Recommended Introduction Order</h4>';
+        d.recommended_introduction_order.slice(0, 10).forEach(function(o) {
+            var pc = o.phase === 'Opening' ? '#f87171' : o.phase === 'Closing' ? '#a78bfa' : '#60a5fa';
+            html += '<div style="display:flex;gap:6px;font-size:0.62rem;padding:2px 0;">';
+            html += '<span style="color:#94a3b8;min-width:18px;">#' + o.order + '</span>';
+            html += '<span style="color:#e2e8f0;flex:1;"><b>' + o.exhibit_id + '</b> — ' + o.title + '</span>';
+            html += '<span style="color:' + pc + ';font-size:0.58rem;">' + o.phase + '</span></div>';
+        });
+        html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">⚠️ High Objection Risk</h4>';
+        if (d.exhibit_summary.high_objection_risk.length > 0) {
+            html += '<div style="font-size:0.6rem;color:#fbbf24;">' + d.exhibit_summary.high_objection_risk.join(', ') + '</div>';
+        } else { html += '<div style="font-size:0.6rem;color:#34d399;">No high-risk exhibits identified</div>'; }
+        html += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">✅ Preparation Checklist</h4>';
+        d.preparation_checklist.forEach(function(c) { html += '<div style="font-size:0.6rem;color:#94a3b8;padding:1px 0;">☐ ' + c + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Exhibit planning failed: ' + e.message); }
+};
+
+// ── Opposing Counsel Profiler ───────────────────────────────────
+WitnessReplayApp.prototype.runOpposingCounselProfiler = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🕵️ Profile Opposing Counsel');
+    this.addMessage('assistant', '🕵️ Analyzing opposing counsel patterns...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/opposing-counsel-profiler');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">🕵️ Opposing Counsel Profiler</h3>';
+        var tc = d.counsel_profile_summary.threat_level === 'High' ? '#f87171' : d.counsel_profile_summary.threat_level === 'Moderate' ? '#fbbf24' : '#34d399';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:' + tc + ';">Threat Level: <b>' + d.counsel_profile_summary.threat_level + '</b></span>';
+        html += '<span style="color:#f87171;">Aggression: <b>' + d.counsel_profile_summary.overall_aggression + '%</b></span>';
+        html += '<span style="color:#60a5fa;">Predictability: <b>' + d.counsel_profile_summary.predictability + '</b></span></div>';
+        html += '<div style="font-size:0.65rem;color:#fbbf24;margin-bottom:6px;"><b>Strategy:</b> ' + d.counsel_profile_summary.primary_strategy + '</div>';
+        html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">⚔️ Identified Tactics</h4>';
+        html += '<table style="width:100%;font-size:0.6rem;border-collapse:collapse;">';
+        html += '<tr style="color:#94a3b8;"><th style="text-align:left;padding:1px 4px;">Tactic</th><th>Freq</th><th>Effect</th><th>Timing</th></tr>';
+        d.identified_tactics.forEach(function(t) {
+            var ec = t.effectiveness_score >= 70 ? '#f87171' : t.effectiveness_score >= 50 ? '#fbbf24' : '#34d399';
+            html += '<tr><td style="color:#e2e8f0;padding:1px 4px;">' + t.tactic + '</td>';
+            html += '<td style="text-align:center;color:#60a5fa;">' + t.frequency_pct + '%</td>';
+            html += '<td style="text-align:center;color:' + ec + ';">' + t.effectiveness_score + '</td>';
+            html += '<td style="text-align:center;color:#94a3b8;font-size:0.55rem;">' + t.typical_timing + '</td></tr>';
+        });
+        html += '</table>';
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">🛡️ Counter Playbook</h4>';
+        d.counter_playbook.preparation_focus.forEach(function(p) { html += '<div style="font-size:0.6rem;color:#94a3b8;padding:1px 0;">• ' + p + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Counsel profiling failed: ' + e.message); }
+};
+
+// ── Witness Rehabilitation Planner ──────────────────────────────
+WitnessReplayApp.prototype.runWitnessRehabilitation = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🩹 Plan Witness Rehabilitation');
+    this.addMessage('assistant', '🩹 Planning redirect rehabilitation strategies...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-rehabilitation');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">🩹 Witness Rehabilitation Planner</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Witnesses: <b>' + d.total_witnesses_needing_rehab + '</b></span>';
+        var rc = d.avg_credibility_recovery >= 20 ? '#34d399' : d.avg_credibility_recovery >= 12 ? '#fbbf24' : '#f87171';
+        html += '<span style="color:' + rc + ';">Avg Recovery: <b>+' + d.avg_credibility_recovery + ' pts</b></span>';
+        html += '<span style="color:#fbbf24;">Success: <b>' + d.overall_rehabilitation_success + '</b></span></div>';
+        d.rehabilitation_plans.forEach(function(plan) {
+            var bc = plan.projected_credibility_after >= 70 ? '#34d399' : plan.projected_credibility_after >= 50 ? '#fbbf24' : '#f87171';
+            html += '<div style="border-left:2px solid ' + bc + ';padding:2px 0 2px 6px;margin:4px 0;">';
+            html += '<div style="color:#e2e8f0;font-size:0.7rem;"><b>' + plan.witness + '</b> — Credibility: ' + plan.credibility_before_rehab + '% → <span style="color:' + bc + ';">' + plan.projected_credibility_after + '%</span> <span style="color:#94a3b8;">(' + plan.redirect_priority + ')</span></div>';
+            plan.rehabilitation_strategies.slice(0, 2).forEach(function(s) {
+                html += '<div style="font-size:0.58rem;color:#94a3b8;padding:1px 0 1px 8px;">↳ <span style="color:#fbbf24;">' + s.damage_area.substring(0, 50) + '</span> → ' + s.rehabilitation_approach.substring(0, 60) + ' <span style="color:#34d399;">(' + s.estimated_effectiveness + '% eff)</span></div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">📝 Redirect Tips</h4>';
+        d.general_redirect_tips.forEach(function(t) { html += '<div style="font-size:0.6rem;color:#94a3b8;padding:1px 0;">• ' + t + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Rehabilitation planning failed: ' + e.message); }
+};
+
+// ── Damages Narrative Builder ───────────────────────────────────
+WitnessReplayApp.prototype.runDamagesNarrative = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '💵 Build Damages Narrative');
+    this.addMessage('assistant', '💵 Constructing damages narrative...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/damages-narrative');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">💵 Damages Narrative Builder</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#34d399;">Est Total: <b>$' + d.total_estimated_damages.toLocaleString() + '</b></span>';
+        html += '<span style="color:#60a5fa;">Range: <b>$' + d.damages_range.low.toLocaleString() + ' – $' + d.damages_range.high.toLocaleString() + '</b></span>';
+        html += '<span style="color:#fbbf24;">Narrative Strength: <b>' + d.narrative_strength + '%</b></span></div>';
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">📊 Damage Categories</h4>';
+        d.damage_categories.forEach(function(cat) {
+            html += '<div style="margin:3px 0;"><span style="color:#e2e8f0;font-size:0.68rem;font-weight:700;">' + cat.category + '</span>';
+            html += ' <span style="color:#60a5fa;font-size:0.6rem;">($' + cat.total_range.low.toLocaleString() + ' – $' + cat.total_range.high.toLocaleString() + ')</span></div>';
+            cat.elements.slice(0, 3).forEach(function(el) {
+                var sc = el.testimony_support_strength >= 75 ? '#34d399' : el.testimony_support_strength >= 55 ? '#fbbf24' : '#f87171';
+                html += '<div style="font-size:0.58rem;color:#94a3b8;padding:1px 0 1px 8px;">• ' + el.element + ' ($' + el.estimated_range.low.toLocaleString() + '–$' + el.estimated_range.high.toLocaleString() + ') <span style="color:' + sc + ';">Support: ' + el.testimony_support_strength + '%</span></div>';
+            });
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.72rem;margin:6px 0 3px;">📖 Narrative Arc</h4>';
+        d.narrative_arc.forEach(function(s) {
+            html += '<div style="font-size:0.6rem;padding:1px 0;"><span style="color:#fbbf24;">' + s.section + ':</span> <span style="color:#94a3b8;">' + s.purpose + '</span></div>';
+        });
+        html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">🎯 Compelling Themes</h4>';
+        d.compelling_themes.forEach(function(t) { html += '<div style="font-size:0.6rem;color:#e2e8f0;padding:1px 0;">★ ' + t + '</div>'; });
+        html += '<div style="font-size:0.6rem;color:#94a3b8;margin-top:4px;">Jury: Sympathy ' + d.jury_impact_factors.sympathy_level + '% | Anger ' + d.jury_impact_factors.anger_at_defendant + '% | Causation ' + d.jury_impact_factors.clarity_of_causation + '%</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Damages narrative failed: ' + e.message); }
+};
+
+// ── Settlement Value Calculator ─────────────────────────────────
+WitnessReplayApp.prototype.runSettlementValueCalculator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🏦 Calculate Settlement Value');
+    this.addMessage('assistant', '🏦 Calculating settlement range...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/settlement-value-calculator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#34d399;margin:0 0 6px;">🏦 Settlement Value Calculator</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#34d399;">Low: <b>$' + d.settlement_range.low.toLocaleString() + '</b></span>';
+        html += '<span style="color:#fbbf24;">Mid: <b>$' + d.settlement_range.mid.toLocaleString() + '</b></span>';
+        html += '<span style="color:#60a5fa;">High: <b>$' + d.settlement_range.high.toLocaleString() + '</b></span>';
+        html += '<span style="color:#a78bfa;">Confidence: <b>' + d.confidence_score + '%</b></span></div>';
+        html += '<div style="font-size:0.68rem;color:#e2e8f0;margin-bottom:4px;">📌 Recommended Demand: <b style="color:#34d399;">$' + d.recommended_demand.toLocaleString() + '</b> | ' + d.settlement_vs_trial + '</div>';
+        html += '<div style="font-size:0.68rem;color:#94a3b8;margin-bottom:4px;">Liability: <b style="color:#60a5fa;">' + d.liability_assessment.grade + ' (' + d.liability_assessment.strength + '%)</b> | Comp. Fault Risk: <b style="color:#f87171;">' + d.liability_assessment.comparative_fault_risk + '%</b></div>';
+        html += '<h4 style="color:#fbbf24;font-size:0.72rem;margin:6px 0 3px;">📊 Key Factors</h4>';
+        d.key_factors.forEach(function(f) {
+            var fc = f.score >= 60 ? '#34d399' : '#f87171';
+            html += '<div style="font-size:0.6rem;padding:1px 0;"><span style="color:' + fc + ';">' + (f.impact === 'positive' ? '✓' : '✗') + ' ' + f.factor + ': ' + f.score + '%</span> <span style="color:#94a3b8;">— ' + f.note + '</span></div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.72rem;margin:6px 0 3px;">🎯 Negotiation Strategy</h4>';
+        d.negotiation_strategy.forEach(function(n) {
+            var amt = n.recommended_amount || n.expected_amount || n.target_amount || n.minimum_amount;
+            html += '<div style="font-size:0.6rem;padding:1px 0;"><span style="color:#e2e8f0;">' + n.phase + ':</span> <span style="color:#fbbf24;">$' + amt.toLocaleString() + '</span> <span style="color:#94a3b8;">— ' + n.rationale + '</span></div>';
+        });
+        html += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">⚖️ Trial Verdict Estimate</h4>';
+        html += '<div style="font-size:0.6rem;color:#94a3b8;">Range: $' + d.trial_verdict_estimate.low.toLocaleString() + ' – $' + d.trial_verdict_estimate.high.toLocaleString() + ' | Win Probability: ' + d.trial_verdict_estimate.probability_of_win + '%</div>';
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">💪 Strengths</h4>';
+        d.strengths.forEach(function(s) { html += '<div style="font-size:0.6rem;color:#34d399;padding:1px 0;">✓ ' + s + '</div>'; });
+        html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">⚠️ Weaknesses</h4>';
+        d.weaknesses.forEach(function(w) { html += '<div style="font-size:0.6rem;color:#f87171;padding:1px 0;">✗ ' + w + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Settlement calculator failed: ' + e.message); }
+};
+
+// ── Witness Coaching Detector ───────────────────────────────────
+WitnessReplayApp.prototype.runWitnessCoachingDetector = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🎭 Detect Witness Coaching');
+    this.addMessage('assistant', '🎭 Scanning for coaching indicators...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-coaching-detector');
+        var d = await r.json();
+        var rc = d.overall_risk === 'High' ? '#f87171' : d.overall_risk === 'Medium' ? '#fbbf24' : '#34d399';
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#a78bfa;margin:0 0 6px;">🎭 Witness Coaching Detector</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Witnesses: <b>' + d.witnesses_analyzed + '</b></span>';
+        html += '<span style="color:' + rc + ';">Overall Risk: <b>' + d.overall_risk + '</b></span>';
+        html += '<span style="color:#fbbf24;">Avg Coaching Prob: <b>' + d.average_coaching_probability + '%</b></span></div>';
+        d.coaching_analyses.forEach(function(a) {
+            var ac = a.risk_level === 'High' ? '#f87171' : a.risk_level === 'Medium' ? '#fbbf24' : '#34d399';
+            html += '<div style="margin:4px 0;border-left:2px solid ' + ac + ';padding-left:6px;">';
+            html += '<div style="font-size:0.68rem;"><span style="color:#e2e8f0;font-weight:700;">' + a.witness + '</span> <span style="color:' + ac + ';">(' + a.coaching_probability + '% — ' + a.risk_level + ')</span></div>';
+            html += '<div style="font-size:0.58rem;color:#94a3b8;">Scripted: ' + a.rehearsal_markers.scripted_language_score + '% | Consistency: ' + a.rehearsal_markers.consistency_anomaly_score + '% | Spontaneity: ' + a.rehearsal_markers.spontaneity_deficit_score + '%</div>';
+            a.detected_indicators.slice(0, 3).forEach(function(ind) {
+                html += '<div style="font-size:0.56rem;color:#fbbf24;padding:1px 0 1px 8px;">⚠ ' + ind + '</div>';
+            });
+            html += '</div>';
+        });
+        if (d.cross_witness_coordination_flags.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">🔗 Cross-Witness Coordination</h4>';
+            d.cross_witness_coordination_flags.forEach(function(f) {
+                html += '<div style="font-size:0.58rem;color:#fbbf24;padding:1px 0;">• ' + f.witnesses.join(' ↔ ') + ': ' + f.flag + ' (' + f.confidence + '%)</div>';
+            });
+        }
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">🎯 Impeachment Opportunities</h4>';
+        d.impeachment_opportunities.forEach(function(o) { html += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">★ ' + o + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Coaching detection failed: ' + e.message); }
+};
+
+// ── Case Theory Validator ───────────────────────────────────────
+WitnessReplayApp.prototype.runCaseTheoryValidator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '🧪 Validate Case Theory');
+    this.addMessage('assistant', '🧪 Testing case theories against evidence...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/case-theory-validator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#60a5fa;margin:0 0 6px;">🧪 Case Theory Validator</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Theories Tested: <b>' + d.theories_tested + '</b></span>';
+        html += '<span style="color:#34d399;">Recommended: <b>' + d.recommended_theory + '</b></span>';
+        html += '<span style="color:#fbbf24;">Strength: <b>' + d.recommended_theory_strength + '%</b></span></div>';
+        d.theories.forEach(function(t) {
+            var vc = t.viability === 'Strong' ? '#34d399' : t.viability === 'Viable' ? '#fbbf24' : '#f87171';
+            html += '<div style="margin:4px 0;border-left:2px solid ' + vc + ';padding-left:6px;">';
+            html += '<div style="font-size:0.68rem;"><span style="color:#e2e8f0;font-weight:700;">' + t.theory + '</span> <span style="color:' + vc + ';">(' + t.overall_strength + '% — ' + t.viability + ')</span></div>';
+            html += '<div style="font-size:0.58rem;color:#94a3b8;">Elements: ' + t.elements_proven + '/' + t.elements_analyzed + ' proven</div>';
+            t.element_analysis.forEach(function(e) {
+                var ec = e.support_score >= 75 ? '#34d399' : e.support_score >= 50 ? '#fbbf24' : '#f87171';
+                html += '<div style="font-size:0.56rem;padding:1px 0 1px 8px;"><span style="color:' + ec + ';">' + e.status + '</span> <span style="color:#94a3b8;">' + e.element + ' (' + e.support_score + '%)</span></div>';
+            });
+            if (t.critical_gaps.length > 0) {
+                html += '<div style="font-size:0.56rem;color:#f87171;padding:1px 0 1px 8px;">⚠ Gaps: ' + t.critical_gaps.join(', ') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.72rem;margin:6px 0 3px;">📌 Evidence Priorities</h4>';
+        d.evidence_priorities.forEach(function(p) { html += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">→ ' + p + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Case theory validation failed: ' + e.message); }
+};
+
+// ── Deposition Summary Generator ────────────────────────────────
+WitnessReplayApp.prototype.runDepositionSummaryGenerator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '📋 Generate Deposition Summary');
+    this.addMessage('assistant', '📋 Generating executive deposition summaries...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/deposition-summary-generator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#fbbf24;margin:0 0 6px;">📋 Deposition Summary Generator</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Depositions: <b>' + d.total_depositions + '</b></span>';
+        html += '<span style="color:#34d399;">Total Pages: <b>' + d.total_transcript_pages + '</b></span>';
+        html += '<span style="color:#fbbf24;">Avg Credibility: <b>' + d.average_credibility + '%</b></span></div>';
+        html += '<div style="font-size:0.62rem;color:#94a3b8;margin-bottom:4px;font-style:italic;">' + d.executive_summary + '</div>';
+        d.deposition_summaries.forEach(function(s) {
+            var gc = s.credibility_grade === 'A' ? '#34d399' : s.credibility_grade === 'B' ? '#60a5fa' : s.credibility_grade === 'C' ? '#fbbf24' : '#f87171';
+            html += '<div style="margin:4px 0;border-left:2px solid ' + gc + ';padding-left:6px;">';
+            html += '<div style="font-size:0.68rem;"><span style="color:#e2e8f0;font-weight:700;">' + s.deponent + '</span> <span style="color:' + gc + ';">Grade ' + s.credibility_grade + ' (' + s.credibility_score + '%)</span>';
+            html += ' <span style="color:#94a3b8;">' + s.duration_minutes + 'min, ' + s.transcript_pages + 'pp</span></div>';
+            html += '<div style="font-size:0.56rem;color:#34d399;padding:1px 0 1px 8px;">Key admissions:</div>';
+            s.key_admissions.forEach(function(a) { html += '<div style="font-size:0.54rem;color:#e2e8f0;padding:0 0 0 16px;">• ' + a + '</div>'; });
+            s.critical_quotes.slice(0, 1).forEach(function(q) { html += '<div style="font-size:0.54rem;color:#fbbf24;padding:1px 0 0 8px;">"' + q.quote.replace(/'/g, '') + '" (p.' + q.page + ')</div>'; });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#a78bfa;font-size:0.72rem;margin:6px 0 3px;">🔗 Cross-Deposition Themes</h4>';
+        d.cross_deposition_themes.forEach(function(t) { html += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">• ' + t + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Deposition summary failed: ' + e.message); }
+};
+
+// ── Cross-Examination Planner ───────────────────────────────────
+WitnessReplayApp.prototype.runCrossExaminationPlanner = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or select a session first.'); return; }
+    this.addMessage('user', '⚔️ Plan Cross-Examination');
+    this.addMessage('assistant', '⚔️ Generating cross-examination plans...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/cross-examination-planner');
+        var d = await r.json();
+        var html = '<div style="font-size:0.75rem;"><h3 style="color:#f87171;margin:0 0 6px;">⚔️ Cross-Examination Planner</h3>';
+        html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
+        html += '<span style="color:#60a5fa;">Witnesses: <b>' + d.witnesses_planned + '</b></span>';
+        html += '<span style="color:#f87171;">Most Vulnerable: <b>' + d.highest_vulnerability_witness + '</b></span>';
+        html += '<span style="color:#fbbf24;">Question Lines: <b>' + d.total_question_lines + '</b></span></div>';
+        html += '<div style="font-size:0.62rem;color:#a78bfa;margin-bottom:4px;">Strategy: ' + d.overall_strategy + '</div>';
+        d.cross_examination_plans.forEach(function(p) {
+            var vc = p.vulnerability_score >= 65 ? '#f87171' : p.vulnerability_score >= 40 ? '#fbbf24' : '#34d399';
+            html += '<div style="margin:4px 0;border-left:2px solid ' + vc + ';padding-left:6px;">';
+            html += '<div style="font-size:0.68rem;"><span style="color:#e2e8f0;font-weight:700;">' + p.witness + '</span> <span style="color:' + vc + ';">Vulnerability: ' + p.vulnerability_score + '% (' + p.risk_level + ')</span></div>';
+            html += '<div style="font-size:0.56rem;color:#a78bfa;padding:1px 0 1px 8px;">Opening: ' + p.opening_strategy + '</div>';
+            p.examination_lines.slice(0, 2).forEach(function(line) {
+                html += '<div style="font-size:0.56rem;color:#fbbf24;padding:1px 0 1px 8px;">' + line.topic + ' (' + line.objective + ')</div>';
+                line.questions.slice(0, 2).forEach(function(q) {
+                    html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:0 0 0 16px;">❓ ' + q + '</div>';
+                });
+            });
+            html += '<div style="font-size:0.54rem;color:#94a3b8;padding:2px 0 0 8px;">Exhibits: ' + p.key_exhibits_needed.join(', ') + '</div>';
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">✅ Prep Checklist</h4>';
+        d.preparation_checklist.forEach(function(c) { html += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">☐ ' + c + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Cross-examination planning failed: ' + e.message); }
+};
+
+// ── Testimony Redline Comparison ──────────────────────────────
+WitnessReplayApp.prototype.runTestimonyRedlineComparison = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','📝 Run Testimony Redline Comparison');
+    this.addMessage('assistant','📝 Comparing testimony versions with tracked changes...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/testimony-redline-comparison', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">📝 Testimony Redline Comparison</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.total_changes_detected + '</div><div style="color:#94a3b8;font-size:0.55rem;">Changes Found</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.critical_discrepancies + '</div><div style="color:#94a3b8;font-size:0.55rem;">Critical</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.average_agreement_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Agreement</div></div></div>';
+        html += '<div style="color:#e2e8f0;font-size:0.6rem;margin-bottom:6px;">Consistency: <strong style="color:' + (d.overall_consistency === 'Strong' ? '#34d399' : d.overall_consistency === 'Moderate' ? '#f59e0b' : '#f87171') + ';">' + d.overall_consistency + '</strong></div>';
+        d.comparison_pairs.forEach(function(p) {
+            var sc = p.significance === 'Critical' ? '#f87171' : p.significance === 'High' ? '#f59e0b' : '#34d399';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + p.topic + ' <span style="color:' + sc + ';font-size:0.5rem;">(' + p.significance + ')</span></div>';
+            html += '<div style="font-size:0.55rem;color:#94a3b8;">' + p.witness_a + ' vs ' + p.witness_b + ' — <span style="color:#34d399;">+' + p.additions + '</span> <span style="color:#f87171;">-' + p.deletions + '</span> <span style="color:#f59e0b;">~' + p.modifications + '</span></div>';
+            p.key_differences.forEach(function(diff) { html += '<div style="font-size:0.52rem;color:#cbd5e1;padding-left:8px;">• ' + diff + '</div>'; });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(r) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Redline comparison failed: ' + e.message); }
+};
+
+// ── Deposition Objection Tracker ──────────────────────────────
+WitnessReplayApp.prototype.runDepositionObjectionTracker = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','⚖️ Run Deposition Objection Tracker');
+    this.addMessage('assistant','⚖️ Analyzing deposition objection patterns...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/deposition-objection-tracker', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">⚖️ Deposition Objection Tracker</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.total_objections + '</div><div style="color:#94a3b8;font-size:0.55rem;">Total Objections</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.total_sustained + '</div><div style="color:#94a3b8;font-size:0.55rem;">Sustained</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.overall_sustain_rate_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Sustain Rate</div></div></div>';
+        html += '<div style="color:#94a3b8;font-size:0.55rem;margin-bottom:6px;">Most Common: <strong style="color:#f59e0b;">' + d.most_common_objection + '</strong></div>';
+        d.objections_by_witness.forEach(function(w) {
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + w.witness + ' <span style="color:#94a3b8;font-size:0.5rem;">(' + w.total_objections + ' obj, ' + w.sustain_rate_pct + '% sustained)</span></div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">Aggression: ' + w.opposing_counsel_aggression + '</div>';
+            w.objection_breakdown.slice(0, 4).forEach(function(o) { html += '<div style="font-size:0.52rem;color:#cbd5e1;padding-left:8px;">' + o.type + ': ' + o.count + ' (' + o.sustained + ' sustained)</div>'; });
+            w.preserved_issues.forEach(function(pi) { html += '<div style="font-size:0.52rem;color:#f59e0b;padding-left:8px;">⚠️ ' + pi + '</div>'; });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">🎯 Strategic Insights</h4>';
+        d.strategic_insights.forEach(function(s) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + s + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Objection tracking failed: ' + e.message); }
+};
+
+// ── Witness Memory Assessment ─────────────────────────────────
+WitnessReplayApp.prototype.runWitnessMemoryAssessment = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🧠 Run Witness Memory Assessment');
+    this.addMessage('assistant','🧠 Analyzing witness memory quality indicators...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-memory-assessment', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">🧠 Witness Memory Assessment</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.average_memory_score + '/10</div><div style="color:#94a3b8;font-size:0.55rem;">Avg Score</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.75rem;font-weight:700;">' + d.strongest_witness + '</div><div style="color:#94a3b8;font-size:0.55rem;">Strongest</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.75rem;font-weight:700;">' + d.weakest_witness + '</div><div style="color:#94a3b8;font-size:0.55rem;">Weakest</div></div></div>';
+        d.assessments.forEach(function(a) {
+            var gc = a.reliability_grade === 'A' ? '#34d399' : a.reliability_grade === 'B' ? '#60a5fa' : a.reliability_grade === 'C' ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + a.witness + ' <span style="color:' + gc + ';font-size:0.55rem;">Grade ' + a.reliability_grade + ' (' + a.overall_memory_score + '/10)</span></div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">Detail: ' + a.detail_richness.score + ' | Temporal: ' + a.temporal_precision.score + ' | Sensory: ' + a.sensory_detail.score + ' | Consistency: ' + a.internal_consistency.score + '</div>';
+            a.memory_type_indicators.forEach(function(m) { html += '<div style="font-size:0.52rem;color:#cbd5e1;padding-left:8px;">• ' + m + '</div>'; });
+            html += '</div>';
+        });
+        html += '<div style="font-size:0.5rem;color:#64748b;margin-top:4px;font-style:italic;">' + d.methodology_notes + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Memory assessment failed: ' + e.message); }
+};
+
+// ── Rule 30(b)(6) Topic Coverage ──────────────────────────────
+WitnessReplayApp.prototype.runRule30b6TopicCoverage = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🏢 Run Rule 30(b)(6) Topic Coverage Analysis');
+    this.addMessage('assistant','🏢 Analyzing corporate designee testimony coverage...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/rule-30b6-topic-coverage', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">🏢 Rule 30(b)(6) Topic Coverage</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_noticed_topics + '</div><div style="color:#94a3b8;font-size:0.55rem;">Topics</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.average_coverage_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Avg Coverage</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.inadequate_topics + '</div><div style="color:#94a3b8;font-size:0.55rem;">Inadequate</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.overall_preparation_grade + '</div><div style="color:#94a3b8;font-size:0.55rem;">Grade</div></div></div>';
+        d.topic_analyses.forEach(function(t) {
+            var ac = t.adequacy === 'Adequate' ? '#34d399' : t.adequacy === 'Partial' ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.6rem;color:#60a5fa;font-weight:600;">' + t.topic + '</div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">Coverage: <span style="color:' + ac + ';">' + t.coverage_percentage + '% (' + t.adequacy + ')</span>';
+            if (t.motion_to_compel_viable) html += ' <span style="color:#f87171;">⚠️ Motion to Compel</span>';
+            html += '</div>';
+            t.gaps_identified.forEach(function(g) { html += '<div style="font-size:0.52rem;color:#f59e0b;padding-left:8px;">• ' + g + '</div>'; });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">📋 Recommendations</h4>';
+        d.recommendations.forEach(function(r) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ 30(b)(6) analysis failed: ' + e.message); }
+};
+
+// ── Trial Preparation Checklist ───────────────────────────────
+WitnessReplayApp.prototype.runTrialPreparationChecklist = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','✅ Run Trial Preparation Checklist');
+    this.addMessage('assistant','✅ Generating comprehensive trial preparation checklist...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/trial-preparation-checklist', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">✅ Trial Preparation Checklist</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_checklist_items + '</div><div style="color:#94a3b8;font-size:0.55rem;">Total Items</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.completed + '</div><div style="color:#94a3b8;font-size:0.55rem;">Complete</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.completion_percentage + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Progress</div></div>';
+        var rc = d.readiness_grade === 'Trial Ready' ? '#34d399' : d.readiness_grade === 'Nearly Ready' ? '#60a5fa' : '#f59e0b';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + rc + ';font-size:0.7rem;font-weight:700;">' + d.readiness_grade + '</div><div style="color:#94a3b8;font-size:0.55rem;">Status</div></div></div>';
+        if (d.high_priority_pending > 0) html += '<div style="color:#f87171;font-size:0.58rem;margin-bottom:6px;">⚠️ ' + d.high_priority_pending + ' high-priority items still pending</div>';
+        Object.keys(d.categories).forEach(function(cat) {
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + cat + '</div>';
+            d.categories[cat].forEach(function(item) {
+                var ic = item.status === 'Complete' ? '✅' : item.status === 'In Progress' ? '🔄' : '☐';
+                var pc = item.priority === 'High' ? '#f87171' : item.priority === 'Medium' ? '#f59e0b' : '#94a3b8';
+                html += '<div style="font-size:0.52rem;color:#e2e8f0;padding-left:8px;">' + ic + ' <span style="color:' + pc + ';">[' + item.priority + ']</span> ' + item.item + '</div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">🎯 Next Actions</h4>';
+        d.next_actions.forEach(function(a) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + a + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Trial prep checklist failed: ' + e.message); }
+};
+
+// ── Witness Relationship Mapper ───────────────────────────────
+WitnessReplayApp.prototype.runWitnessRelationshipMapper = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🔗 Run Witness Relationship Mapper');
+    this.addMessage('assistant','🔗 Mapping witness relationships and connections...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-relationship-mapper', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">🔗 Witness Relationship Map</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_witnesses + '</div><div style="color:#94a3b8;font-size:0.55rem;">Witnesses</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.total_relationships + '</div><div style="color:#94a3b8;font-size:0.55rem;">Connections</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.conflicts_of_interest_count + '</div><div style="color:#94a3b8;font-size:0.55rem;">Conflicts</div></div></div>';
+        d.witness_profiles.forEach(function(w) {
+            var bc = w.bias_risk === 'Critical' ? '#f87171' : w.bias_risk === 'High' ? '#f59e0b' : w.bias_risk === 'Moderate' ? '#60a5fa' : '#34d399';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + w.name + ' <span style="color:' + bc + ';font-size:0.5rem;">(' + w.bias_risk + ' bias risk)</span></div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">' + w.total_connections + ' connections | Credibility: ' + w.credibility_impact + ' | Allegiances: ' + w.key_allegiances.join(', ') + '</div></div>';
+        });
+        if (d.witness_clusters.length > 0) {
+            html += '<h4 style="color:#a78bfa;font-size:0.65rem;margin:6px 0 3px;">🔗 Witness Clusters</h4>';
+            d.witness_clusters.forEach(function(c) {
+                html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;"><span style="color:#a78bfa;">[' + c.cluster_type + ']</span> ' + c.members.join(', ') + '</div>';
+            });
+        }
+        if (d.conflicts_of_interest.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.65rem;margin:6px 0 3px;">⚠️ Conflicts of Interest</h4>';
+            d.conflicts_of_interest.forEach(function(c) {
+                html += '<div style="font-size:0.52rem;color:#f87171;padding:1px 0;">' + c.witness_a + ' ↔ ' + c.witness_b + ' (' + c.relationship_type + ')</div>';
+            });
+        }
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">�� Strategic Insights</h4>';
+        d.strategic_insights.forEach(function(s) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + s + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Relationship mapping failed: ' + e.message); }
+};
+
+// ── Statute of Limitations Tracker ────────────────────────────
+WitnessReplayApp.prototype.runStatuteOfLimitationsTracker = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','⏰ Run Statute of Limitations Tracker');
+    this.addMessage('assistant','⏰ Analyzing statute of limitations for all claims...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/statute-of-limitations-tracker', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">⏰ Statute of Limitations Tracker</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_claims_tracked + '</div><div style="color:#94a3b8;font-size:0.55rem;">Claims</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.expired_claims + '</div><div style="color:#94a3b8;font-size:0.55rem;">Expired</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.urgent_claims + '</div><div style="color:#94a3b8;font-size:0.55rem;">Urgent</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.safe_claims + '</div><div style="color:#94a3b8;font-size:0.55rem;">Safe</div></div></div>';
+        d.claim_analyses.forEach(function(c) {
+            var sc = c.status === 'EXPIRED' ? '#f87171' : c.status === 'CRITICAL' ? '#f87171' : c.status === 'URGENT' ? '#f59e0b' : c.status === 'APPROACHING' ? '#60a5fa' : '#34d399';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<span style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + c.claim_type + '</span>';
+            html += '<span style="font-size:0.5rem;color:' + sc + ';font-weight:700;background:' + sc + '22;padding:1px 4px;border-radius:3px;">' + c.status + '</span></div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">' + c.jurisdiction + ' | ' + c.standard_limitation_years + ' yr limit | Deadline: ' + c.adjusted_deadline + '</div>';
+            if (c.remaining_days > 0) html += '<div style="font-size:0.52rem;color:' + sc + ';">' + c.remaining_days + ' days remaining</div>';
+            if (c.tolling_days_applied > 0) html += '<div style="font-size:0.52rem;color:#a78bfa;">Tolling: +' + c.tolling_days_applied + ' days (' + c.tolling_reason + ')</div>';
+            html += '</div>';
+        });
+        html += '<h4 style="color:#f59e0b;font-size:0.65rem;margin:6px 0 3px;">⚖️ Tolling Considerations</h4>';
+        d.tolling_considerations.forEach(function(t) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + t + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ SOL tracking failed: ' + e.message); }
+};
+
+// ── Discovery Gap Analyzer ────────────────────────────────────
+WitnessReplayApp.prototype.runDiscoveryGapAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🔍 Run Discovery Gap Analyzer');
+    this.addMessage('assistant','🔍 Analyzing discovery compliance and identifying gaps...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/discovery-gap-analyzer', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">🔍 Discovery Gap Analysis</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_discovery_categories + '</div><div style="color:#94a3b8;font-size:0.55rem;">Categories</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.total_gaps_identified + '</div><div style="color:#94a3b8;font-size:0.55rem;">Gaps</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.critical_gaps + '</div><div style="color:#94a3b8;font-size:0.55rem;">Critical</div></div>';
+        var hc = d.discovery_health === 'Good' ? '#34d399' : d.discovery_health === 'Concerning' ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + hc + ';font-size:0.7rem;font-weight:700;">' + d.discovery_health + '</div><div style="color:#94a3b8;font-size:0.55rem;">Health</div></div></div>';
+        d.gap_analyses.forEach(function(ga) {
+            var cc = ga.compliance_rate_pct > 80 ? '#34d399' : ga.compliance_rate_pct > 60 ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="display:flex;justify-content:space-between;"><span style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + ga.category + '</span><span style="font-size:0.52rem;color:' + cc + ';">' + ga.compliance_rate_pct + '% compliance</span></div>';
+            html += '<div style="font-size:0.52rem;color:#94a3b8;">Received: ' + ga.items_received + '/' + ga.items_requested + ' | ' + ga.gaps_identified + ' gaps</div>';
+            ga.gaps.forEach(function(g) {
+                var gc = g.severity === 'Critical' ? '#f87171' : g.severity === 'High' ? '#f59e0b' : '#94a3b8';
+                html += '<div style="font-size:0.5rem;color:' + gc + ';padding-left:8px;">• [' + g.severity + '] ' + g.description + '</div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">📋 Recommendations</h4>';
+        d.strategic_recommendations.forEach(function(r) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Discovery gap analysis failed: ' + e.message); }
+};
+
+// ── Voir Dire Question Generator ──────────────────────────────
+WitnessReplayApp.prototype.runVoirDireQuestionGenerator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','👥 Run Voir Dire Question Generator');
+    this.addMessage('assistant','👥 Generating targeted voir dire questions...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/voir-dire-question-generator', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">👥 Voir Dire Questions</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_themes_covered + '</div><div style="color:#94a3b8;font-size:0.55rem;">Themes</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.total_questions_generated + '</div><div style="color:#94a3b8;font-size:0.55rem;">Questions</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.challenge_strategy.peremptory_challenges_recommended + '</div><div style="color:#94a3b8;font-size:0.55rem;">Peremptory</div></div></div>';
+        d.question_categories.forEach(function(cat) {
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + cat.theme + '</div>';
+            html += '<div style="font-size:0.5rem;color:#a78bfa;margin-bottom:2px;">Goal: ' + cat.strategic_goal + '</div>';
+            cat.questions.forEach(function(q) {
+                html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:2px 0 1px 8px;border-left:2px solid #334155;margin:2px 0;">';
+                html += '<div style="color:#e2e8f0;">❓ ' + q.question + '</div>';
+                html += '<div style="color:#94a3b8;font-size:0.48rem;">↳ Follow-up: ' + q.follow_up + '</div>';
+                html += '<div style="color:#f59e0b;font-size:0.48rem;">🎯 Challenge: ' + q.challenge_indicator + '</div></div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">🎯 Ideal Juror Traits</h4>';
+        d.jury_profile_targets.ideal_juror_traits.forEach(function(t) { html += '<div style="font-size:0.52rem;color:#34d399;padding:1px 0;">✓ ' + t + '</div>'; });
+        html += '<h4 style="color:#f87171;font-size:0.65rem;margin:6px 0 3px;">🚩 Red Flag Traits</h4>';
+        d.jury_profile_targets.red_flag_traits.forEach(function(t) { html += '<div style="font-size:0.52rem;color:#f87171;padding:1px 0;">✗ ' + t + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Voir dire generation failed: ' + e.message); }
+};
+
+// ── Evidence Sufficiency Scorer ───────────────────────────────
+WitnessReplayApp.prototype.runEvidenceSufficiencyScorer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','📊 Run Evidence Sufficiency Scorer');
+    this.addMessage('assistant','📊 Scoring evidence sufficiency against burden of proof...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/evidence-sufficiency-scorer', {headers:this.getAuthHeaders()});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var html = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        html += '<h3 style="color:#60a5fa;font-size:0.82rem;margin:0 0 6px;">📊 Evidence Sufficiency Score</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_claims_analyzed + '</div><div style="color:#94a3b8;font-size:0.55rem;">Claims</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.claims_meeting_burden + '</div><div style="color:#94a3b8;font-size:0.55rem;">Meet Burden</div></div>';
+        var oc = d.overall_evidence_score > 75 ? '#34d399' : d.overall_evidence_score > 50 ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + oc + ';font-size:0.95rem;font-weight:700;">' + d.overall_evidence_score + '</div><div style="color:#94a3b8;font-size:0.55rem;">Overall</div></div>';
+        var sc2 = d.case_strength === 'Strong' ? '#34d399' : d.case_strength === 'Moderate' ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + sc2 + ';font-size:0.7rem;font-weight:700;">' + d.case_strength + '</div><div style="color:#94a3b8;font-size:0.55rem;">Strength</div></div></div>';
+        d.claim_analyses.forEach(function(c) {
+            var vc = c.verdict_prediction === 'Likely Prevail' ? '#34d399' : c.verdict_prediction === 'Marginal' ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<span style="font-size:0.62rem;color:#60a5fa;font-weight:600;">' + c.claim + '</span>';
+            html += '<span style="font-size:0.5rem;color:' + vc + ';font-weight:700;">' + c.verdict_prediction + ' (' + c.overall_sufficiency_score + ')</span></div>';
+            html += '<div style="font-size:0.5rem;color:#94a3b8;">Burden: ' + c.burden_of_proof + '</div>';
+            c.element_analysis.forEach(function(el) {
+                var ec = el.sufficiency_score > 75 ? '#34d399' : el.sufficiency_score > 50 ? '#f59e0b' : el.sufficiency_score > 25 ? '#f87171' : '#ef4444';
+                var barW = Math.min(el.sufficiency_score, 100);
+                html += '<div style="font-size:0.48rem;padding-left:8px;margin:1px 0;">';
+                html += '<div style="display:flex;justify-content:space-between;"><span style="color:#e2e8f0;">' + el.element + '</span><span style="color:' + ec + ';">' + el.sufficiency_score + '% - ' + el.evidence_strength + '</span></div>';
+                html += '<div style="background:#0f172a;border-radius:2px;height:3px;"><div style="background:' + ec + ';height:3px;border-radius:2px;width:' + barW + '%;"></div></div></div>';
+            });
+            html += '</div>';
+        });
+        if (d.critical_gaps.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.65rem;margin:6px 0 3px;">🚨 Critical Evidence Gaps</h4>';
+            d.critical_gaps.forEach(function(g) {
+                html += '<div style="font-size:0.52rem;color:#f87171;padding:1px 0;">⚠️ ' + g.claim + ': ' + g.element + ' (' + g.score + '%)</div>';
+            });
+        }
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">📋 Recommendations</h4>';
+        d.strategic_recommendations.forEach(function(r) { html += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Evidence scoring failed: ' + e.message); }
+};
+
+// ── Expert Witness Comparison Matrix ────────────────────────────
+WitnessReplayApp.prototype.runExpertWitnessComparison = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🎯 Run Expert Witness Comparison');
+    this.addMessage('assistant','🎯 Comparing expert witnesses across both sides...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/expert-witness-comparison');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var html = '<div style="font-size:0.7rem;">';
+        html += '<h3 style="color:#f59e0b;margin:0 0 6px;">🎯 Expert Witness Comparison</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.9rem;font-weight:700;">' + d.total_experts + '</div><div style="color:#94a3b8;font-size:0.55rem;">Experts</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.9rem;font-weight:700;">' + d.plaintiff_experts + '</div><div style="color:#94a3b8;font-size:0.55rem;">Plaintiff</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.9rem;font-weight:700;">' + d.defendant_experts + '</div><div style="color:#94a3b8;font-size:0.55rem;">Defendant</div></div>';
+        var ec = d.average_effectiveness >= 75 ? '#34d399' : d.average_effectiveness >= 60 ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + ec + ';font-size:0.9rem;font-weight:700;">' + d.average_effectiveness + '</div><div style="color:#94a3b8;font-size:0.55rem;">Avg Effect.</div></div></div>';
+        d.experts.forEach(function(e) {
+            var sc = e.side === 'Plaintiff' ? '#34d399' : '#f87171';
+            html += '<div style="background:#1e293b;padding:6px;border-radius:4px;margin:4px 0;border-left:3px solid ' + sc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+            html += '<span style="color:#e2e8f0;font-weight:700;font-size:0.68rem;">' + e.name + '</span>';
+            html += '<span style="color:' + sc + ';font-size:0.52rem;">' + e.side + ' | ' + e.specialty + '</span></div>';
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin:3px 0;">';
+            [{l:'Method',v:e.methodology_score},{l:'Credible',v:e.credibility_score},{l:'Present',v:e.presentation_score},{l:'Overall',v:e.overall_effectiveness}].forEach(function(s) {
+                var vc = s.v >= 75 ? '#34d399' : s.v >= 55 ? '#f59e0b' : '#f87171';
+                html += '<div style="text-align:center;background:#0f172a;padding:2px;border-radius:3px;"><div style="color:' + vc + ';font-size:0.6rem;font-weight:700;">' + s.v + '</div><div style="color:#94a3b8;font-size:0.4rem;">' + s.l + '</div></div>';
+            });
+            html += '</div>';
+            html += '<div style="font-size:0.48rem;color:#94a3b8;">' + e.credentials.degree + ' | ' + e.credentials.years_experience + 'yr | ' + e.credentials.publications + ' pubs | ' + e.credentials.prior_testimony_count + ' cases</div>';
+            html += '<div style="font-size:0.48rem;color:#f87171;margin-top:2px;">Vulns: ' + e.vulnerabilities.join(' | ') + '</div>';
+            html += '<div style="font-size:0.48rem;color:#60a5fa;">Jury Impact: ' + e.estimated_jury_impact + '</div></div>';
+        });
+        if (d.head_to_head_matchups && d.head_to_head_matchups.length > 0) {
+            html += '<h4 style="color:#a78bfa;font-size:0.65rem;margin:6px 0 3px;">Head-to-Head</h4>';
+            d.head_to_head_matchups.forEach(function(m) {
+                var ac = m.advantage === 'Plaintiff' ? '#34d399' : m.advantage === 'Defendant' ? '#f87171' : '#f59e0b';
+                html += '<div style="font-size:0.5rem;background:#0f172a;padding:3px;border-radius:3px;margin:2px 0;">';
+                html += '<span style="color:#34d399;">' + m.plaintiff_expert + '</span> vs <span style="color:#f87171;">' + m.defendant_expert + '</span>';
+                html += ' <span style="color:' + ac + ';">' + m.advantage + '</span>';
+                html += '<div style="color:#94a3b8;font-size:0.42rem;">' + m.key_disagreement + '</div></div>';
+            });
+        }
+        html += '<div style="background:#0f172a;padding:4px;border-radius:4px;margin-top:6px;font-size:0.55rem;color:#f59e0b;">' + d.strategic_assessment + '</div>';
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.52rem;color:#e2e8f0;">\u2022 ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','\u274c Expert comparison failed: ' + e.message); }
+};
+
+// ── Daubert Challenge Analyzer ─────────────────────────────────
+WitnessReplayApp.prototype.runDaubertChallengeAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🔬 Run Daubert Challenge Analyzer');
+    this.addMessage('assistant','🔬 Analyzing expert testimony admissibility under Daubert...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/daubert-challenge-analyzer');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var html = '<div style="font-size:0.7rem;">';
+        html += '<h3 style="color:#a78bfa;margin:0 0 6px;">🔬 Daubert Challenge Analyzer</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.9rem;font-weight:700;">' + d.experts_analyzed + '</div><div style="color:#94a3b8;font-size:0.55rem;">Experts</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.9rem;font-weight:700;">' + d.challenges_recommended + '</div><div style="color:#94a3b8;font-size:0.55rem;">Challenges</div></div>';
+        var asc = d.average_admissibility_score >= 70 ? '#34d399' : d.average_admissibility_score >= 50 ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + asc + ';font-size:0.9rem;font-weight:700;">' + d.average_admissibility_score + '</div><div style="color:#94a3b8;font-size:0.55rem;">Avg Score</div></div></div>';
+        d.expert_analyses.forEach(function(a) {
+            var rc = a.recommendation === 'Likely Admissible' ? '#34d399' : a.recommendation === 'Challenge Recommended' ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:6px;border-radius:4px;margin:4px 0;border-left:3px solid ' + rc + ';">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<span style="color:#e2e8f0;font-weight:700;font-size:0.68rem;">' + a.expert + '</span>';
+            html += '<span style="color:' + rc + ';font-size:0.55rem;font-weight:600;">' + a.recommendation + ' (' + a.overall_admissibility_score + ')</span></div>';
+            html += '<div style="font-size:0.52rem;color:#a78bfa;margin:2px 0;">Specialty: ' + a.specialty + '</div>';
+            var factors = a.daubert_factors;
+            html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin:4px 0;">';
+            var fnames = ['testability','peer_review','error_rate','standards_controlling','general_acceptance'];
+            var flabels = ['Test','Peer','Error','Std','Accept'];
+            fnames.forEach(function(fn, idx) {
+                var f = factors[fn];
+                var fc = f.score >= 70 ? '#34d399' : f.score >= 50 ? '#f59e0b' : '#f87171';
+                html += '<div style="text-align:center;background:#0f172a;padding:2px;border-radius:3px;"><div style="color:' + fc + ';font-size:0.65rem;font-weight:700;">' + f.score + '</div><div style="color:#94a3b8;font-size:0.42rem;">' + flabels[idx] + '</div></div>';
+            });
+            html += '</div>';
+            html += '<div style="font-size:0.5rem;color:#f59e0b;">⚔️ ' + a.challenge_strategy + '</div>';
+            html += '<div style="font-size:0.45rem;color:#94a3b8;margin-top:2px;">📚 ' + a.key_cases.join(' | ') + '</div></div>';
+        });
+        html += '<div style="background:#0f172a;padding:4px;border-radius:4px;margin-top:6px;font-size:0.55rem;color:#a78bfa;">📋 ' + d.motion_strategy + '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Daubert analysis failed: ' + e.message); }
+};
+
+// ── Jury Instructions Drafter ──────────────────────────────────
+WitnessReplayApp.prototype.runJuryInstructionsDrafter = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','📜 Run Jury Instructions Drafter');
+    this.addMessage('assistant','📜 Drafting proposed jury instructions...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/jury-instructions-drafter');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var html = '<div style="font-size:0.7rem;">';
+        html += '<h3 style="color:#34d399;margin:0 0 6px;">📜 Jury Instructions Drafter</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.9rem;font-weight:700;">' + d.total_instructions + '</div><div style="color:#94a3b8;font-size:0.55rem;">Instructions</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.9rem;font-weight:700;">' + d.contested_instructions + '</div><div style="color:#94a3b8;font-size:0.55rem;">Contested</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#a78bfa;font-size:0.7rem;font-weight:700;">' + d.case_type + '</div><div style="color:#94a3b8;font-size:0.55rem;">Case Type</div></div></div>';
+        d.instruction_categories.forEach(function(cat) {
+            html += '<div style="margin:6px 0;"><h4 style="color:#60a5fa;font-size:0.65rem;margin:0 0 3px;">📋 ' + cat.category + '</h4>';
+            cat.instructions.forEach(function(inst) {
+                var bc = inst.contested ? '#f59e0b' : '#1e293b';
+                html += '<div style="background:#1e293b;padding:4px;border-radius:4px;margin:3px 0;border-left:3px solid ' + (inst.contested ? '#f59e0b' : '#34d399') + ';">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                html += '<span style="color:#e2e8f0;font-weight:600;font-size:0.6rem;">No. ' + inst.number + ' — ' + inst.title + '</span>';
+                if (inst.contested) html += '<span style="color:#f59e0b;font-size:0.48rem;background:#422006;padding:1px 4px;border-radius:2px;">⚠️ CONTESTED</span>';
+                html += '</div>';
+                html += '<div style="font-size:0.5rem;color:#cbd5e1;margin:2px 0;line-height:1.4;">' + inst.text + '</div>';
+                html += '<div style="font-size:0.45rem;color:#94a3b8;font-style:italic;">Source: ' + inst.source + '</div></div>';
+            });
+            html += '</div>';
+        });
+        html += '<h4 style="color:#f59e0b;font-size:0.65rem;margin:8px 0 3px;">📝 Special Verdict Form (' + d.special_verdict_form.verdict_type + ')</h4>';
+        d.special_verdict_form.questions.forEach(function(q) {
+            html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:2px 0;">' + q.number + '. ' + q.question + ' <span style="color:#94a3b8;">(' + q.type + ')</span></div>';
+        });
+        if (d.objections_anticipated.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.65rem;margin:6px 0 3px;">⚠️ Anticipated Objections</h4>';
+            d.objections_anticipated.forEach(function(o) { html += '<div style="font-size:0.52rem;color:#f87171;padding:1px 0;">• ' + o + '</div>'; });
+        }
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Jury instructions drafting failed: ' + e.message); }
+};
+
+// ── Case Chronology Builder ────────────────────────────────────
+WitnessReplayApp.prototype.runCaseChronologyBuilder = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','📅 Run Case Chronology Builder');
+    this.addMessage('assistant','📅 Building comprehensive case chronology...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/case-chronology-builder');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var html = '<div style="font-size:0.7rem;">';
+        html += '<h3 style="color:#60a5fa;margin:0 0 6px;">📅 Case Chronology</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.9rem;font-weight:700;">' + d.total_events + '</div><div style="color:#94a3b8;font-size:0.55rem;">Events</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.9rem;font-weight:700;">' + d.timeline_conflicts + '</div><div style="color:#94a3b8;font-size:0.55rem;">Conflicts</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.9rem;font-weight:700;">' + d.critical_events + '</div><div style="color:#94a3b8;font-size:0.55rem;">Critical</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.9rem;font-weight:700;">' + d.verified_events + '</div><div style="color:#94a3b8;font-size:0.55rem;">Verified</div></div></div>';
+        var catColors = {Incident:'#f87171',Medical:'#34d399',Investigation:'#f59e0b',Legal:'#a78bfa',Communication:'#60a5fa'};
+        html += '<div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">';
+        Object.keys(d.events_by_category).forEach(function(cat) {
+            html += '<span style="font-size:0.48rem;padding:1px 4px;border-radius:2px;background:' + (catColors[cat]||'#64748b') + '22;color:' + (catColors[cat]||'#64748b') + ';">' + cat + ': ' + d.events_by_category[cat] + '</span>';
+        });
+        html += '</div>';
+        d.chronology.slice(0, 15).forEach(function(e) {
+            var ec = catColors[e.category] || '#64748b';
+            var ic = e.importance === 'Critical' ? '#f87171' : e.importance === 'High' ? '#f59e0b' : '#94a3b8';
+            html += '<div style="display:flex;gap:4px;margin:2px 0;padding:3px;border-radius:3px;' + (e.has_conflict ? 'background:#7f1d1d33;border-left:2px solid #f87171;' : 'border-left:2px solid ' + ec + ';') + '">';
+            html += '<div style="min-width:60px;font-size:0.48rem;color:#94a3b8;">' + e.date + '</div>';
+            html += '<div style="flex:1;font-size:0.5rem;color:#e2e8f0;">' + e.event;
+            if (e.has_conflict) html += ' <span style="color:#f87171;">⚠️</span>';
+            if (e.verified) html += ' <span style="color:#34d399;">✓</span>';
+            html += '<div style="font-size:0.42rem;color:' + ec + ';">' + e.category + ' | <span style="color:' + ic + ';">' + e.importance + '</span> | Sources: ' + e.sources.join(', ') + '</div>';
+            if (e.has_conflict && e.conflict_detail) html += '<div style="font-size:0.42rem;color:#f87171;">⚠️ ' + e.conflict_detail + '</div>';
+            html += '</div></div>';
+        });
+        if (d.total_events > 15) html += '<div style="font-size:0.5rem;color:#94a3b8;text-align:center;margin:4px;">... and ' + (d.total_events - 15) + ' more events</div>';
+        if (d.gap_analysis.length > 0) {
+            html += '<h4 style="color:#f59e0b;font-size:0.65rem;margin:6px 0 3px;">🔍 Gap Analysis</h4>';
+            d.gap_analysis.forEach(function(g) { html += '<div style="font-size:0.52rem;color:#f59e0b;padding:1px 0;">⚠️ ' + g + '</div>'; });
+        }
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Chronology building failed: ' + e.message); }
+};
+
+// ── Privilege Review Assistant ──────────────────────────────────
+WitnessReplayApp.prototype.runPrivilegeReviewAssistant = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please select or create a session first.'); return; }
+    this.addMessage('user','🔒 Run Privilege Review Assistant');
+    this.addMessage('assistant','🔒 Scanning documents for privilege issues...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/privilege-review-assistant');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var html = '<div style="font-size:0.7rem;">';
+        html += '<h3 style="color:#f59e0b;margin:0 0 6px;">🔒 Privilege Review Assistant</h3>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;">';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.9rem;font-weight:700;">' + d.total_documents_scanned + '</div><div style="color:#94a3b8;font-size:0.55rem;">Scanned</div></div>';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.9rem;font-weight:700;">' + d.documents_flagged + '</div><div style="color:#94a3b8;font-size:0.55rem;">Flagged</div></div>';
+        var lpc = d.privilege_log_status.completion_pct >= 80 ? '#34d399' : d.privilege_log_status.completion_pct >= 50 ? '#f59e0b' : '#f87171';
+        html += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + lpc + ';font-size:0.9rem;font-weight:700;">' + d.privilege_log_status.completion_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Log Done</div></div></div>';
+        html += '<h4 style="color:#60a5fa;font-size:0.65rem;margin:4px 0 3px;">�� Privilege Breakdown</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;">';
+        Object.keys(d.privilege_breakdown).forEach(function(k) {
+            var pb = d.privilege_breakdown[k];
+            var rlc = pb.risk_level === 'High' ? '#f87171' : pb.risk_level === 'Critical' ? '#ef4444' : '#f59e0b';
+            html += '<div style="background:#0f172a;padding:3px;border-radius:3px;text-align:center;"><div style="color:' + rlc + ';font-size:0.65rem;font-weight:700;">' + pb.count + '</div><div style="font-size:0.42rem;color:#94a3b8;">' + k.replace(/_/g,' ') + '</div></div>';
+        });
+        html += '</div>';
+        html += '<h4 style="color:#f59e0b;font-size:0.65rem;margin:6px 0 3px;">📄 Flagged Documents (sample)</h4>';
+        d.flagged_documents.slice(0, 8).forEach(function(doc) {
+            var wrc = doc.waiver_risk === 'High' ? '#f87171' : doc.waiver_risk === 'Medium' ? '#f59e0b' : '#34d399';
+            var cc = doc.confidence >= 0.9 ? '#34d399' : doc.confidence >= 0.75 ? '#f59e0b' : '#f87171';
+            html += '<div style="background:#1e293b;padding:3px;border-radius:3px;margin:2px 0;font-size:0.5rem;">';
+            html += '<div style="display:flex;justify-content:space-between;">';
+            html += '<span style="color:#e2e8f0;font-weight:600;">' + doc.document_id + ' — ' + doc.title + '</span>';
+            html += '<span style="color:' + cc + ';">' + Math.round(doc.confidence * 100) + '%</span></div>';
+            html += '<div style="color:#94a3b8;">' + doc.privilege_type.replace(/_/g,' ') + ' | Waiver: <span style="color:' + wrc + ';">' + doc.waiver_risk + '</span> | ' + doc.review_status + '</div>';
+            html += '<div style="color:#64748b;font-size:0.42rem;">Indicators: ' + doc.key_indicators.join(', ') + '</div></div>';
+        });
+        if (d.waiver_risks.length > 0) {
+            html += '<h4 style="color:#f87171;font-size:0.65rem;margin:6px 0 3px;">⚠️ Waiver Risks</h4>';
+            d.waiver_risks.forEach(function(wr) {
+                var sc = wr.severity === 'Critical' ? '#f87171' : wr.severity === 'High' ? '#f59e0b' : '#60a5fa';
+                html += '<div style="font-size:0.5rem;padding:2px 0;"><span style="color:' + sc + ';font-weight:600;">[' + wr.severity + ']</span> <span style="color:#e2e8f0;">' + wr.risk + '</span><div style="color:#34d399;font-size:0.45rem;padding-left:12px;">↳ ' + wr.mitigation + '</div></div>';
+            });
+        }
+        html += '<h4 style="color:#34d399;font-size:0.65rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Privilege review failed: ' + e.message); }
+};
+
+// ============================================================
+// Impeachment Preparation Tool
+// ============================================================
+WitnessReplayApp.prototype.runImpeachmentPreparation = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','⚔️ Run Impeachment Preparation Analysis');
+    this.addMessage('assistant','⚔️ Analyzing impeachment opportunities...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/impeachment-preparation');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#f6ad55;">⚔️ Impeachment Preparation</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.7rem;font-weight:bold;">' + d.total_witnesses_analyzed + '</div><div style="color:#a0aec0;font-size:0.45rem;">Witnesses</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.total_impeachment_opportunities + '</div><div style="color:#a0aec0;font-size:0.45rem;">Opportunities</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f56565;font-size:0.7rem;font-weight:bold;">' + d.high_value_opportunities + '</div><div style="color:#a0aec0;font-size:0.45rem;">High Value</div></div>';
+        html += '</div>';
+        d.witness_analyses.forEach(function(w) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">👤 ' + w.witness + ' <span style="color:' + (w.overall_vulnerability === 'Highly Vulnerable' ? '#f56565' : '#ecc94b') + ';">(' + w.overall_vulnerability + ')</span></div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">' + w.total_opportunities + ' opportunities (' + w.high_impact_count + ' high impact)</div>';
+            w.opportunities.slice(0, 2).forEach(function(o) {
+                html += '<div style="font-size:0.45rem;color:#cbd5e0;padding:1px 0;">• <span style="color:#f6ad55;">[' + o.type + ']</span> ' + o.description + '</div>';
+            });
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#f6ad55;font-size:0.5rem;font-weight:bold;">Strategy Themes:</div>';
+        d.impeachment_strategy.key_themes.forEach(function(t) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + t + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Impeachment prep failed: ' + e.message); }
+};
+
+// ============================================================
+// Witness Credibility Dashboard
+// ============================================================
+WitnessReplayApp.prototype.runWitnessCredibilityDashboard = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🎯 Run Witness Credibility Dashboard');
+    this.addMessage('assistant','🎯 Assessing witness credibility...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-credibility-dashboard');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#68d391;">🎯 Witness Credibility Dashboard</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.witnesses_assessed + '</div><div style="color:#a0aec0;font-size:0.45rem;">Assessed</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#63b3ed;font-size:0.7rem;font-weight:bold;">' + d.average_credibility_score + '</div><div style="color:#a0aec0;font-size:0.45rem;">Avg Score</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.7rem;font-weight:bold;">' + d.score_distribution.A_grade + 'A/' + d.score_distribution.B_grade + 'B/' + d.score_distribution.C_grade + 'C</div><div style="color:#a0aec0;font-size:0.45rem;">Grade Dist.</div></div>';
+        html += '</div>';
+        d.assessments.forEach(function(a) {
+            var gradeColor = a.credibility_grade === 'A' ? '#68d391' : a.credibility_grade === 'B' ? '#63b3ed' : a.credibility_grade === 'C' ? '#ecc94b' : '#fc8181';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">👤 ' + a.witness + ' <span style="color:' + gradeColor + ';font-size:0.6rem;">Grade ' + a.credibility_grade + ' (' + a.overall_credibility_score + ')</span></div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">Weight: ' + a.recommended_weight + ' | Trend: ' + a.reliability_trend + '</div>';
+            if (a.key_strengths.length) html += '<div style="font-size:0.45rem;color:#68d391;">✓ ' + a.key_strengths.join(', ') + '</div>';
+            if (a.key_weaknesses.length) html += '<div style="font-size:0.45rem;color:#fc8181;">✗ ' + a.key_weaknesses.join(', ') + '</div>';
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#68d391;font-size:0.5rem;font-weight:bold;">Cross-Witness Insights:</div>';
+        d.cross_witness_insights.forEach(function(i) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + i + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Credibility dashboard failed: ' + e.message); }
+};
+
+// ============================================================
+// Motion in Limine Generator
+// ============================================================
+WitnessReplayApp.prototype.runMotionInLimineGenerator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','⚖️ Run Motion in Limine Generator');
+    this.addMessage('assistant','⚖️ Generating motions in limine...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/motion-in-limine-generator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#b794f4;">⚖️ Motions in Limine</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.7rem;font-weight:bold;">' + d.total_motions_recommended + '</div><div style="color:#a0aec0;font-size:0.45rem;">Total Motions</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.motions_to_exclude + '</div><div style="color:#a0aec0;font-size:0.45rem;">To Exclude</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.high_likelihood + '</div><div style="color:#a0aec0;font-size:0.45rem;">High Likelihood</div></div>';
+        html += '</div>';
+        d.motions.forEach(function(m) {
+            var likeColor = m.success_likelihood === 'High' ? '#68d391' : m.success_likelihood === 'Medium' ? '#ecc94b' : '#fc8181';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">#' + m.motion_number + ' ' + m.title + '</div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">Basis: ' + m.legal_basis + ' | Success: <span style="color:' + likeColor + ';">' + m.success_likelihood + '</span></div>';
+            html += '<div style="font-size:0.45rem;color:#cbd5e0;">' + m.description + '</div>';
+            html += '<div style="font-size:0.42rem;color:#a0aec0;">Impact: ' + m.impact_if_granted + '</div>';
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;color:#b794f4;font-size:0.5rem;font-weight:bold;">Filing: ' + d.filing_strategy.bundling_recommendation + '</div>';
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Motion generator failed: ' + e.message); }
+};
+
+// ============================================================
+// Deposition Digest Generator
+// ============================================================
+WitnessReplayApp.prototype.runDepositionDigestGenerator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','📋 Run Deposition Digest Generator');
+    this.addMessage('assistant','📋 Generating deposition digests...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/deposition-digest-generator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#63b3ed;">📋 Deposition Digests</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#63b3ed;font-size:0.7rem;font-weight:bold;">' + d.total_depositions + '</div><div style="color:#a0aec0;font-size:0.45rem;">Depositions</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.7rem;font-weight:bold;">' + d.total_pages_reviewed + '</div><div style="color:#a0aec0;font-size:0.45rem;">Pages</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.total_key_excerpts + '</div><div style="color:#a0aec0;font-size:0.45rem;">Key Excerpts</div></div>';
+        html += '</div>';
+        d.digests.forEach(function(dg) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">👤 ' + dg.deponent + ' <span style="color:#a0aec0;font-size:0.42rem;">(' + dg.total_pages + ' pp, ' + dg.duration_hours + 'h)</span></div>';
+            html += '<div style="color:#63b3ed;font-size:0.45rem;">' + dg.overall_assessment + '</div>';
+            dg.topic_summaries.slice(0, 3).forEach(function(ts) {
+                html += '<div style="font-size:0.45rem;color:#cbd5e0;padding:1px 0;">• <strong>' + ts.topic + '</strong> (' + ts.page_references + ') — ' + ts.trial_utility + '</div>';
+            });
+            if (dg.key_admissions.length) {
+                html += '<div style="font-size:0.42rem;color:#68d391;">✓ Admissions: ' + dg.key_admissions.join('; ') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#63b3ed;font-size:0.5rem;font-weight:bold;">Cross-Deposition Themes:</div>';
+        d.cross_deposition_themes.forEach(function(t) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + t + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Digest generation failed: ' + e.message); }
+};
+
+// ============================================================
+// Exhibit Cross-Reference Matrix
+// ============================================================
+WitnessReplayApp.prototype.runExhibitCrossReferenceMatrix = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🗂️ Run Exhibit Cross-Reference Matrix');
+    this.addMessage('assistant','🗂️ Building exhibit cross-reference matrix...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/exhibit-cross-reference-matrix');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#ed8936;">🗂️ Exhibit Cross-Reference Matrix</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#ed8936;font-size:0.7rem;font-weight:bold;">' + d.total_exhibits + '</div><div style="color:#a0aec0;font-size:0.45rem;">Exhibits</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.authenticated_count + '</div><div style="color:#a0aec0;font-size:0.45rem;">Authenticated</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.contested_count + '</div><div style="color:#a0aec0;font-size:0.45rem;">Contested</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.7rem;font-weight:bold;">' + d.total_legal_elements + '</div><div style="color:#a0aec0;font-size:0.45rem;">Elements</div></div>';
+        html += '</div>';
+        d.exhibits.slice(0, 8).forEach(function(ex) {
+            var authColor = ex.authentication_status === 'Authenticated' || ex.authentication_status === 'Stipulated' ? '#68d391' : ex.authentication_status === 'Contested' ? '#fc8181' : '#ecc94b';
+            html += '<div style="background:#2d3748;padding:3px 4px;border-radius:4px;margin:2px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.48rem;">' + ex.exhibit_number + ': ' + ex.title + ' <span style="color:' + authColor + ';">(' + ex.authentication_status + ')</span></div>';
+            html += '<div style="font-size:0.42rem;color:#a0aec0;">Type: ' + ex.type + ' | Use: ' + ex.trial_use + ' | Risk: ' + ex.admissibility_risk + '</div>';
+            html += '<div style="font-size:0.42rem;color:#63b3ed;">Elements: ' + ex.linked_elements.join(', ') + '</div>';
+            html += '</div>';
+        });
+        if (d.coverage_gaps.length) {
+            html += '<div style="margin-top:4px;color:#fc8181;font-size:0.5rem;font-weight:bold;">⚠️ Coverage Gaps: ' + d.coverage_gaps.join(', ') + '</div>';
+        }
+        d.recommendations.forEach(function(rec) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        html += '</div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Exhibit matrix failed: ' + e.message); }
+};
+
+// ============================================================
+// Testimony Pattern Analyzer
+// ============================================================
+WitnessReplayApp.prototype.runTestimonyPatternAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🔤 Run Testimony Pattern Analyzer');
+    this.addMessage('assistant','🔤 Analyzing testimony patterns...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/testimony-pattern-analyzer');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#b794f4;">🔤 Testimony Pattern Analyzer</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.7rem;font-weight:bold;">' + d.total_witnesses_analyzed + '</div><div style="color:#a0aec0;font-size:0.45rem;">Witnesses</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.7rem;font-weight:bold;">' + d.total_patterns_detected + '</div><div style="color:#a0aec0;font-size:0.45rem;">Patterns</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.high_risk_patterns + '</div><div style="color:#a0aec0;font-size:0.45rem;">High Risk</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f56565;font-size:0.7rem;font-weight:bold;">' + d.witnesses_of_concern + '</div><div style="color:#a0aec0;font-size:0.45rem;">Concern</div></div>';
+        html += '</div>';
+        d.analyses.forEach(function(a) {
+            var conColor = a.concern_rating === 'High' ? '#f56565' : a.concern_rating === 'Medium' ? '#ecc94b' : '#68d391';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">👤 ' + a.witness + ' <span style="color:' + conColor + ';">[' + a.concern_rating + ' ' + a.overall_concern_level + '/10]</span></div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">Style: ' + a.communication_style + ' | Impact: ' + a.credibility_impact + '</div>';
+            a.patterns.slice(0, 3).forEach(function(p) {
+                html += '<div style="font-size:0.45rem;color:#cbd5e0;padding:1px 0;">• <span style="color:#b794f4;">[' + p.pattern + ']</span> x' + p.frequency + ' — ' + p.example_phrases.join(', ') + '</div>';
+            });
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#b794f4;font-size:0.5rem;font-weight:bold;">Cross-Witness Patterns:</div>';
+        d.cross_witness_patterns.forEach(function(p) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + p + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Pattern analysis failed: ' + e.message); }
+};
+
+// ============================================================
+// Closing Argument Builder
+// ============================================================
+WitnessReplayApp.prototype.runClosingArgumentBuilder = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🎤 Run Closing Argument Builder');
+    this.addMessage('assistant','🎤 Building closing argument outline...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/closing-argument-outline');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#fbd38d;">🎤 Closing Argument Builder</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbd38d;font-size:0.7rem;font-weight:bold;">' + d.case_type + '</div><div style="color:#a0aec0;font-size:0.45rem;">Case Type</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#63b3ed;font-size:0.7rem;font-weight:bold;">' + d.total_sections + '</div><div style="color:#a0aec0;font-size:0.45rem;">Sections</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.estimated_total_minutes + ' min</div><div style="color:#a0aec0;font-size:0.45rem;">Duration</div></div>';
+        html += '</div>';
+        html += '<div style="color:#a0aec0;font-size:0.45rem;margin:2px 0;">Theory: ' + d.case_theory + '</div>';
+        d.sections.forEach(function(s) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#fbd38d;font-weight:bold;font-size:0.52rem;">📌 ' + s.section + ' <span style="color:#a0aec0;font-weight:normal;">(' + s.estimated_duration_minutes + ' min — ' + s.emotional_tone + ')</span></div>';
+            s.talking_points.forEach(function(tp) {
+                html += '<div style="font-size:0.45rem;color:#cbd5e0;padding:1px 0;">• ' + tp + '</div>';
+            });
+            if (s.key_quotes.length > 0) {
+                html += '<div style="font-size:0.45rem;color:#68d391;margin-top:1px;">💬 "' + s.key_quotes[0].quote + '" — ' + s.key_quotes[0].witness + ' (' + s.key_quotes[0].transcript_ref + ')</div>';
+            }
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#fbd38d;font-size:0.5rem;font-weight:bold;">Strongest Evidence:</div>';
+        d.strongest_evidence_points.forEach(function(p) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">✓ ' + p + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Closing argument builder failed: ' + e.message); }
+};
+
+// ============================================================
+// Witness Preparation Simulator
+// ============================================================
+WitnessReplayApp.prototype.runWitnessPreparationSimulator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🎓 Run Witness Preparation Simulator');
+    this.addMessage('assistant','🎓 Generating preparation simulation...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-preparation-simulator');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#9ae6b4;">🎓 Witness Preparation Simulator</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#9ae6b4;font-size:0.7rem;font-weight:bold;">' + d.total_witnesses + '</div><div style="color:#a0aec0;font-size:0.45rem;">Witnesses</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#63b3ed;font-size:0.7rem;font-weight:bold;">' + d.total_practice_questions + '</div><div style="color:#a0aec0;font-size:0.45rem;">Questions</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.7rem;font-weight:bold;">' + d.average_readiness + '</div><div style="color:#a0aec0;font-size:0.45rem;">Avg Ready</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.witnesses_needing_work + '</div><div style="color:#a0aec0;font-size:0.45rem;">Need Work</div></div>';
+        html += '</div>';
+        d.simulations.forEach(function(s) {
+            var readColor = s.readiness_level === 'Well Prepared' ? '#68d391' : s.readiness_level === 'Adequately Prepared' ? '#63b3ed' : s.readiness_level === 'Needs Work' ? '#ecc94b' : '#fc8181';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">👤 ' + s.witness + ' (' + s.role + ') <span style="color:' + readColor + ';">[' + s.readiness_level + ' ' + s.preparation_score + '/10]</span></div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">E:' + s.difficulty_breakdown.Easy + ' M:' + s.difficulty_breakdown.Medium + ' H:' + s.difficulty_breakdown.Hard + ' C:' + s.difficulty_breakdown.Critical + '</div>';
+            s.questions.slice(0, 2).forEach(function(q) {
+                html += '<div style="font-size:0.45rem;color:#cbd5e0;padding:1px 0;">❓ <span style="color:#9ae6b4;">[' + q.difficulty + ']</span> ' + q.question + '</div>';
+            });
+            if (s.vulnerability_areas.length > 0) {
+                html += '<div style="font-size:0.45rem;color:#fc8181;">⚠️ ' + s.vulnerability_areas.join(', ') + '</div>';
+            }
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#9ae6b4;font-size:0.5rem;font-weight:bold;">Preparation Strategy:</div>';
+        d.overall_preparation_strategy.forEach(function(s) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + s + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Witness prep simulation failed: ' + e.message); }
+};
+
+// ============================================================
+// Evidence Chain of Custody Tracker
+// ============================================================
+WitnessReplayApp.prototype.runEvidenceChainOfCustody = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🔗 Run Evidence Chain of Custody Tracker');
+    this.addMessage('assistant','🔗 Tracking evidence chain of custody...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/evidence-chain-of-custody');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#90cdf4;">🔗 Evidence Chain of Custody</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.7rem;font-weight:bold;">' + d.total_evidence_items + '</div><div style="color:#a0aec0;font-size:0.45rem;">Items</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.intact_chains + '</div><div style="color:#a0aec0;font-size:0.45rem;">Intact</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#ecc94b;font-size:0.7rem;font-weight:bold;">' + d.chains_with_gaps + '</div><div style="color:#a0aec0;font-size:0.45rem;">Gaps</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f56565;font-size:0.7rem;font-weight:bold;">' + d.overall_integrity_score + '%</div><div style="color:#a0aec0;font-size:0.45rem;">Integrity</div></div>';
+        html += '</div>';
+        d.evidence_items.forEach(function(item) {
+            var intColor = item.chain_integrity === 'Intact' ? '#68d391' : item.chain_integrity === 'Compromised' ? '#f56565' : '#ecc94b';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#e2e8f0;font-weight:bold;font-size:0.52rem;">📦 ' + item.evidence_id + ': ' + item.name + ' (' + item.type + ') <span style="color:' + intColor + ';">[' + item.chain_integrity + ']</span></div>';
+            html += '<div style="color:#a0aec0;font-size:0.45rem;">Transfers: ' + item.total_transfers + ' | Risk: ' + item.admissibility_risk + '</div>';
+            html += '<div style="font-size:0.45rem;color:#cbd5e0;">' + item.challenge_vulnerability + '</div>';
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#90cdf4;font-size:0.5rem;font-weight:bold;">Recommendations:</div>';
+        d.recommendations.forEach(function(r) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Chain of custody tracking failed: ' + e.message); }
+};
+
+// ============================================================
+// Case Outcome Predictor
+// ============================================================
+WitnessReplayApp.prototype.runCaseOutcomePredictor = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','🔮 Run Case Outcome Predictor');
+    this.addMessage('assistant','🔮 Predicting case outcome...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/case-outcome-predictor');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#d6bcfa;">🔮 Case Outcome Predictor</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        var predColor = d.prediction_confidence === 'High' ? '#68d391' : d.prediction_confidence === 'Moderate' ? '#ecc94b' : '#fc8181';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + predColor + ';font-size:0.7rem;font-weight:bold;">' + d.overall_prediction_score + '/10</div><div style="color:#a0aec0;font-size:0.45rem;">' + d.prediction_confidence + ' Confidence</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#d6bcfa;font-size:0.55rem;font-weight:bold;">' + d.most_likely_outcome + '</div><div style="color:#a0aec0;font-size:0.45rem;">Most Likely</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbd38d;font-size:0.55rem;font-weight:bold;">' + d.damages_range.settlement_sweet_spot + '</div><div style="color:#a0aec0;font-size:0.45rem;">Settlement Range</div></div>';
+        html += '</div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#d6bcfa;font-weight:bold;font-size:0.5rem;">Analysis Factors:</div>';
+        d.analysis_factors.forEach(function(f) {
+            var barWidth = (f.score / 10 * 100);
+            var barColor = f.score > 7 ? '#68d391' : f.score > 5 ? '#ecc94b' : '#fc8181';
+            html += '<div style="font-size:0.45rem;color:#e2e8f0;display:flex;align-items:center;gap:4px;padding:1px 0;">';
+            html += '<span style="width:80px;flex-shrink:0;">' + f.factor + '</span>';
+            html += '<div style="flex:1;background:#1a202c;height:6px;border-radius:3px;"><div style="width:' + barWidth + '%;background:' + barColor + ';height:100%;border-radius:3px;"></div></div>';
+            html += '<span style="color:' + barColor + ';width:25px;text-align:right;">' + f.score + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#d6bcfa;font-weight:bold;font-size:0.5rem;">Outcome Probabilities:</div>';
+        d.outcome_probabilities.forEach(function(o) {
+            html += '<div style="font-size:0.45rem;color:#e2e8f0;display:flex;justify-content:space-between;padding:1px 0;"><span>' + o.outcome + '</span><span style="color:#fbd38d;font-weight:bold;">' + o.probability_pct + '%</span></div>';
+        });
+        html += '</div>';
+        html += '<div style="margin-top:4px;"><div style="color:#d6bcfa;font-size:0.5rem;font-weight:bold;">Key Swing Factors:</div>';
+        d.key_swing_factors.forEach(function(f) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">⚡ ' + f + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Case outcome prediction failed: ' + e.message); }
+};
+
+// ============================================================
+// Deposition Question Bank
+// ============================================================
+WitnessReplayApp.prototype.runDepositionQuestionBank = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','❓ Run Deposition Question Bank');
+    this.addMessage('assistant','❓ Generating deposition questions...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/deposition-question-bank');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#90cdf4;">❓ Deposition Question Bank</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.7rem;font-weight:bold;">' + d.total_questions + '</div><div style="color:#a0aec0;font-size:0.45rem;">Total Questions</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.total_topics + '</div><div style="color:#a0aec0;font-size:0.45rem;">Topics Covered</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbd38d;font-size:0.55rem;font-weight:bold;">' + d.deposition_strategy.estimated_total_time_min + ' min</div><div style="color:#a0aec0;font-size:0.45rem;">Est. Duration</div></div>';
+        html += '</div>';
+        d.topic_banks.forEach(function(tb) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#90cdf4;font-weight:bold;font-size:0.52rem;">📋 ' + tb.topic + ' (' + tb.total_questions + ' Q\'s, ~' + tb.estimated_time_min + ' min)</div>';
+            tb.questions.slice(0, 3).forEach(function(q) {
+                var prColor = q.priority === 'Critical' ? '#fc8181' : q.priority === 'High' ? '#fbd38d' : '#68d391';
+                html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:2px 0;border-bottom:1px solid #4a5568;">';
+                html += '<span style="color:' + prColor + ';">[' + q.priority + ']</span> <span style="color:#d6bcfa;">' + q.question_type + '</span><br>';
+                html += '"' + q.question_text + '"';
+                if (q.strategic_note) html += '<br><span style="color:#a0aec0;font-style:italic;">💡 ' + q.strategic_note + '</span>';
+                html += '</div>';
+            });
+            if (tb.total_questions > 3) html += '<div style="font-size:0.42rem;color:#718096;">...and ' + (tb.total_questions - 3) + ' more questions</div>';
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#90cdf4;font-size:0.5rem;font-weight:bold;">Key Objectives:</div>';
+        d.deposition_strategy.key_objectives.forEach(function(o) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">🎯 ' + o + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Question bank generation failed: ' + e.message); }
+};
+
+// ============================================================
+// Witness Timeline Overlay
+// ============================================================
+WitnessReplayApp.prototype.runWitnessTimelineOverlay = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','📊 Run Witness Timeline Overlay');
+    this.addMessage('assistant','📊 Overlaying witness timelines...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-timeline-overlay');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#fbd38d;">📊 Witness Timeline Overlay</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.7rem;font-weight:bold;">' + d.total_witnesses + '</div><div style="color:#a0aec0;font-size:0.45rem;">Witnesses</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbd38d;font-size:0.7rem;font-weight:bold;">' + d.total_events + '</div><div style="color:#a0aec0;font-size:0.45rem;">Events</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.total_conflicts + '</div><div style="color:#a0aec0;font-size:0.45rem;">Conflicts</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.total_corroborations + '</div><div style="color:#a0aec0;font-size:0.45rem;">Corroborations</div></div>';
+        html += '</div>';
+        if (d.conflicts.length > 0) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#fc8181;font-weight:bold;font-size:0.5rem;">⚠️ Timeline Conflicts</div>';
+            d.conflicts.forEach(function(c) {
+                var sevColor = c.severity === 'Critical' ? '#fc8181' : c.severity === 'Significant' ? '#fbd38d' : '#68d391';
+                html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:2px 0;border-bottom:1px solid #4a5568;">';
+                html += '<strong>' + c.event + '</strong> <span style="color:' + sevColor + ';">[' + c.severity + ']</span><br>';
+                html += 'Dates: ' + c.conflicting_dates.join(' vs ') + '<br>';
+                html += '<span style="color:#a0aec0;">Witnesses: ' + c.witnesses_involved.join(', ') + '</span><br>';
+                html += '<span style="color:#90cdf4;font-style:italic;">→ ' + c.resolution_suggestion + '</span></div>';
+            });
+            html += '</div>';
+        }
+        if (d.corroborations.length > 0) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#68d391;font-weight:bold;font-size:0.5rem;">✅ Corroborations</div>';
+            d.corroborations.slice(0, 4).forEach(function(c) {
+                html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">✓ ' + c.event + ' — ' + c.corroborating_witnesses.length + ' witnesses agree (' + c.strength + ')</div>';
+            });
+            html += '</div>';
+        }
+        html += '<div style="margin-top:4px;"><div style="color:#fbd38d;font-size:0.5rem;font-weight:bold;">Recommendations:</div>';
+        d.recommendations.forEach(function(r) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Timeline overlay failed: ' + e.message); }
+};
+
+// ============================================================
+// Legal Authority Research
+// ============================================================
+WitnessReplayApp.prototype.runLegalAuthorityResearch = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','📚 Run Legal Authority Research');
+    this.addMessage('assistant','📚 Researching legal authorities...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/legal-authority-research');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#b794f4;">📚 Legal Authority Research</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.7rem;font-weight:bold;">' + d.total_issues_researched + '</div><div style="color:#a0aec0;font-size:0.45rem;">Issues Researched</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.7rem;font-weight:bold;">' + d.total_authorities_found + '</div><div style="color:#a0aec0;font-size:0.45rem;">Authorities Found</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.strongest_authority_count + '</div><div style="color:#a0aec0;font-size:0.45rem;">Strong Authorities</div></div>';
+        html += '</div>';
+        d.authorities_by_issue.forEach(function(issue) {
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="color:#b794f4;font-weight:bold;font-size:0.52rem;">⚖️ ' + issue.issue_category + ' (' + issue.total_authorities + ' sources)</div>';
+            issue.authorities.forEach(function(a) {
+                var strColor = a.strength === 'Very Strong' ? '#68d391' : a.strength === 'Strong' ? '#90cdf4' : '#fbd38d';
+                html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:2px 0;border-bottom:1px solid #4a5568;">';
+                html += '<span style="color:' + strColor + ';">[' + a.strength + ']</span> <span style="color:#d6bcfa;">' + a.authority_type + '</span><br>';
+                html += '<em>' + a.citation + '</em><br>';
+                html += a.holding_summary;
+                html += '</div>';
+            });
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;"><div style="color:#b794f4;font-size:0.5rem;font-weight:bold;">Recommended Actions:</div>';
+        d.recommended_actions.forEach(function(a) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">📌 ' + a + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Legal authority research failed: ' + e.message); }
+};
+
+// ============================================================
+// Jury Perception Analyzer
+// ============================================================
+WitnessReplayApp.prototype.runJuryPerceptionAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','👁️ Run Jury Perception Analyzer');
+    this.addMessage('assistant','👁️ Analyzing jury perception...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/jury-perception-analyzer');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#fbb6ce;">👁️ Jury Perception Analyzer</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbb6ce;font-size:0.7rem;font-weight:bold;">' + d.total_witnesses_analyzed + '</div><div style="color:#a0aec0;font-size:0.45rem;">Witnesses Analyzed</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.average_perception_score + '/10</div><div style="color:#a0aec0;font-size:0.45rem;">Avg Perception</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.45rem;font-weight:bold;">Lead: ' + d.strongest_witness.split('(')[0].trim() + '</div><div style="color:#a0aec0;font-size:0.42rem;">Strongest Witness</div></div>';
+        html += '</div>';
+        d.witness_perceptions.forEach(function(wp) {
+            var gradeColor = wp.perception_grade === 'A' ? '#68d391' : wp.perception_grade === 'B' ? '#90cdf4' : wp.perception_grade === 'C' ? '#fbd38d' : '#fc8181';
+            html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<span style="color:#fbb6ce;font-weight:bold;font-size:0.52rem;">' + wp.witness + '</span>';
+            html += '<span style="color:' + gradeColor + ';font-weight:bold;font-size:0.6rem;">Grade: ' + wp.perception_grade + ' (' + wp.overall_perception_score + ')</span>';
+            html += '</div>';
+            html += '<div style="font-size:0.45rem;color:#68d391;">✓ Strengths: ' + wp.top_strengths.join(', ') + '</div>';
+            if (wp.key_weaknesses[0] !== 'None identified') html += '<div style="font-size:0.45rem;color:#fc8181;">⚠ Weaknesses: ' + wp.key_weaknesses.join(', ') + '</div>';
+            html += '<div style="font-size:0.42rem;color:#a0aec0;">Appeal: ' + wp.jury_appeal + ' | Risk: ' + wp.risk_factors[0] + '</div>';
+            html += '</div>';
+        });
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#fbb6ce;font-weight:bold;font-size:0.5rem;">🎯 Jury Strategy</div>';
+        html += '<div style="font-size:0.45rem;color:#e2e8f0;">Order: ' + d.overall_jury_strategy.order_recommendation + '</div>';
+        d.jury_selection_notes.forEach(function(n) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">📋 ' + n + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Jury perception analysis failed: ' + e.message); }
+};
+
+// ============================================================
+// Settlement Demand Drafter
+// ============================================================
+WitnessReplayApp.prototype.runSettlementDemandDrafter = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please create or select a session first.'); return; }
+    this.addMessage('user','💰 Run Settlement Demand Drafter');
+    this.addMessage('assistant','💰 Drafting settlement demand letter...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/settlement-demand-drafter');
+        var d = await r.json();
+        var html = '<div style="font-size:0.6rem;"><h4 style="color:#68d391;">💰 Settlement Demand Drafter</h4>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0;">';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.65rem;font-weight:bold;">' + d.demand_amount_formatted + '</div><div style="color:#a0aec0;font-size:0.45rem;">Demand Amount</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#90cdf4;font-size:0.55rem;font-weight:bold;">' + d.case_type + '</div><div style="color:#a0aec0;font-size:0.45rem;">Case Type</div></div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;text-align:center;"><div style="color:#fbd38d;font-size:0.55rem;font-weight:bold;">' + d.letter_metrics.estimated_pages + ' pages</div><div style="color:#a0aec0;font-size:0.45rem;">Letter Length</div></div>';
+        html += '</div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#68d391;font-weight:bold;font-size:0.5rem;">📄 Letter Sections</div>';
+        d.sections.forEach(function(s) {
+            html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:2px 0;border-bottom:1px solid #4a5568;">';
+            html += '<strong style="color:#90cdf4;">' + s.section + '</strong><br>' + s.content_summary;
+            html += '</div>';
+        });
+        html += '</div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#68d391;font-weight:bold;font-size:0.5rem;">💲 Damages Breakdown</div>';
+        d.damages_breakdown.forEach(function(db) {
+            html += '<div style="font-size:0.45rem;color:#e2e8f0;display:flex;justify-content:space-between;padding:1px 0;">';
+            html += '<span>' + db.category + '</span><span style="color:#68d391;font-weight:bold;">$' + db.amount.toLocaleString() + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div style="background:#2d3748;padding:4px;border-radius:4px;margin:3px 0;"><div style="color:#68d391;font-weight:bold;font-size:0.5rem;">🎯 Settlement Strategy</div>';
+        html += '<div style="font-size:0.45rem;color:#e2e8f0;">Range: ' + d.settlement_strategy.realistic_range_low + ' — ' + d.settlement_strategy.realistic_range_high + '</div>';
+        html += '<div style="font-size:0.45rem;color:#fc8181;">Walk-away: ' + d.settlement_strategy.walk_away_floor + '</div>';
+        d.settlement_strategy.negotiation_leverage_points.forEach(function(p) { html += '<div style="font-size:0.45rem;color:#e2e8f0;padding:1px 0;">⚡ ' + p + '</div>'; });
+        html += '</div></div>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Settlement demand drafting failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Witness Reliability Scorecard
+// ============================================================
+WitnessReplayApp.prototype.runWitnessReliabilityScorecard = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','📊 Run Witness Reliability Scorecard');
+    this.addMessage('assistant','🔄 Scoring witness reliability across 10 dimensions...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-reliability-scorecard');
+        var d = await r.json();
+        var html = '<h3>📊 Witness Reliability Scorecard</h3>';
+        html += '<div class="analysis-stats"><span>Witnesses: <strong>' + d.total_witnesses_scored + '</strong></span>';
+        html += '<span>Avg Score: <strong>' + d.average_reliability_score + '/10</strong></span>';
+        html += '<span>Dimensions: <strong>' + d.dimensions_evaluated + '</strong></span></div>';
+        html += '<p><em>' + d.overall_witness_panel_assessment + '</em></p>';
+        d.scorecards.forEach(function(sc) {
+            var gradeColor = sc.reliability_grade === 'A' ? '#68d391' : sc.reliability_grade === 'B' ? '#90cdf4' : sc.reliability_grade === 'C' ? '#fbd38d' : '#fc8181';
+            html += '<div class="analysis-card"><h4>' + sc.witness_name + ' — <span style="color:' + gradeColor + ';">Grade ' + sc.reliability_grade + ' (' + sc.overall_reliability_score + '/10)</span></h4>';
+            html += '<table class="mini-table"><thead><tr><th>Dimension</th><th>Score</th><th>Notes</th></tr></thead><tbody>';
+            Object.keys(sc.dimension_scores).forEach(function(dim) {
+                var ds = sc.dimension_scores[dim];
+                var c = ds.score >= 7 ? '#68d391' : ds.score >= 5 ? '#fbd38d' : '#fc8181';
+                html += '<tr><td>' + dim + '</td><td style="color:' + c + ';">' + ds.score + '</td><td>' + ds.notes + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            if (sc.red_flags.length) { html += '<p>🚩 <strong>Red Flags:</strong> ' + sc.red_flags.map(function(f){return f.dimension + ' (' + f.score + ')';}).join(', ') + '</p>'; }
+            html += '<p>💪 <strong>Strengths:</strong> ' + sc.strengths.join('; ') + '</p>';
+            html += '<p>⚠️ <strong>Vulnerabilities:</strong> ' + sc.vulnerabilities.join('; ') + '</p>';
+            html += '<p>📋 <strong>Approach:</strong> ' + sc.recommended_approach + '</p></div>';
+        });
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Reliability scoring failed: ' + e.message); }
+};
+
+// (Duplicate runDepositionCostEstimator removed — original at line ~17925 uses correct API fields)
+
+// ============================================================
+// Feature: Evidence Admissibility Checker
+// ============================================================
+WitnessReplayApp.prototype.runEvidenceAdmissibilityChecker = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','✅ Run Evidence Admissibility Checker');
+    this.addMessage('assistant','🔄 Analyzing evidence admissibility under Federal Rules...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/evidence-admissibility-checker');
+        var d = await r.json();
+        var html = '<h3>✅ Evidence Admissibility Checker</h3>';
+        html += '<div class="analysis-stats"><span>Evidence Items: <strong>' + d.total_evidence_analyzed + '</strong></span>';
+        html += '<span>Likely Admissible: <strong style="color:#68d391;">' + d.likely_admissible + '</strong></span>';
+        html += '<span>Conditional: <strong style="color:#fbd38d;">' + d.conditional + '</strong></span>';
+        html += '<span>At Risk: <strong style="color:#fc8181;">' + d.at_risk + '</strong></span></div>';
+        d.analyses.forEach(function(a) {
+            var statusColor = a.overall_admissibility === 'Likely Admissible' ? '#68d391' : a.overall_admissibility === 'Conditional' ? '#fbd38d' : '#fc8181';
+            html += '<div class="analysis-card"><h4>' + a.evidence_name + ' (' + a.evidence_type + ') — <span style="color:' + statusColor + ';">' + a.overall_admissibility + '</span> (' + a.confidence_pct + '%)</h4>';
+            html += '<table class="mini-table"><thead><tr><th>Rule</th><th>Status</th><th>Analysis</th></tr></thead><tbody>';
+            a.rules_analyzed.forEach(function(rule) {
+                var rc = rule.status.includes('Admissible') || rule.status === 'Not Hearsay' || rule.status === 'Authenticated' ? '#68d391' : rule.status.includes('Risk') || rule.status.includes('Objection') ? '#fc8181' : '#fbd38d';
+                html += '<tr><td>' + rule.rule + '</td><td style="color:' + rc + ';">' + rule.status + '</td><td>' + rule.analysis + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            html += '<p>📋 <strong>Foundation Needed:</strong> ' + a.foundation_requirements.join('; ') + '</p>';
+            html += '<p>⚠️ <strong>Potential Objections:</strong> ' + a.potential_objections.join('; ') + '</p>';
+            html += '<p>🎯 <strong>Actions:</strong> ' + a.recommended_actions.join('; ') + '</p></div>';
+        });
+        html += '<h4>🔥 Priority Actions</h4><ol>';
+        d.priority_actions.forEach(function(a) { html += '<li>' + a + '</li>'; });
+        html += '</ol>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Admissibility check failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Case SWOT Analyzer
+// ============================================================
+WitnessReplayApp.prototype.runCaseSWOTAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','🎯 Run Case SWOT Analyzer');
+    this.addMessage('assistant','🔄 Performing SWOT analysis on case...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/case-swot-analyzer');
+        var d = await r.json();
+        var html = '<h3>🎯 Case SWOT Analysis — ' + d.case_type + '</h3>';
+        html += '<div class="analysis-stats"><span>Factors: <strong>' + d.total_factors_analyzed + '</strong></span>';
+        html += '<span>High Impact: <strong>' + d.high_impact_factors + '</strong></span>';
+        html += '<span>Strength: <strong>' + d.overall_case_strength + '</strong></span>';
+        html += '<span>Risk: <strong>' + d.risk_score + '/10</strong></span></div>';
+        // Strengths
+        html += '<div class="analysis-card" style="border-left:4px solid #68d391;"><h4 style="color:#68d391;">💪 Strengths (' + d.strengths.count + ')</h4>';
+        d.strengths.items.forEach(function(s) { html += '<p><strong>[' + s.impact + ']</strong> ' + s.factor + ' — ' + s.details + '</p>'; });
+        html += '</div>';
+        // Weaknesses
+        html += '<div class="analysis-card" style="border-left:4px solid #fc8181;"><h4 style="color:#fc8181;">⚠️ Weaknesses (' + d.weaknesses.count + ')</h4>';
+        d.weaknesses.items.forEach(function(w) { html += '<p><strong>[' + w.impact + ']</strong> ' + w.factor + ' — ' + w.details + '</p>'; });
+        html += '</div>';
+        // Opportunities
+        html += '<div class="analysis-card" style="border-left:4px solid #90cdf4;"><h4 style="color:#90cdf4;">🚀 Opportunities (' + d.opportunities.count + ')</h4>';
+        d.opportunities.items.forEach(function(o) { html += '<p><strong>[' + o.impact + ']</strong> ' + o.factor + ' — ' + o.details + '</p>'; });
+        html += '</div>';
+        // Threats
+        html += '<div class="analysis-card" style="border-left:4px solid #fbd38d;"><h4 style="color:#fbd38d;">�� Threats (' + d.threats.count + ')</h4>';
+        d.threats.items.forEach(function(t) { html += '<p><strong>[' + t.impact + ']</strong> ' + t.factor + ' — ' + t.details + '</p>'; });
+        html += '</div>';
+        html += '<h4>📋 Strategic Recommendations</h4><ol>';
+        d.strategic_recommendations.forEach(function(r) { html += '<li>' + r + '</li>'; });
+        html += '</ol>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ SWOT analysis failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Examination Flow Builder
+// ============================================================
+WitnessReplayApp.prototype.runExaminationFlowBuilder = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','🔀 Run Examination Flow Builder');
+    this.addMessage('assistant','🔄 Building examination flows with branching strategies...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/examination-flow-builder');
+        var d = await r.json();
+        var html = '<h3>🔀 Examination Flow Builder</h3>';
+        html += '<div class="analysis-stats"><span>Witnesses: <strong>' + d.total_witnesses + '</strong></span>';
+        html += '<span>Phases: <strong>' + d.total_examination_phases + '</strong></span>';
+        html += '<span>Questions: <strong>' + d.total_planned_questions + '</strong></span>';
+        html += '<span>Est. Time: <strong>' + d.estimated_total_time_minutes + ' min</strong></span></div>';
+        html += '<p>📋 <strong>Witness Order:</strong> ' + d.witness_order_recommendation + '</p>';
+        d.examination_flows.forEach(function(flow) {
+            var riskColor = flow.risk_level === 'Low' ? '#68d391' : flow.risk_level === 'Medium' ? '#fbd38d' : '#fc8181';
+            html += '<div class="analysis-card"><h4>' + flow.witness_name + ' — ' + flow.examination_type + ' <span style="color:' + riskColor + ';">[' + flow.risk_level + ' Risk]</span></h4>';
+            html += '<p>🎬 <strong>Opening:</strong> ' + flow.opening_approach + '</p>';
+            flow.phases.forEach(function(phase) {
+                html += '<div style="margin:8px 0 8px 12px;padding:6px;border-left:3px solid #4a5568;"><strong>Phase ' + phase.phase_number + ': ' + phase.phase_name + '</strong> (~' + phase.estimated_minutes + ' min)';
+                html += '<br><em>' + phase.objective + '</em>';
+                html += '<ul style="margin:4px 0;">';
+                phase.questions.forEach(function(q) {
+                    var ansColor = q.expected_answer === 'Favorable' ? '#68d391' : q.expected_answer === 'Neutral' ? '#fbd38d' : '#fc8181';
+                    html += '<li><strong>' + q.question_number + '</strong> ' + q.text + ' <span style="color:' + ansColor + ';">(' + q.expected_answer + ')</span>';
+                    if (q.follow_up_strategy) html += '<br><em style="color:#90cdf4;">↳ ' + q.follow_up_strategy + '</em>';
+                    html += '</li>';
+                });
+                html += '</ul>';
+                html += '<em style="color:#a0aec0;">Transition: ' + phase.transition_note + '</em></div>';
+            });
+            html += '<p>🏁 <strong>Closing:</strong> ' + flow.closing_approach + '</p>';
+            html += '<p>⚠️ <strong>Warnings:</strong> ' + flow.critical_warnings.join('; ') + '</p></div>';
+        });
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Examination flow building failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Witness Demeanor Analyzer
+// ============================================================
+WitnessReplayApp.prototype.runWitnessDemeanorAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','🎭 Run Witness Demeanor Analyzer');
+    this.addMessage('assistant','🔄 Analyzing witness demeanor patterns and behavioral cues...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/witness-demeanor-analyzer');
+        var d = await r.json();
+        var html = '<h3>🎭 Witness Demeanor Analyzer</h3>';
+        html += '<div class="analysis-stats"><span>Witnesses: <strong>' + d.total_witnesses_analyzed + '</strong></span>';
+        html += '<span>Avg Score: <strong>' + d.average_demeanor_score + '/10</strong></span>';
+        html += '<span>High Credibility: <strong style="color:#68d391;">' + d.high_credibility_witnesses + '</strong></span>';
+        html += '<span>Red Flags: <strong style="color:#fc8181;">' + d.total_red_flags + '</strong></span></div>';
+        html += '<p><em>' + d.panel_assessment + '</em></p>';
+        d.analyses.forEach(function(a) {
+            var bandColor = a.credibility_band === 'High' ? '#68d391' : a.credibility_band === 'Moderate' ? '#fbd38d' : '#fc8181';
+            html += '<div class="analysis-card"><h4>' + a.witness_name + ' — <span style="color:' + bandColor + ';">' + a.credibility_band + ' Credibility (' + a.overall_demeanor_score + '/10)</span></h4>';
+            html += '<table class="mini-table"><thead><tr><th>Dimension</th><th>Score</th><th>Flag</th><th>Observation</th></tr></thead><tbody>';
+            Object.keys(a.dimension_scores).forEach(function(dim) {
+                var ds = a.dimension_scores[dim];
+                var c = ds.score >= 7 ? '#68d391' : ds.score >= 4 ? '#fbd38d' : '#fc8181';
+                html += '<tr><td>' + dim + '</td><td style="color:' + c + ';">' + ds.score + '</td><td>' + ds.flag + '</td><td>' + ds.observation + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            html += '<h5>🗣️ Verbal Patterns</h5><table class="mini-table"><thead><tr><th>Pattern</th><th>Frequency</th><th>Significance</th></tr></thead><tbody>';
+            a.verbal_patterns.forEach(function(vp) {
+                html += '<tr><td>' + vp.pattern + '</td><td>' + vp.frequency + '</td><td>' + vp.significance + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            if (a.red_flags.length) {
+                html += '<p>🚩 <strong>Red Flags:</strong> ' + a.red_flags.map(function(f){ return f.dimension + ' (' + f.score + ')'; }).join(', ') + '</p>';
+            }
+            html += '<p>📋 <strong>Summary:</strong> ' + a.behavioral_summary + '</p>';
+            html += '<p>⚔️ <strong>Cross-Exam Vulnerability:</strong> ' + a.cross_exam_vulnerability + '</p>';
+            html += '<p>🎯 <strong>Approach:</strong> ' + a.recommended_approach + '</p></div>';
+        });
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Demeanor analysis failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Damages Calculator
+// ============================================================
+WitnessReplayApp.prototype.runDamagesCalculator = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','💵 Run Damages Calculator');
+    this.addMessage('assistant','🔄 Computing damages breakdown with multipliers and present value...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/damages-calculator');
+        var d = await r.json();
+        var html = '<h3>💵 Damages Calculator — ' + d.case_type + '</h3>';
+        html += '<div class="analysis-stats"><span>Total Damages: <strong style="color:#68d391;">' + d.total_damages_formatted + '</strong></span>';
+        html += '<span>Economic: <strong>' + d.economic_damages.total_formatted + '</strong></span>';
+        html += '<span>Non-Economic: <strong>' + d.non_economic_damages.total_formatted + '</strong></span>';
+        html += '<span>Punitive: <strong>' + d.punitive_damages.amount_formatted + '</strong></span></div>';
+        // Economic
+        html += '<div class="analysis-card" style="border-left:4px solid #68d391;"><h4 style="color:#68d391;">💰 Economic Damages (' + d.economic_damages.total_formatted + ')</h4>';
+        html += '<p>Present Value: <strong>' + d.economic_damages.present_value_formatted + '</strong></p>';
+        html += '<table class="mini-table"><thead><tr><th>Category</th><th>Amount</th><th>Evidence Strength</th></tr></thead><tbody>';
+        d.economic_damages.items.forEach(function(i) {
+            html += '<tr><td>' + i.category + '</td><td style="color:#68d391;">$' + i.amount.toLocaleString() + '</td><td>' + i.evidence_strength + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        // Non-Economic
+        html += '<div class="analysis-card" style="border-left:4px solid #90cdf4;"><h4 style="color:#90cdf4;">💙 Non-Economic Damages (' + d.non_economic_damages.total_formatted + ')</h4>';
+        html += '<p>Multiplier: <strong>' + d.non_economic_damages.multiplier_used + 'x</strong></p>';
+        html += '<table class="mini-table"><thead><tr><th>Category</th><th>Amount</th><th>Method</th><th>Jury Range</th></tr></thead><tbody>';
+        d.non_economic_damages.items.forEach(function(i) {
+            html += '<tr><td>' + i.category + '</td><td style="color:#90cdf4;">$' + i.amount.toLocaleString() + '</td><td>' + i.valuation_method + '</td>';
+            html += '<td>$' + i.jury_range.low.toLocaleString() + ' — $' + i.jury_range.high.toLocaleString() + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        // Punitive
+        if (d.punitive_damages.eligible) {
+            html += '<div class="analysis-card" style="border-left:4px solid #fc8181;"><h4 style="color:#fc8181;">⚡ Punitive Damages (' + d.punitive_damages.amount_formatted + ')</h4>';
+            html += '<p>Ratio to Compensatory: <strong>' + d.punitive_damages.ratio_to_compensatory + ':1</strong></p>';
+            html += '<p>⚠️ ' + d.punitive_damages.constitutional_limit_note + '</p></div>';
+        }
+        // Settlement Range
+        html += '<div class="analysis-card"><h4>🎯 Settlement Range</h4>';
+        html += '<div class="analysis-stats"><span>Low: <strong>' + d.settlement_range.low_formatted + '</strong></span>';
+        html += '<span>Mid: <strong style="color:#68d391;">' + d.settlement_range.mid_formatted + '</strong></span>';
+        html += '<span>High: <strong>' + d.settlement_range.high_formatted + '</strong></span></div>';
+        html += '<p>Win Probability: <strong>' + d.verdict_probability.plaintiff_wins_pct + '%</strong> | Expected Verdict: <strong>' + d.verdict_probability.expected_verdict_range + '</strong></p></div>';
+        html += '<h4>📋 Key Considerations</h4><ul>';
+        d.key_considerations.forEach(function(c) { html += '<li>' + c + '</li>'; });
+        html += '</ul>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Damages calculation failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Burden of Proof Tracker
+// ============================================================
+WitnessReplayApp.prototype.runBurdenOfProofTracker = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','⚖️ Run Burden of Proof Tracker');
+    this.addMessage('assistant','🔄 Tracking burden of proof elements and evidence strength...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/burden-of-proof-tracker');
+        var d = await r.json();
+        var html = '<h3>⚖️ Burden of Proof Tracker — ' + d.case_type + '</h3>';
+        html += '<div class="analysis-stats"><span>Standard: <strong>' + d.burden_standard + '</strong></span>';
+        html += '<span>Met: <strong style="color:#68d391;">' + d.elements_met + '</strong></span>';
+        html += '<span>Likely Met: <strong style="color:#90cdf4;">' + d.elements_likely_met + '</strong></span>';
+        html += '<span>At Risk: <strong style="color:#fbd38d;">' + d.elements_at_risk + '</strong></span>';
+        html += '<span>Unmet: <strong style="color:#fc8181;">' + d.elements_unmet + '</strong></span></div>';
+        var viableColor = d.case_viability === 'Viable' ? '#68d391' : '#fbd38d';
+        html += '<p>Overall: <strong>' + d.overall_burden_met_pct + '%</strong> elements met | Viability: <strong style="color:' + viableColor + ';">' + d.case_viability + '</strong></p>';
+        // Progress bar
+        html += '<div style="background:#2d3748;border-radius:4px;height:20px;margin:8px 0;overflow:hidden;"><div style="width:' + d.overall_burden_met_pct + '%;height:100%;background:linear-gradient(90deg,' + viableColor + ',#90cdf4);border-radius:4px;"></div></div>';
+        // Element tracking
+        d.element_tracking.forEach(function(e) {
+            var sc = e.status === 'Met' ? '#68d391' : e.status === 'Likely Met' ? '#90cdf4' : e.status === 'At Risk' ? '#fbd38d' : '#fc8181';
+            html += '<div class="analysis-card" style="border-left:4px solid ' + sc + ';"><h4>' + e.element + ' — <span style="color:' + sc + ';">' + e.status + '</span> (' + e.evidence_strength + ')</h4>';
+            html += '<p>📎 <strong>Supporting:</strong> ' + e.supporting_evidence.join('; ') + '</p>';
+            if (e.evidence_gaps.length) html += '<p>🔍 <strong>Gaps:</strong> ' + e.evidence_gaps.join('; ') + '</p>';
+            if (e.witness_support.length) html += '<p>👤 <strong>Witnesses:</strong> ' + e.witness_support.join(', ') + '</p>';
+            html += '<p>🎯 <strong>Actions:</strong> ' + e.priority_actions.join('; ') + '</p></div>';
+        });
+        // Defenses
+        html += '<h4>🛡️ Affirmative Defenses</h4><table class="mini-table"><thead><tr><th>Defense</th><th>Strength</th><th>Impact</th></tr></thead><tbody>';
+        d.affirmative_defenses.forEach(function(def) {
+            var dc = def.strength === 'Strong' ? '#fc8181' : def.strength === 'Moderate' ? '#fbd38d' : '#68d391';
+            html += '<tr><td>' + def.defense + '</td><td style="color:' + dc + ';">' + def.strength + '</td><td>' + def.impact + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>📋 Strategic Recommendations</h4><ol>';
+        d.strategic_recommendations.forEach(function(r) { html += '<li>' + r + '</li>'; });
+        html += '</ol>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Burden tracking failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Mediation Prep Kit
+// ============================================================
+WitnessReplayApp.prototype.runMediationPrepKit = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','🤝 Run Mediation Prep Kit');
+    this.addMessage('assistant','🔄 Generating mediation preparation materials...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/mediation-prep-kit');
+        var d = await r.json();
+        var html = '<h3>🤝 Mediation Prep Kit — ' + d.case_type + '</h3>';
+        html += '<div class="analysis-stats"><span>Style: <strong>' + d.mediation_style + '</strong></span>';
+        html += '<span>Phases: <strong>' + d.total_negotiation_phases + '</strong></span>';
+        html += '<span>Target: <strong style="color:#68d391;">' + d.batna_analysis.realistic_target + '</strong></span></div>';
+        html += '<p>📋 <em>' + d.mediator_prep_notes + '</em></p>';
+        // Opening Statement
+        html += '<div class="analysis-card" style="border-left:4px solid #68d391;"><h4 style="color:#68d391;">🎤 Opening Statement</h4>';
+        html += '<p><strong>Theme:</strong> ' + d.opening_statement.theme + '</p>';
+        html += '<p><strong>Tone:</strong> ' + d.opening_statement.tone_recommendation + ' | Duration: ~' + d.opening_statement.estimated_duration_minutes + ' min</p>';
+        html += '<ul>'; d.opening_statement.key_points.forEach(function(p) { html += '<li>' + p + '</li>'; }); html += '</ul></div>';
+        // BATNA
+        html += '<div class="analysis-card" style="border-left:4px solid #90cdf4;"><h4 style="color:#90cdf4;">🎯 BATNA Analysis</h4>';
+        html += '<div class="analysis-stats"><span>Ideal: <strong>' + d.batna_analysis.ideal_outcome + '</strong></span>';
+        html += '<span>Target: <strong style="color:#68d391;">' + d.batna_analysis.realistic_target + '</strong></span>';
+        html += '<span>Walk-Away: <strong style="color:#fc8181;">' + d.batna_analysis.walk_away_point + '</strong></span></div>';
+        var ta = d.batna_analysis.trial_outcome_estimate;
+        html += '<p>Trial: <strong>' + ta.win_probability_pct + '%</strong> win | Verdict: ' + ta.expected_verdict_range + ' | Time: ' + ta.time_to_trial_months + ' mo | Cost: ' + ta.additional_litigation_costs + '</p></div>';
+        // Negotiation Phases
+        html += '<div class="analysis-card"><h4>🔄 Negotiation Strategy</h4>';
+        html += '<p>Opening Demand: <strong>' + d.concession_plan.opening_demand + '</strong> | Pattern: ' + d.concession_plan.concession_pattern + '</p>';
+        html += '<p>Hold Firm On: ' + d.concession_plan.hold_firm_on.join(', ') + '</p>';
+        d.negotiation_phases.forEach(function(ph) {
+            html += '<div style="margin:6px 0;padding:6px;border-left:3px solid #4a5568;">';
+            html += '<strong>Phase ' + ph.phase_number + ': ' + ph.phase + '</strong><br>';
+            html += '<em>' + ph.strategy + '</em>';
+            html += '<ul style="margin:2px 0;">'; ph.tactics.forEach(function(t) { html += '<li>' + t + '</li>'; }); html += '</ul>';
+            html += '<span style="color:#fbd38d;">⚠️ ' + ph.potential_obstacles + '</span></div>';
+        });
+        html += '</div>';
+        // Documents
+        html += '<h4>📁 Documents to Bring</h4><ul>';
+        d.documents_to_bring.forEach(function(doc) { html += '<li>' + doc + '</li>'; });
+        html += '</ul>';
+        // Emotional Prep
+        html += '<h4>💭 Emotional Preparation</h4><ul>';
+        d.emotional_preparation.forEach(function(ep) { html += '<li>' + ep + '</li>'; });
+        html += '</ul>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Mediation prep failed: ' + e.message); }
+};
+
+// ============================================================
+// Feature: Judicial Tendency Analyzer
+// ============================================================
+WitnessReplayApp.prototype.runJudicialTendencyAnalyzer = async function() {
+    if (!this.currentSessionId) { this.addMessage('assistant','⚠️ Please start or load a session first.'); return; }
+    this.addMessage('user','👨‍⚖️ Run Judicial Tendency Analyzer');
+    this.addMessage('assistant','🔄 Analyzing judicial tendencies and ruling patterns...');
+    try {
+        var r = await fetch('/api/sessions/' + this.currentSessionId + '/judicial-tendency-analyzer');
+        var d = await r.json();
+        var html = '<h3>👨‍⚖️ Judicial Tendency Analyzer</h3>';
+        html += '<div class="analysis-stats"><span>Judge: <strong>' + d.judge_name + '</strong></span>';
+        html += '<span>Court: <strong>' + d.court + '</strong></span>';
+        html += '<span>Years: <strong>' + d.years_on_bench + '</strong></span></div>';
+        html += '<p>Background: ' + d.prior_career + ' | ' + d.appointed_by + '</p>';
+        // Ruling Tendencies
+        var rt = d.ruling_tendencies;
+        html += '<div class="analysis-card"><h4>📊 Ruling Tendencies</h4>';
+        html += '<table class="mini-table"><thead><tr><th>Motion Type</th><th>Grant Rate</th><th>Tendency</th></tr></thead><tbody>';
+        html += '<tr><td>Motions to Dismiss</td><td>' + rt.motions_to_dismiss.grant_rate_pct + '%</td><td>' + rt.motions_to_dismiss.tendency + '</td></tr>';
+        html += '<tr><td>Summary Judgment</td><td>' + rt.summary_judgment.grant_rate_pct + '%</td><td>' + rt.summary_judgment.tendency + '</td></tr>';
+        html += '<tr><td>Daubert Challenges</td><td>' + rt.evidentiary_rulings.daubert_grant_rate_pct + '%</td><td>' + rt.evidentiary_rulings.tendency + '</td></tr>';
+        html += '</tbody></table>';
+        html += '<p>Evidence Admission: <strong>' + rt.evidentiary_rulings.liberal_admission_tendency_pct + '%</strong> liberal tendency</p></div>';
+        // Discovery & Trial
+        html += '<div class="analysis-card"><h4>🔍 Discovery & Trial Management</h4>';
+        html += '<p><strong>Discovery Scope:</strong> ' + rt.discovery_management.scope_tendency + '</p>';
+        html += '<p><strong>Sanctions:</strong> ' + rt.discovery_management.sanctions_frequency + '</p>';
+        html += '<p><strong>eDiscovery:</strong> ' + rt.discovery_management.eDiscovery_sophistication + ' sophistication</p>';
+        html += '<p><strong>Trial Style:</strong> ' + rt.trial_management.trial_style + '</p>';
+        html += '<p><strong>Jury Instructions:</strong> ' + rt.trial_management.jury_instruction_preference + '</p>';
+        html += '<p><strong>Settlement Pressure:</strong> ' + rt.trial_management.settlement_pressure + '</p></div>';
+        // Temperament
+        html += '<div class="analysis-card"><h4>🧑‍⚖️ Judicial Temperament</h4>';
+        html += '<p><strong>Demeanor:</strong> ' + d.judicial_temperament.courtroom_demeanor + '</p>';
+        html += '<p><strong>With Attorneys:</strong> ' + d.judicial_temperament.attorney_interaction + '</p></div>';
+        // Notable Rulings
+        html += '<h4>📜 Recent Notable Rulings</h4><table class="mini-table"><thead><tr><th>Case Type</th><th>Ruling</th><th>Relevance</th></tr></thead><tbody>';
+        d.recent_notable_rulings.forEach(function(rn) {
+            html += '<tr><td>' + rn.case_type + '</td><td>' + rn.ruling + '</td><td>' + rn.relevance + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        // Recommendations
+        html += '<h4>🎯 Strategic Recommendations</h4><ol>';
+        d.strategic_recommendations.forEach(function(sr) { html += '<li>' + sr + '</li>'; });
+        html += '</ol>';
+        html += '<p><strong>Overall:</strong> <em>' + d.overall_assessment + '</em></p>';
+        this.addMessage('assistant', html);
+    } catch(e) { this.addMessage('assistant','❌ Judicial analysis failed: ' + e.message); }
 };

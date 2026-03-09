@@ -29,7 +29,18 @@ AVAILABLE_VOICES = [
     {"id": "Zephyr", "name": "Zephyr", "description": "Light and airy voice"},
 ]
 
-DEFAULT_VOICE = "Puck"
+DEFAULT_VOICE = "Charon"
+
+# System instruction to prevent the LLM-based TTS model from improvising content.
+# Without this, native audio models treat input text as a conversational prompt and
+# generate creative responses (e.g. narrating fake accidents) instead of reading
+# the provided text verbatim.
+TTS_SYSTEM_INSTRUCTION = (
+    "You are a text-to-speech reader. Your ONLY job is to read the provided text "
+    "aloud exactly as written, word for word. Do NOT add, remove, change, or "
+    "improvise any content. Do NOT continue the conversation. Do NOT respond to "
+    "the text or role-play. Simply read it out loud verbatim."
+)
 
 
 class TTSService:
@@ -85,13 +96,21 @@ class TTSService:
         return cls.MODEL_ALIASES.get(model, model)
 
     def _get_model_chain(self) -> List[str]:
-        """Build deduplicated model chain for TTS generation."""
+        """Build deduplicated model chain for TTS generation.
+        
+        Prioritises dedicated TTS models (preview-tts) which faithfully read
+        text verbatim.  Native-audio models are conversational LLMs and may
+        improvise or hallucinate content, so they are used only as a
+        last-resort fallback.
+        """
         chain = [
-            settings.live_model or self.PRIMARY_MODEL,
+            # Dedicated TTS models first — they read text faithfully
+            *self.FALLBACK_MODELS,
+            # Then try configured models (may be native-audio)
             settings.tts_model,
+            settings.live_model or self.PRIMARY_MODEL,
             self.PRIMARY_MODEL,
             *self.NATIVE_FALLBACK_MODELS,
-            *self.FALLBACK_MODELS,
         ]
         deduped = []
         seen = set()
@@ -101,7 +120,7 @@ class TTSService:
                 continue
             seen.add(model)
             deduped.append(model)
-        return deduped or [self.PRIMARY_MODEL]
+        return deduped or self.FALLBACK_MODELS or [self.PRIMARY_MODEL]
 
     def _get_limits(self, model: str) -> tuple[int, int]:
         """Return rpm/rpd limits for model (0 = unlimited)."""
@@ -190,14 +209,17 @@ class TTSService:
         """Generate audio using Gemini Native Audio via Live API."""
         config = {
             "response_modalities": ["AUDIO"],
+            "system_instruction": TTS_SYSTEM_INSTRUCTION,
             # Passing voice name string keeps Native Audio stable with current SDK.
             "speech_config": voice,
         }
         audio_chunks: List[bytes] = []
         mime_type: Optional[str] = None
 
+        # Wrap text so the model reads it verbatim instead of treating it as a prompt
+        read_instruction = f"Read the following text aloud exactly as written:\n\n{text}"
         async with self.client.aio.live.connect(model=model, config=config) as session:
-            await session.send(text, end_of_turn=True)
+            await session.send(read_instruction, end_of_turn=True)
             async for message in session.receive():
                 server_content = getattr(message, "server_content", None)
                 if not server_content:
@@ -230,12 +252,15 @@ class TTSService:
         voice: str,
     ) -> Optional[bytes]:
         """Generate audio with standard generate_content TTS models."""
+        # Wrap text so the model reads it verbatim
+        read_instruction = f"Read the following text aloud exactly as written:\n\n{text}"
         response = await asyncio.to_thread(
             self.client.models.generate_content,
             model=model,
-            contents=text,
+            contents=read_instruction,
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
+                system_instruction=TTS_SYSTEM_INSTRUCTION,
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(

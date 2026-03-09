@@ -243,7 +243,7 @@ class TTSPlayer {
         if (savedEnabled === null && isMobileViewport) {
             this._writeStorage('ttsEnabled', 'true');
         }
-        this.voice = this._readStorage('ttsVoice') || 'Puck';
+        this.voice = this._readStorage('ttsVoice') || 'Charon';
         this.playbackSpeed = this._normalizePlaybackSpeed(this._readStorage('ttsPlaybackSpeed'));
         this._writeStorage('ttsPlaybackSpeed', this.playbackSpeed.toString());
         this.availableVoices = [];

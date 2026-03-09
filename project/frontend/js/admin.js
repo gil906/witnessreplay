@@ -5621,11 +5621,11 @@ async function doBulkExport() {
 // ═══════════════════════════════════════════════════════════════════
 (function() {
     const btn = document.getElementById('at-refresh-btn');
-    if (btn) btn.addEventListener('click', loadAuditTrail);
-    setTimeout(loadAuditTrail, 1800);
+    if (btn) btn.addEventListener('click', loadAuditTrailCompact);
+    setTimeout(loadAuditTrailCompact, 1800);
 })();
 
-async function loadAuditTrail() {
+async function loadAuditTrailCompact() {
     const token = localStorage.getItem('wr_admin_token');
     if (!token) return;
     try {
@@ -6380,7 +6380,7 @@ document.getElementById('user-mgmt-refresh')?.addEventListener('click', loadUser
 if (document.getElementById('user-mgmt-content')) loadUserManagement();
 
 // ── Performance Metrics Panel ──
-async function loadPerfMetrics() {
+async function loadPerfMetricsPanel() {
     const el = document.getElementById('perf-metrics-content');
     if (!el) return;
     try {
@@ -6411,12 +6411,12 @@ async function loadPerfMetrics() {
 async function resetPerfMetrics() {
     try {
         await fetch('/api/admin/performance-metrics', { method: 'POST', headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_token') || ''), 'Content-Type': 'application/json' } });
-        loadPerfMetrics();
+        loadPerfMetricsPanel();
     } catch(e) { console.error('Failed to reset metrics'); }
 }
-document.getElementById('perf-metrics-refresh')?.addEventListener('click', loadPerfMetrics);
+document.getElementById('perf-metrics-refresh')?.addEventListener('click', loadPerfMetricsPanel);
 document.getElementById('perf-metrics-reset')?.addEventListener('click', resetPerfMetrics);
-if (document.getElementById('perf-metrics-content')) loadPerfMetrics();
+if (document.getElementById('perf-metrics-content')) loadPerfMetricsPanel();
 
 // ============================================================
 // Admin: Environment Config Panel
@@ -6698,10 +6698,10 @@ async function loadAuditLogPanel() {
 document.getElementById('audit-log-refresh')?.addEventListener('click', loadAuditLogPanel);
 setTimeout(loadAuditLogPanel, 2400);
 
-// ── System Health Dashboard Panel ────────────────
+// ── Infrastructure Monitor Panel ────────────────
 async function loadSysHealthPanel() {
     try {
-        const r = await fetch('/api/admin/system-health-dashboard', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
+        const r = await fetch('/api/admin/infrastructure-monitor', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
         if (!r.ok) return;
         const d = await r.json();
         const el = document.getElementById('sys-health-content');
@@ -6797,29 +6797,9 @@ async function loadUserActivityPanel() {
 document.getElementById('user-activity-refresh')?.addEventListener('click', loadUserActivityPanel);
 setTimeout(loadUserActivityPanel, 3000);
 
-// ── Feature Usage Stats Panel ───────────────────────
-async function loadFeatureUsagePanel() {
-    const el = document.getElementById('feature-usage-content');
-    if (!el) return;
-    try {
-        const r = await fetch('/api/admin/feature-usage-stats', {headers:{'Authorization':'Bearer '+(sessionStorage.getItem('admin_token')||localStorage.getItem('admin_token')||'')}});
-        const d = await r.json();
-        let html = '<div class="featusage-grid">';
-        html += `<div class="featusage-stat"><span class="featusage-num">${d.total_features}</span><span class="featusage-lbl">Features</span></div>`;
-        html += `<div class="featusage-stat"><span class="featusage-num">${d.total_calls_24h}</span><span class="featusage-lbl">Calls (24h)</span></div>`;
-        html += `<div class="featusage-stat"><span class="featusage-num">${d.avg_error_rate_pct}%</span><span class="featusage-lbl">Avg Error Rate</span></div>`;
-        html += '</div>';
-        html += '<div class="featusage-popular"><strong>🔥 Most Popular</strong>';
-        d.most_popular.forEach(f => { html += `<div class="featusage-row"><span>${f.name}</span><span class="featusage-calls">${f.calls}</span></div>`; });
-        html += '</div>';
-        html += '<div class="featusage-least"><strong>💤 Least Used</strong>';
-        d.least_used.forEach(f => { html += `<div class="featusage-row"><span>${f.name}</span><span class="featusage-calls">${f.calls}</span></div>`; });
-        html += '</div>';
-        el.innerHTML = html;
-    } catch(e) { console.error('Feature usage error:', e); }
-}
-document.getElementById('feature-usage-refresh')?.addEventListener('click', loadFeatureUsagePanel);
-setTimeout(loadFeatureUsagePanel, 3500);
+// ── Feature Usage Stats Panel (upgraded to analytics API) ───────────────────────
+// Defined below in the Feature Usage Analytics section
+document.getElementById('feature-usage-refresh')?.addEventListener('click', function(){if(typeof loadFeatureUsagePanel==='function')loadFeatureUsagePanel();});
 
 // ── Error Tracker Panel ─────────────────────────────
 async function loadErrorTrackerPanel() {
@@ -7147,67 +7127,8 @@ async function loadTestimonyDistributionPanel() {
     } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load testimony distribution.</p>'; console.error(e); }
 }
 
-// ─── Witness Credibility Trends ────────────────────────────────────────────────
-async function loadCredibilityTrends() {
-    const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
-    const res = await fetch('/api/admin/credibility-trends', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!res.ok) { return '<p class="admin-error">Could not load credibility trends.</p>'; }
-    const d = await res.json();
-    const trendColor = d.trend_direction === '↑' ? '#22c55e' : '#ef4444';
-    let html = `<div class="admin-metric-grid">`;
-    html += `<div class="admin-metric"><span class="admin-metric-val">${d.current_avg_credibility}</span><span class="admin-metric-lbl">Avg Credibility</span></div>`;
-    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:${trendColor}">${d.trend_direction}${Math.abs(d.trend_delta)}</span><span class="admin-metric-lbl">vs Last Week</span></div>`;
-    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:#22c55e">${d.high_credibility_count}</span><span class="admin-metric-lbl">High Cred</span></div>`;
-    html += `<div class="admin-metric"><span class="admin-metric-val" style="color:#ef4444">${d.low_credibility_count}</span><span class="admin-metric-lbl">Low Cred</span></div>`;
-    html += `</div>`;
-    html += `<p style="font-size:0.85rem;color:#94a3b8;margin-bottom:0.75rem">${d.summary}</p>`;
-    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📊 Score Distribution</h4>`;
-    html += `<div style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.75rem">`;
-    d.score_distribution.forEach(s => {
-        const pct = Math.round(100 * s.count / Math.max(d.total_sessions, 1));
-        html += `<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem">`;
-        html += `<span style="min-width:80px;color:#94a3b8">${s.label}</span>`;
-        html += `<div style="flex:1;height:12px;background:rgba(255,255,255,0.08);border-radius:3px">`;
-        html += `<div style="width:${pct}%;height:100%;background:${s.color};border-radius:3px"></div></div>`;
-        html += `<span style="min-width:30px;text-align:right">${s.count}</span>`;
-        html += `<span style="color:#64748b;min-width:35px">${pct}%</span></div>`;
-    });
-    html += `</div>`;
-    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">🔑 Top Credibility Drivers</h4>`;
-    html += `<div style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.75rem">`;
-    d.top_credibility_drivers.forEach((drv, i) => {
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.05)">`;
-        html += `<span>${i + 1}. ${drv.driver}</span>`;
-        html += `<span style="color:#60a5fa">+${drv.avg_impact} pts · ${drv.sessions_pct}% of sessions</span></div>`;
-    });
-    html += `</div>`;
-    html += `<h4 style="font-size:0.9rem;margin-bottom:0.5rem">📈 12-Week Trend</h4>`;
-    html += `<div style="display:flex;gap:0.15rem;align-items:flex-end;height:50px;margin-bottom:0.75rem">`;
-    const maxScore = Math.max(...d.weekly_trend.map(w => w.avg_credibility));
-    d.weekly_trend.forEach(w => {
-        const h = Math.round(50 * w.avg_credibility / maxScore);
-        const c = w.avg_credibility >= 70 ? '#22c55e' : w.avg_credibility >= 50 ? '#eab308' : '#ef4444';
-        html += `<div title="${w.week}: ${w.avg_credibility}" style="flex:1;background:${c};height:${h}px;border-radius:2px 2px 0 0"></div>`;
-    });
-    html += `</div>`;
-    html += `<div style="font-size:0.78rem;color:#64748b;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem">`;
-    d.recommendations.forEach(r => { html += `<div>• ${r}</div>`; });
-    html += `</div>`;
-    return html;
-}
-
-async function loadCredibilityTrendsPanel() {
-    const el = document.getElementById('credibility-trends-content');
-    if (!el) return;
-    try {
-        el.innerHTML = await loadCredibilityTrends();
-    } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load credibility trends.</p>'; console.error(e); }
-}
-
 document.getElementById('testimony-distribution-refresh')?.addEventListener('click', loadTestimonyDistributionPanel);
-document.getElementById('credibility-trends-refresh')?.addEventListener('click', loadCredibilityTrendsPanel);
 setTimeout(loadTestimonyDistributionPanel, 10000);
-setTimeout(loadCredibilityTrendsPanel, 11500);
 
 // ─── ADMIN TOKEN HELPER ────────────────────────────────────────────────────────
 function getAdminToken() {
@@ -7391,3 +7312,2300 @@ document.getElementById('plea-trends-refresh')?.addEventListener('click', loadPl
 document.getElementById('background-risk-refresh')?.addEventListener('click', loadBackgroundRiskPanel);
 setTimeout(loadPleaTrendsPanel, 16000);
 setTimeout(loadBackgroundRiskPanel, 17500);
+
+// ─── GEMINI COST TRACKER PANEL ────────────────────────────────────────────────
+async function loadGeminiCostTrackerPanel() {
+    const token = getAdminToken();
+    const res = await fetch('/api/admin/gemini-cost-tracker', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { document.getElementById('gemini-cost-tracker-content').innerHTML = '<p style="color:#ef4444">Failed to load.</p>'; return; }
+    const d = await res.json();
+    const budgetColor = d.budget_status === 'Critical' ? '#ef4444' : d.budget_status === 'Warning' ? '#eab308' : '#22c55e';
+    let html = '<div style="display:flex;flex-direction:column;gap:0.6rem">';
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem">';
+    [
+        ['💰 Total Cost', '$' + d.total_cost_usd, '#eab308'],
+        ['📞 API Calls', d.total_api_calls.toLocaleString(), '#60a5fa'],
+        ['📥 Input Tokens', d.total_input_tokens.toLocaleString(), '#a78bfa'],
+        ['📤 Output Tokens', d.total_output_tokens.toLocaleString(), '#f472b6'],
+    ].forEach(([label, val, color]) => {
+        html += '<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:0.5rem;text-align:center">';
+        html += '<div style="font-size:1.1rem;font-weight:700;color:' + color + '">' + val + '</div>';
+        html += '<div style="font-size:0.65rem;color:#64748b">' + label + '</div></div>';
+    });
+    html += '</div>';
+    html += '<div style="background:rgba(255,255,255,0.03);border-radius:6px;padding:0.5rem">';
+    html += '<div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.3rem">Budget: $' + d.mtd_cost_usd + ' / $' + d.budget_limit_usd + ' (' + d.budget_used_pct + '%)</div>';
+    html += '<div style="background:rgba(255,255,255,0.08);border-radius:3px;height:6px"><div style="width:' + Math.min(100, d.budget_used_pct) + '%;height:100%;border-radius:3px;background:' + budgetColor + '"></div></div>';
+    html += '<div style="font-size:0.65rem;color:' + budgetColor + ';margin-top:0.2rem">Status: ' + d.budget_status + '</div></div>';
+    html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-top:0.2rem">Model Breakdown</div>';
+    d.model_breakdown.forEach(m => {
+        html += '<div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:0.4rem;font-size:0.7rem">';
+        html += '<div style="display:flex;justify-content:space-between"><strong>' + m.model + '</strong><span style="color:#eab308">$' + m.cost_usd + '</span></div>';
+        html += '<div style="color:#64748b">' + m.calls + ' calls · ' + m.input_tokens.toLocaleString() + ' in + ' + m.output_tokens.toLocaleString() + ' out tokens · ' + m.avg_latency_ms + 'ms avg</div></div>';
+    });
+    html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-top:0.2rem">Cost by Analysis Type</div>';
+    d.analysis_type_costs.forEach(a => {
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.15rem">';
+        html += '<span style="color:#cbd5e1">' + a.type + '</span><span style="color:#eab308">$' + a.avg_cost_usd + '/call · ' + a.call_count + ' calls</span></div>';
+    });
+    html += '<div style="font-size:0.7rem;color:#64748b;margin-top:0.3rem">';
+    d.insights.forEach(i => { html += '• ' + i + '<br>'; });
+    html += '</div></div>';
+    const el = document.getElementById('gemini-cost-tracker-content');
+    if (el) el.innerHTML = html;
+}
+
+// ─── WITNESS QUALITY INDEX PANEL ─────────────────────────────────────────────
+async function loadWitnessQualityIndexPanel() {
+    const token = getAdminToken();
+    const res = await fetch('/api/admin/witness-quality-index', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { document.getElementById('witness-quality-index-content').innerHTML = '<p style="color:#ef4444">Failed to load.</p>'; return; }
+    const d = await res.json();
+    const qc = d.overall_quality_index >= 75 ? '#22c55e' : d.overall_quality_index >= 55 ? '#eab308' : '#ef4444';
+    const trendIcon = d.quality_trend === 'improving' ? '📈' : '📉';
+    let html = '<div style="display:flex;flex-direction:column;gap:0.6rem">';
+    html += '<div style="display:flex;align-items:center;gap:1rem;background:rgba(255,255,255,0.04);border-radius:8px;padding:0.6rem 1rem;border:2px solid ' + qc + '">';
+    html += '<div style="font-size:1.6rem;font-weight:800;color:' + qc + '">' + d.overall_quality_index + '<span style="font-size:0.85rem">/100</span></div>';
+    html += '<div><div style="font-size:0.8rem;font-weight:600;color:' + qc + '">' + trendIcon + ' ' + d.quality_trend.charAt(0).toUpperCase() + d.quality_trend.slice(1) + '</div>';
+    html += '<div style="font-size:0.68rem;color:#94a3b8">' + d.total_witnesses_analyzed + ' witnesses analyzed</div></div></div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.3rem">';
+    d.score_distribution.forEach(b => {
+        html += '<div style="background:rgba(255,255,255,0.03);border-radius:5px;padding:0.4rem;text-align:center">';
+        html += '<div style="font-size:1rem;font-weight:700;color:' + b.color + '">' + b.pct + '%</div>';
+        html += '<div style="font-size:0.58rem;color:#64748b">' + b.bracket + '</div></div>';
+    });
+    html += '</div>';
+    html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8">Quality Dimensions</div>';
+    d.quality_dimensions.forEach(dim => {
+        const dc = dim.avg_score >= 70 ? '#22c55e' : dim.avg_score >= 50 ? '#eab308' : '#ef4444';
+        const tc = dim.trend === 'improving' ? '#22c55e' : dim.trend === 'declining' ? '#ef4444' : '#64748b';
+        html += '<div style="display:grid;grid-template-columns:1fr 70px 35px 60px;gap:0.3rem;align-items:center;margin-bottom:0.2rem">';
+        html += '<span style="font-size:0.7rem;color:#cbd5e1">' + dim.dimension + '</span>';
+        html += '<div style="background:rgba(255,255,255,0.08);border-radius:3px;height:5px"><div style="width:' + dim.avg_score + '%;height:100%;border-radius:3px;background:' + dc + '"></div></div>';
+        html += '<span style="font-size:0.7rem;font-weight:700;color:' + dc + '">' + dim.avg_score + '</span>';
+        html += '<span style="font-size:0.62rem;color:' + tc + '">' + dim.trend + '</span></div>';
+    });
+    html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-top:0.2rem">Quality by Case Type</div>';
+    d.case_type_quality.forEach(c => {
+        const cc = c.avg_quality >= 70 ? '#22c55e' : c.avg_quality >= 55 ? '#eab308' : '#ef4444';
+        html += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.15rem">';
+        html += '<span style="color:#cbd5e1">' + c.case_type + '</span><span style="color:' + cc + '">' + c.avg_quality + '/100 · ' + c.sample_size + ' witnesses</span></div>';
+    });
+    html += '<div style="font-size:0.7rem;color:#64748b;margin-top:0.3rem">';
+    d.insights.forEach(i => { html += '• ' + i + '<br>'; });
+    html += '</div></div>';
+    const el = document.getElementById('witness-quality-index-content');
+    if (el) el.innerHTML = html;
+}
+
+document.getElementById('gemini-cost-tracker-refresh')?.addEventListener('click', loadGeminiCostTrackerPanel);
+document.getElementById('witness-quality-index-refresh')?.addEventListener('click', loadWitnessQualityIndexPanel);
+setTimeout(loadGeminiCostTrackerPanel, 19000);
+setTimeout(loadWitnessQualityIndexPanel, 20500);
+
+// ── Sentencing Analytics ─────────────────────────────────────────────────
+async function loadSentencingAnalyticsPanel() {
+    const el = document.getElementById('sentencing-analytics-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const r = await fetch('/api/admin/sentencing-analytics', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await r.json();
+        if (!r.ok) { el.innerHTML = `<p class="error-msg">${d.detail || 'Error'}</p>`; return; }
+        let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.8rem;">`;
+        html += `<div class="stat-box"><div class="stat-val">${d.total_cases_analyzed}</div><div class="stat-lbl">Cases Analyzed</div></div>`;
+        html += `<div class="stat-box"><div class="stat-val">${d.overall_avg_sentence_years}y</div><div class="stat-lbl">Avg Sentence</div></div>`;
+        html += `<div class="stat-box"><div class="stat-val">${d.testimony_impact_on_sentence_pct}%</div><div class="stat-lbl">Testimony Impact</div></div>`;
+        html += '</div>';
+        if (d.charge_categories?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.4rem;">By Charge Category:</div>';
+            d.charge_categories.forEach(c => {
+                html += `<div style="display:grid;grid-template-columns:1fr auto auto;gap:0.4rem;align-items:center;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+                html += `<div style="font-size:0.73rem;color:#e2e8f0;">${c.category}</div>`;
+                html += `<div style="font-size:0.7rem;color:#94a3b8;">${c.avg_sentence_years}y avg</div>`;
+                html += `<div style="font-size:0.7rem;background:rgba(255,255,255,0.06);color:#cbd5e1;border-radius:4px;padding:0.05rem 0.3rem;">Impact: ${c.testimony_impact}%</div>`;
+                html += '</div>';
+            });
+        }
+        if (d.testimony_impact_factors?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin:0.6rem 0 0.3rem;">Testimony Impact Factors:</div>';
+            d.testimony_impact_factors.forEach(f => {
+                const inc = f.avg_sentence_increase_pct;
+                const color = inc > 0 ? '#f87171' : '#4ade80';
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+                html += `<div style="font-size:0.72rem;color:#e2e8f0;">${f.factor}</div>`;
+                html += `<div style="font-size:0.7rem;color:${color};font-weight:600;">${inc > 0 ? '+' : ''}${inc}%</div>`;
+                html += '</div>';
+            });
+        }
+        if (d.insights?.length) {
+            html += '<div style="margin-top:0.6rem;">';
+            d.insights.forEach(i => { html += `<div style="font-size:0.7rem;color:#64748b;padding:0.1rem 0;">• ${i}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+// ── Corroboration Health Dashboard ────────────────────────────────────────
+async function loadCorroborationHealthPanel() {
+    const el = document.getElementById('corroboration-health-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const r = await fetch('/api/admin/corroboration-health', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await r.json();
+        if (!r.ok) { el.innerHTML = `<p class="error-msg">${d.detail || 'Error'}</p>`; return; }
+        let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-bottom:0.8rem;">`;
+        html += `<div class="stat-box"><div class="stat-val">${d.overall_corroboration_health}/100</div><div class="stat-lbl">Health Score</div></div>`;
+        html += `<div class="stat-box"><div class="stat-val">${d.fully_corroborated_pct}%</div><div class="stat-lbl">Fully Corroborated</div></div>`;
+        html += `<div class="stat-box"><div class="stat-val stat-val-warn">${d.uncorroborated_pct}%</div><div class="stat-lbl">Uncorroborated</div></div>`;
+        html += '</div>';
+        if (d.evidence_type_breakdown?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.4rem;">Evidence Type Performance:</div>';
+            d.evidence_type_breakdown.forEach(t => {
+                html += `<div style="margin-bottom:0.3rem;">`;
+                html += `<div style="display:flex;justify-content:space-between;font-size:0.72rem;margin-bottom:0.1rem;">`;
+                html += `<span style="color:#e2e8f0;">${t.icon} ${t.type}</span>`;
+                html += `<span style="color:#94a3b8;">Corr: ${t.corroboration_rate}% | Str: ${t.avg_strength}/100</span>`;
+                html += '</div>';
+                html += `<div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;"><div style="height:100%;width:${t.avg_strength}%;background:#22d3ee;border-radius:2px;"></div></div>`;
+                html += '</div>';
+            });
+        }
+        if (d.corroboration_health_distribution?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin:0.6rem 0 0.3rem;">Distribution:</div>';
+            d.corroboration_health_distribution.forEach(h => {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+                html += `<div style="font-size:0.7rem;color:#e2e8f0;">${h.level}</div>`;
+                html += `<div style="font-size:0.7rem;color:${h.color};font-weight:600;">${h.count} (${h.pct}%)</div>`;
+                html += '</div>';
+            });
+        }
+        if (d.insights?.length) {
+            html += '<div style="margin-top:0.6rem;">';
+            d.insights.forEach(i => { html += `<div style="font-size:0.7rem;color:#64748b;padding:0.1rem 0;">• ${i}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+document.getElementById('sentencing-analytics-refresh')?.addEventListener('click', loadSentencingAnalyticsPanel);
+document.getElementById('corroboration-health-refresh')?.addEventListener('click', loadCorroborationHealthPanel);
+setTimeout(loadSentencingAnalyticsPanel, 21500);
+setTimeout(loadCorroborationHealthPanel, 23000);
+
+// ── Trial Outcome Analytics ──────────────────────────────────────────────────
+async function loadTrialOutcomesPanel() {
+    const el = document.getElementById('trial-outcomes-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const resp = await fetch('/api/admin/trial-outcomes', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await resp.json();
+        let html = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">`;
+        html += `<div style="background:rgba(34,197,94,0.1);border:1px solid #22c55e;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#22c55e;">${d.overall_conviction_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">Conviction Rate</div></div>`;
+        html += `<div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#ef4444;">${d.acquittal_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">Acquittal Rate</div></div>`;
+        html += `<div style="background:rgba(234,179,8,0.1);border:1px solid #eab308;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#eab308;">${d.hung_jury_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">Hung Jury</div></div>`;
+        html += `<div style="background:rgba(59,130,246,0.1);border:1px solid #3b82f6;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#3b82f6;">${d.total_cases_tracked}</div><div style="font-size:0.68rem;color:#94a3b8;">Total Cases</div></div>`;
+        html += '</div>';
+        if (d.verdict_breakdown?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.3rem;">Verdict Breakdown:</div>';
+            d.verdict_breakdown.forEach(v => {
+                html += `<div style="margin-bottom:0.3rem;">`;
+                html += `<div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.1rem;">`;
+                html += `<span style="color:#e2e8f0;">${v.verdict}</span><span style="color:${v.color};font-weight:600;">${v.count} (${v.pct}%)</span>`;
+                html += '</div>';
+                html += `<div style="height:5px;background:rgba(255,255,255,0.08);border-radius:3px;"><div style="height:100%;width:${v.pct}%;background:${v.color};border-radius:3px;"></div></div>`;
+                html += '</div>';
+            });
+        }
+        if (d.by_charge_type?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin:0.6rem 0 0.3rem;">By Charge Type:</div>';
+            d.by_charge_type.forEach(c => {
+                html += `<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:0.2rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">`;
+                html += `<span style="color:#e2e8f0;">${c.charge_type}</span>`;
+                html += `<span style="color:#22d3ee;">${c.conviction_rate}% conv. | ${c.cases} cases</span>`;
+                html += '</div>';
+            });
+        }
+        const ti = d.testimony_impact_on_outcome;
+        if (ti) {
+            html += `<div style="margin-top:0.6rem;padding:0.5rem;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid rgba(255,255,255,0.07);">`;
+            html += `<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.25rem;">Testimony Impact on Conviction:</div>`;
+            html += `<div style="font-size:0.7rem;color:#e2e8f0;">High-Credibility: <b style="color:#22c55e;">${ti.high_credibility_conviction_rate}%</b> | Low-Credibility: <b style="color:#ef4444;">${ti.low_credibility_conviction_rate}%</b></div>`;
+            html += `<div style="font-size:0.7rem;color:#94a3b8;margin-top:0.2rem;">Credibility Swing Factor: ±${ti.credibility_swing_factor}%</div>`;
+            html += '</div>';
+        }
+        if (d.insights?.length) {
+            html += '<div style="margin-top:0.5rem;">';
+            d.insights.forEach(i => { html += `<div style="font-size:0.68rem;color:#64748b;padding:0.1rem 0;">• ${i}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+// ── Case Velocity Dashboard ──────────────────────────────────────────────────
+async function loadCaseVelocityPanel() {
+    const el = document.getElementById('case-velocity-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const resp = await fetch('/api/admin/case-velocity', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await resp.json();
+        const tp = d.throughput;
+        let html = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">`;
+        html += `<div style="background:rgba(34,211,238,0.1);border:1px solid #22d3ee;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#22d3ee;">${d.avg_end_to_end_days}d</div><div style="font-size:0.68rem;color:#94a3b8;">Avg Cycle Time</div></div>`;
+        html += `<div style="background:rgba(249,115,22,0.1);border:1px solid #f97316;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#f97316;">${tp?.on_time_delivery_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">On-Time Rate</div></div>`;
+        html += `<div style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#8b5cf6;">${tp?.cases_per_week_avg}</div><div style="font-size:0.68rem;color:#94a3b8;">Cases/Week</div></div>`;
+        html += `<div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#ef4444;">${tp?.current_backlog}</div><div style="font-size:0.68rem;color:#94a3b8;">Backlog</div></div>`;
+        html += '</div>';
+        if (d.pipeline_stages?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.3rem;">Pipeline Stages:</div>';
+            d.pipeline_stages.forEach(s => {
+                const riskColor = s.bottleneck_risk === 'High' ? '#ef4444' : s.bottleneck_risk === 'Medium' ? '#f97316' : '#22c55e';
+                html += `<div style="margin-bottom:0.35rem;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.03);border-left:3px solid ${riskColor};border-radius:3px;">`;
+                html += `<div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#e2e8f0;">${s.stage}</span><span style="color:${riskColor};">${s.bottleneck_risk}</span></div>`;
+                html += `<div style="font-size:0.67rem;color:#94a3b8;">Avg: ${s.avg_hours}h | p95: ${s.p95_hours}h</div>`;
+                html += '</div>';
+            });
+        }
+        const sla = d.sla_compliance;
+        if (sla) {
+            html += `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid rgba(255,255,255,0.07);">`;
+            html += `<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.2rem;">SLA Compliance (target: ${sla.sla_target_days}d):</div>`;
+            html += `<div style="font-size:0.7rem;color:#e2e8f0;">Within SLA: <b style="color:#22c55e;">${sla.within_sla_pct}%</b> | Breaches: <b style="color:#ef4444;">${sla.breached_sla_count}</b> | Avg breach: ${sla.avg_breach_days}d</div>`;
+            html += '</div>';
+        }
+        if (d.recommendations?.length) {
+            html += '<div style="margin-top:0.5rem;"><div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.2rem;">Recommendations:</div>';
+            d.recommendations.forEach(r => { html += `<div style="font-size:0.68rem;color:#64748b;padding:0.1rem 0;">• ${r}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+document.getElementById('trial-outcomes-refresh')?.addEventListener('click', loadTrialOutcomesPanel);
+document.getElementById('case-velocity-refresh')?.addEventListener('click', loadCaseVelocityPanel);
+setTimeout(loadTrialOutcomesPanel, 24500);
+setTimeout(loadCaseVelocityPanel, 26000);
+
+// ── Witness Network Analysis ─────────────────────────────────────────────────
+async function loadWitnessNetworkPanel() {
+    const el = document.getElementById('witness-network-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const resp = await fetch('/api/admin/witness-network', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await resp.json();
+        let html = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">`;
+        html += `<div style="background:rgba(99,179,237,0.1);border:1px solid #63b3ed;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#63b3ed;">${d.total_witnesses_tracked}</div><div style="font-size:0.68rem;color:#94a3b8;">Witnesses</div></div>`;
+        html += `<div style="background:rgba(246,173,85,0.1);border:1px solid #f6ad55;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#f6ad55;">${d.total_relationships_mapped}</div><div style="font-size:0.68rem;color:#94a3b8;">Relationships</div></div>`;
+        html += `<div style="background:rgba(104,211,145,0.1);border:1px solid #68d391;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#68d391;">${(d.clustering_coefficient * 100).toFixed(0)}%</div><div style="font-size:0.68rem;color:#94a3b8;">Clustering</div></div>`;
+        const riskColor = d.network_health?.coaching_cluster_risk === 'High' ? '#ef4444' : (d.network_health?.coaching_cluster_risk === 'Medium' ? '#f6ad55' : '#22c55e');
+        html += `<div style="background:rgba(239,68,68,0.1);border:1px solid ${riskColor};border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:${riskColor};">${d.network_health?.coaching_cluster_risk}</div><div style="font-size:0.68rem;color:#94a3b8;">Coaching Risk</div></div>`;
+        html += '</div>';
+        if (d.witness_clusters?.length) {
+            html += '<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.3rem;">Witness Clusters:</div>';
+            d.witness_clusters.forEach(c => {
+                const posColor = c.dominant_type === 'Prosecution' ? '#63b3ed' : (c.dominant_type === 'Defense' ? '#fc8181' : '#a0aec0');
+                html += `<div style="margin-bottom:0.35rem;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.03);border-left:3px solid ${posColor};border-radius:3px;">`;
+                html += `<div style="display:flex;justify-content:space-between;font-size:0.7rem;"><span style="color:#e2e8f0;">${c.cluster_id} (${c.witness_count} witnesses)</span><span style="color:${posColor};">${c.dominant_type}</span></div>`;
+                html += `<div style="font-size:0.67rem;color:#94a3b8;">Alignment: ${c.avg_alignment}% | Coherence: ${c.coherence_score}</div>`;
+                html += '</div>';
+            });
+        }
+        if (d.contradiction_pairs?.length) {
+            html += '<div style="margin-top:0.4rem;font-size:0.72rem;font-weight:600;color:#fc8181;margin-bottom:0.3rem;">Contradiction Pairs:</div>';
+            d.contradiction_pairs.forEach(p => {
+                html += `<div style="font-size:0.7rem;color:#e2e8f0;padding:0.2rem 0.4rem;background:rgba(252,129,129,0.07);border-radius:4px;margin-bottom:0.2rem;">`;
+                html += `⚡ ${p.pair[0]} ↔ ${p.pair[1]} — ${p.topic} (conflict: ${p.conflict_score})`;
+                html += '</div>';
+            });
+        }
+        const nh = d.network_health;
+        if (nh) {
+            html += `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid rgba(255,255,255,0.07);">`;
+            html += `<div style="font-size:0.7rem;color:#e2e8f0;">Coherence: <b style="color:#68d391;">${nh.coherence_rate}%</b> | Contradictions: <b style="color:#fc8181;">${nh.contradiction_rate}%</b> | Independent: <b style="color:#63b3ed;">${nh.independent_testimony_pct}%</b></div>`;
+            html += '</div>';
+        }
+        if (d.insights?.length) {
+            html += '<div style="margin-top:0.5rem;">';
+            d.insights.forEach(i => { html += `<div style="font-size:0.68rem;color:#64748b;padding:0.1rem 0;">• ${i}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+// ── Case Outcome Predictor ────────────────────────────────────────────────────
+async function loadOutcomePredictorPanel() {
+    const el = document.getElementById('outcome-predictor-content');
+    if (!el) return;
+    try {
+        const token = getAdminToken();
+        const resp = await fetch('/api/admin/outcome-predictor', { headers: { 'Authorization': 'Bearer ' + token } });
+        const d = await resp.json();
+        let html = `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.8rem;">`;
+        html += `<div style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf6;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#8b5cf6;">${d.model_accuracy_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">Model Accuracy</div></div>`;
+        html += `<div style="background:rgba(34,211,238,0.1);border:1px solid #22d3ee;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#22d3ee;">${d.overall_predicted_conviction_rate}%</div><div style="font-size:0.68rem;color:#94a3b8;">Conviction Rate</div></div>`;
+        html += `<div style="background:rgba(104,211,145,0.1);border:1px solid #68d391;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#68d391;">${d.total_predictions_made}</div><div style="font-size:0.68rem;color:#94a3b8;">Total Predictions</div></div>`;
+        html += `<div style="background:rgba(249,115,22,0.1);border:1px solid #f97316;border-radius:6px;padding:0.5rem 0.9rem;flex:1;text-align:center;">`;
+        html += `<div style="font-size:1.3rem;font-weight:700;color:#f97316;">${d.prediction_confidence_avg}%</div><div style="font-size:0.68rem;color:#94a3b8;">Avg Confidence</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.3rem;">Top Prediction Drivers:</div>`;
+        (d.predictor_weights || []).forEach(p => {
+            const corrColor = p.conviction_correlation > 0 ? '#68d391' : '#fc8181';
+            const wPct = Math.round(p.weight * 100);
+            html += `<div style="margin-bottom:0.35rem;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.03);border-radius:3px;display:flex;align-items:center;gap:8px;">`;
+            html += `<div style="min-width:8px;height:8px;border-radius:50%;background:${corrColor};"></div>`;
+            html += `<div style="flex:1;font-size:0.7rem;color:#e2e8f0;">${p.predictor}</div>`;
+            html += `<div style="font-size:0.68rem;color:#94a3b8;">w:${wPct}%</div>`;
+            html += `<div style="font-size:0.68rem;color:${corrColor};">r=${p.conviction_correlation.toFixed(2)}</div>`;
+            html += '</div>';
+        });
+        if (d.by_charge_type_predictions?.length) {
+            html += '<div style="margin-top:0.5rem;font-size:0.72rem;font-weight:600;color:#94a3b8;margin-bottom:0.3rem;">By Charge Type:</div>';
+            d.by_charge_type_predictions.forEach(c => {
+                html += `<div style="font-size:0.7rem;display:flex;justify-content:space-between;padding:0.2rem 0.4rem;border-bottom:1px solid rgba(255,255,255,0.05);">`;
+                html += `<span style="color:#e2e8f0;">${c.charge_type}</span>`;
+                html += `<span style="color:#22d3ee;">${c.predicted_conviction_rate}%</span>`;
+                html += `<span style="color:#8b5cf6;">${c.model_confidence}% conf</span>`;
+                html += '</div>';
+            });
+        }
+        html += `<div style="margin-top:0.4rem;font-size:0.72rem;color:#94a3b8;">Most impactful: <b style="color:#8b5cf6;">${d.most_impactful_predictor}</b></div>`;
+        if (d.model_insights?.length) {
+            html += '<div style="margin-top:0.5rem;">';
+            d.model_insights.forEach(i => { html += `<div style="font-size:0.68rem;color:#64748b;padding:0.1rem 0;">• ${i}</div>`; });
+            html += '</div>';
+        }
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Load error: ${e.message}</p>`; }
+}
+
+document.getElementById('witness-network-refresh')?.addEventListener('click', loadWitnessNetworkPanel);
+document.getElementById('outcome-predictor-refresh')?.addEventListener('click', loadOutcomePredictorPanel);
+setTimeout(loadWitnessNetworkPanel, 27500);
+setTimeout(loadOutcomePredictorPanel, 29000);
+
+// ── Admin: Witness Reliability Trends ────────────────────────────────────────
+async function loadReliabilityTrendsPanel() {
+    const el = document.getElementById('reliability-trends-content');
+    if (!el) return;
+    const token = localStorage.getItem('admin_token') || '';
+    try {
+        const resp = await fetch('/api/admin/reliability-trends', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) { el.innerHTML = '<p class="error-msg">⚠️ Auth required</p>'; return; }
+        const d = await resp.json();
+        const trendColor = d.reliability_trend === 'Improving' ? '#68d391' : '#fc8181';
+
+        let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:#a78bfa;">${d.overall_avg_reliability}</div><div class="stat-label">Avg Reliability Score</div></div>`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:#63b3ed;">${d.total_witnesses_assessed.toLocaleString()}</div><div class="stat-label">Witnesses Assessed</div></div>`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:${trendColor};">${d.reliability_trend}</div><div class="stat-label">12-Week Trend</div></div>`;
+        html += '</div>';
+
+        // Score band distribution
+        html += '<div style="margin-bottom:16px;"><div style="font-size:0.8rem;font-weight:700;color:#a78bfa;margin-bottom:8px;">RELIABILITY SCORE DISTRIBUTION</div>';
+        d.score_band_distribution.forEach(band => {
+            const pct = band.pct;
+            const barColor = band.band.includes('Highly') ? '#68d391' : (band.band.includes('Reliable') ? '#a78bfa' : (band.band.includes('Question') ? '#f6ad55' : '#fc8181'));
+            html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">`;
+            html += `<div style="min-width:200px;font-size:0.78rem;color:#a0aec0;">${band.band}</div>`;
+            html += `<div style="flex:1;height:10px;background:#2d3748;border-radius:5px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${barColor};border-radius:5px;"></div></div>`;
+            html += `<div style="min-width:55px;font-size:0.78rem;color:#e2e8f0;text-align:right;">${band.count} (${pct}%)</div>`;
+            html += '</div>';
+        });
+        html += '</div>';
+
+        // By case type
+        html += '<div style="margin-bottom:16px;"><div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">RELIABILITY BY CASE TYPE</div>';
+        d.reliability_by_case_type.forEach(ct => {
+            const scColor = ct.avg_score >= 70 ? '#68d391' : (ct.avg_score >= 55 ? '#f6ad55' : '#fc8181');
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;">`;
+            html += `<span style="font-size:0.8rem;color:#a0aec0;">${ct.case_type}</span>`;
+            html += `<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:0.75rem;color:#718096;">n=${ct.sample_size}</span><span style="font-weight:700;color:${scColor};font-size:0.9rem;">${ct.avg_score}</span></div>`;
+            html += '</div>';
+        });
+        html += '</div>';
+
+        // Risk factors
+        if (d.reliability_risk_factors?.length) {
+            html += '<div style="font-size:0.8rem;font-weight:700;color:#fc8181;margin-bottom:8px;">RISK FACTORS</div>';
+            d.reliability_risk_factors.forEach(f => { html += `<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:5px;padding:6px;background:rgba(252,129,129,0.06);border-radius:6px;">⚠️ ${f}</div>`; });
+        }
+
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+// ── Admin: Evidence Quality Dashboard ────────────────────────────────────────
+async function loadEvidenceQualityPanel() {
+    const el = document.getElementById('evidence-quality-content');
+    if (!el) return;
+    const token = localStorage.getItem('admin_token') || '';
+    try {
+        const resp = await fetch('/api/admin/evidence-quality', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) { el.innerHTML = '<p class="error-msg">⚠️ Auth required</p>'; return; }
+        const d = await resp.json();
+
+        let html = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:#68d391;">${d.overall_evidence_quality_score}</div><div class="stat-label">Quality Score</div></div>`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:#63b3ed;">${d.total_evidence_items.toLocaleString()}</div><div class="stat-label">Total Evidence Items</div></div>`;
+        html += `<div class="stat-card"><div class="stat-value" style="color:${d.critical_issues_count > 0 ? '#fc8181' : '#68d391'};">${d.critical_issues_count}</div><div class="stat-label">Critical Issues</div></div>`;
+        html += '</div>';
+
+        // Evidence by type
+        html += '<div style="margin-bottom:16px;"><div style="font-size:0.8rem;font-weight:700;color:#68d391;margin-bottom:8px;">EVIDENCE QUALITY BY TYPE</div>';
+        d.evidence_by_type.forEach(et => {
+            const qColor = et.avg_quality >= 75 ? '#68d391' : (et.avg_quality >= 60 ? '#f6ad55' : '#fc8181');
+            html += `<div style="margin-bottom:9px;padding:10px;background:rgba(104,211,145,0.06);border-radius:8px;">`;
+            html += `<div style="display:flex;justify-content:space-between;margin-bottom:5px;">`;
+            html += `<span style="font-size:0.82rem;color:#e2e8f0;font-weight:600;">${et.icon} ${et.type}</span>`;
+            html += `<div style="display:flex;gap:10px;"><span style="font-size:0.75rem;color:#718096;">${et.total_items} items</span><span style="font-weight:700;color:${qColor};">${et.avg_quality}</span></div></div>`;
+            html += `<div style="height:6px;background:#2d3748;border-radius:3px;overflow:hidden;"><div style="width:${et.avg_quality}%;height:100%;background:${qColor};border-radius:3px;"></div></div>`;
+            html += `<div style="font-size:0.72rem;color:#718096;margin-top:4px;">Admissibility: ${et.admissibility_rate}%</div>`;
+            html += '</div>';
+        });
+        html += '</div>';
+
+        // Chain of custody issues
+        if (d.chain_of_custody_issues?.length) {
+            html += '<div style="margin-bottom:14px;"><div style="font-size:0.8rem;font-weight:700;color:#fc8181;margin-bottom:8px;">CHAIN OF CUSTODY ISSUES</div>';
+            d.chain_of_custody_issues.forEach(issue => {
+                const sevColor = issue.severity === 'Critical' ? '#fc8181' : (issue.severity === 'High' ? '#f6ad55' : '#a0aec0');
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding:7px 10px;background:rgba(252,129,129,0.06);border-radius:6px;">`;
+                html += `<span style="font-size:0.8rem;color:#a0aec0;">${issue.issue}</span>`;
+                html += `<div style="display:flex;gap:8px;align-items:center;"><span style="font-size:0.75rem;color:#718096;">${issue.frequency}x</span><span style="font-size:0.72rem;padding:2px 7px;border-radius:4px;background:rgba(252,129,129,0.1);color:${sevColor};font-weight:700;">${issue.severity}</span></div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        // Suppression risks
+        if (d.top_suppression_risks?.length) {
+            html += '<div style="font-size:0.8rem;font-weight:700;color:#f6ad55;margin-bottom:8px;">TOP SUPPRESSION RISKS</div>';
+            d.top_suppression_risks.forEach(risk => { html += `<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:5px;padding:6px;background:rgba(246,173,85,0.06);border-radius:6px;">⚠️ ${risk}</div>`; });
+        }
+
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+document.getElementById('reliability-trends-refresh')?.addEventListener('click', loadReliabilityTrendsPanel);
+document.getElementById('evidence-quality-refresh')?.addEventListener('click', loadEvidenceQualityPanel);
+setTimeout(loadReliabilityTrendsPanel, 30500);
+setTimeout(loadEvidenceQualityPanel, 32000);
+
+// ── Settlement Analytics Panel ────────────────────────────────────────────────
+async function loadSettlementAnalyticsPanel() {
+    const el = document.getElementById('settlement-analytics-content');
+    if (!el) return;
+    try {
+        const resp = await fetch('/api/admin/settlement-analytics', { headers: getAuthHeaders() });
+        if (!resp.ok) { el.innerHTML = '<p class="error-msg">Unauthorized</p>'; return; }
+        const d = await resp.json();
+        const trendColor = d.settlement_trend === 'Rising' ? '#68d391' : '#fc8181';
+        let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#63b3ed;">${d.overall_settlement_rate_pct}%</div><div class="stat-label">Settlement Rate</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">$${d.avg_settlement_value_k}k</div><div class="stat-label">Avg. Value</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#f6ad55;">${d.total_settled_cases}</div><div class="stat-label">Settled</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:${trendColor};">${d.settlement_trend}</div><div class="stat-label">Trend</div></div>`;
+        html += '</div>';
+
+        // By case type
+        html += '<div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">SETTLEMENT BY CASE TYPE</div>';
+        (d.by_case_type || []).forEach(ct => {
+            const rateColor = ct.settlement_rate_pct >= 65 ? '#68d391' : (ct.settlement_rate_pct >= 40 ? '#f6ad55' : '#fc8181');
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">`;
+            html += `<div style="min-width:160px;font-size:0.78rem;color:#e2e8f0;">${ct.case_type}</div>`;
+            html += `<div style="flex:1;height:6px;background:#2d3748;border-radius:3px;"><div style="width:${ct.settlement_rate_pct}%;height:100%;background:${rateColor};border-radius:3px;"></div></div>`;
+            html += `<span style="font-size:0.75rem;color:${rateColor};min-width:35px;">${ct.settlement_rate_pct}%</span>`;
+            html += `<span style="font-size:0.72rem;color:#718096;min-width:65px;">$${ct.avg_value_k}k avg</span>`;
+            html += '</div>';
+        });
+
+        // Settlement pressure factors
+        html += '<div style="font-size:0.8rem;font-weight:700;color:#b794f4;margin:12px 0 8px;">SETTLEMENT PRESSURE FACTORS</div>';
+        (d.settlement_pressure_factors || []).forEach(f => {
+            const impColor = f.impact === 'High' ? '#fc8181' : (f.impact === 'Medium' ? '#f6ad55' : '#718096');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.78rem;">`;
+            html += `<span style="color:#e2e8f0;">${f.factor}</span>`;
+            html += `<div style="display:flex;gap:8px;align-items:center;"><span style="color:${impColor};">${f.impact}</span><span style="color:#63b3ed;">+${f.settlement_push_pct}%</span></div>`;
+            html += '</div>';
+        });
+
+        // Key insights
+        if (d.key_insights?.length) {
+            html += '<div style="font-size:0.8rem;font-weight:700;color:#f6ad55;margin:12px 0 8px;">KEY INSIGHTS</div>';
+            d.key_insights.forEach(i => { html += `<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:5px;padding:6px;background:rgba(246,173,85,0.06);border-radius:6px;">💡 ${i}</div>`; });
+        }
+
+        html += `<div style="font-size:0.75rem;color:#718096;margin-top:10px;">Mediation Success: ${d.mediation_success_rate_pct}% · Pre-trial Window: ${d.pre_trial_settlement_window_days}d · High-Value Cases: ${d.high_value_settlement_count}</div>`;
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+// ── Deposition Quality Panel ──────────────────────────────────────────────────
+async function loadDepositionQualityPanel() {
+    const el = document.getElementById('deposition-quality-content');
+    if (!el) return;
+    try {
+        const resp = await fetch('/api/admin/deposition-quality', { headers: getAuthHeaders() });
+        if (!resp.ok) { el.innerHTML = '<p class="error-msg">Unauthorized</p>'; return; }
+        const d = await resp.json();
+        const qualColor = d.overall_deposition_quality_score >= 80 ? '#68d391' : (d.overall_deposition_quality_score >= 65 ? '#63b3ed' : (d.overall_deposition_quality_score >= 50 ? '#f6ad55' : '#fc8181'));
+        let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:${qualColor};">${d.overall_deposition_quality_score}</div><div class="stat-label">Quality Score</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#63b3ed;">${d.quality_rating}</div><div class="stat-label">Rating</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#b794f4;">${d.total_depositions_analyzed}</div><div class="stat-label">Analyzed</div></div>`;
+        html += `<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">${d.critical_deficiency_count}</div><div class="stat-label">Critical Issues</div></div>`;
+        html += '</div>';
+
+        // Quality dimensions
+        html += '<div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">QUALITY DIMENSIONS</div>';
+        (d.quality_dimensions || []).forEach(dim => {
+            const dc = dim.avg_score >= 75 ? '#68d391' : (dim.avg_score >= 55 ? '#f6ad55' : '#fc8181');
+            const trendIcon = dim.trend === 'Up' ? '↑' : (dim.trend === 'Down' ? '↓' : '→');
+            const trendColor = dim.trend === 'Up' ? '#68d391' : (dim.trend === 'Down' ? '#fc8181' : '#718096');
+            html += `<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px;">`;
+            html += `<span style="color:#e2e8f0;">${dim.dimension} <span style="color:${trendColor};">${trendIcon}</span></span><span style="color:${dc};">${dim.avg_score}</span></div>`;
+            html += `<div style="height:5px;background:#2d3748;border-radius:3px;"><div style="width:${dim.avg_score}%;height:100%;background:${dc};border-radius:3px;"></div></div></div>`;
+        });
+
+        // Attorney performance
+        html += '<div style="font-size:0.8rem;font-weight:700;color:#b794f4;margin:12px 0 8px;">ATTORNEY PERFORMANCE (Top: ${d.top_attorney})</div>';
+        (d.attorney_performance || []).forEach(a => {
+            const ac = a.avg_quality >= 75 ? '#68d391' : (a.avg_quality >= 55 ? '#f6ad55' : '#fc8181');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:0.78rem;">`;
+            html += `<span style="color:#e2e8f0;">${a.attorney}</span>`;
+            html += `<div style="display:flex;gap:10px;"><span style="color:${ac};">${a.avg_quality} qual</span><span style="color:#718096;">${a.depositions} deps</span><span style="color:#a0aec0;">${a.objections_sustained_pct}% sustained</span></div>`;
+            html += '</div>';
+        });
+
+        // Common deficiencies
+        html += '<div style="font-size:0.8rem;font-weight:700;color:#fc8181;margin:12px 0 8px;">COMMON DEFICIENCIES</div>';
+        (d.common_deficiencies || []).forEach(def => {
+            const sevColor = def.severity === 'Critical' ? '#fc8181' : (def.severity === 'High' ? '#f6ad55' : '#a0aec0');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.78rem;">`;
+            html += `<span style="color:#e2e8f0;">${def.deficiency}</span>`;
+            html += `<div style="display:flex;gap:8px;"><span style="color:#718096;">${def.frequency}x</span><span style="font-size:0.72rem;padding:2px 7px;border-radius:4px;background:rgba(252,129,129,0.08);color:${sevColor};font-weight:700;">${def.severity}</span></div>`;
+            html += '</div>';
+        });
+
+        // Recommendations
+        if (d.quality_improvement_recommendations?.length) {
+            html += '<div style="font-size:0.8rem;font-weight:700;color:#68d391;margin:12px 0 8px;">RECOMMENDATIONS</div>';
+            d.quality_improvement_recommendations.forEach(rec => { html += `<div style="font-size:0.78rem;color:#a0aec0;margin-bottom:5px;padding:6px;background:rgba(104,211,145,0.06);border-radius:6px;">✅ ${rec}</div>`; });
+        }
+
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+document.getElementById('settlement-analytics-refresh')?.addEventListener('click', loadSettlementAnalyticsPanel);
+document.getElementById('deposition-quality-refresh')?.addEventListener('click', loadDepositionQualityPanel);
+setTimeout(loadSettlementAnalyticsPanel, 34000);
+setTimeout(loadDepositionQualityPanel, 36000);
+
+async function loadAppealTrendsPanel() {
+    const el = document.getElementById('appeal-trends-content');
+    if (!el) return;
+    try {
+        const res = await fetch('/api/admin/appeal-trends', {headers: {'Authorization': 'Bearer ' + getAdminToken()}});
+        if (!res.ok) throw new Error('Auth required');
+        const d = await res.json();
+        let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">`;
+        html += `<div class="stat-mini"><span style="color:#fc8181;font-size:1.2rem;font-weight:800;">${d.overall_appeal_rate_pct}%</span><br><span>Appeal Rate</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#f6ad55;font-size:1.2rem;font-weight:800;">${d.overall_reversal_rate_pct}%</span><br><span>Reversal Rate</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#63b3ed;font-size:1.2rem;font-weight:800;">${d.total_cases_appealed}</span><br><span>Total Appealed</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#b794f4;font-size:1.2rem;font-weight:800;">${d.total_reversals}</span><br><span>Reversals</span></div>`;
+        html += '</div>';
+
+        if (d.system_alert) {
+            html += `<div style="background:rgba(252,129,129,0.1);border:1px solid rgba(252,129,129,0.3);border-radius:8px;padding:8px;margin-bottom:12px;font-size:0.78rem;color:#fc8181;">⚠️ ${d.system_alert}</div>`;
+        }
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">WEEKLY APPEAL TREND (${d.appeal_trend})</div>`;
+        html += `<div style="display:flex;gap:3px;align-items:flex-end;height:60px;margin-bottom:14px;">`;
+        const maxRate = Math.max(...(d.weekly_trend||[]).map(w => w.appeal_rate_pct));
+        (d.weekly_trend||[]).forEach(w => {
+            const h = Math.max(8, Math.round(w.appeal_rate_pct / maxRate * 55));
+            const c = w.appeal_rate_pct > 30 ? '#fc8181' : (w.appeal_rate_pct > 20 ? '#f6ad55' : '#68d391');
+            html += `<div title="${w.week}: ${w.appeal_rate_pct}% appeals, ${w.reversal_rate_pct}% reversals" style="flex:1;height:${h}px;background:${c};border-radius:2px 2px 0 0;min-width:6px;"></div>`;
+        });
+        html += '</div>';
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#b794f4;margin-bottom:8px;">APPEAL GROUNDS (Most Common: ${d.most_common_ground})</div>`;
+        (d.by_appeal_ground||[]).forEach(g => {
+            const gc = g.success_rate_pct > 40 ? '#fc8181' : (g.success_rate_pct > 25 ? '#f6ad55' : '#68d391');
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.78rem;">`;
+            html += `<span style="color:#e2e8f0;">${g.ground}</span>`;
+            html += `<div style="display:flex;gap:10px;"><span style="color:#a0aec0;">${g.frequency}x</span><span style="color:${gc};">${g.success_rate_pct}% reversal</span><span style="color:#718096;">${g.avg_duration_months}mo</span></div></div>`;
+        });
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#f6ad55;margin:12px 0 8px;">BY CASE TYPE</div>`;
+        (d.by_case_type||[]).forEach(ct => {
+            const ac = ct.appeal_rate_pct > 30 ? '#fc8181' : '#a0aec0';
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.75rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">`;
+            html += `<span style="color:#e2e8f0;">${ct.case_type}</span>`;
+            html += `<span style="color:${ac};">Appeal: ${ct.appeal_rate_pct}% · Reversal: ${ct.reversal_rate_pct}% · $${ct.avg_appellate_cost_k}k</span></div>`;
+        });
+
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+async function loadComplexityOverviewPanel() {
+    const el = document.getElementById('complexity-overview-content');
+    if (!el) return;
+    try {
+        const res = await fetch('/api/admin/complexity-overview', {headers: {'Authorization': 'Bearer ' + getAdminToken()}});
+        if (!res.ok) throw new Error('Auth required');
+        const d = await res.json();
+        let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">`;
+        html += `<div class="stat-mini"><span style="color:#63b3ed;font-size:1.2rem;font-weight:800;">${d.total_active_cases}</span><br><span>Total Cases</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#f6ad55;font-size:1.2rem;font-weight:800;">${d.portfolio_avg_complexity_score}</span><br><span>Avg Complexity</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#9f7aea;font-size:1.2rem;font-weight:800;">${d.mega_complex_percentage}%</span><br><span>Mega-Complex</span></div>`;
+        html += `<div class="stat-mini"><span style="color:#fc8181;font-size:1.2rem;font-weight:800;">${d.trend_direction}</span><br><span>Trend</span></div>`;
+        html += '</div>';
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">CASE DISTRIBUTION BY COMPLEXITY</div>`;
+        html += `<div style="display:flex;gap:6px;margin-bottom:14px;">`;
+        const totalCases = (d.complexity_distribution||[]).reduce((s,t) => s+t.case_count, 0);
+        (d.complexity_distribution||[]).forEach(tier => {
+            const pct = Math.round(tier.case_count / totalCases * 100);
+            html += `<div style="flex:${pct};background:${tier.color};border-radius:6px;padding:8px 6px;text-align:center;min-width:40px;">`;
+            html += `<div style="font-size:0.7rem;font-weight:700;color:#fff;">${tier.tier}</div>`;
+            html += `<div style="font-size:1rem;font-weight:800;color:#fff;">${tier.case_count}</div>`;
+            html += `<div style="font-size:0.65rem;color:rgba(255,255,255,0.8);">${pct}%</div></div>`;
+        });
+        html += '</div>';
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#b794f4;margin-bottom:8px;">COMPLEXITY TREND (${d.trend_direction})</div>`;
+        html += `<div style="display:flex;gap:3px;align-items:flex-end;height:50px;margin-bottom:14px;">`;
+        const maxScore = Math.max(...(d.complexity_trend||[]).map(w => w.avg_complexity_score));
+        (d.complexity_trend||[]).forEach(w => {
+            const h = Math.max(6, Math.round(w.avg_complexity_score / maxScore * 45));
+            const c = w.avg_complexity_score > 60 ? '#fc8181' : (w.avg_complexity_score > 40 ? '#f6ad55' : '#68d391');
+            html += `<div title="${w.week}: score ${w.avg_complexity_score}, ${w.new_cases} new cases" style="flex:1;height:${h}px;background:${c};border-radius:2px 2px 0 0;min-width:6px;"></div>`;
+        });
+        html += '</div>';
+
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#f6ad55;margin-bottom:8px;">RESOURCE PRESSURE</div>`;
+        (d.resource_pressure||[]).forEach(rp => {
+            const rc = rp.utilization_pct > 85 ? '#fc8181' : (rp.utilization_pct > 70 ? '#f6ad55' : '#68d391');
+            html += `<div style="margin-bottom:7px;"><div style="display:flex;justify-content:space-between;font-size:0.76rem;margin-bottom:3px;">`;
+            html += `<span style="color:#e2e8f0;">${rp.resource}</span><span style="color:${rc};">${rp.utilization_pct}% · Shortage: ${rp.shortage_risk}</span></div>`;
+            html += `<div style="height:4px;background:#2d3748;border-radius:3px;"><div style="width:${rp.utilization_pct}%;height:100%;background:${rc};border-radius:3px;"></div></div></div>`;
+        });
+
+        html += `<div style="margin-top:10px;font-size:0.78rem;color:#718096;padding:6px;background:rgba(255,255,255,0.03);border-radius:6px;">💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+document.getElementById('appeal-trends-refresh')?.addEventListener('click', loadAppealTrendsPanel);
+document.getElementById('complexity-overview-refresh')?.addEventListener('click', loadComplexityOverviewPanel);
+setTimeout(loadAppealTrendsPanel, 38000);
+setTimeout(loadComplexityOverviewPanel, 40000);
+
+async function loadRecantationMonitorPanel() {
+    const el = document.getElementById('recantation-monitor-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading...</p>';
+    try {
+        const resp = await fetch('/api/admin/recantation-monitor', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_token') || '') } });
+        const d = await resp.json();
+        let html = '';
+        html += `<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(252,129,129,0.08);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#fc8181;">${d.currently_at_risk}</div><div style="font-size:0.68rem;color:#a0aec0;">At Risk</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(252,129,129,0.12);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#fc8181;">${d.critical_cases}</div><div style="font-size:0.68rem;color:#a0aec0;">Critical</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#e2e8f0;">${d.overall_recantation_rate_pct}%</div><div style="font-size:0.68rem;color:#a0aec0;">Recant Rate</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#e2e8f0;">${d.total_witnesses_monitored}</div><div style="font-size:0.68rem;color:#a0aec0;">Monitored</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#fc8181;margin-bottom:8px;">BY CASE TYPE</div>`;
+        (d.by_case_type || []).forEach(ct => {
+            const rc = ct.recantation_rate_pct > 10 ? '#fc8181' : ct.recantation_rate_pct > 6 ? '#f6ad55' : '#68d391';
+            html += `<div style="margin-bottom:5px;"><div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:2px;">`;
+            html += `<span style="color:#e2e8f0;">${ct.case_type}</span><span style="color:${rc};">${ct.recantation_rate_pct}% recant · ${ct.at_risk_pct}% at-risk</span></div>`;
+            html += `<div style="height:3px;background:#2d3748;border-radius:2px;"><div style="width:${Math.min(ct.recantation_rate_pct * 6, 100)}%;height:100%;background:${rc};border-radius:2px;"></div></div></div>`;
+        });
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#68d391;margin:10px 0 6px;">INTERVENTION EFFECTIVENESS</div>`;
+        (d.intervention_effectiveness || []).slice(0, 4).forEach(iv => {
+            const sc = iv.success_rate_pct > 70 ? '#68d391' : iv.success_rate_pct > 55 ? '#f6ad55' : '#a0aec0';
+            html += `<div style="display:flex;justify-content:space-between;font-size:0.73rem;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">`;
+            html += `<span style="color:#e2e8f0;">${iv.intervention}</span><span style="color:${sc};">${iv.success_rate_pct}% success</span></div>`;
+        });
+        html += `<div style="margin-top:10px;font-size:0.75rem;color:#718096;padding:6px;background:rgba(255,255,255,0.03);border-radius:6px;">⚠️ Highest Risk: ${d.highest_risk_case_type} · Best Intervention: ${d.most_effective_intervention}</div>`;
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+async function loadCrossExamAnalyticsPanel() {
+    const el = document.getElementById('cross-exam-analytics-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading...</p>';
+    try {
+        const resp = await fetch('/api/admin/cross-exam-analytics', { headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('wr_token') || '') } });
+        const d = await resp.json();
+        let html = '';
+        html += `<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(99,179,237,0.08);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#63b3ed;">${d.avg_effectiveness_score}</div><div style="font-size:0.68rem;color:#a0aec0;">Avg Effectiveness</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#e2e8f0;">${d.avg_cross_exam_duration_minutes}</div><div style="font-size:0.68rem;color:#a0aec0;">Avg Minutes</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(104,211,145,0.08);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#68d391;">${d.successful_impeachment_rate_pct}%</div><div style="font-size:0.68rem;color:#a0aec0;">Impeachment Rate</div></div>`;
+        html += `<div style="flex:1;min-width:80px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.4rem;font-weight:800;color:#e2e8f0;">${d.total_cross_examinations_analyzed}</div><div style="font-size:0.68rem;color:#a0aec0;">Analyzed</div></div>`;
+        html += '</div>';
+        html += `<div style="font-size:0.8rem;font-weight:700;color:#63b3ed;margin-bottom:8px;">PERFORMANCE BY SECTION</div>`;
+        (d.by_section || []).forEach(s => {
+            const sc = s.avg_effectiveness > 75 ? '#68d391' : s.avg_effectiveness > 65 ? '#f6ad55' : '#fc8181';
+            html += `<div style="margin-bottom:5px;"><div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:2px;">`;
+            html += `<span style="color:#e2e8f0;">${s.section}</span><span style="color:${sc};">${s.avg_effectiveness}% · ${s.avg_questions} Q's avg</span></div>`;
+            html += `<div style="height:3px;background:#2d3748;border-radius:2px;"><div style="width:${s.avg_effectiveness}%;height:100%;background:${sc};border-radius:2px;"></div></div></div>`;
+        });
+        html += `<div style="margin-top:10px;font-size:0.75rem;color:#718096;padding:6px;background:rgba(255,255,255,0.03);border-radius:6px;">💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = html;
+    } catch(e) { el.innerHTML = `<p class="error-msg">Error: ${e.message}</p>`; }
+}
+
+document.getElementById('recantation-monitor-refresh')?.addEventListener('click', loadRecantationMonitorPanel);
+document.getElementById('cross-exam-analytics-refresh')?.addEventListener('click', loadCrossExamAnalyticsPanel);
+setTimeout(loadRecantationMonitorPanel, 42000);
+setTimeout(loadCrossExamAnalyticsPanel, 44000);
+
+// ── Attorney Performance Panel ──
+async function loadAttorneyPerformancePanel() {
+    const el = document.getElementById('attorney-performance-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/attorney-performance', {headers:{'Authorization': 'Bearer ' + getAdminToken()}});
+        if (!r.ok) throw new Error('Failed');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        h += `<div style="text-align:center;padding:10px;background:rgba(96,165,250,0.1);border-radius:8px;border:1px solid rgba(96,165,250,0.2);"><div style="font-size:1.6rem;font-weight:700;color:#60a5fa;">${d.total_attorneys_tracked}</div><div style="font-size:0.75rem;color:#a0aec0;">Attorneys</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(74,222,128,0.1);border-radius:8px;border:1px solid rgba(74,222,128,0.2);"><div style="font-size:1.6rem;font-weight:700;color:#4ade80;">${d.firm_avg_win_rate_pct}%</div><div style="font-size:0.75rem;color:#a0aec0;">Avg Win Rate</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(167,139,250,0.1);border-radius:8px;border:1px solid rgba(167,139,250,0.2);"><div style="font-size:1.6rem;font-weight:700;color:#a78bfa;">${d.firm_avg_depo_quality}</div><div style="font-size:0.75rem;color:#a0aec0;">Avg Depo Quality</div></div>`;
+        h += '</div>';
+        h += `<div style="font-size:0.8rem;color:#4ade80;margin-bottom:4px;">🏆 Top: ${d.top_performer.name} (${d.top_performer.win_rate_pct}% win rate)</div>`;
+        h += `<div style="font-size:0.8rem;color:#fbbf24;margin-bottom:8px;">📉 Support: ${d.needs_support.name} (${d.needs_support.win_rate_pct}% win rate)</div>`;
+        h += '<table style="width:100%;font-size:0.72rem;border-collapse:collapse;">';
+        h += '<tr style="color:#a0aec0;border-bottom:1px solid rgba(255,255,255,0.1);"><th style="text-align:left;padding:4px;">Attorney</th><th>Cases</th><th>Win %</th><th>Quality</th><th>Trend</th></tr>';
+        d.attorneys.sort((a,b) => b.win_rate_pct - a.win_rate_pct).forEach(a => {
+            const tc = a.performance_trend === 'improving' ? '#4ade80' : a.performance_trend === 'declining' ? '#f87171' : '#fbbf24';
+            const ti = a.performance_trend === 'improving' ? '↑' : a.performance_trend === 'declining' ? '↓' : '→';
+            h += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);"><td style="padding:4px;color:#e2e8f0;">${a.attorney_name}</td><td style="text-align:center;">${a.active_cases}</td><td style="text-align:center;color:${a.win_rate_pct > 70 ? '#4ade80' : '#fbbf24'};">${a.win_rate_pct}%</td><td style="text-align:center;">${a.avg_deposition_quality}</td><td style="text-align:center;color:${tc};">${ti}</td></tr>`;
+        });
+        h += '</table>';
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:8px;">💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load attorney performance</p>'; }
+}
+loadAttorneyPerformancePanel();
+document.getElementById('attorney-performance-refresh')?.addEventListener('click', loadAttorneyPerformancePanel);
+setTimeout(loadAttorneyPerformancePanel, 46000);
+
+// ── Witness Pool Analytics Panel ──
+async function loadWitnessPoolAnalyticsPanel() {
+    const el = document.getElementById('witness-pool-analytics-content');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/admin/witness-pool-analytics', {headers:{'Authorization': 'Bearer ' + getAdminToken()}});
+        if (!r.ok) throw new Error('Failed');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        h += `<div style="text-align:center;padding:10px;background:rgba(96,165,250,0.1);border-radius:8px;border:1px solid rgba(96,165,250,0.2);"><div style="font-size:1.6rem;font-weight:700;color:#60a5fa;">${d.total_witnesses_in_pool}</div><div style="font-size:0.75rem;color:#a0aec0;">Total Witnesses</div></div>`;
+        const qc = d.pool_quality_rating === 'strong' ? '#4ade80' : d.pool_quality_rating === 'adequate' ? '#fbbf24' : '#f87171';
+        h += `<div style="text-align:center;padding:10px;background:rgba(74,222,128,0.1);border-radius:8px;border:1px solid rgba(74,222,128,0.2);"><div style="font-size:1.6rem;font-weight:700;color:${qc};">${d.pool_quality_score}</div><div style="font-size:0.75rem;color:#a0aec0;">Pool Quality</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(248,113,113,0.1);border-radius:8px;border:1px solid rgba(248,113,113,0.2);"><div style="font-size:1.6rem;font-weight:700;color:#f87171;">${d.witnesses_at_risk}</div><div style="font-size:0.75rem;color:#a0aec0;">At Risk</div></div>`;
+        h += '</div>';
+        h += '<div style="font-size:0.78rem;color:#fbbf24;margin-bottom:6px;">📊 Reliability Distribution:</div>';
+        d.reliability_distribution.forEach(r => {
+            const barW = Math.max(5, r.pct);
+            const bc = r.tier.includes('Excellent') ? '#4ade80' : r.tier.includes('Good') ? '#60a5fa' : r.tier.includes('Moderate') ? '#fbbf24' : r.tier.includes('Marginal') ? '#fb923c' : '#f87171';
+            h += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:0.7rem;">`;
+            h += `<span style="width:110px;color:#a0aec0;">${r.tier.split('(')[0].trim()}</span>`;
+            h += `<div style="flex:1;background:rgba(255,255,255,0.05);border-radius:4px;height:14px;"><div style="width:${barW}%;background:${bc};height:100%;border-radius:4px;"></div></div>`;
+            h += `<span style="width:30px;color:#e2e8f0;">${r.count}</span>`;
+            h += '</div>';
+        });
+        h += '<div style="font-size:0.78rem;color:#a78bfa;margin-top:8px;margin-bottom:4px;">🏷️ By Type:</div>';
+        d.witness_types.forEach(t => {
+            h += `<div style="font-size:0.7rem;color:#e2e8f0;margin-left:8px;">${t.type}: <strong>${t.count}</strong> witnesses (avg reliability: ${t.avg_reliability})</div>`;
+        });
+        h += `<div style="font-size:0.72rem;color:#4ade80;margin-top:6px;">✅ Most reliable: ${d.most_reliable_type} | ⚠️ Least: ${d.least_reliable_type}</div>`;
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:4px;">💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load witness pool analytics</p>'; }
+}
+loadWitnessPoolAnalyticsPanel();
+document.getElementById('witness-pool-analytics-refresh')?.addEventListener('click', loadWitnessPoolAnalyticsPanel);
+setTimeout(loadWitnessPoolAnalyticsPanel, 48000);
+
+// ── Jury Analytics Panel ──
+async function loadJuryAnalyticsPanel() {
+    const el = document.getElementById('jury-analytics-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/jury-analytics', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#60a5fa;">${d.total_cases_analyzed}</div><div style="font-size:0.75rem;color:#a0aec0;">Cases Analyzed</div></div>`;
+        const favColor = d.avg_jury_favorability_score > 65 ? '#4ade80' : d.avg_jury_favorability_score > 50 ? '#fbbf24' : '#f87171';
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:${favColor};">${d.avg_jury_favorability_score}%</div><div style="font-size:0.75rem;color:#a0aec0;">Avg Favorability</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#a78bfa;">${d.overall_strike_accuracy_pct}%</div><div style="font-size:0.75rem;color:#a0aec0;">Strike Accuracy</div></div>`;
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">Verdict by Composition:</div>';
+        d.verdict_by_composition.forEach(v => {
+            const pctColor = v.plaintiff_win_pct > 60 ? '#4ade80' : v.plaintiff_win_pct > 50 ? '#fbbf24' : '#f87171';
+            h += `<div style="display:flex;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,0.1);border-radius:4px;margin-bottom:3px;font-size:0.75rem;">`;
+            h += `<span style="color:#e2e8f0;">${v.composition_type}</span>`;
+            h += `<span><span style="color:${pctColor};">${v.plaintiff_win_pct}% win</span> | <span style="color:#fbbf24;">$${v.avg_damages_k}K avg</span> | <span style="color:#a0aec0;">${v.cases} cases</span></span>`;
+            h += '</div>';
+        });
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:8px;">🏆 Best: ${d.most_favorable_composition} | 💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load jury analytics</p>'; }
+}
+loadJuryAnalyticsPanel();
+document.getElementById('jury-analytics-refresh')?.addEventListener('click', loadJuryAnalyticsPanel);
+setTimeout(loadJuryAnalyticsPanel, 50000);
+
+// ── Evidence Completeness Panel ──
+async function loadEvidenceCompletenessPanel() {
+    const el = document.getElementById('evidence-completeness-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/evidence-completeness', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        const compColor = d.completeness_rating === 'strong' ? '#4ade80' : d.completeness_rating === 'adequate' ? '#fbbf24' : '#f87171';
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:${compColor};">${d.portfolio_completeness_score}%</div><div style="font-size:0.75rem;color:#a0aec0;">Completeness</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#f87171;">${d.critical_cases_needing_attention}</div><div style="font-size:0.75rem;color:#a0aec0;">Critical Cases</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#fbbf24;">${d.total_open_gaps}</div><div style="font-size:0.75rem;color:#a0aec0;">Open Gaps</div></div>`;
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">Gaps by Evidence Type:</div>';
+        d.gap_by_evidence_type.forEach(g => {
+            const gapColor = g.avg_gap_pct > 25 ? '#f87171' : g.avg_gap_pct > 15 ? '#fbbf24' : '#4ade80';
+            h += `<div style="display:flex;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,0.1);border-radius:4px;margin-bottom:3px;font-size:0.75rem;">`;
+            h += `<span style="color:#e2e8f0;">${g.type}</span>`;
+            h += `<span><span style="color:${gapColor};">${g.avg_gap_pct}% gap</span> | <span style="color:#a0aec0;">${g.cases_affected} cases</span></span>`;
+            h += '</div>';
+        });
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin:8px 0 4px;">Distribution:</div>';
+        d.completeness_distribution.forEach(tier => {
+            const tColor = tier.tier.includes('Complete') ? '#4ade80' : tier.tier.includes('Strong') ? '#60a5fa' : tier.tier.includes('Adequate') ? '#fbbf24' : tier.tier.includes('Gaps') ? '#fb923c' : '#f87171';
+            h += `<div style="font-size:0.72rem;color:#a0aec0;padding:2px 8px;"><span style="color:${tColor};">■</span> ${tier.tier}: ${tier.count} (${tier.pct}%)</div>`;
+        });
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:8px;">📊 Most gaps: ${d.most_common_gap_type} | Avg fix cost: $${d.avg_remediation_cost_per_gap_k}K | 💡 ${d.system_recommendation}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load evidence completeness</p>'; }
+}
+loadEvidenceCompletenessPanel();
+document.getElementById('evidence-completeness-refresh')?.addEventListener('click', loadEvidenceCompletenessPanel);
+setTimeout(loadEvidenceCompletenessPanel, 52000);
+
+// ── Coaching Detection Analytics Panel ──
+async function loadCoachingAnalyticsPanel() {
+    const el = document.getElementById('coaching-analytics-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/coaching-analytics', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        const rateColor = d.overall_coaching_rate_pct > 30 ? '#f87171' : d.overall_coaching_rate_pct > 15 ? '#fbbf24' : '#4ade80';
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#60a5fa;">${d.total_depositions_analyzed}</div><div style="font-size:0.75rem;color:#a0aec0;">Analyzed</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:${rateColor};">${d.overall_coaching_rate_pct}%</div><div style="font-size:0.75rem;color:#a0aec0;">Coaching Rate</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#fbbf24;">${d.motions_filed_total}</div><div style="font-size:0.75rem;color:#a0aec0;">Motions Filed</div></div>`;
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">By Indicator:</div>';
+        d.by_indicator.forEach(ind => {
+            const indColor = ind.detection_rate_pct > 40 ? '#f87171' : ind.detection_rate_pct > 20 ? '#fbbf24' : '#4ade80';
+            h += `<div style="display:flex;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,0.1);border-radius:4px;margin-bottom:3px;font-size:0.75rem;">`;
+            h += `<span style="color:#e2e8f0;">${ind.indicator}</span>`;
+            h += `<span><span style="color:${indColor};">${ind.detection_rate_pct}%</span> | <span style="color:#a0aec0;">${ind.cases_flagged} flagged</span></span>`;
+            h += '</div>';
+        });
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:8px;">📊 Most common: ${d.most_common_indicator} | Avg score: ${d.avg_coaching_score} | 💡 ${d.system_recommendation.substring(0,80)}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load coaching analytics</p>'; }
+}
+loadCoachingAnalyticsPanel();
+document.getElementById('coaching-analytics-refresh')?.addEventListener('click', loadCoachingAnalyticsPanel);
+setTimeout(loadCoachingAnalyticsPanel, 54000);
+
+// ── Settlement Accuracy Tracker Panel ──
+async function loadSettlementAccuracyPanel() {
+    const el = document.getElementById('settlement-accuracy-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/settlement-accuracy', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+        const accColor = d.overall_accuracy_pct > 75 ? '#4ade80' : d.overall_accuracy_pct > 60 ? '#fbbf24' : '#f87171';
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:${accColor};">${d.overall_accuracy_pct}%</div><div style="font-size:0.75rem;color:#a0aec0;">Accuracy</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#60a5fa;">${d.total_predictions_made}</div><div style="font-size:0.75rem;color:#a0aec0;">Predictions</div></div>`;
+        h += `<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.5rem;font-weight:700;color:#4ade80;">$${d.estimated_client_savings_k}K</div><div style="font-size:0.75rem;color:#a0aec0;">Client Savings</div></div>`;
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">By Case Type:</div>';
+        d.by_case_type.forEach(ct => {
+            const ctColor = ct.accuracy_pct > 75 ? '#4ade80' : ct.accuracy_pct > 60 ? '#fbbf24' : '#f87171';
+            h += `<div style="display:flex;justify-content:space-between;padding:4px 8px;background:rgba(0,0,0,0.1);border-radius:4px;margin-bottom:3px;font-size:0.75rem;">`;
+            h += `<span style="color:#e2e8f0;">${ct.type}</span>`;
+            h += `<span><span style="color:${ctColor};">${ct.accuracy_pct}%</span> | <span style="color:#a0aec0;">±$${ct.avg_deviation_k}K</span> | <span style="color:#60a5fa;">${ct.predictions}</span></span>`;
+            h += '</div>';
+        });
+        h += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:8px;">📊 Best: ${d.best_performing_category} | Trend: ${d.improvement_trend} | Settled in range: ${d.cases_settled_within_range} | 💡 ${d.system_recommendation.substring(0,80)}</div>`;
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load settlement accuracy</p>'; }
+}
+loadSettlementAccuracyPanel();
+document.getElementById('settlement-accuracy-refresh')?.addEventListener('click', loadSettlementAccuracyPanel);
+setTimeout(loadSettlementAccuracyPanel, 56000);
+
+// ── Testimony Volume Analytics Panel ──
+async function loadTestimonyVolumePanel() {
+    const el = document.getElementById('testimony-volume-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/testimony-volume', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">' + d.total_testimonies_processed + '</div><div style="font-size:0.7rem;color:#a0aec0;">Testimonies (30d)</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#4ade80;">' + d.total_analyses_run + '</div><div style="font-size:0.7rem;color:#a0aec0;">Analyses Run</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#fbbf24;">' + d.avg_daily_testimonies + '</div><div style="font-size:0.7rem;color:#a0aec0;">Avg/Day</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#c084fc;">' + d.avg_analyses_per_testimony + '</div><div style="font-size:0.7rem;color:#a0aec0;">Analyses/Testimony</div></div>';
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">Top Features by Usage:</div>';
+        d.by_feature.forEach(function(f) {
+            var barW = Math.min(100, f.calls / 3);
+            h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 8px;font-size:0.72rem;margin-bottom:2px;">';
+            h += '<span style="min-width:130px;color:#e2e8f0;">' + f.feature + '</span>';
+            h += '<div style="flex:1;height:5px;background:#1e293b;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:#60a5fa;border-radius:3px;"></div></div>';
+            h += '<span style="color:#60a5fa;min-width:35px;text-align:right;">' + f.calls + '</span>';
+            h += '<span style="color:#64748b;min-width:40px;text-align:right;">' + f.avg_time_sec + 's</span></div>';
+        });
+        h += '<div style="display:flex;gap:12px;margin-top:8px;font-size:0.72rem;color:#a0aec0;">';
+        h += '<span>📈 Trend: ' + d.growth_trend + '</span>';
+        h += '<span>⏰ Busiest hour: ' + d.busiest_hour + ':00</span>';
+        h += '<span>📅 Busiest day: ' + d.busiest_day + '</span>';
+        h += '<span>📝 Avg ' + d.avg_words_per_testimony + ' words/testimony</span></div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load testimony volume</p>'; }
+}
+loadTestimonyVolumePanel();
+document.getElementById('testimony-volume-refresh')?.addEventListener('click', loadTestimonyVolumePanel);
+setTimeout(loadTestimonyVolumePanel, 58000);
+
+// ── Witness Credibility Trends Panel ──
+async function loadCredibilityTrendsPanel() {
+    const el = document.getElementById('credibility-trends-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/witness-credibility-dashboard', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+        const trendColor = d.trend_direction === 'improving' ? '#4ade80' : '#f87171';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">' + d.total_witnesses_assessed + '</div><div style="font-size:0.7rem;color:#a0aec0;">Witnesses Assessed</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#4ade80;">' + d.overall_avg_credibility + '</div><div style="font-size:0.7rem;color:#a0aec0;">Avg Credibility</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#f87171;">' + d.high_risk_percentage + '%</div><div style="font-size:0.7rem;color:#a0aec0;">High Risk Rate</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:' + trendColor + ';">' + (d.trend_direction === 'improving' ? '📈' : '📉') + ' ' + d.trend_direction + '</div><div style="font-size:0.7rem;color:#a0aec0;">12-Week Trend</div></div>';
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">By Case Type:</div>';
+        d.by_case_type.forEach(function(ct) {
+            var ctColor = ct.avg_credibility >= 75 ? '#4ade80' : ct.avg_credibility >= 60 ? '#60a5fa' : '#fbbf24';
+            var tColor = ct.trend === 'improving' ? '#4ade80' : ct.trend === 'declining' ? '#f87171' : '#94a3b8';
+            var barW = ct.avg_credibility;
+            h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.72rem;margin-bottom:2px;">';
+            h += '<span style="min-width:130px;color:#e2e8f0;">' + ct.case_type + '</span>';
+            h += '<div style="flex:1;height:5px;background:#1e293b;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:' + ctColor + ';border-radius:3px;"></div></div>';
+            h += '<span style="color:' + ctColor + ';min-width:35px;text-align:right;">' + ct.avg_credibility + '</span>';
+            h += '<span style="color:' + tColor + ';min-width:55px;text-align:right;">' + ct.trend + '</span></div>';
+        });
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin:8px 0 4px;">Risk Distribution:</div>';
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        var riskColors = { very_high_risk: '#ef4444', high_risk: '#f97316', moderate_risk: '#fbbf24', low_risk: '#4ade80', minimal_risk: '#60a5fa' };
+        Object.entries(d.risk_distribution).forEach(function([k, v]) {
+            var rc = riskColors[k] || '#94a3b8';
+            h += '<div style="text-align:center;padding:5px 10px;background:' + rc + '18;border-radius:6px;border:1px solid ' + rc + '44;">';
+            h += '<div style="font-size:1rem;font-weight:700;color:' + rc + '">' + v + '</div>';
+            h += '<div style="font-size:0.6rem;color:#a0aec0;">' + k.replace(/_/g, ' ') + '</div></div>';
+        });
+        h += '</div>';
+        h += '<div style="font-size:0.72rem;color:#fbbf24;margin-top:8px;">⚠️ ' + d.alert + '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load credibility trends</p>'; }
+}
+loadCredibilityTrendsPanel();
+document.getElementById('credibility-trends-refresh')?.addEventListener('click', loadCredibilityTrendsPanel);
+setTimeout(loadCredibilityTrendsPanel, 62000);
+
+// ── Deposition Risk Monitor Panel ──
+async function loadDepositionRiskMonitorPanel() {
+    const el = document.getElementById('deposition-risk-monitor-content');
+    if (!el) return;
+    try {
+        const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || localStorage.getItem('wr_admin_token') || '';
+        const r = await fetch('/api/admin/deposition-risk-monitor', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) throw new Error('API error');
+        const d = await r.json();
+        let h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#60a5fa;">' + d.total_active_depositions + '</div><div style="font-size:0.7rem;color:#a0aec0;">Active Depositions</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#ef4444;">' + d.critical_risk_count + '</div><div style="font-size:0.7rem;color:#a0aec0;">Critical Risk</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#f97316;">' + d.high_risk_count + '</div><div style="font-size:0.7rem;color:#a0aec0;">High Risk</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;"><div style="font-size:1.4rem;font-weight:700;color:#fbbf24;">' + d.avg_risk_score + '</div><div style="font-size:0.7rem;color:#a0aec0;">Avg Risk Score</div></div>';
+        h += '</div>';
+        if (d.system_alert) {
+            h += '<div style="padding:6px 10px;background:rgba(239,68,68,0.12);border-left:3px solid #ef4444;border-radius:4px;font-size:0.72rem;color:#f87171;margin-bottom:10px;">🚨 ' + d.system_alert + '</div>';
+        }
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">Top At-Risk Depositions:</div>';
+        d.top_at_risk_depositions.forEach(function(dep) {
+            var dc = dep.risk_level === 'critical' ? '#ef4444' : dep.risk_level === 'high' ? '#f97316' : dep.risk_level === 'moderate' ? '#fbbf24' : '#4ade80';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:rgba(0,0,0,0.15);border-radius:5px;margin-bottom:4px;">';
+            h += '<div><div style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">' + dep.case_name + '</div>';
+            h += '<div style="font-size:0.65rem;color:#64748b;">' + dep.scheduled_date + ' · ' + dep.attorney_assigned + ' · Risk: ' + dep.primary_risk + '</div></div>';
+            h += '<div style="text-align:right;"><div style="font-size:0.85rem;font-weight:700;color:' + dc + '">' + dep.risk_score + '</div>';
+            h += '<div style="font-size:0.6rem;color:' + dc + ';text-transform:uppercase;">' + dep.risk_level + '</div>';
+            h += '<div style="font-size:0.6rem;color:#64748b;">' + dep.prep_hours_remaining + 'h prep left</div></div></div>';
+        });
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin:8px 0 4px;">Risk Categories:</div>';
+        Object.entries(d.risk_categories_summary).forEach(function([cat, info]) {
+            var tColor = info.trend === 'worsening' ? '#f87171' : info.trend === 'improving' ? '#4ade80' : '#94a3b8';
+            var barW = info.avg_risk;
+            h += '<div style="display:flex;align-items:center;gap:6px;font-size:0.7rem;margin-bottom:3px;">';
+            h += '<span style="min-width:120px;color:#e2e8f0;">' + cat + '</span>';
+            h += '<div style="flex:1;height:4px;background:#1e293b;border-radius:2px;"><div style="height:100%;width:' + barW + '%;background:#60a5fa;border-radius:2px;"></div></div>';
+            h += '<span style="color:#60a5fa;min-width:30px;text-align:right;">' + info.avg_risk + '</span>';
+            h += '<span style="color:' + tColor + ';min-width:55px;text-align:right;">' + info.trend + '</span></div>';
+        });
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load deposition risk monitor</p>'; }
+}
+loadDepositionRiskMonitorPanel();
+document.getElementById('deposition-risk-monitor-refresh')?.addEventListener('click', loadDepositionRiskMonitorPanel);
+setTimeout(loadDepositionRiskMonitorPanel, 64000);
+
+// ─── Feature Usage Analytics Panel ───────────────────────────────────────────
+async function loadFeatureUsagePanel() {
+    var el = document.getElementById('feature-usage-content');
+    if (!el) return;
+    var tk = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || '';
+    try {
+        var r = await fetch('/api/admin/feature-usage-analytics', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var h = '';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #a78bfa;"><div style="font-size:1.3rem;font-weight:700;color:#a78bfa;">' + (d.total_feature_uses || 0).toLocaleString() + '</div><div style="font-size:0.6rem;color:#a0aec0;">Total Uses (30d)</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #60a5fa;"><div style="font-size:1.3rem;font-weight:700;color:#60a5fa;">' + (d.total_unique_users || 0) + '</div><div style="font-size:0.6rem;color:#a0aec0;">Unique Users</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #4ade80;"><div style="font-size:1.3rem;font-weight:700;color:#4ade80;">' + (d.avg_features_per_session || 0) + '</div><div style="font-size:0.6rem;color:#a0aec0;">Avg Features/Session</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #fbbf24;"><div style="font-size:1.3rem;font-weight:700;color:#fbbf24;">' + (d.engagement_metrics?.return_rate_7d || 0) + '%</div><div style="font-size:0.6rem;color:#a0aec0;">7d Return Rate</div></div>';
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">🏆 Top Features by Usage</div>';
+        (d.feature_usage || []).slice(0, 10).forEach(function(f) {
+            var maxUses = (d.feature_usage[0] || {}).total_uses_30d || 1;
+            var barW = Math.round(f.total_uses_30d / maxUses * 100);
+            var tColor = f.trend === 'rising' ? '#4ade80' : f.trend === 'declining' ? '#f87171' : f.trend === 'new' ? '#a78bfa' : '#94a3b8';
+            h += '<div style="margin-bottom:4px;">';
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:1px;">';
+            h += '<span style="color:#e2e8f0;">' + f.feature + '</span>';
+            h += '<span><span style="color:#60a5fa;font-weight:600;">' + f.total_uses_30d + '</span> <span style="color:' + tColor + ';">(' + f.trend + ')</span> ⭐' + f.satisfaction_score + '</span></div>';
+            h += '<div style="height:4px;background:#1e293b;border-radius:2px;"><div style="height:100%;width:' + barW + '%;background:#60a5fa;border-radius:2px;"></div></div></div>';
+        });
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin:10px 0 6px;">📈 Category Breakdown</div>';
+        Object.entries(d.category_breakdown || {}).forEach(function([cat, info]) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:2px 0;">';
+            h += '<span style="color:#e2e8f0;">' + cat + '</span>';
+            h += '<span style="color:#a78bfa;font-weight:600;">' + info.uses + ' (' + info.pct + '%)</span></div>';
+        });
+        if (d.adoption_alerts) {
+            h += '<div style="margin-top:8px;font-size:0.72rem;color:#fbbf24;">';
+            d.adoption_alerts.forEach(function(a) { h += '<div>⚠️ ' + a + '</div>'; });
+            h += '</div>';
+        }
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load feature usage analytics</p>'; }
+}
+loadFeatureUsagePanel();
+document.getElementById('feature-usage-refresh')?.addEventListener('click', loadFeatureUsagePanel);
+setTimeout(loadFeatureUsagePanel, 65000);
+
+// ─── System Performance Dashboard Panel ──────────────────────────────────────
+async function loadSystemPerformancePanel() {
+    var el = document.getElementById('system-performance-content');
+    if (!el) return;
+    var tk = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token') || '';
+    try {
+        var r = await fetch('/api/admin/system-performance', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var statusColor = d.system_status === 'healthy' ? '#4ade80' : d.system_status === 'degraded' ? '#fbbf24' : '#f87171';
+        var h = '';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid ' + statusColor + ';"><div style="font-size:1.1rem;font-weight:700;color:' + statusColor + ';text-transform:uppercase;">' + (d.system_status || 'unknown') + '</div><div style="font-size:0.6rem;color:#a0aec0;">System Status</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #60a5fa;"><div style="font-size:1.3rem;font-weight:700;color:#60a5fa;">' + (d.uptime_pct || 0) + '%</div><div style="font-size:0.6rem;color:#a0aec0;">Uptime (' + (d.uptime_days || 0) + 'd)</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #a78bfa;"><div style="font-size:1.3rem;font-weight:700;color:#a78bfa;">' + (d.total_requests_24h || 0) + '</div><div style="font-size:0.6rem;color:#a0aec0;">Requests (24h)</div></div>';
+        h += '<div style="text-align:center;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border-top:3px solid #fbbf24;"><div style="font-size:1.3rem;font-weight:700;color:#fbbf24;">' + (d.avg_response_time_ms || 0) + 'ms</div><div style="font-size:0.6rem;color:#a0aec0;">Avg Response</div></div>';
+        h += '</div>';
+        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">';
+        h += '<div style="padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;">';
+        h += '<div style="font-size:0.75rem;font-weight:600;color:#e2e8f0;margin-bottom:4px;">💾 System Resources</div>';
+        h += '<div style="font-size:0.68rem;color:#60a5fa;">Memory: ' + (d.current_memory_mb || 0) + ' MB</div>';
+        h += '<div style="font-size:0.68rem;color:#a78bfa;">CPU: ' + (d.current_cpu_pct || 0) + '%</div>';
+        h += '<div style="font-size:0.68rem;color:#f87171;">Errors (24h): ' + (d.total_errors_24h || 0) + ' (' + (d.overall_error_rate_pct || 0) + '%)</div></div>';
+        h += '<div style="padding:8px;background:rgba(0,0,0,0.15);border-radius:6px;">';
+        h += '<div style="font-size:0.75rem;font-weight:600;color:#e2e8f0;margin-bottom:4px;">🤖 Gemini API</div>';
+        var gs = d.gemini_api_stats || {};
+        h += '<div style="font-size:0.68rem;color:#60a5fa;">Calls (24h): ' + (gs.total_calls_24h || 0) + '</div>';
+        h += '<div style="font-size:0.68rem;color:#a78bfa;">Avg Latency: ' + (gs.avg_latency_ms || 0) + 'ms</div>';
+        h += '<div style="font-size:0.68rem;color:#fbbf24;">Cache Hit: ' + (gs.cache_hit_rate_pct || 0) + '% · Cost: ' + (gs.estimated_cost_24h || '$0') + '</div></div>';
+        h += '</div>';
+        h += '<div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;margin-bottom:6px;">⚡ Slowest Endpoints (p95)</div>';
+        (d.api_endpoint_performance || []).slice(0, 6).forEach(function(ep) {
+            var epColor = ep.status === 'healthy' ? '#4ade80' : ep.status === 'degraded' ? '#fbbf24' : '#f87171';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.68rem;padding:2px 0;">';
+            h += '<span style="color:#e2e8f0;flex:1;">' + ep.endpoint + '</span>';
+            h += '<span style="color:#94a3b8;min-width:40px;text-align:right;">' + ep.requests_24h + 'req</span>';
+            h += '<span style="color:' + epColor + ';min-width:65px;text-align:right;font-weight:600;">' + ep.p95_ms + 'ms</span>';
+            h += '<span style="color:' + (ep.error_rate_pct > 1 ? '#f87171' : '#4ade80') + ';min-width:40px;text-align:right;">' + ep.error_rate_pct + '%</span></div>';
+        });
+        if (d.alerts && d.alerts.length > 0) {
+            h += '<div style="margin-top:8px;">';
+            d.alerts.forEach(function(a) { h += '<div style="font-size:0.7rem;color:#f87171;padding:2px 0;">🚨 ' + a + '</div>'; });
+            h += '</div>';
+        }
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load system performance</p>'; }
+}
+loadSystemPerformancePanel();
+document.getElementById('system-performance-refresh')?.addEventListener('click', loadSystemPerformancePanel);
+setTimeout(loadSystemPerformancePanel, 66000);
+
+// ── Admin Case Outcome Tracker ───────────────────────────────────
+async function loadCaseOutcomeTrackerPanel() {
+    var el = document.getElementById('case-outcome-tracker-content');
+    if (!el) return;
+    try {
+        var tk = localStorage.getItem('adminToken') || 'admin';
+        var r = await fetch('/api/admin/case-outcome-tracker', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var gc = d.accuracy_grade === 'A' ? '#4ade80' : d.accuracy_grade === 'B' ? '#60a5fa' : '#fbbf24';
+        var h = '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid ' + gc + ';">';
+        h += '<div style="font-size:1.5rem;font-weight:700;color:' + gc + '">' + d.overall_prediction_accuracy + '%</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Accuracy (' + d.accuracy_grade + ')</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;">';
+        h += '<div style="font-size:1.5rem;font-weight:700;color:#60a5fa">' + d.total_cases + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Total Cases</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;">';
+        h += '<div style="font-size:1.5rem;font-weight:700;color:#a78bfa">' + d.resolved_cases + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Resolved</div></div></div>';
+        h += '<h4 style="color:#fbbf24;font-size:0.75rem;margin:8px 0 4px;">📊 Outcome Breakdown</h4>';
+        h += '<table style="width:100%;font-size:0.65rem;border-collapse:collapse;">';
+        h += '<tr style="border-bottom:1px solid #334155;"><th style="text-align:left;color:#94a3b8;padding:3px 4px;">Outcome</th><th style="color:#94a3b8;">Count</th><th style="color:#94a3b8;">Correct</th><th style="color:#94a3b8;">Accuracy</th></tr>';
+        d.outcome_breakdown.forEach(function(o) {
+            var oc = o.accuracy_pct >= 75 ? '#4ade80' : o.accuracy_pct >= 60 ? '#fbbf24' : '#f87171';
+            h += '<tr style="border-bottom:1px solid #1e293b;"><td style="color:#e2e8f0;padding:3px 4px;">' + o.outcome_type + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + o.count + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + o.predicted_correctly + '</td>';
+            h += '<td style="text-align:center;color:' + oc + ';font-weight:600;">' + o.accuracy_pct + '%</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#60a5fa;font-size:0.75rem;margin:8px 0 4px;">📈 Monthly Trend (last 6)</h4>';
+        d.monthly_accuracy_trend.slice(-6).forEach(function(m) {
+            var mc = m.accuracy_pct >= 75 ? '#4ade80' : m.accuracy_pct >= 60 ? '#fbbf24' : '#f87171';
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.62rem;padding:1px 0;">';
+            h += '<span style="color:#94a3b8;">' + m.month + ' (' + m.cases_resolved + ' cases)</span>';
+            h += '<span style="color:' + mc + ';font-weight:600;">' + m.accuracy_pct + '%</span></div>';
+        });
+        h += '<h4 style="color:#a78bfa;font-size:0.75rem;margin:8px 0 4px;">⚙️ Model Calibration</h4>';
+        h += '<div style="font-size:0.62rem;color:#94a3b8;">Well-calibrated: <b style="color:#4ade80">' + d.model_calibration.well_calibrated_pct + '%</b> | Overconfident: <b style="color:#fbbf24">' + d.model_calibration.overconfident_predictions_pct + '%</b> | Underconfident: <b style="color:#60a5fa">' + d.model_calibration.underconfident_predictions_pct + '%</b></div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load case outcome tracker</p>'; }
+}
+loadCaseOutcomeTrackerPanel();
+document.getElementById('case-outcome-tracker-refresh')?.addEventListener('click', loadCaseOutcomeTrackerPanel);
+setTimeout(loadCaseOutcomeTrackerPanel, 67000);
+
+// ── Admin Gemini Cost Dashboard ──────────────────────────────────
+async function loadGeminiCostDashboardPanel() {
+    var el = document.getElementById('gemini-cost-dashboard-content');
+    if (!el) return;
+    try {
+        var tk = localStorage.getItem('adminToken') || 'admin';
+        var r = await fetch('/api/admin/gemini-cost-dashboard', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var bc = d.budget_used_pct >= 90 ? '#f87171' : d.budget_used_pct >= 70 ? '#fbbf24' : '#4ade80';
+        var h = '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #4ade80;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#4ade80">$' + d.total_cost_today_usd + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Today\'s Cost</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #60a5fa;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#60a5fa">$' + d.monthly_cost_usd + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Monthly</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid ' + bc + ';">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:' + bc + '">' + d.budget_used_pct + '%</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Budget Used</div></div></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.75rem;margin:8px 0 4px;">🤖 Model Usage</h4>';
+        h += '<table style="width:100%;font-size:0.62rem;border-collapse:collapse;">';
+        h += '<tr style="border-bottom:1px solid #334155;"><th style="text-align:left;color:#94a3b8;padding:2px 4px;">Model</th><th style="color:#94a3b8;">Reqs</th><th style="color:#94a3b8;">Tokens</th><th style="color:#94a3b8;">Cost</th></tr>';
+        d.model_usage.forEach(function(m) {
+            h += '<tr style="border-bottom:1px solid #1e293b;"><td style="color:#e2e8f0;padding:2px 4px;">' + m.model + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + m.requests_today.toLocaleString() + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + (m.total_tokens / 1000000).toFixed(1) + 'M</td>';
+            h += '<td style="text-align:center;color:#4ade80;font-weight:600;">$' + m.estimated_cost_usd + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#fbbf24;font-size:0.75rem;margin:8px 0 4px;">🏷️ Top Features by Cost</h4>';
+        d.feature_cost_breakdown.slice(0, 6).forEach(function(f) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.62rem;padding:1px 0;">';
+            h += '<span style="color:#e2e8f0;">' + f.feature + ' (' + f.requests_today + ' reqs)</span>';
+            h += '<span style="color:#4ade80;font-weight:600;">$' + f.cost_usd + '</span></div>';
+        });
+        if (d.cost_optimization_suggestions.length > 0) {
+            h += '<h4 style="color:#f87171;font-size:0.75rem;margin:8px 0 4px;">💡 Optimization Tips</h4>';
+            d.cost_optimization_suggestions.forEach(function(s) {
+                h += '<div style="font-size:0.6rem;color:#fbbf24;padding:1px 0;">• ' + s + '</div>';
+            });
+        }
+        h += '<div style="font-size:0.6rem;color:#94a3b8;margin-top:4px;">Projected monthly: $' + d.projected_monthly_usd + ' / $' + d.budget_limit_usd + ' budget</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load Gemini cost dashboard</p>'; }
+}
+loadGeminiCostDashboardPanel();
+document.getElementById('gemini-cost-dashboard-refresh')?.addEventListener('click', loadGeminiCostDashboardPanel);
+setTimeout(loadGeminiCostDashboardPanel, 68000);
+
+// ── Witness Demographics Dashboard ──────────────────────────────
+async function loadWitnessDemographicsPanel() {
+    var el = document.getElementById('witness-demographics-content');
+    if (!el) return;
+    try {
+        var tk = localStorage.getItem('adminToken') || 'admin';
+        var r = await fetch('/api/admin/witness-demographics', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var h = '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #a78bfa;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#a78bfa">' + d.total_witnesses + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Total Witnesses</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #60a5fa;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#60a5fa">' + d.avg_witnesses_per_case + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Avg/Case</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #4ade80;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#4ade80">' + d.avg_testimony_duration_hours + 'h</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Avg Duration</div></div></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.75rem;margin:8px 0 4px;">👥 Witness Types</h4>';
+        h += '<table style="width:100%;font-size:0.62rem;border-collapse:collapse;">';
+        h += '<tr style="border-bottom:1px solid #334155;"><th style="text-align:left;color:#94a3b8;padding:2px 4px;">Type</th><th style="color:#94a3b8;">Count</th><th style="color:#94a3b8;">Cooperative %</th></tr>';
+        d.witness_types.forEach(function(wt) {
+            var cc = wt.pct_cooperative >= 80 ? '#4ade80' : wt.pct_cooperative >= 65 ? '#fbbf24' : '#f87171';
+            h += '<tr style="border-bottom:1px solid #1e293b;"><td style="color:#e2e8f0;padding:2px 4px;">' + wt.type + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;font-weight:600;">' + wt.count + '</td>';
+            h += '<td style="text-align:center;color:' + cc + ';">' + wt.pct_cooperative + '%</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#60a5fa;font-size:0.75rem;margin:8px 0 4px;">⚖️ Role Distribution</h4>';
+        d.role_distribution.forEach(function(rd) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.62rem;padding:2px 0;">';
+            h += '<span style="color:#e2e8f0;">' + rd.role + ' (' + rd.count + ')</span>';
+            h += '<span style="color:#60a5fa;">Avg cred: ' + rd.avg_credibility + '</span></div>';
+        });
+        h += '<h4 style="color:#fbbf24;font-size:0.75rem;margin:8px 0 4px;">📈 Monthly Trend</h4>';
+        d.monthly_trend.slice(-3).forEach(function(mt) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.62rem;padding:1px 0;">';
+            h += '<span style="color:#94a3b8;">' + mt.month + '</span>';
+            h += '<span style="color:#e2e8f0;">' + mt.new_witnesses + ' new | ' + mt.depositions_taken + ' depos | ' + mt.avg_testimony_hours + 'h avg</span></div>';
+        });
+        h += '<div style="font-size:0.6rem;color:#94a3b8;margin-top:4px;">Repeat witnesses: ' + d.repeat_witness_pct + '% | Credibility: High ' + d.credibility_distribution.high_credibility + '%, Mod ' + d.credibility_distribution.moderate_credibility + '%, Low ' + d.credibility_distribution.low_credibility + '%</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load witness demographics</p>'; }
+}
+loadWitnessDemographicsPanel();
+document.getElementById('witness-demographics-refresh')?.addEventListener('click', loadWitnessDemographicsPanel);
+setTimeout(loadWitnessDemographicsPanel, 72000);
+
+// ── Analysis Quality Scorecard ──────────────────────────────────
+async function loadAnalysisQualityScorecardPanel() {
+    var el = document.getElementById('analysis-quality-scorecard-content');
+    if (!el) return;
+    try {
+        var tk = localStorage.getItem('adminToken') || 'admin';
+        var r = await fetch('/api/admin/analysis-quality-scorecard', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var d = await r.json();
+        var gc = d.overall_quality_grade === 'A' ? '#4ade80' : d.overall_quality_grade === 'B' ? '#60a5fa' : d.overall_quality_grade === 'C' ? '#fbbf24' : '#f87171';
+        var h = '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid ' + gc + ';">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:' + gc + '">' + d.overall_quality_grade + ' (' + d.overall_quality_score + ')</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Quality Grade</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #4ade80;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#4ade80">' + d.user_satisfaction_avg + '%</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Satisfaction</div></div>';
+        h += '<div style="text-align:center;padding:8px 14px;background:rgba(0,0,0,0.3);border-radius:8px;flex:1;min-width:80px;border-top:3px solid #60a5fa;">';
+        h += '<div style="font-size:1.4rem;font-weight:700;color:#60a5fa">' + d.total_analyses_today + '</div>';
+        h += '<div style="font-size:0.6rem;color:#94a3b8;">Today</div></div></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.75rem;margin:8px 0 4px;">📊 Analysis Quality by Type</h4>';
+        h += '<table style="width:100%;font-size:0.58rem;border-collapse:collapse;">';
+        h += '<tr style="border-bottom:1px solid #334155;"><th style="text-align:left;color:#94a3b8;padding:2px 3px;">Analysis</th><th style="color:#94a3b8;">Acc</th><th style="color:#94a3b8;">Conf</th><th style="color:#94a3b8;">Sat</th><th style="color:#94a3b8;">Trend</th></tr>';
+        d.analysis_quality_metrics.forEach(function(q) {
+            var ac = q.accuracy_score >= 85 ? '#4ade80' : q.accuracy_score >= 75 ? '#fbbf24' : '#f87171';
+            var tc = q.improvement_trend === 'Improving' ? '#4ade80' : q.improvement_trend === 'Stable' ? '#60a5fa' : '#f87171';
+            h += '<tr style="border-bottom:1px solid #1e293b;">';
+            h += '<td style="color:#e2e8f0;padding:2px 3px;">' + q.analysis_type + '</td>';
+            h += '<td style="text-align:center;color:' + ac + ';font-weight:600;">' + q.accuracy_score + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + q.avg_confidence + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + q.user_satisfaction_pct + '%</td>';
+            h += '<td style="text-align:center;color:' + tc + ';">' + (q.improvement_trend === 'Improving' ? '↑' : q.improvement_trend === 'Stable' ? '→' : '↓') + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#fbbf24;font-size:0.75rem;margin:8px 0 4px;">📈 Weekly Trend</h4>';
+        d.weekly_trend.slice(-4).forEach(function(wt) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.6rem;padding:1px 0;">';
+            h += '<span style="color:#94a3b8;">' + wt.week + '</span>';
+            h += '<span style="color:#e2e8f0;">Acc: ' + wt.avg_accuracy + ' | Count: ' + wt.analyses_count + ' | Rating: ⭐' + wt.user_rating + '</span></div>';
+        });
+        h += '<h4 style="color:#f87171;font-size:0.75rem;margin:8px 0 4px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(rec) {
+            h += '<div style="font-size:0.6rem;color:#fbbf24;padding:1px 0;">• ' + rec + '</div>';
+        });
+        h += '<div style="font-size:0.6rem;color:#94a3b8;margin-top:4px;">🏆 Best: ' + d.top_performing + ' | ⚠️ Needs work: ' + d.needs_improvement + '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load analysis quality scorecard</p>'; }
+}
+loadAnalysisQualityScorecardPanel();
+document.getElementById('analysis-quality-scorecard-refresh')?.addEventListener('click', loadAnalysisQualityScorecardPanel);
+setTimeout(loadAnalysisQualityScorecardPanel, 75000);
+
+// ── Prompt Performance Panel ────────────────────────────────────
+async function loadPromptPerformancePanel() {
+    var el = document.getElementById('prompt-performance-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/prompt-performance', { headers: authHeaders() });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var h = '<div style="font-size:0.75rem;">';
+        h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">';
+        h += '<span style="color:#60a5fa;">Templates: <b>' + d.total_prompt_templates + '</b></span>';
+        h += '<span style="color:#34d399;">Tokens Today: <b>' + d.total_tokens_today.toLocaleString() + '</b></span>';
+        h += '<span style="color:#fbbf24;">Cost: <b>$' + d.total_cost_today_usd + '</b></span>';
+        h += '<span style="color:#a78bfa;">Avg Quality: <b>' + d.avg_quality_score + '</b></span></div>';
+        h += '<table style="width:100%;font-size:0.6rem;border-collapse:collapse;">';
+        h += '<tr style="color:#94a3b8;"><th style="text-align:left;padding:1px 3px;">Template</th><th>Quality</th><th>Tokens</th><th>$/call</th><th>Halluc%</th><th>Calls</th></tr>';
+        d.prompt_metrics.forEach(function(p) {
+            var qc = p.quality_score >= 85 ? '#34d399' : p.quality_score >= 75 ? '#fbbf24' : '#f87171';
+            var hc = p.hallucination_rate_pct <= 3 ? '#34d399' : p.hallucination_rate_pct <= 6 ? '#fbbf24' : '#f87171';
+            h += '<tr><td style="color:#e2e8f0;padding:1px 3px;">' + p.template_name + '</td>';
+            h += '<td style="text-align:center;color:' + qc + ';">' + p.quality_score + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + p.avg_total_tokens + '</td>';
+            h += '<td style="text-align:center;color:#fbbf24;">$' + p.cost_per_call_usd + '</td>';
+            h += '<td style="text-align:center;color:' + hc + ';">' + p.hallucination_rate_pct + '%</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + p.invocations_today + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#fbbf24;font-size:0.72rem;margin:6px 0 3px;">📈 Daily Trend</h4>';
+        d.daily_trend.slice(-4).forEach(function(dt) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.58rem;padding:1px 0;">';
+            h += '<span style="color:#94a3b8;">' + dt.day + '</span>';
+            h += '<span style="color:#e2e8f0;">Tokens: ' + dt.total_tokens.toLocaleString() + ' | Quality: ' + dt.avg_quality + ' | Cost: $' + dt.cost_usd + '</span></div>';
+        });
+        h += '<div style="font-size:0.58rem;color:#94a3b8;margin-top:4px;">🏆 Best: ' + d.top_performing_prompt + ' | 💸 Most expensive: ' + d.most_expensive_prompt + '</div>';
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load prompt performance</p>'; }
+}
+loadPromptPerformancePanel();
+document.getElementById('prompt-performance-refresh')?.addEventListener('click', loadPromptPerformancePanel);
+setTimeout(loadPromptPerformancePanel, 80000);
+
+// ── Case Complexity Distribution Panel ──────────────────────────
+async function loadCaseComplexityDistPanel() {
+    var el = document.getElementById('case-complexity-distribution-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/case-complexity-distribution', { headers: authHeaders() });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var h = '<div style="font-size:0.75rem;">';
+        h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">';
+        h += '<span style="color:#60a5fa;">Total Cases: <b>' + d.total_active_cases + '</b></span>';
+        h += '<span style="color:#fbbf24;">Most Common: <b>' + d.most_common_complexity + '</b></span></div>';
+        h += '<table style="width:100%;font-size:0.6rem;border-collapse:collapse;">';
+        h += '<tr style="color:#94a3b8;"><th style="text-align:left;padding:1px 3px;">Level</th><th>Cases</th><th>Witnesses</th><th>Pages</th><th>Time(min)</th><th>Cost</th></tr>';
+        Object.keys(d.complexity_distribution).forEach(function(level) {
+            var cd = d.complexity_distribution[level];
+            var lc = level === 'Simple' ? '#34d399' : level === 'Moderate' ? '#60a5fa' : level === 'Complex' ? '#fbbf24' : level === 'Highly Complex' ? '#f87171' : '#a78bfa';
+            h += '<tr><td style="color:' + lc + ';padding:1px 3px;font-weight:700;">' + level + '</td>';
+            h += '<td style="text-align:center;color:#e2e8f0;">' + cd.case_count + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + cd.avg_witnesses + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + cd.avg_pages_testimony + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + cd.avg_processing_time_min + '</td>';
+            h += '<td style="text-align:center;color:#fbbf24;">$' + cd.avg_cost_usd + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#f87171;font-size:0.72rem;margin:6px 0 3px;">⚠️ Bottlenecks</h4>';
+        d.processing_bottlenecks.forEach(function(b) {
+            h += '<div style="font-size:0.58rem;color:#fbbf24;padding:1px 0;">• ' + b + '</div>';
+        });
+        h += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">📈 Monthly Trend</h4>';
+        d.monthly_trend.slice(-3).forEach(function(m) {
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.58rem;padding:1px 0;">';
+            h += '<span style="color:#94a3b8;">' + m.month + '</span>';
+            h += '<span style="color:#e2e8f0;">Cases: ' + m.total_cases + ' | Complexity: ' + m.avg_complexity_score + ' | Complex%: ' + m.complex_case_pct + '%</span></div>';
+        });
+        h += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">💡 Scaling</h4>';
+        d.scaling_recommendations.forEach(function(s) {
+            h += '<div style="font-size:0.58rem;color:#94a3b8;padding:1px 0;">• ' + s + '</div>';
+        });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load case complexity distribution</p>'; }
+}
+loadCaseComplexityDistPanel();
+document.getElementById('case-complexity-distribution-refresh')?.addEventListener('click', loadCaseComplexityDistPanel);
+setTimeout(loadCaseComplexityDistPanel, 85000);
+
+// ── Feature Adoption Dashboard Panel ────────────────────────────
+async function loadFeatureAdoptionPanel() {
+    var el = document.getElementById('feature-adoption-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/feature-adoption', { headers: authHeaders() });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var h = '<div style="font-size:0.75rem;">';
+        h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">';
+        h += '<span style="color:#60a5fa;">Features: <b>' + d.total_features_tracked + '</b></span>';
+        h += '<span style="color:#34d399;">Uses Today: <b>' + d.total_uses_today.toLocaleString() + '</b></span>';
+        h += '<span style="color:#fbbf24;">Most Popular: <b>' + d.most_popular_feature + '</b></span></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.72rem;margin:4px 0 3px;">📊 Adoption by Category</h4>';
+        Object.keys(d.adoption_by_category).forEach(function(cat) {
+            var val = d.adoption_by_category[cat];
+            var cc = val >= 70 ? '#34d399' : val >= 40 ? '#fbbf24' : '#f87171';
+            h += '<div style="font-size:0.6rem;padding:1px 0;"><span style="color:#94a3b8;">' + cat + ':</span> <span style="color:' + cc + ';font-weight:700;">' + val + '%</span></div>';
+        });
+        h += '<table style="width:100%;font-size:0.6rem;border-collapse:collapse;margin-top:4px;">';
+        h += '<tr style="color:#94a3b8;"><th style="text-align:left;padding:1px 3px;">Feature</th><th>Today</th><th>Week</th><th>Rating</th><th>Repeat%</th><th>Trend</th></tr>';
+        d.feature_metrics.slice(0, 10).forEach(function(f) {
+            var tc = f.trend.includes('Growing') ? '#34d399' : f.trend.includes('Stable') ? '#fbbf24' : '#f87171';
+            h += '<tr><td style="color:#e2e8f0;padding:1px 3px;">' + f.feature + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + f.uses_today + '</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + f.uses_this_week + '</td>';
+            h += '<td style="text-align:center;color:#fbbf24;">★' + f.satisfaction_rating + '</td>';
+            h += '<td style="text-align:center;color:#a78bfa;">' + f.repeat_usage_pct + '%</td>';
+            h += '<td style="text-align:center;color:' + tc + ';">' + f.trend + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">💡 Insights</h4>';
+        d.insights.forEach(function(i) { h += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">• ' + i + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load feature adoption</p>'; }
+}
+loadFeatureAdoptionPanel();
+document.getElementById('feature-adoption-refresh')?.addEventListener('click', loadFeatureAdoptionPanel);
+setTimeout(loadFeatureAdoptionPanel, 90000);
+
+// ── Error Rate Monitor Panel ────────────────────────────────────
+async function loadErrorRateMonitorPanel() {
+    var el = document.getElementById('error-rate-monitor-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/error-rate-monitor', { headers: authHeaders() });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var sc = d.system_status === 'Healthy' ? '#34d399' : d.system_status === 'Degraded' ? '#fbbf24' : '#f87171';
+        var h = '<div style="font-size:0.75rem;">';
+        h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">';
+        h += '<span style="color:' + sc + ';">Status: <b>' + d.system_status + '</b></span>';
+        h += '<span style="color:#60a5fa;">Requests: <b>' + d.total_requests_today.toLocaleString() + '</b></span>';
+        h += '<span style="color:#f87171;">Errors: <b>' + d.total_errors_today + '</b> (' + d.overall_error_rate_pct + '%)</span>';
+        h += '<span style="color:#34d399;">Uptime: <b>' + d.uptime_pct + '%</b></span></div>';
+        h += '<h4 style="color:#fbbf24;font-size:0.72rem;margin:4px 0 3px;">⚠️ Error Type Breakdown</h4>';
+        Object.keys(d.error_type_breakdown).forEach(function(et) {
+            var count = d.error_type_breakdown[et];
+            if (count > 0) {
+                var ec = count > 15 ? '#f87171' : count > 5 ? '#fbbf24' : '#94a3b8';
+                h += '<div style="font-size:0.6rem;padding:1px 0;"><span style="color:' + ec + ';">' + et + ': <b>' + count + '</b></span></div>';
+            }
+        });
+        h += '<table style="width:100%;font-size:0.6rem;border-collapse:collapse;margin-top:4px;">';
+        h += '<tr style="color:#94a3b8;"><th style="text-align:left;padding:1px 3px;">Endpoint</th><th>Reqs</th><th>Errs</th><th>Rate%</th><th>Avg ms</th><th>Status</th></tr>';
+        d.endpoint_errors.slice(0, 8).forEach(function(ep) {
+            var epc = ep.status === 'Healthy' ? '#34d399' : ep.status === 'Warning' ? '#fbbf24' : '#f87171';
+            var short = ep.endpoint.replace('/api/sessions/*/', '').replace('/api/admin/', 'admin/');
+            h += '<tr><td style="color:#e2e8f0;padding:1px 3px;">' + short + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + ep.total_requests_today + '</td>';
+            h += '<td style="text-align:center;color:#f87171;">' + ep.errors_today + '</td>';
+            h += '<td style="text-align:center;color:' + epc + ';">' + ep.error_rate_pct + '%</td>';
+            h += '<td style="text-align:center;color:#94a3b8;">' + ep.avg_response_time_ms + '</td>';
+            h += '<td style="text-align:center;color:' + epc + ';">' + ep.status + '</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#60a5fa;font-size:0.72rem;margin:6px 0 3px;">📊 Reliability</h4>';
+        h += '<div style="font-size:0.58rem;color:#94a3b8;">MTBF: ' + d.reliability_metrics.mean_time_between_failures_hours + 'h | MTTR: ' + d.reliability_metrics.mean_time_to_recovery_min + 'min | Error Budget: ' + d.reliability_metrics.error_budget_remaining_pct + '%</div>';
+        h += '<h4 style="color:#34d399;font-size:0.72rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(rec) { h += '<div style="font-size:0.58rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load error rate monitor</p>'; }
+}
+loadErrorRateMonitorPanel();
+document.getElementById('error-rate-monitor-refresh')?.addEventListener('click', loadErrorRateMonitorPanel);
+setTimeout(loadErrorRateMonitorPanel, 95000);
+
+// ── User Engagement Heatmap ───────────────────────────────────
+async function loadUserEngagementHeatmapPanel() {
+    var el = document.getElementById('user-engagement-heatmap-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/user-engagement-heatmap', {headers:{'Authorization':'Bearer '+localStorage.getItem('admin_token')}});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var h = '<div style="padding:4px;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_weekly_sessions + '</div><div style="color:#94a3b8;font-size:0.55rem;">Weekly Sessions</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.85rem;font-weight:700;">' + d.peak_hour + '</div><div style="color:#94a3b8;font-size:0.55rem;">Peak Hour</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.85rem;font-weight:700;">' + d.peak_day + '</div><div style="color:#94a3b8;font-size:0.55rem;">Peak Day</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#a78bfa;font-size:0.85rem;font-weight:700;">' + d.avg_sessions_per_day + '</div><div style="color:#94a3b8;font-size:0.55rem;">Avg/Day</div></div></div>';
+        // Mini heatmap table
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">📅 Activity Heatmap (sessions by hour)</h4>';
+        h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.45rem;">';
+        h += '<tr><td style="color:#94a3b8;padding:1px;"></td>';
+        for (var hr = 6; hr <= 22; hr += 2) h += '<td style="color:#94a3b8;text-align:center;padding:1px;">' + hr + '</td>';
+        h += '</tr>';
+        var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        days.forEach(function(day) {
+            h += '<tr><td style="color:#94a3b8;padding:1px;white-space:nowrap;">' + day.substr(0,3) + '</td>';
+            for (var hr = 6; hr <= 22; hr += 2) {
+                var val = (d.heatmap[day] || {})[String(hr)] || 0;
+                var intensity = Math.min(255, Math.round(val * 5));
+                var bg = 'rgba(96,165,250,' + (intensity/255).toFixed(2) + ')';
+                h += '<td style="text-align:center;padding:1px 2px;background:' + bg + ';color:#fff;border-radius:2px;">' + val + '</td>';
+            }
+            h += '</tr>';
+        });
+        h += '</table></div>';
+        h += '<h4 style="color:#34d399;font-size:0.68rem;margin:6px 0 3px;">⏱️ Feature Usage by Time</h4>';
+        d.feature_usage_by_time.forEach(function(f) {
+            h += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + f.feature + ': peak ' + f.peak_usage_hour + ', avg ' + f.avg_session_minutes + ' min</div>';
+        });
+        h += '<h4 style="color:#f59e0b;font-size:0.68rem;margin:6px 0 3px;">📋 Capacity Recommendations</h4>';
+        d.capacity_recommendations.forEach(function(r) { h += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load engagement heatmap</p>'; }
+}
+loadUserEngagementHeatmapPanel();
+document.getElementById('user-engagement-heatmap-refresh')?.addEventListener('click', loadUserEngagementHeatmapPanel);
+setTimeout(loadUserEngagementHeatmapPanel, 100000);
+
+// ── Case Resolution Metrics ───────────────────────────────────
+async function loadCaseResolutionMetricsPanel() {
+    var el = document.getElementById('case-resolution-metrics-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/case-resolution-metrics', {headers:{'Authorization':'Bearer '+localStorage.getItem('admin_token')}});
+        var d = await r.json(); if (!r.ok) throw new Error(d.detail||'Failed');
+        var h = '<div style="padding:4px;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_cases_tracked + '</div><div style="color:#94a3b8;font-size:0.55rem;">Total Cases</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.85rem;font-weight:700;">' + d.outcomes.settled.percentage + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Settled</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.85rem;font-weight:700;">' + d.outcomes.tried_to_verdict.percentage + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Tried</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#a78bfa;font-size:0.85rem;font-weight:700;">' + d.outcomes.ongoing.count + '</div><div style="color:#94a3b8;font-size:0.55rem;">Ongoing</div></div></div>';
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">⏳ Resolution Times</h4>';
+        h += '<div style="font-size:0.55rem;color:#94a3b8;">Settlement: ' + d.resolution_times.average_days_to_settlement + ' days | Trial: ' + d.resolution_times.average_days_to_trial + ' days | Dismissal: ' + d.resolution_times.average_days_to_dismissal + ' days</div>';
+        h += '<h4 style="color:#34d399;font-size:0.68rem;margin:6px 0 3px;">🚀 Platform Impact</h4>';
+        h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;">';
+        h += '<div style="font-size:0.52rem;color:#e2e8f0;text-align:center;background:#1e293b;padding:3px;border-radius:3px;"><div style="color:#34d399;font-weight:700;">' + d.platform_impact.avg_analysis_time_saved_hours + 'h</div>Time Saved</div>';
+        h += '<div style="font-size:0.52rem;color:#e2e8f0;text-align:center;background:#1e293b;padding:3px;border-radius:3px;"><div style="color:#60a5fa;font-weight:700;">' + d.platform_impact.contradiction_detection_accuracy_pct + '%</div>Accuracy</div>';
+        h += '<div style="font-size:0.52rem;color:#e2e8f0;text-align:center;background:#1e293b;padding:3px;border-radius:3px;"><div style="color:#f59e0b;font-weight:700;">$' + d.platform_impact.estimated_cost_savings_per_case.toLocaleString() + '</div>Savings/Case</div></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.68rem;margin:6px 0 3px;">📈 Monthly Trends</h4>';
+        h += '<table style="width:100%;border-collapse:collapse;font-size:0.5rem;">';
+        h += '<tr><th style="color:#94a3b8;text-align:left;padding:1px 3px;">Month</th><th style="color:#94a3b8;text-align:center;">Resolved</th><th style="color:#94a3b8;text-align:center;">Avg Days</th><th style="color:#94a3b8;text-align:center;">Settlement%</th></tr>';
+        d.monthly_trends.forEach(function(m) {
+            h += '<tr><td style="color:#e2e8f0;padding:1px 3px;">' + m.month + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + m.cases_resolved + '</td>';
+            h += '<td style="text-align:center;color:#f59e0b;">' + m.avg_resolution_days + '</td>';
+            h += '<td style="text-align:center;color:#34d399;">' + m.settlement_rate_pct + '%</td></tr>';
+        });
+        h += '</table>';
+        h += '<h4 style="color:#f59e0b;font-size:0.68rem;margin:6px 0 3px;">💡 Insights</h4>';
+        d.insights.forEach(function(i) { h += '<div style="font-size:0.55rem;color:#e2e8f0;padding:1px 0;">• ' + i + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load case resolution metrics</p>'; }
+}
+loadCaseResolutionMetricsPanel();
+document.getElementById('case-resolution-metrics-refresh')?.addEventListener('click', loadCaseResolutionMetricsPanel);
+setTimeout(loadCaseResolutionMetricsPanel, 105000);
+
+// ── AI Model Performance Panel ────────────────────────────────
+async function loadAiModelPerformancePanel() {
+    var el = document.getElementById('ai-model-performance-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/ai-model-performance');
+        var d = await r.json(); if (!r.ok) throw new Error('Failed');
+        var h = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.model_stats.total_api_calls_24h.toLocaleString() + '</div><div style="color:#94a3b8;font-size:0.55rem;">API Calls (24h)</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.model_stats.avg_response_time_sec + 's</div><div style="color:#94a3b8;font-size:0.55rem;">Avg Latency</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">$' + d.model_stats.estimated_cost_24h_usd + '</div><div style="color:#94a3b8;font-size:0.55rem;">Cost (24h)</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.model_stats.uptime_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Uptime</div></div></div>';
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">📊 Feature Performance</h4>';
+        h += '<table style="width:100%;border-collapse:collapse;font-size:0.5rem;">';
+        h += '<tr><th style="color:#94a3b8;text-align:left;padding:1px 3px;">Feature</th><th style="color:#94a3b8;text-align:center;">Calls</th><th style="color:#94a3b8;text-align:center;">Latency</th><th style="color:#94a3b8;text-align:center;">Quality</th><th style="color:#94a3b8;text-align:center;">Cache%</th></tr>';
+        d.feature_metrics.slice(0, 8).forEach(function(f) {
+            var qc = f.avg_quality_score > 4.5 ? '#34d399' : f.avg_quality_score > 4.0 ? '#60a5fa' : '#f59e0b';
+            h += '<tr><td style="color:#e2e8f0;padding:1px 3px;">' + f.feature + '</td>';
+            h += '<td style="text-align:center;color:#60a5fa;">' + f.total_calls_24h + '</td>';
+            h += '<td style="text-align:center;color:#f59e0b;">' + f.avg_response_time_sec + 's</td>';
+            h += '<td style="text-align:center;color:' + qc + ';">' + f.avg_quality_score + '</td>';
+            h += '<td style="text-align:center;color:#a78bfa;">' + f.cache_hit_rate_pct + '%</td></tr>';
+        });
+        h += '</table>';
+        if (d.performance_alerts.length > 0) {
+            h += '<h4 style="color:#f87171;font-size:0.68rem;margin:6px 0 3px;">⚠️ Alerts</h4>';
+            d.performance_alerts.forEach(function(a) { h += '<div style="font-size:0.52rem;color:#f87171;padding:1px 0;">• ' + a + '</div>'; });
+        }
+        h += '<h4 style="color:#34d399;font-size:0.68rem;margin:6px 0 3px;">💡 Optimizations</h4>';
+        d.optimization_suggestions.forEach(function(s) { h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + s + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load AI model performance</p>'; }
+}
+loadAiModelPerformancePanel();
+document.getElementById('ai-model-performance-refresh')?.addEventListener('click', loadAiModelPerformancePanel);
+setTimeout(loadAiModelPerformancePanel, 110000);
+
+// ── Data Storage Analytics Panel ──────────────────────────────
+async function loadDataStorageAnalyticsPanel() {
+    var el = document.getElementById('data-storage-analytics-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/data-storage-analytics');
+        var d = await r.json(); if (!r.ok) throw new Error('Failed');
+        var h = '<div style="border:1px solid #334155;border-radius:6px;padding:8px;background:#0f172a;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.total_sessions.toLocaleString() + '</div><div style="color:#94a3b8;font-size:0.55rem;">Sessions</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.total_testimonies.toLocaleString() + '</div><div style="color:#94a3b8;font-size:0.55rem;">Testimonies</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.total_storage_gb + ' GB</div><div style="color:#94a3b8;font-size:0.55rem;">Total Storage</div></div>';
+        var uc = d.storage_health.capacity_used_pct > 80 ? '#f87171' : d.storage_health.capacity_used_pct > 60 ? '#f59e0b' : '#34d399';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + uc + ';font-size:0.95rem;font-weight:700;">' + d.storage_health.capacity_used_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Used</div></div></div>';
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">📁 Storage Breakdown</h4>';
+        h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;">';
+        var cats = [
+            {l:'Text',v:d.storage_breakdown.testimony_text_gb,c:'#60a5fa'},
+            {l:'Audio',v:d.storage_breakdown.audio_files_gb,c:'#34d399'},
+            {l:'Video',v:d.storage_breakdown.video_files_gb,c:'#a78bfa'},
+            {l:'Cache',v:d.storage_breakdown.analysis_cache_gb,c:'#f59e0b'},
+            {l:'Reports',v:d.storage_breakdown.reports_exports_gb,c:'#f87171'},
+            {l:'Database',v:d.storage_breakdown.database_gb,c:'#94a3b8'},
+        ];
+        cats.forEach(function(c) {
+            h += '<div style="font-size:0.52rem;color:#e2e8f0;text-align:center;background:#1e293b;padding:3px;border-radius:3px;"><div style="color:' + c.c + ';font-weight:700;">' + c.v + ' GB</div>' + c.l + '</div>';
+        });
+        h += '</div>';
+        h += '<h4 style="color:#34d399;font-size:0.68rem;margin:6px 0 3px;">🏆 Top Storage Consumers</h4>';
+        d.top_storage_consumers.forEach(function(tc) {
+            h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">' + tc.case_name + ' - <span style="color:#f59e0b;">' + tc.storage_mb + ' MB</span> (' + tc.testimony_count + ' testimonies)</div>';
+        });
+        h += '<div style="font-size:0.52rem;color:#94a3b8;margin-top:4px;">Est. ' + d.storage_health.estimated_days_until_full + ' days until full | Cleanup: ' + d.storage_health.cleanup_candidates_gb + ' GB available</div>';
+        h += '<h4 style="color:#f59e0b;font-size:0.68rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(r) { h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + r + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load storage analytics</p>'; }
+}
+loadDataStorageAnalyticsPanel();
+document.getElementById('data-storage-analytics-refresh')?.addEventListener('click', loadDataStorageAnalyticsPanel);
+setTimeout(loadDataStorageAnalyticsPanel, 115000);
+
+// ── Client Satisfaction Tracker Panel ──────────────────────────
+async function loadClientSatisfactionTrackerPanel() {
+    var el = document.getElementById('client-satisfaction-tracker-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/client-satisfaction-tracker', {headers:{'Authorization':'Bearer admin'}});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var h = '<div style="font-size:0.7rem;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        var nc = d.nps_score >= 70 ? '#34d399' : d.nps_score >= 50 ? '#f59e0b' : '#f87171';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + nc + ';font-size:0.95rem;font-weight:700;">' + d.nps_score + '</div><div style="color:#94a3b8;font-size:0.55rem;">NPS Score</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#60a5fa;font-size:0.95rem;font-weight:700;">' + d.overall_satisfaction + '/5</div><div style="color:#94a3b8;font-size:0.55rem;">Satisfaction</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#a78bfa;font-size:0.95rem;font-weight:700;">' + d.total_responses + '</div><div style="color:#94a3b8;font-size:0.55rem;">Responses</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#34d399;font-size:0.95rem;font-weight:700;">' + d.retention_metrics.monthly_active_rate_pct + '%</div><div style="color:#94a3b8;font-size:0.55rem;">Active Rate</div></div></div>';
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">⭐ Feature Satisfaction</h4>';
+        d.satisfaction_by_feature.forEach(function(f) {
+            var sc = f.satisfaction_score >= 4.5 ? '#34d399' : f.satisfaction_score >= 3.5 ? '#f59e0b' : '#f87171';
+            var tc = f.trend === 'improving' ? '#34d399' : f.trend === 'stable' ? '#60a5fa' : '#f87171';
+            var barW = Math.min(f.satisfaction_score / 5 * 100, 100);
+            h += '<div style="font-size:0.52rem;padding:2px 0;">';
+            h += '<div style="display:flex;justify-content:space-between;"><span style="color:#e2e8f0;">' + f.feature + '</span><span style="color:' + sc + ';">' + f.satisfaction_score + '/5 <span style="color:' + tc + ';font-size:0.42rem;">(' + f.trend + ')</span></span></div>';
+            h += '<div style="background:#0f172a;border-radius:2px;height:3px;"><div style="background:' + sc + ';height:3px;border-radius:2px;width:' + barW + '%;"></div></div></div>';
+        });
+        h += '<h4 style="color:#f59e0b;font-size:0.68rem;margin:6px 0 3px;">📝 Recent Feedback</h4>';
+        d.recent_feedback.forEach(function(fb) {
+            var stars = '⭐'.repeat(fb.rating);
+            h += '<div style="font-size:0.5rem;background:#1e293b;padding:3px;border-radius:3px;margin:2px 0;">';
+            h += '<div style="color:#f59e0b;">' + stars + ' <span style="color:#94a3b8;font-size:0.42rem;">' + fb.date + ' | ' + fb.feature_mentioned + '</span></div>';
+            h += '<div style="color:#e2e8f0;font-style:italic;">"' + fb.comment + '"</div></div>';
+        });
+        h += '<h4 style="color:#a78bfa;font-size:0.68rem;margin:6px 0 3px;">🎯 Top Feature Requests</h4>';
+        d.top_requests.forEach(function(req) { h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + req + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load satisfaction tracker</p>'; }
+}
+loadClientSatisfactionTrackerPanel();
+document.getElementById('client-satisfaction-tracker-refresh')?.addEventListener('click', loadClientSatisfactionTrackerPanel);
+setTimeout(loadClientSatisfactionTrackerPanel, 120000);
+
+// ── Compliance Monitor Panel ───────────────────────────────────
+async function loadComplianceMonitorPanel() {
+    var el = document.getElementById('compliance-monitor-content');
+    if (!el) return;
+    try {
+        var r = await fetch('/api/admin/compliance-monitor', {headers:{'Authorization':'Bearer admin'}});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var d = await r.json();
+        var h = '<div style="font-size:0.7rem;">';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">';
+        var oc = d.overall_compliance_score >= 85 ? '#34d399' : d.overall_compliance_score >= 70 ? '#f59e0b' : '#f87171';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + oc + ';font-size:0.95rem;font-weight:700;">' + d.overall_compliance_score + '</div><div style="color:#94a3b8;font-size:0.55rem;">Score</div></div>';
+        var stc = d.compliance_status === 'Compliant' ? '#34d399' : d.compliance_status === 'Needs Attention' ? '#f59e0b' : '#f87171';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:' + stc + ';font-size:0.7rem;font-weight:700;">' + d.compliance_status + '</div><div style="color:#94a3b8;font-size:0.55rem;">Status</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f87171;font-size:0.95rem;font-weight:700;">' + d.non_compliant_count + '</div><div style="color:#94a3b8;font-size:0.55rem;">Issues</div></div>';
+        h += '<div style="background:#1e293b;padding:4px;border-radius:4px;text-align:center;"><div style="color:#f59e0b;font-size:0.95rem;font-weight:700;">' + d.warning_count + '</div><div style="color:#94a3b8;font-size:0.55rem;">Warnings</div></div></div>';
+        h += '<h4 style="color:#60a5fa;font-size:0.68rem;margin:6px 0 3px;">🛡️ Compliance Areas</h4>';
+        d.compliance_areas.forEach(function(a) {
+            var ac = a.status === 'Compliant' ? '#34d399' : a.status === 'Warning' ? '#f59e0b' : '#f87171';
+            var barW = Math.min(a.score, 100);
+            h += '<div style="font-size:0.52rem;padding:2px 0;">';
+            h += '<div style="display:flex;justify-content:space-between;"><span style="color:#e2e8f0;">' + a.area + ' <span style="color:#94a3b8;font-size:0.42rem;">(' + a.standard + ')</span></span><span style="color:' + ac + ';">' + a.status + ' (' + a.score + ')</span></div>';
+            h += '<div style="background:#0f172a;border-radius:2px;height:3px;"><div style="background:' + ac + ';height:3px;border-radius:2px;width:' + barW + '%;"></div></div></div>';
+        });
+        h += '<h4 style="color:#f59e0b;font-size:0.68rem;margin:6px 0 3px;">🔐 PII Protection</h4>';
+        var pm = d.data_privacy_metrics;
+        var mc = pm.masking_rate_pct >= 95 ? '#34d399' : pm.masking_rate_pct >= 85 ? '#f59e0b' : '#f87171';
+        h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;">';
+        h += '<div style="background:#1e293b;padding:3px;border-radius:3px;text-align:center;"><div style="color:#60a5fa;font-weight:700;font-size:0.65rem;">' + pm.pii_instances_detected + '</div><div style="font-size:0.42rem;color:#94a3b8;">Detected</div></div>';
+        h += '<div style="background:#1e293b;padding:3px;border-radius:3px;text-align:center;"><div style="color:' + mc + ';font-weight:700;font-size:0.65rem;">' + pm.masking_rate_pct + '%</div><div style="font-size:0.42rem;color:#94a3b8;">Masked</div></div>';
+        h += '<div style="background:#1e293b;padding:3px;border-radius:3px;text-align:center;"><div style="color:#a78bfa;font-weight:700;font-size:0.65rem;">' + pm.data_subject_requests + '</div><div style="font-size:0.42rem;color:#94a3b8;">DSR Requests</div></div></div>';
+        h += '<h4 style="color:#a78bfa;font-size:0.68rem;margin:6px 0 3px;">📅 Upcoming Audits</h4>';
+        d.upcoming_audits.forEach(function(ua) {
+            h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">📋 ' + ua.audit + ' — <span style="color:#f59e0b;">' + ua.date + '</span></div>';
+        });
+        h += '<h4 style="color:#34d399;font-size:0.68rem;margin:6px 0 3px;">💡 Recommendations</h4>';
+        d.recommendations.forEach(function(rec) { h += '<div style="font-size:0.52rem;color:#e2e8f0;padding:1px 0;">• ' + rec + '</div>'; });
+        h += '</div>';
+        el.innerHTML = h;
+    } catch(e) { el.innerHTML = '<p style="color:#f87171;">Failed to load compliance monitor</p>'; }
+}
+loadComplianceMonitorPanel();
+document.getElementById('compliance-monitor-refresh')?.addEventListener('click', loadComplianceMonitorPanel);
+setTimeout(loadComplianceMonitorPanel, 125000);
+
+// ============================================================
+// Feature Adoption Funnel
+// ============================================================
+async function loadFeatureAdoptionFunnel() {
+    try {
+        var r = await fetch('/api/admin/feature-adoption-funnel', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') } });
+        var d = await r.json();
+        var el = document.getElementById('feature-adoption-funnel-content');
+        if (!el) return;
+        var html = '<div style="font-size:0.55rem;">';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px;">';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.7rem;font-weight:bold;">' + d.total_users + '</div><div style="color:#a0aec0;font-size:0.42rem;">Total Users</div></div>';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#68d391;font-size:0.7rem;font-weight:bold;">' + d.overall_conversion_rate_pct + '%</div><div style="color:#a0aec0;font-size:0.42rem;">Full Conversion</div></div>';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#fc8181;font-size:0.7rem;font-weight:bold;">' + d.biggest_drop_off_pct + '%</div><div style="color:#a0aec0;font-size:0.42rem;">Biggest Drop</div></div>';
+        html += '</div>';
+        html += '<div style="color:#e2e8f0;font-weight:bold;margin-bottom:3px;">Funnel Stages:</div>';
+        d.funnel_stages.forEach(function(s) {
+            var barW = Math.max(s.pct, 5);
+            html += '<div style="margin:2px 0;display:flex;align-items:center;gap:4px;">';
+            html += '<div style="width:120px;font-size:0.42rem;color:#a0aec0;text-align:right;">' + s.stage + '</div>';
+            html += '<div style="flex:1;background:#4a5568;border-radius:2px;height:14px;position:relative;">';
+            html += '<div style="width:' + barW + '%;background:linear-gradient(90deg,#b794f4,#805ad5);height:100%;border-radius:2px;"></div>';
+            html += '<span style="position:absolute;right:4px;top:1px;font-size:0.4rem;color:#fff;">' + s.users + ' (' + s.pct + '%)</span>';
+            html += '</div></div>';
+        });
+        html += '<div style="margin-top:6px;color:#e2e8f0;font-weight:bold;">Feature Adoption:</div>';
+        Object.keys(d.feature_adoption).slice(0, 5).forEach(function(f) {
+            var fa = d.feature_adoption[f];
+            html += '<div style="font-size:0.42rem;color:#cbd5e0;padding:1px 0;">' + f + ': <span style="color:#b794f4;">' + fa.adoption_rate_pct + '%</span> (' + fa.users + ' users, ' + fa.avg_uses_per_user + ' uses/user)</div>';
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Feature adoption funnel error:', e); }
+}
+function refreshFeatureAdoptionFunnel() { loadFeatureAdoptionFunnel(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('feature-adoption-funnel-refresh');
+    if (btn) btn.addEventListener('click', refreshFeatureAdoptionFunnel);
+    loadFeatureAdoptionFunnel();
+});
+
+// ============================================================
+// Infrastructure Monitor
+// ============================================================
+async function loadInfrastructureMonitor() {
+    try {
+        var r = await fetch('/api/admin/infrastructure-monitor', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') } });
+        var d = await r.json();
+        var el = document.getElementById('infrastructure-monitor-content');
+        if (!el) return;
+        var healthColor = d.overall_health === 'Healthy' ? '#68d391' : '#fc8181';
+        var html = '<div style="font-size:0.55rem;">';
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px;">';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:' + healthColor + ';font-size:0.65rem;font-weight:bold;">' + d.overall_health + '</div><div style="color:#a0aec0;font-size:0.42rem;">Status</div></div>';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#63b3ed;font-size:0.65rem;font-weight:bold;">' + d.system_metrics.cpu_usage_pct + '%</div><div style="color:#a0aec0;font-size:0.42rem;">CPU</div></div>';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#b794f4;font-size:0.65rem;font-weight:bold;">' + d.system_metrics.memory_usage_pct + '%</div><div style="color:#a0aec0;font-size:0.42rem;">Memory</div></div>';
+        html += '<div style="background:#2d3748;padding:6px;border-radius:4px;text-align:center;"><div style="color:#f6ad55;font-size:0.65rem;font-weight:bold;">' + d.system_metrics.disk_usage_pct + '%</div><div style="color:#a0aec0;font-size:0.42rem;">Disk</div></div>';
+        html += '</div>';
+        html += '<div style="color:#e2e8f0;font-weight:bold;margin-bottom:3px;">Services:</div>';
+        d.services.forEach(function(s) {
+            var sColor = s.status === 'Healthy' ? '#68d391' : '#fc8181';
+            html += '<div style="font-size:0.42rem;color:#cbd5e0;padding:1px 0;display:flex;justify-content:space-between;">';
+            html += '<span>' + s.service + '</span>';
+            html += '<span style="color:' + sColor + ';">' + s.status + ' (' + s.uptime_pct + '%, ' + s.response_time_ms + 'ms)</span>';
+            html += '</div>';
+        });
+        html += '<div style="margin-top:4px;color:#e2e8f0;font-weight:bold;">Performance:</div>';
+        html += '<div style="font-size:0.42rem;color:#a0aec0;">Avg Response: ' + d.performance_summary.avg_response_time_ms + 'ms | Requests Today: ' + d.performance_summary.total_requests_today + ' | Error Rate: ' + d.performance_summary.overall_error_rate_pct + '%</div>';
+        if (d.recent_incidents.length) {
+            html += '<div style="margin-top:4px;color:#e2e8f0;font-weight:bold;">Recent Incidents:</div>';
+            d.recent_incidents.forEach(function(inc) {
+                var iColor = inc.severity === 'Warning' ? '#ecc94b' : '#63b3ed';
+                html += '<div style="font-size:0.42rem;color:#cbd5e0;padding:1px 0;"><span style="color:' + iColor + ';">[' + inc.severity + ']</span> ' + inc.description + ' <span style="color:#a0aec0;">(' + inc.time + ')</span></div>';
+            });
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) { console.error('Infrastructure monitor error:', e); }
+}
+function refreshInfrastructureMonitor() { loadInfrastructureMonitor(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('infrastructure-monitor-refresh');
+    if (btn) btn.addEventListener('click', refreshInfrastructureMonitor);
+    loadInfrastructureMonitor();
+});
+
+// ============================================================
+// Admin: API Usage Monitor
+// ============================================================
+function loadApiUsageMonitor() {
+    var el = document.getElementById('api-usage-monitor-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading API usage data...</p>';
+    fetch('/api/admin/api-usage-monitor', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_requests_24h.toLocaleString() + '</div><div class="stat-label">Requests (24h)</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.overall_error_rate_pct + '%</div><div class="stat-label">Error Rate</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.average_response_ms + 'ms</div><div class="stat-label">Avg Response</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:' + (d.endpoints_critical > 0 ? '#f56565' : '#68d391') + ';">' + d.endpoints_healthy + '/' + (d.endpoints_healthy + d.endpoints_warning + d.endpoints_critical) + '</div><div class="stat-label">Healthy</div></div>';
+        html += '</div>';
+        html += '<h4>📊 Top Endpoints</h4><table class="admin-table"><thead><tr><th>Endpoint</th><th>Requests</th><th>Errors</th><th>Avg(ms)</th><th>Status</th></tr></thead><tbody>';
+        d.endpoint_stats.slice(0, 8).forEach(function(e){
+            var statusColor = e.status === 'Healthy' ? '#68d391' : e.status === 'Warning' ? '#ecc94b' : '#f56565';
+            html += '<tr><td style="font-size:0.75rem;">' + e.endpoint + '</td><td>' + e.requests_24h + '</td><td>' + e.errors_24h + '</td><td>' + e.avg_response_ms + '</td><td style="color:' + statusColor + ';">' + e.status + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        if (d.top_errors && d.top_errors.length) {
+            html += '<h4>⚠️ Top Errors</h4><ul class="admin-list">';
+            d.top_errors.forEach(function(e){ html += '<li><strong>' + e.code + '</strong>: ' + e.message + ' (' + e.count + 'x)</li>'; });
+            html += '</ul>';
+        }
+        if (d.alerts && d.alerts.length) {
+            html += '<h4>🔔 Alerts</h4><ul class="admin-list">';
+            d.alerts.forEach(function(a){ html += '<li>' + a + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load API usage: '+e.message+'</p>';});
+}
+function refreshApiUsageMonitor() { loadApiUsageMonitor(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('api-usage-monitor-refresh');
+    if (btn) btn.addEventListener('click', refreshApiUsageMonitor);
+    loadApiUsageMonitor();
+});
+
+// ============================================================
+// Admin: Session Analytics Dashboard
+// ============================================================
+function loadSessionAnalyticsDashboard() {
+    var el = document.getElementById('session-analytics-dashboard-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading session analytics...</p>';
+    fetch('/api/admin/session-analytics-dashboard', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_sessions_all_time.toLocaleString() + '</div><div class="stat-label">Total Sessions</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.active_sessions_now + '</div><div class="stat-label">Active Now</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.average_session_duration_min + ' min</div><div class="stat-label">Avg Duration</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.bounce_rate_pct + '%</div><div class="stat-label">Bounce Rate</div></div>';
+        html += '</div>';
+        html += '<h4>🏷️ User Segments</h4><table class="admin-table"><thead><tr><th>Segment</th><th>Count</th><th>Avg Duration</th></tr></thead><tbody>';
+        d.user_segments.forEach(function(s){
+            html += '<tr><td>' + s.segment + '</td><td>' + s.count + '</td><td>' + s.avg_session_length_min + ' min</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>🔥 Feature Usage</h4><table class="admin-table"><thead><tr><th>Feature</th><th>Sessions</th><th>Avg Time</th></tr></thead><tbody>';
+        d.feature_usage_stats.forEach(function(f){
+            html += '<tr><td>' + f.feature + '</td><td>' + f.sessions_used + '</td><td>' + f.avg_time_sec + 's</td></tr>';
+        });
+        html += '</tbody></table>';
+        var em = d.engagement_metrics;
+        html += '<h4>📈 Engagement</h4><ul class="admin-list">';
+        html += '<li>Avg features/session: <strong>' + em.avg_features_per_session + '</strong></li>';
+        html += '<li>7-day return rate: <strong>' + em.return_rate_7day_pct + '%</strong></li>';
+        html += '<li>30-day return rate: <strong>' + em.return_rate_30day_pct + '%</strong></li>';
+        html += '<li>Common first action: <strong>' + em.most_common_first_action + '</strong></li>';
+        html += '</ul>';
+        if (d.insights && d.insights.length) {
+            html += '<h4>💡 Insights</h4><ul class="admin-list">';
+            d.insights.forEach(function(i){ html += '<li>' + i + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load session analytics: '+e.message+'</p>';});
+}
+function refreshSessionAnalyticsDashboard() { loadSessionAnalyticsDashboard(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('session-analytics-dashboard-refresh');
+    if (btn) btn.addEventListener('click', refreshSessionAnalyticsDashboard);
+    loadSessionAnalyticsDashboard();
+});
+
+// ============================================================
+// Admin: User Retention Analyzer
+// ============================================================
+function loadUserRetentionAnalyzer() {
+    var el = document.getElementById('user-retention-analyzer-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading retention data...</p>';
+    fetch('/api/admin/user-retention-analyzer', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.overall_retention_30day_pct + '%</div><div class="stat-label">30-Day Retention</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.overall_retention_90day_pct + '%</div><div class="stat-label">90-Day Retention</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#90cdf4;">' + d.total_active_users + '</div><div class="stat-label">Active Users</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">' + d.users_at_risk + '</div><div class="stat-label">At Risk</div></div>';
+        html += '</div>';
+        html += '<h4>📉 Cohort Retention</h4><table class="admin-table"><thead><tr><th>Cohort</th><th>Users</th><th>Active</th><th>W1</th><th>W4</th><th>W6</th></tr></thead><tbody>';
+        d.cohort_analysis.forEach(function(c){
+            html += '<tr><td>' + c.cohort_month + '</td><td>' + c.initial_users + '</td><td>' + c.current_active + '</td>';
+            html += '<td>' + (c.weekly_retention_pct[1] || '-') + '%</td>';
+            html += '<td>' + (c.weekly_retention_pct[4] || '-') + '%</td>';
+            html += '<td>' + (c.weekly_retention_pct[6] || '-') + '%</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>⚠️ Churn Risk Users (Top 5)</h4><table class="admin-table"><thead><tr><th>User</th><th>Risk</th><th>Last Active</th><th>Factors</th></tr></thead><tbody>';
+        d.churn_risk_users.slice(0, 5).forEach(function(u){
+            var riskColor = u.risk_level === 'Critical' ? '#fc8181' : '#fbd38d';
+            html += '<tr><td>' + u.user_id + '</td><td style="color:' + riskColor + ';">' + u.churn_risk_score + '</td>';
+            html += '<td>' + u.last_active_days_ago + 'd ago</td><td>' + u.contributing_factors[0] + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        if (d.engagement_drivers && d.engagement_drivers.length) {
+            html += '<h4>💡 Engagement Drivers</h4><ul class="admin-list">';
+            d.engagement_drivers.forEach(function(e){ html += '<li>' + e + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load retention data: '+e.message+'</p>';});
+}
+function refreshUserRetentionAnalyzer() { loadUserRetentionAnalyzer(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('user-retention-analyzer-refresh');
+    if (btn) btn.addEventListener('click', refreshUserRetentionAnalyzer);
+    loadUserRetentionAnalyzer();
+});
+
+// ============================================================
+// Admin: Document Processing Queue
+// ============================================================
+function loadDocumentProcessingQueue() {
+    var el = document.getElementById('document-processing-queue-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading processing queue...</p>';
+    fetch('/api/admin/document-processing-queue', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fbd38d;">' + d.queue_depth + '</div><div class="stat-label">In Queue</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#90cdf4;">' + d.currently_processing + '</div><div class="stat-label">Processing</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.completed_today + '</div><div class="stat-label">Completed</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">' + d.failed_today + '</div><div class="stat-label">Failed</div></div>';
+        html += '</div>';
+        html += '<div class="admin-stats-grid" style="margin-top:8px;">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.success_rate_pct + '%</div><div class="stat-label">Success Rate</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.average_processing_time_min + ' min</div><div class="stat-label">Avg Time</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.throughput_docs_per_hour + '/hr</div><div class="stat-label">Throughput</div></div>';
+        html += '</div>';
+        html += '<h4>📋 Queue Items</h4><table class="admin-table"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Status</th><th>Progress</th></tr></thead><tbody>';
+        d.queue_items.forEach(function(q){
+            var statusColor = q.status === 'Completed' ? '#68d391' : q.status === 'Processing' ? '#90cdf4' : q.status === 'Failed' ? '#fc8181' : '#fbd38d';
+            html += '<tr><td title="' + q.filename + '">' + q.doc_id + '</td><td>' + q.file_type + '</td><td>' + q.size_mb + ' MB</td>';
+            html += '<td style="color:' + statusColor + ';">' + q.status + '</td>';
+            html += '<td>' + (q.status === 'Processing' ? q.progress_pct + '%' : q.status === 'Completed' ? '✅' : q.status === 'Failed' ? '❌' : '⏳') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>🖥️ System Resources</h4><ul class="admin-list">';
+        var sr = d.system_resources;
+        html += '<li>CPU: <strong>' + sr.cpu_usage_pct + '%</strong></li>';
+        html += '<li>Memory: <strong>' + sr.memory_usage_pct + '%</strong></li>';
+        html += '<li>Disk: <strong>' + sr.disk_usage_pct + '%</strong></li>';
+        html += '<li>Workers: <strong>' + sr.worker_threads_active + '/' + sr.worker_threads_total + '</strong></li>';
+        html += '</ul>';
+        if (d.alerts && d.alerts.length) {
+            html += '<h4>🔔 Alerts</h4><ul class="admin-list">';
+            d.alerts.forEach(function(a){ html += '<li>' + a + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load processing queue: '+e.message+'</p>';});
+}
+function refreshDocumentProcessingQueue() { loadDocumentProcessingQueue(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('document-processing-queue-refresh');
+    if (btn) btn.addEventListener('click', refreshDocumentProcessingQueue);
+    loadDocumentProcessingQueue();
+});
+
+// ============================================================
+// Admin: Error Log Viewer
+// ============================================================
+function loadErrorLogViewer() {
+    var el = document.getElementById('error-log-viewer-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading error logs...</p>';
+    fetch('/api/admin/error-log-viewer', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">' + d.critical_count + '</div><div class="stat-label">Critical</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fbd38d;">' + d.error_count + '</div><div class="stat-label">Errors</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#90cdf4;">' + d.warning_count + '</div><div class="stat-label">Warnings</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.info_count + '</div><div class="stat-label">Info</div></div>';
+        html += '</div>';
+        html += '<div class="admin-stats-grid" style="margin-top:8px;">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_errors_24h + '</div><div class="stat-label">Total (24h)</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.error_rate_per_hour + '/hr</div><div class="stat-label">Error Rate</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.mean_time_to_resolution_min + ' min</div><div class="stat-label">Avg Resolution</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.auto_recovered_pct + '%</div><div class="stat-label">Auto-Recovered</div></div>';
+        html += '</div>';
+        html += '<h4>🔝 Top Error Types</h4><table class="admin-table"><thead><tr><th>Error Type</th><th>Count</th></tr></thead><tbody>';
+        d.top_error_types.forEach(function(t){ html += '<tr><td>' + t.error_type + '</td><td>' + t.count + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>🏷️ Errors by Service</h4><table class="admin-table"><thead><tr><th>Service</th><th>Count</th></tr></thead><tbody>';
+        d.errors_by_service.forEach(function(s){ html += '<tr><td>' + s.service + '</td><td>' + s.count + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>📋 Recent Errors</h4><table class="admin-table"><thead><tr><th>ID</th><th>Severity</th><th>Type</th><th>Service</th><th>Status</th></tr></thead><tbody>';
+        d.error_logs.slice(0,15).forEach(function(l){
+            var sc = l.severity === 'CRITICAL' ? '#fc8181' : l.severity === 'ERROR' ? '#fbd38d' : l.severity === 'WARN' ? '#90cdf4' : '#68d391';
+            html += '<tr><td>' + l.log_id + '</td><td style="color:' + sc + ';">' + l.severity + '</td><td>' + l.error_type + '</td><td>' + l.service + '</td><td>' + l.resolution_status + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        if (d.alerts && d.alerts.length) {
+            html += '<h4>🔔 Alerts</h4><ul class="admin-list">';
+            d.alerts.forEach(function(a){ html += '<li>' + a + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load error logs: '+e.message+'</p>';});
+}
+function refreshErrorLogViewer() { loadErrorLogViewer(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('error-log-viewer-refresh');
+    if (btn) btn.addEventListener('click', refreshErrorLogViewer);
+    loadErrorLogViewer();
+});
+
+// ============================================================
+// Admin: Content Moderation Dashboard
+// ============================================================
+function loadContentModerationDashboard() {
+    var el = document.getElementById('content-moderation-dashboard-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading moderation data...</p>';
+    fetch('/api/admin/content-moderation-dashboard', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fbd38d;">' + d.total_flagged_items + '</div><div class="stat-label">Flagged Items</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">' + d.pending_review + '</div><div class="stat-label">Pending Review</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#fc8181;">' + d.high_severity_count + '</div><div class="stat-label">High Severity</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.items_reviewed_today + '</div><div class="stat-label">Reviewed Today</div></div>';
+        html += '</div>';
+        html += '<h4>🏷️ Flag Reasons</h4><table class="admin-table"><thead><tr><th>Reason</th><th>Count</th></tr></thead><tbody>';
+        d.flag_reason_breakdown.forEach(function(r){ html += '<tr><td>' + r.reason + '</td><td>' + r.count + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>📋 Flagged Items</h4><table class="admin-table"><thead><tr><th>ID</th><th>Type</th><th>Reason</th><th>Severity</th><th>Status</th></tr></thead><tbody>';
+        d.flagged_items.slice(0,12).forEach(function(f){
+            var sc = f.severity === 'HIGH' ? '#fc8181' : f.severity === 'MEDIUM' ? '#fbd38d' : '#68d391';
+            html += '<tr><td>' + f.item_id + '</td><td>' + f.content_type + '</td><td>' + f.flag_reason + '</td>';
+            html += '<td style="color:' + sc + ';">' + f.severity + '</td><td>' + f.moderation_status + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>📜 Moderation Policies</h4><table class="admin-table"><thead><tr><th>Policy</th><th>Status</th><th>Sensitivity</th></tr></thead><tbody>';
+        d.moderation_policies.forEach(function(p){ html += '<tr><td>' + p.policy + '</td><td style="color:#68d391;">' + p.status + '</td><td>' + p.sensitivity + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>📊 Compliance Metrics</h4><ul class="admin-list">';
+        var cm = d.compliance_metrics;
+        html += '<li>SLA Met: <strong>' + cm.review_sla_met_pct + '%</strong></li>';
+        html += '<li>False Positive Rate: <strong>' + cm.false_positive_rate_pct + '%</strong></li>';
+        html += '<li>Auto-Flag Accuracy: <strong>' + cm.auto_flag_accuracy_pct + '%</strong></li>';
+        html += '<li>Escalations This Week: <strong>' + cm.escalations_this_week + '</strong></li>';
+        html += '</ul>';
+        if (d.recommendations && d.recommendations.length) {
+            html += '<h4>�� Recommendations</h4><ul class="admin-list">';
+            d.recommendations.forEach(function(r){ html += '<li>' + r + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load moderation data: '+e.message+'</p>';});
+}
+function refreshContentModerationDashboard() { loadContentModerationDashboard(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('content-moderation-dashboard-refresh');
+    if (btn) btn.addEventListener('click', refreshContentModerationDashboard);
+    loadContentModerationDashboard();
+});
+
+// ============================================================
+// Admin: Gemini Model Analytics
+// ============================================================
+function loadGeminiModelAnalytics() {
+    var el = document.getElementById('gemini-model-analytics-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading Gemini analytics...</p>';
+    fetch('/api/admin/gemini-model-analytics', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_requests_24h + '</div><div class="stat-label">Requests (24h)</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.total_estimated_cost_formatted + '</div><div class="stat-label">Est. Cost (24h)</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.average_quality_score + '/10</div><div class="stat-label">Avg Quality</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + (d.total_tokens_input / 1000).toFixed(0) + 'K</div><div class="stat-label">Tokens In</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + (d.total_tokens_output / 1000).toFixed(0) + 'K</div><div class="stat-label">Tokens Out</div></div>';
+        html += '</div>';
+        html += '<h4>🤖 Model Performance</h4><table class="admin-table"><thead><tr><th>Model</th><th>Requests</th><th>Avg Latency</th><th>P95 Latency</th><th>Quality</th><th>Error Rate</th><th>Cost</th></tr></thead><tbody>';
+        d.model_stats.forEach(function(m){
+            html += '<tr><td><strong>' + m.model_name + '</strong></td><td>' + m.requests_24h + '</td>';
+            html += '<td>' + m.avg_latency_seconds + 's</td><td>' + m.p95_latency_seconds + 's</td>';
+            html += '<td style="color:#68d391;">' + m.quality_score + '</td>';
+            html += '<td style="color:' + (m.error_rate_pct > 2 ? '#fc8181' : '#68d391') + ';">' + m.error_rate_pct + '%</td>';
+            html += '<td>$' + m.estimated_cost_24h + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>📊 Feature AI Usage</h4><table class="admin-table"><thead><tr><th>Feature</th><th>Requests</th><th>Avg Tokens</th><th>Quality</th><th>Latency</th></tr></thead><tbody>';
+        d.feature_usage.slice(0,8).forEach(function(f){
+            html += '<tr><td>' + f.feature + '</td><td>' + f.requests_24h + '</td><td>' + f.avg_tokens_per_request + '</td>';
+            html += '<td style="color:#68d391;">' + f.avg_quality_score + '</td><td>' + f.avg_latency_seconds + 's</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>💡 Cost Optimization</h4><ul class="admin-list">';
+        d.cost_optimization_tips.forEach(function(t){ html += '<li>' + t + '</li>'; });
+        html += '</ul>';
+        if (d.alerts && d.alerts.length) {
+            html += '<h4>🔔 Alerts</h4><ul class="admin-list">';
+            d.alerts.forEach(function(a){ html += '<li>' + a + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load Gemini analytics: '+e.message+'</p>';});
+}
+function refreshGeminiModelAnalytics() { loadGeminiModelAnalytics(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('gemini-model-analytics-refresh');
+    if (btn) btn.addEventListener('click', refreshGeminiModelAnalytics);
+    loadGeminiModelAnalytics();
+});
+
+// ============================================================
+// Admin: User Activity Timeline
+// ============================================================
+function loadUserActivityTimeline() {
+    var el = document.getElementById('user-activity-timeline-content');
+    if (!el) return;
+    el.innerHTML = '<p>Loading user activity...</p>';
+    fetch('/api/admin/user-activity-timeline', {headers:{'Authorization':'Bearer ' + (localStorage.getItem('adminToken') || '')}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+        var html = '<div class="admin-stats-grid">';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_activities + '</div><div class="stat-label">Activities (12h)</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value" style="color:#68d391;">' + d.active_users_last_hour + '</div><div class="stat-label">Active Now</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.total_unique_users_12h + '</div><div class="stat-label">Unique Users</div></div>';
+        html += '<div class="admin-stat-card"><div class="stat-value">' + d.engagement_metrics.avg_actions_per_session + '</div><div class="stat-label">Avg Actions/Session</div></div>';
+        html += '</div>';
+        html += '<h4>👥 Most Active Users</h4><table class="admin-table"><thead><tr><th>Username</th><th>Actions</th></tr></thead><tbody>';
+        d.most_active_users.forEach(function(u){ html += '<tr><td>' + u.username + '</td><td>' + u.actions + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>🔥 Top Actions</h4><table class="admin-table"><thead><tr><th>Action</th><th>Count</th></tr></thead><tbody>';
+        d.top_actions.forEach(function(a){ html += '<tr><td>' + a.action + '</td><td>' + a.count + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>📱 Device Breakdown</h4><table class="admin-table"><thead><tr><th>Device</th><th>Count</th></tr></thead><tbody>';
+        d.device_breakdown.forEach(function(db){ html += '<tr><td>' + db.device + '</td><td>' + db.count + '</td></tr>'; });
+        html += '</tbody></table>';
+        html += '<h4>📋 Recent Activity Feed</h4><table class="admin-table"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th><th>Device</th></tr></thead><tbody>';
+        d.activities.slice(0,20).forEach(function(a){
+            var timeStr = a.minutes_ago < 60 ? a.minutes_ago + 'm ago' : Math.floor(a.minutes_ago/60) + 'h ago';
+            html += '<tr><td>' + timeStr + '</td><td>' + a.username + '</td>';
+            html += '<td>' + a.icon + ' ' + a.description + '</td><td>' + a.detail + '</td><td>' + a.device + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<h4>📊 Engagement Metrics</h4><ul class="admin-list">';
+        var em = d.engagement_metrics;
+        html += '<li>Avg Session Duration: <strong>' + em.avg_session_duration_min + ' min</strong></li>';
+        html += '<li>Bounce Rate: <strong>' + em.bounce_rate_pct + '%</strong></li>';
+        html += '<li>Feature Discovery: <strong>' + em.feature_discovery_rate_pct + '%</strong></li>';
+        html += '</ul>';
+        if (d.alerts && d.alerts.length) {
+            html += '<h4>🔔 Alerts</h4><ul class="admin-list">';
+            d.alerts.forEach(function(a){ html += '<li>' + a + '</li>'; });
+            html += '</ul>';
+        }
+        el.innerHTML = html;
+    }).catch(function(e){el.innerHTML='<p class="error">Failed to load activity timeline: '+e.message+'</p>';});
+}
+function refreshUserActivityTimeline() { loadUserActivityTimeline(); }
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('user-activity-timeline-refresh');
+    if (btn) btn.addEventListener('click', refreshUserActivityTimeline);
+    loadUserActivityTimeline();
+});

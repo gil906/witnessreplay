@@ -15,7 +15,10 @@ services:
       - wr-data:/app/data
     restart: unless-stopped
     mem_limit: 512m
+    memswap_limit: 1024m
     cpus: '1'
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s

@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  wr-monitor:
+    build: .
+    container_name: wr-monitor
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/local/bin/copilot:/usr/local/bin/copilot:ro
+      - /root/.copilot:/root/.copilot
+      - /root/.gitconfig:/root/.gitconfig:ro
+      - /root/.git-credentials:/root/.git-credentials:ro
+      - /mnt/media/witnessreplay:/mnt/media/witnessreplay
+      - ./data:/app/data
+      - ./prompts:/app/prompts
+    environment:
+      - PORT=9099
+      - MCP_URL=http://192.168.68.68:8086/mcp
+      - ALERT_EMAIL=gdleonq@gmail.com
+      - PROJECT_DIR=/mnt/media/witnessreplay/project
+      - SCRIPTS_DIR=/mnt/media/witnessreplay/scripts
+      - PROMPTS_DIR=/app/prompts
+      - GITHUB_USER=gil906
+      - GITHUB_REPO=witnessreplay
+      - HOME=/root
+    restart: unless-stopped
