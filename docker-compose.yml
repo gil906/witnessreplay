@@ -12,7 +12,7 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
     volumes:
-      - wr-data:/app/data
+      - /mnt/media/witnessreplay/data:/app/data
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 1024m
@@ -30,6 +30,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  wr-data:

@@ -64,3 +64,7 @@ gcp-credentials.json
 *.db
 *.sqlite
 data/
+
+# ── Local-only directories (sensitive, not synced to GitHub) ──
+monitor/
+scripts/

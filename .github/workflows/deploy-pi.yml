@@ -1,0 +1,169 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - 'VERSION'
+      - '.github/workflows/deploy-pi.yml'
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    env:
+      DEPLOY_DIR: /mnt/media/witnessreplay
+      DATA_DIR: /mnt/media/witnessreplay/data
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: _checkout
+
+      - name: Sync repo to deploy directory
+        run: |
+          echo "📂 Syncing checked-out code to ${DEPLOY_DIR}..."
+
+          # Ensure deploy + data directories exist
+          sudo mkdir -p "${DEPLOY_DIR}" "${DATA_DIR}"
+
+          # Sync ONLY the repo content (backend, frontend, etc.) — NOT monitor/scripts/data
+          rsync -a --delete \
+            --exclude='monitor/' \
+            --exclude='scripts/' \
+            --exclude='data/' \
+            --exclude='.env' \
+            _checkout/ "${DEPLOY_DIR}/"
+
+          # Ensure .env exists (don't overwrite — it has secrets)
+          if [ ! -f "${DEPLOY_DIR}/.env" ]; then
+            if [ -f "${DEPLOY_DIR}/.env.example" ]; then
+              cp "${DEPLOY_DIR}/.env.example" "${DEPLOY_DIR}/.env"
+              echo "⚠️ Created .env from .env.example — edit with real secrets!"
+            fi
+          fi
+
+          echo "✅ Sync complete"
+
+      - name: Set build metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          IMAGE_TAG="${TIMESTAMP}-${SHORT_SHA}"
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Image tag: ${IMAGE_TAG}"
+
+      - name: Save old image ID
+        id: old_image
+        run: |
+          OLD_ID=$(docker images --format '{{.ID}}' --filter "reference=*witnessreplay*" | head -1 || true)
+          echo "old_id=${OLD_ID}" >> $GITHUB_OUTPUT
+          echo "📦 Old image ID: ${OLD_ID:-none}"
+
+      - name: Build new Docker image
+        working-directory: /mnt/media/witnessreplay
+        run: |
+          echo "🔨 Building witnessreplay:${{ steps.meta.outputs.image_tag }}..."
+          docker compose build --no-cache
+          # Tag the built image for tracking
+          docker tag witnessreplay:latest witnessreplay:${{ steps.meta.outputs.image_tag }} 2>/dev/null || \
+          docker tag witnessreplay-witnessreplay:latest witnessreplay:${{ steps.meta.outputs.image_tag }} 2>/dev/null || \
+          echo "⚠️ Could not tag image (will use compose default)"
+
+      - name: Deploy with zero-downtime restart
+        working-directory: /mnt/media/witnessreplay
+        run: |
+          echo "🚀 Deploying..."
+          docker compose up -d --force-recreate --remove-orphans
+          echo "✅ Container started"
+
+      - name: Wait for health check (30s stability window)
+        run: |
+          echo "⏳ Waiting for container to be healthy (30s stability window)..."
+          HEALTHY=false
+          # Wait up to 60 seconds for initial health
+          for i in $(seq 1 12); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' witnessreplay 2>/dev/null || echo "unknown")
+            RUNNING=$(docker inspect --format='{{.State.Running}}' witnessreplay 2>/dev/null || echo "false")
+            echo "  Check $i/12: status=${STATUS}, running=${RUNNING}"
+            if [ "$STATUS" = "healthy" ] && [ "$RUNNING" = "true" ]; then
+              HEALTHY=true
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "❌ Container failed to become healthy!"
+            docker logs witnessreplay --tail 50
+            exit 1
+          fi
+
+          echo "✅ Container is healthy. Starting 30s stability window..."
+          sleep 30
+
+          # Verify still healthy after 30s
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' witnessreplay 2>/dev/null || echo "unknown")
+          RUNNING=$(docker inspect --format='{{.State.Running}}' witnessreplay 2>/dev/null || echo "false")
+          RESTARTS=$(docker inspect --format='{{.RestartCount}}' witnessreplay 2>/dev/null || echo "unknown")
+
+          echo "📊 After 30s: status=${STATUS}, running=${RUNNING}, restarts=${RESTARTS}"
+
+          if [ "$STATUS" != "healthy" ] || [ "$RUNNING" != "true" ]; then
+            echo "❌ Container is no longer healthy after 30s!"
+            docker logs witnessreplay --tail 50
+            exit 1
+          fi
+
+          if [ "$RESTARTS" != "0" ] && [ "$RESTARTS" != "unknown" ]; then
+            echo "❌ Container restarted ${RESTARTS} time(s) within 30s!"
+            docker logs witnessreplay --tail 50
+            exit 1
+          fi
+
+          echo "🎉 Deploy stable for 30s — success!"
+
+      - name: Cleanup old Docker image
+        if: success()
+        run: |
+          OLD_ID="${{ steps.old_image.outputs.old_id }}"
+          if [ -z "$OLD_ID" ] || [ "$OLD_ID" = "none" ]; then
+            echo "ℹ️ No old image to clean up"
+            exit 0
+          fi
+
+          # Get the current image ID
+          CURRENT_ID=$(docker inspect --format='{{.Image}}' witnessreplay 2>/dev/null | cut -d: -f2 | cut -c1-12 || true)
+
+          if [ "$OLD_ID" = "$CURRENT_ID" ]; then
+            echo "ℹ️ Old and new image are the same — skipping cleanup"
+            exit 0
+          fi
+
+          echo "🗑️ Removing old image: ${OLD_ID}"
+          docker rmi "$OLD_ID" --force 2>/dev/null || echo "⚠️ Could not remove old image (may be in use)"
+
+          # Also prune dangling images from multi-stage build
+          echo "🧹 Pruning dangling images..."
+          docker image prune -f --filter "until=1h" 2>/dev/null || true
+
+          echo "✅ Cleanup complete"
+          echo "📊 Disk usage:"
+          docker system df 2>/dev/null || true
+
+      - name: Rollback on failure
+        if: failure()
+        working-directory: /mnt/media/witnessreplay
+        run: |
+          echo "⚠️ Deploy failed — check logs above"
+          echo "📋 Container logs:"
+          docker logs witnessreplay --tail 30 2>/dev/null || true
+          echo ""
+          echo "🔧 To rollback manually: cd /mnt/media/witnessreplay && docker compose up -d --build"
