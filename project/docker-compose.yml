@@ -1,0 +1,32 @@
+services:
+  witnessreplay:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: witnessreplay
+    ports:
+      - "8088:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+    volumes:
+      - /mnt/media/witnessreplay:/app/data
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 1024m
+    cpus: '1'
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
