@@ -6189,7 +6189,7 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
 async def fix_orphan_reports(auth=Depends(require_admin_auth)):
     """Re-process reports: assign to cases, generate images, create summaries."""
     try:
-        sessions = await firestore_service.get_all_sessions()
+        sessions = await firestore_service.list_sessions(limit=500)
         fixed = []
         cleaned = []
         errors = []
@@ -6245,11 +6245,11 @@ async def fix_orphan_reports(auth=Depends(require_admin_auth)):
                         description = all_text[:500]
                         if description.strip():
                             result = await imagen_service.generate_report_scene(
-                                session.id, description
+                                session.id, description, []
                             )
                             if result:
-                                metadata["report_scene_image_url"] = result.get("url", "")
-                                metadata["report_scene_model"] = result.get("model", "unknown")
+                                metadata["report_scene_image_url"] = result if isinstance(result, str) else result.get("url", "")
+                                metadata["report_scene_model"] = "imagen"
                                 session.metadata = metadata
                                 actions.append("image_generated")
                     except Exception as e:
