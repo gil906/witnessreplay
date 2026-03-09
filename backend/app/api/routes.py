@@ -6189,13 +6189,18 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
 async def fix_orphan_reports(auth=Depends(require_admin_auth)):
     """Re-process reports: assign to cases, generate images, create summaries."""
     try:
-        sessions = await firestore_service.list_sessions(limit=500)
+        # list_sessions doesn't load statements, so get IDs then load each fully
+        session_summaries = await firestore_service.list_sessions(limit=500)
         fixed = []
         cleaned = []
         errors = []
 
-        for session in sessions:
+        for summary in session_summaries:
             try:
+                # Load the full session with statements
+                session = await firestore_service.get_session(summary.id)
+                if not session:
+                    continue
                 # Delete truly empty sessions (0 statements = witness never spoke)
                 if len(session.witness_statements) == 0:
                     await firestore_service.delete_session(session.id)
