@@ -16052,3 +16052,198 @@ textarea:disabled {
 .header .session-info {
     gap: 8px;
 }
+
+/* =========================================================
+   MOBILE SIMPLIFICATION — Voice-first, clean, elder-friendly
+   ========================================================= */
+@media (max-width: 768px) {
+    /* ── Kill all onboarding/coaching overlays on mobile ── */
+    .onboarding-overlay,
+    .onboarding-modal,
+    .mobile-voice-coachmark,
+    #onboarding-overlay,
+    #onboarding-modal,
+    #mobile-voice-coachmark {
+        display: none !important;
+    }
+
+    /* ── Hide reporting steps — just clutter on phones ── */
+    .reporting-steps {
+        display: none !important;
+    }
+
+    /* ── Hide interview progress phases — AI handles flow ── */
+    .interview-progress {
+        display: none !important;
+    }
+
+    /* ── Hide comfort panel — keep it simple ── */
+    .interview-comfort-panel {
+        display: none !important;
+    }
+
+    /* ── Simplify mobile-call-header — just name + status ── */
+    .mobile-call-header {
+        padding: 8px 12px;
+        background: rgba(10, 14, 22, 0.85);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .mobile-call-chips {
+        display: none !important;
+    }
+    .mobile-call-help-btn {
+        display: none !important;
+    }
+    .mobile-call-meta {
+        display: none !important;
+    }
+    .mobile-call-title {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    /* ── Quick phrase rail — GONE on mobile ── */
+    .quick-phrase-rail {
+        display: none !important;
+    }
+
+    /* ── Suggested actions — hidden ── */
+    .suggested-actions {
+        display: none !important;
+    }
+
+    /* ── Welcome prompt — mobile-friendly ── */
+    .welcome-prompt {
+        padding: 2rem 1.5rem;
+    }
+    .welcome-prompt .welcome-icon {
+        font-size: 3rem;
+    }
+    .welcome-prompt h2 {
+        font-size: 1.3rem;
+    }
+    .welcome-prompt p {
+        font-size: 0.95rem;
+    }
+    .welcome-prompt .welcome-hint {
+        font-size: 0.82rem;
+    }
+
+    /* ── Voice dock — bigger mic, simpler actions ── */
+    .voice-dock {
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+        gap: 8px;
+        background: rgba(8, 12, 20, 0.95);
+        border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .voice-dock-mic-btn {
+        min-height: 60px;
+        font-size: 1.1rem;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(96,165,250,0.15), rgba(129,140,248,0.1));
+        border: 1px solid rgba(96,165,250,0.25);
+        font-weight: 600;
+    }
+    .voice-dock-mic-btn:active {
+        transform: scale(0.97);
+    }
+    /* Hide secondary voice dock buttons by default — keep it clean */
+    .voice-dock-actions {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .voice-dock-actions::-webkit-scrollbar {
+        display: none;
+    }
+    /* Only show "Repeat" and "Need a moment" — hide slow/more */
+    .voice-dock-actions #dock-slow-btn {
+        display: none;
+    }
+    .voice-dock-actions #dock-more-btn {
+        display: none;
+    }
+
+    /* ── Text input — minimal, just "Type instead" button ── */
+    .text-input {
+        padding: 6px 10px;
+        gap: 6px;
+    }
+    .text-input-expand-btn {
+        font-size: 0.85rem !important;
+        padding: 10px 16px !important;
+        border-radius: 24px !important;
+        background: rgba(22, 30, 44, 0.5);
+        color: var(--text-muted, #64748b);
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* ── Chat messages — larger text for readability ── */
+    .chat-transcript .message {
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+    .chat-transcript {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    /* ── Header — minimal on mobile ── */
+    .header-content {
+        align-items: center;
+    }
+    .header .header-menu-item {
+        display: none !important;
+    }
+    .hamburger-menu-btn {
+        display: flex !important;
+    }
+
+    /* ── Hide witness info overlay (will be asked via voice) ── */
+    .witness-info-overlay {
+        display: none !important;
+    }
+
+    /* ── Scene strip — keep it simple ── */
+    .mobile-scene-strip {
+        border-radius: 10px;
+        margin: 4px 8px;
+    }
+
+    /* ── Modals — mobile friendly ── */
+    .modal-content {
+        margin: 8px;
+        border-radius: 16px;
+        max-height: 92vh;
+    }
+}
+
+/* Extra small phones — even more minimal */
+@media (max-width: 380px) {
+    .welcome-prompt {
+        padding: 1.5rem 1rem;
+    }
+    .welcome-prompt .welcome-icon {
+        font-size: 2.5rem;
+    }
+    .welcome-prompt h2 {
+        font-size: 1.1rem;
+    }
+    .welcome-prompt p {
+        font-size: 0.88rem;
+    }
+    .voice-dock-mic-btn {
+        min-height: 52px;
+        font-size: 1rem;
+    }
+    .voice-dock-actions #dock-repeat-btn,
+    .voice-dock-actions #dock-moment-btn {
+        font-size: 0.7rem;
+        padding: 5px 8px;
+    }
+    .mobile-call-title {
+        font-size: 0.88rem;
+    }
+}

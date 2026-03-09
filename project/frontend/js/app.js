@@ -666,8 +666,8 @@ class WitnessReplayApp {
     }
 
     _initMobileVoiceCoachmark() {
-        const key = 'witnessreplay-mobile-voice-coachmark-seen';
-        if (!this.mobileVoiceCoachmark || !this.isMobileVoiceUI || localStorage.getItem(key) === 'true') return;
+        // Disabled — simplified voice-first UI, no coaching overlays
+        return;
         const dismiss = () => {
             this.mobileVoiceCoachmark.classList.add('hidden');
             localStorage.setItem(key, 'true');
@@ -2280,7 +2280,12 @@ class WitnessReplayApp {
     }
     
     async createNewSession() {
-        // Show template selector modal first
+        // On mobile, skip template selector — Officer Ray will ask via voice
+        if (window.innerWidth <= 768) {
+            await this._createSessionWithTemplate(null);
+            return;
+        }
+        // Show template selector modal on desktop
         await this.showTemplateSelector();
     }
     
@@ -2407,7 +2412,8 @@ class WitnessReplayApp {
             this.connectWebSocket();
             
             // Item 27: Show witness info form for first session if not previously shown
-            if (!localStorage.getItem('witnessreplay-witness-info-shown')) {
+            // Skip on mobile — voice-first, Officer Ray will ask for info
+            if (!localStorage.getItem('witnessreplay-witness-info-shown') && window.innerWidth > 768) {
                 const overlay = document.getElementById('witness-info-overlay');
                 if (overlay) {
                     if (this.anonymousToggle) {
@@ -3175,6 +3181,11 @@ class WitnessReplayApp {
                     this.vadIndicator.classList.remove('listening', 'speech-detected');
                     this.vadIndicator.classList.add('recording');
                 }
+
+                // ── Silence-based auto-stop during recording ──
+                // Monitors audio levels and automatically stops recording
+                // after ~2.5 seconds of silence once the user has spoken.
+                this._startRecordingSilenceDetection(stream);
             } else {
                 this.ui.showToast('Audio recorder not available. Use text input.', 'warning');
             }
@@ -3189,6 +3200,9 @@ class WitnessReplayApp {
     
     async stopRecording() {
         if (!this.isRecording) return;
+
+        // ── Stop silence detection monitor ──
+        this._stopRecordingSilenceDetection();
         
         // Get quality metrics before stopping analyzer
         let qualityMetrics = null;
@@ -3260,6 +3274,93 @@ class WitnessReplayApp {
             this.playSound('error');
             this._setConversationState('ready');
         }
+    }
+
+    /**
+     * Start monitoring the audio stream for silence during recording.
+     * Automatically stops recording after SILENCE_TIMEOUT seconds of quiet
+     * once the user has actually spoken (avoids cutting off immediately).
+     */
+    _startRecordingSilenceDetection(stream) {
+        this._stopRecordingSilenceDetection(); // clean up any prior one
+
+        if (!stream) return;
+
+        const SILENCE_TIMEOUT = 2.5;   // seconds of silence before auto-stop
+        const SPEECH_THRESHOLD = 0.012; // RMS level considered "talking"
+        const CHECK_INTERVAL = 80;      // ms between checks
+        const MIN_SPEECH_MS = 600;      // must speak ≥600ms before auto-stop kicks in
+
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.3;
+            const source = ctx.createMediaStreamSource(stream);
+            source.connect(analyser);
+            const buf = new Float32Array(analyser.fftSize);
+
+            let lastSpeechTime = 0;
+            let speechStartTime = 0;
+            let hasSpeechOccurred = false;
+            let smoothedRMS = 0;
+
+            const intervalId = setInterval(() => {
+                if (!this.isRecording) {
+                    // Recording already stopped by user — clean up
+                    this._stopRecordingSilenceDetection();
+                    return;
+                }
+
+                analyser.getFloatTimeDomainData(buf);
+                let sum = 0;
+                for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+                const rms = Math.sqrt(sum / buf.length);
+                smoothedRMS = 0.7 * smoothedRMS + 0.3 * rms;
+
+                const now = Date.now();
+                const isSpeech = smoothedRMS > SPEECH_THRESHOLD;
+
+                if (isSpeech) {
+                    lastSpeechTime = now;
+                    if (!hasSpeechOccurred) {
+                        speechStartTime = now;
+                    }
+                    if (now - speechStartTime >= MIN_SPEECH_MS) {
+                        hasSpeechOccurred = true;
+                    }
+                }
+
+                // Only auto-stop if the user actually spoke first
+                if (hasSpeechOccurred && !isSpeech && lastSpeechTime > 0) {
+                    const silenceSec = (now - lastSpeechTime) / 1000;
+                    if (silenceSec >= SILENCE_TIMEOUT) {
+                        console.debug(`[SilenceDetect] ${silenceSec.toFixed(1)}s silence → auto-stop`);
+                        this._stopRecordingSilenceDetection();
+                        this.stopRecording();
+                        return;
+                    }
+                }
+            }, CHECK_INTERVAL);
+
+            // Store references for cleanup
+            this._silenceDetect = { ctx, source, analyser, intervalId };
+
+        } catch (err) {
+            console.warn('[SilenceDetect] Could not start silence detection:', err);
+        }
+    }
+
+    /**
+     * Stop and clean up silence detection monitor.
+     */
+    _stopRecordingSilenceDetection() {
+        if (!this._silenceDetect) return;
+        const { ctx, source, intervalId } = this._silenceDetect;
+        clearInterval(intervalId);
+        try { source.disconnect(); } catch(e) {}
+        try { if (ctx.state !== 'closed') ctx.close(); } catch(e) {}
+        this._silenceDetect = null;
     }
     
     async sendAudioMessage(audioBlob, qualityMetrics = null) {
@@ -7344,6 +7445,8 @@ function openSketchModal(sketchId) {
 // ── Feature 46: Onboarding Tour ─────────────────────────────
 WitnessReplayApp.prototype._showOnboardingTour = function() {
     if (localStorage.getItem('wr_tour_done')) return;
+    // Skip on mobile — voice-first, no overlays
+    if (window.innerWidth <= 768) { localStorage.setItem('wr_tour_done', 'true'); return; }
     const steps = [
         { target: '.mic-main-btn', text: '🎤 Tap the microphone to start recording your witness statement' },
         { target: '.chat-input', text: '⌨️ Or type your description here' },

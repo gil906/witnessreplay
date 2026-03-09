@@ -237,10 +237,10 @@ class TTSPlayer {
         this.currentUtterance = null;
         this.isPlaying = false;
         this._storageOk = this._storageAvailable();
-        const isMobileViewport = !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
         const savedEnabled = this._readStorage('ttsEnabled');
-        this.enabled = savedEnabled === null ? isMobileViewport : savedEnabled === 'true';
-        if (savedEnabled === null && isMobileViewport) {
+        // Voice-first app — TTS enabled by default on ALL devices
+        this.enabled = savedEnabled === null ? true : savedEnabled === 'true';
+        if (savedEnabled === null) {
             this._writeStorage('ttsEnabled', 'true');
         }
         this.voice = this._readStorage('ttsVoice') || 'Charon';

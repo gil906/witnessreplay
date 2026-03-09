@@ -772,10 +772,9 @@
         </div>
     </div>
 
-    <!-- Onboarding Overlay -->
-    <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-label="Welcome onboarding">
+    <!-- Onboarding Overlay (hidden — voice-first, no friction) -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" style="display:none !important;" role="dialog" aria-modal="true" aria-label="Welcome onboarding">
         <div class="onboarding-content">
-            <!-- Step 1 -->
             <div class="onboarding-step active" data-step="1">
                 <div class="onboarding-icon">🚨</div>
                 <h2>Welcome to WitnessReplay</h2>
@@ -1251,48 +1250,24 @@
         </div>
     </div>
 
-    <div id="mobile-voice-coachmark" class="mobile-voice-coachmark hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-voice-coachmark-title">
+    <!-- Mobile voice coachmark (hidden — simplified UI) -->
+    <div id="mobile-voice-coachmark" class="mobile-voice-coachmark hidden" style="display:none !important;" role="dialog">
         <div class="mobile-voice-coachmark-card">
             <h2 id="mobile-voice-coachmark-title">🎙️ Talk like a phone call</h2>
-            <p>Tap <strong>Tap to talk</strong>, speak naturally, and use quick chips when you need speed.</p>
+            <p>Tap to talk, speak naturally.</p>
             <div class="mobile-voice-coachmark-actions">
-                <button id="mobile-voice-coachmark-dismiss" type="button" class="btn btn-primary" aria-label="Dismiss mobile voice coaching tips">Got it</button>
+                <button id="mobile-voice-coachmark-dismiss" type="button" class="btn btn-primary">Got it</button>
             </div>
         </div>
     </div>
 
-    <!-- Onboarding Modal (First-Time Experience) -->
-    <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <!-- Onboarding Modal (hidden — voice-first, no friction) -->
+    <div id="onboarding-modal" class="modal hidden" style="display:none !important;" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
         <div class="modal-content modal-wide onboarding-modal">
             <div class="modal-header onboarding-header">
                 <h2 id="onboarding-title">👋 Welcome to WitnessReplay</h2>
             </div>
-            
-            <div class="onboarding-content onboarding-grid">
-                <div class="onboarding-step">
-                    <div class="onboarding-icon">🎤</div>
-                    <h3>Speak or Type Your Account</h3>
-                    <p>Describe what you witnessed naturally — use your voice or type. Our AI listens carefully to every detail.</p>
-                </div>
-                
-                <div class="onboarding-step">
-                    <div class="onboarding-icon">🛡️</div>
-                    <h3>Detective Ray Guides You</h3>
-                    <p>Our AI detective will ask follow-up questions to build a complete picture of the incident.</p>
-                </div>
-                
-                <div class="onboarding-step">
-                    <div class="onboarding-icon">🎬</div>
-                    <h3>Visual Scene Reconstruction</h3>
-                    <p>Watch as your account is reconstructed as a visual scene. Make corrections and add details anytime.</p>
-                </div>
-                
-                <div class="onboarding-step">
-                    <div class="onboarding-icon">📋</div>
-                    <h3>Export Your Report</h3>
-                    <p>Export complete incident reports with evidence boards, timelines, and scene reconstructions.</p>
-                </div>            </div>
-            
+            <div class="onboarding-content onboarding-grid"></div>
             <div class="onboarding-footer">
                 <label class="onboarding-checkbox">
                     <input type="checkbox" id="dont-show-onboarding">
