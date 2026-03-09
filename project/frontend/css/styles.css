@@ -14939,16 +14939,70 @@ textarea:disabled {
 .stmtimp-stars{font-size:.9em}
 .stmtimp-tag{font-size:.72em;background:rgba(129,140,248,.15);color:#818cf8;border-radius:4px;padding:2px 6px;text-transform:uppercase}
 
-/* ── Quick Analysis Bar ── */
-.quick-analysis-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,.03);border-radius:10px;margin-top:8px;flex-wrap:wrap;border:1px solid rgba(255,255,255,.06)}
-.qab-label{font-size:.78em;color:var(--text-secondary,#94a3b8);font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
-.qab-buttons{display:flex;gap:6px;flex-wrap:wrap;flex:1}
-.qab-btn{padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--text-secondary,#94a3b8);font-size:.78em;cursor:pointer;transition:all .2s;white-space:nowrap;font-family:inherit}
+/* ── Quick Analysis Bar — Collapsible ── */
+.quick-analysis-bar{
+    display:flex;flex-direction:column;gap:0;
+    padding:0;background:rgba(255,255,255,.03);border-radius:12px;
+    margin-top:8px;border:1px solid rgba(255,255,255,.06);
+    overflow:hidden;flex-shrink:0;
+}
+.qab-header{
+    display:flex;align-items:center;gap:8px;padding:8px 12px;flex-wrap:wrap;
+}
+.qab-label{
+    font-size:.78em;color:var(--text-secondary,#94a3b8);font-weight:600;
+    white-space:nowrap;text-transform:uppercase;letter-spacing:.03em;
+}
+.qab-featured{
+    display:flex;gap:6px;flex-wrap:wrap;flex:1;
+}
+.qab-toggle-btn{
+    padding:4px 12px;background:rgba(129,140,248,.1);border:1px solid rgba(129,140,248,.25);
+    border-radius:8px;color:var(--accent-blue,#60a5fa);font-size:.75em;cursor:pointer;
+    transition:all .2s;white-space:nowrap;font-family:inherit;font-weight:500;
+}
+.qab-toggle-btn:hover{background:rgba(129,140,248,.2);border-color:rgba(129,140,248,.5)}
+.qab-expandable{
+    display:none;
+    flex-direction:column;gap:8px;
+    border-top:1px solid rgba(255,255,255,.06);
+}
+.quick-analysis-bar.qab-expanded .qab-expandable{
+    display:flex;
+}
+.qab-search-row{padding:8px 12px 4px;}
+.qab-search{
+    width:100%;padding:6px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:8px;color:var(--text-primary,#f1f5f9);font-size:.8em;font-family:inherit;
+    outline:none;
+}
+.qab-search::placeholder{color:var(--text-muted,#64748b)}
+.qab-search:focus{border-color:rgba(129,140,248,.4);background:rgba(255,255,255,.07)}
+.qab-buttons{
+    display:flex;gap:6px;flex-wrap:wrap;flex:1;
+    padding:4px 12px 10px;
+    max-height:240px;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.12) transparent;
+}
+.qab-buttons::-webkit-scrollbar{width:5px}
+.qab-buttons::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
+.qab-btn{
+    padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+    border-radius:8px;color:var(--text-secondary,#94a3b8);font-size:.78em;
+    cursor:pointer;transition:all .2s;white-space:nowrap;font-family:inherit;
+}
 .qab-btn:hover{background:rgba(129,140,248,.15);border-color:rgba(129,140,248,.4);color:var(--accent-primary,#818cf8);transform:translateY(-1px)}
 .qab-btn:active{transform:translateY(0)}
 .qab-btn-more{background:rgba(255,255,255,.03);border-style:dashed;color:var(--text-muted,#64748b)}
 .qab-btn-more:hover{background:rgba(255,255,255,.08);color:var(--text-secondary,#94a3b8)}
-@media(max-width:600px){.quick-analysis-bar{padding:8px;gap:6px}.qab-label{display:none}.qab-btn{padding:4px 8px;font-size:.75em}}
+@media(max-width:600px){
+    .qab-header{padding:6px 8px;gap:4px}
+    .qab-label{font-size:.72em}
+    .qab-featured .qab-btn{padding:4px 8px;font-size:.72em}
+    .qab-buttons{max-height:180px;padding:4px 8px 8px}
+    .qab-btn{padding:4px 8px;font-size:.72em}
+    .qab-toggle-btn{font-size:.7em;padding:3px 8px}
+}
 
 /* ─── Key Evidence Extractor ─────────────────────────────────────────────── */
 .keyev-container { padding: 4px 0; }
@@ -15922,3 +15976,79 @@ textarea:disabled {
 .casestr-result { background: #0f1724; border-radius: 12px; padding: 1rem; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 0.6rem; }
 .casestr-pillars h4 { font-size: 0.78rem; color: #cbd5e1; margin: 0.5rem 0 0.4rem; }
 .casestr-priorities h4 { font-size: 0.78rem; color: #fbbf24; margin: 0.3rem 0 0.3rem; }
+
+/* =========================================================
+   SIMPLIFIED WITNESS UI — Clean, intuitive, elder-friendly
+   ========================================================= */
+
+/* Hide complex UI elements from witness view */
+.challenge-badge,
+.tagline-sub,
+.voice-first-label,
+.keyboard-hint { display: none !important; }
+
+/* Welcome Prompt — friendly intro in chat area */
+.welcome-prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 2rem;
+    flex: 1;
+    gap: 1rem;
+    animation: welcomeFadeIn 0.8s ease-out;
+}
+.welcome-prompt .welcome-icon {
+    font-size: 4rem;
+    line-height: 1;
+    filter: drop-shadow(0 4px 12px rgba(96, 165, 250, 0.3));
+}
+.welcome-prompt h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary, #f1f5f9);
+    margin: 0;
+    letter-spacing: -0.02em;
+}
+.welcome-prompt p {
+    font-size: 1.05rem;
+    color: var(--text-secondary, #94a3b8);
+    line-height: 1.6;
+    max-width: 480px;
+    margin: 0;
+}
+.welcome-prompt .welcome-hint {
+    font-size: 0.9rem;
+    color: var(--text-muted, #64748b);
+    margin-top: 0.5rem;
+}
+@keyframes welcomeFadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* When chat has messages, hide the welcome prompt */
+.chat-transcript:not(:empty) .welcome-prompt {
+    display: none;
+}
+
+/* Make chat messages larger for readability */
+.chat-transcript .message {
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+/* Larger header text */
+.header h1 {
+    font-size: 1.2rem;
+}
+.header .tagline {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #94a3b8);
+}
+
+/* Simplified header — fewer items visible */
+.header .session-info {
+    gap: 8px;
+}

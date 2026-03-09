@@ -31,17 +31,15 @@
 
     <!-- Main Container -->
     <div class="container">
-        <!-- Header -->
+        <!-- Header — clean & simple -->
         <header class="header">
             <div class="header-content">
                 <div class="logo-section">
                     <div class="logo-icon">🛡️</div>
                     <div class="logo-text">
                         <h1>WitnessReplay</h1>
-                        <p class="tagline">AI-Powered Witness Interview &amp; Scene Reconstruction</p>
-                        <p class="tagline-sub">Powered by Google Gemini • Built for Law Enforcement</p>
+                        <p class="tagline">Report a Crime or Accident</p>
                     </div>
-                    <span class="challenge-badge">Gemini Live Agent Challenge</span>
                 </div>
                 
                 <div class="session-info">
@@ -60,7 +58,7 @@
                             <button class="connection-popup-retry" id="popup-retry-btn">Retry Connection</button>
                         </div>
                     </div>
-                    <span id="connection-quality-badge" class="connection-quality-badge" data-level="unstable" aria-live="polite">Unstable</span>
+                    <span id="connection-quality-badge" class="connection-quality-badge" data-level="unstable" aria-live="polite" style="display:none;">Unstable</span>
                     <div class="session-status" style="display:none;">
                         <span class="status-dot"></span>
                         <span id="session-id">Initializing...</span>
@@ -69,11 +67,11 @@
                         ➕ New Report
                     </button>
                     <!-- Hidden technical buttons (IDs preserved for app.js) -->
-                    <button id="sessions-list-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View all sessions" aria-label="View all sessions">📋 Sessions</button>
-                    <button id="quota-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Model & Quota" aria-label="Model and quota info">🤖 Model</button>
-                    <button id="analytics-btn" class="btn btn-secondary" style="display:none;" data-tooltip="View analytics" aria-label="View session analytics">📊 Analytics</button>
-                    <button id="info-btn" class="btn btn-secondary" style="display:none;" data-tooltip="Server info" aria-label="Server information">ℹ️ Info</button>
-                    <button id="theme-toggle" class="theme-toggle header-menu-item" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme">
+                    <button id="sessions-list-btn" class="btn btn-secondary" style="display:none;">📋 Sessions</button>
+                    <button id="quota-btn" class="btn btn-secondary" style="display:none;">🤖 Model</button>
+                    <button id="analytics-btn" class="btn btn-secondary" style="display:none;">📊 Analytics</button>
+                    <button id="info-btn" class="btn btn-secondary" style="display:none;">ℹ️ Info</button>
+                    <button id="theme-toggle" class="theme-toggle header-menu-item" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme" style="display:none;">
                         <span class="theme-icon">🌙</span>
                     </button>
                     <button id="admin-portal-btn" class="btn btn-primary header-menu-item" data-tooltip="Admin Portal" aria-label="Open admin portal">
@@ -85,27 +83,12 @@
                     </button>
                 </div>
                 <!-- Mobile menu backdrop overlay -->
-                <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="document.getElementById('mobile-menu-overlay').classList.remove('open'); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');"></div>
-                <!-- Mobile dropdown menu — iOS action sheet style -->
+                <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="document.getElementById('mobile-menu-overlay').classList.remove('open'); document.getElementById('mobile-menu-dropdown').classList.remove('open');"></div>
+                <!-- Mobile dropdown menu — simplified -->
                 <div id="mobile-menu-dropdown" class="mobile-menu-dropdown">
                     <button onclick="document.getElementById('new-session-btn').click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">➕ New Report</button>
                     <button onclick="document.getElementById('tts-toggle-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item" id="mobile-speaker-item">🔊 Speaker</button>
-                    <button onclick="toggleTheme(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">🌙 Dark Mode</button>
                     <button onclick="document.getElementById('admin-portal-btn').click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">🛡️ Admin</button>
-                    <hr class="mobile-menu-divider">
-                    <div class="mobile-menu-section-label">Actions</div>
-                    <button onclick="document.querySelector('[data-action=correct]')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">✏️ Correct something</button>
-                    <button onclick="document.querySelector('[data-action=generate]')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">🎬 Generate scene</button>
-                    <button onclick="document.querySelector('[data-action=details]')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">➕ Add more details</button>
-                    <hr class="mobile-menu-divider">
-                    <div class="mobile-menu-section-label">Settings</div>
-                    <button onclick="document.getElementById('guided-mode-btn')?.click(); this.textContent = document.getElementById('guided-mode-btn')?.classList.contains('active') ? '📋 Guided Mode ✓' : '📋 Guided Mode';" class="mobile-menu-item" id="mobile-guided-item">📋 Guided Mode</button>
-                    <button onclick="document.getElementById('child-mode-btn')?.click(); this.textContent = document.getElementById('child-mode-btn')?.classList.contains('active') ? '🧒 Child Mode ✓' : '🧒 Child Mode';" class="mobile-menu-item" id="mobile-child-item">🧒 Child Mode</button>
-                    <button onclick="document.getElementById('high-contrast-btn')?.click(); this.textContent = document.getElementById('high-contrast-btn')?.classList.contains('active') ? '🔲 High Contrast ✓' : '🔲 High Contrast';" class="mobile-menu-item" id="mobile-hc-item">🔲 High Contrast</button>
-                    <hr class="mobile-menu-divider">
-                    <button onclick="document.getElementById('comfort-pause-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">⏸️ Pause</button>
-                    <button onclick="document.getElementById('comfort-break-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">☕ Take Break</button>
-                    <button onclick="document.getElementById('comfort-support-btn')?.click(); document.getElementById('mobile-menu-dropdown').classList.remove('open'); document.getElementById('mobile-menu-overlay').classList.remove('open');" class="mobile-menu-item">💚 Support</button>
                     <div class="mobile-menu-item mobile-menu-info">⏱️ Duration: <span id="mobile-duration-display">0:00</span></div>
                 </div>
             </div>
@@ -115,68 +98,45 @@
         <div class="main-content" id="main-workspace">
             <!-- LEFT COLUMN: Primary - Chat & Voice -->
             <section class="chat-panel" role="main">
-                <!-- Step indicator showing how reporting works -->
+                <!-- Simple progress indicator -->
                 <div class="reporting-steps">
                     <div class="step active"><span class="step-num">1</span> Describe Incident</div>
                     <div class="step"><span class="step-num">2</span> Answer Questions</div>
                     <div class="step"><span class="step-num">3</span> Review &amp; Export</div>
                 </div>
 
-                <!-- Multi-Witness Selector Bar -->
+                <!-- Multi-Witness Selector Bar (hidden by default) -->
                 <div id="witness-selector-bar" class="witness-selector-bar" style="display:none;">
-                    <div class="witness-tabs" id="witness-tabs">
-                        <!-- Witness tabs populated dynamically -->
-                    </div>
+                    <div class="witness-tabs" id="witness-tabs"></div>
                     <button id="add-witness-btn" class="btn btn-secondary btn-sm" title="Add another witness">
                         <span class="btn-icon">+</span> Add Witness
                     </button>
                 </div>
 
-                <!-- Interview Progress Phases (Item 25) -->
-                <div id="interview-progress" class="interview-progress">
+                <!-- Interview Progress (hidden — keep IDs for app.js) -->
+                <div id="interview-progress" class="interview-progress" style="display:none;">
                     <div class="progress-phases">
-                        <div class="phase active" data-phase="intro">
-                            <div class="phase-icon">👋</div>
-                            <span>Introduction</span>
-                        </div>
-                        <div class="phase" data-phase="narrative">
-                            <div class="phase-icon">📝</div>
-                            <span>Free Narrative</span>
-                        </div>
-                        <div class="phase" data-phase="details">
-                            <div class="phase-icon">🔍</div>
-                            <span>Specific Details</span>
-                        </div>
-                        <div class="phase" data-phase="review">
-                            <div class="phase-icon">✅</div>
-                            <span>Review</span>
-                        </div>
+                        <div class="phase active" data-phase="intro"><div class="phase-icon">👋</div><span>Introduction</span></div>
+                        <div class="phase" data-phase="narrative"><div class="phase-icon">📝</div><span>Free Narrative</span></div>
+                        <div class="phase" data-phase="details"><div class="phase-icon">🔍</div><span>Specific Details</span></div>
+                        <div class="phase" data-phase="review"><div class="phase-icon">✅</div><span>Review</span></div>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" id="interview-progress-fill" style="width: 10%"></div>
                     </div>
                 </div>
 
-                <!-- Interview Comfort Panel -->
-                <div id="interview-comfort-panel" class="interview-comfort-panel">
+                <!-- Interview Comfort Panel (hidden — keep IDs for app.js) -->
+                <div id="interview-comfort-panel" class="interview-comfort-panel" style="display:none;">
                     <div class="comfort-controls">
-                        <button id="comfort-pause-btn" class="comfort-btn" title="Pause interview" aria-label="Pause interview">
-                            ⏸️ Pause
-                        </button>
-                        <button id="comfort-break-btn" class="comfort-btn" title="Take a 5-minute break" aria-label="Take a break">
-                            ☕ Take Break
-                        </button>
-                        <button id="comfort-support-btn" class="comfort-btn" title="Get encouragement" aria-label="Get support">
-                            💚 Support
-                        </button>
+                        <button id="comfort-pause-btn" class="comfort-btn">⏸️ Pause</button>
+                        <button id="comfort-break-btn" class="comfort-btn">☕ Take Break</button>
+                        <button id="comfort-support-btn" class="comfort-btn">💚 Support</button>
                     </div>
                     <div class="interview-duration">
                         <span>⏱️ Duration:</span>
                         <span id="interview-duration-display" class="interview-duration-display">0:00</span>
-                        <div class="breaks-counter">
-                            <span>☕</span>
-                            <span class="count" id="breaks-count">0</span>
-                        </div>
+                        <div class="breaks-counter"><span>☕</span><span class="count" id="breaks-count">0</span></div>
                     </div>
                 </div>
 
@@ -191,9 +151,7 @@
                                 <span id="mobile-call-autolisten-chip" class="mobile-call-chip" aria-live="polite">Auto-listen on</span>
                             </div>
                         </div>
-                        <button id="mobile-call-help-btn" type="button" class="mobile-call-help-btn" aria-label="Open voice call help">
-                            ❓
-                        </button>
+                        <button id="mobile-call-help-btn" type="button" class="mobile-call-help-btn" aria-label="Open voice call help">❓</button>
                     </div>
                     <div class="mobile-call-meta">
                         <span class="mobile-call-elapsed-label">Elapsed</span>
@@ -202,7 +160,7 @@
                     </div>
                 </div>
 
-                <!-- Scene Preview Panel (Item 24) -->
+                <!-- Scene Preview Panel (hidden) -->
                 <div id="scene-preview-panel" class="scene-preview" style="display:none;" role="complementary" aria-label="Scene reconstruction preview">
                     <div class="scene-preview-header">
                         <h3>🔍 Scene Reconstruction</h3>
@@ -215,41 +173,46 @@
                     </div>
                 </div>
 
-                <!-- Mobile Scene Preview Strip (visible only on mobile when scene available) -->
+                <!-- Mobile Scene Preview Strip -->
                 <div id="mobile-scene-strip" class="mobile-scene-strip" aria-label="Scene preview">
                     <img id="mobile-scene-strip-img" src="" alt="Scene reconstruction" class="mobile-scene-strip-img">
                     <div class="mobile-scene-strip-overlay">
                         <div class="mobile-scene-strip-copy">
                             <div class="mobile-scene-strip-title-row">
                                 <span class="mobile-scene-strip-label">Scene reconstruction</span>
-                                <span id="mobile-scene-update-indicator" class="scene-update-indicator hidden" aria-label="New scene update available"></span>
+                                <span id="mobile-scene-update-indicator" class="scene-update-indicator hidden"></span>
                             </div>
-                            <span id="mobile-scene-strip-subtitle" class="mobile-scene-strip-subtitle">Waiting for your first scene update</span>
+                            <span id="mobile-scene-strip-subtitle" class="mobile-scene-strip-subtitle">Waiting for scene</span>
                         </div>
                         <span class="mobile-scene-strip-expand">⤢</span>
                     </div>
                 </div>
 
-                <!-- Quick Phrase Rail -->
-                <div id="quick-phrase-rail" class="quick-phrase-rail" aria-label="Quick phrase shortcuts">
-                    <button type="button" class="quick-phrase-chip" data-phrase="I saw a red car speeding away." aria-label="Send quick phrase red car speeding away">🚗 Red car sped away</button>
-                    <button type="button" class="quick-phrase-chip" data-phrase="It happened near the entrance." aria-label="Send quick phrase near entrance">📍 Near the entrance</button>
-                    <button type="button" class="quick-phrase-chip" data-phrase="I heard shouting before the impact." aria-label="Send quick phrase heard shouting">🗣️ Heard shouting</button>
-                    <button type="button" class="quick-phrase-chip" data-phrase="I can describe the person's clothing." aria-label="Send quick phrase describe clothing">👕 Clothing details</button>
-                    <button type="button" class="quick-phrase-chip" data-phrase="I noticed the license plate started with..." aria-label="Send quick phrase license plate">🔢 License plate info</button>
-                    <button type="button" class="quick-phrase-chip" data-phrase="I need to correct one detail." aria-label="Send quick phrase correct detail">✏️ Need a correction</button>
+                <!-- Quick Phrase Rail (hidden on desktop, kept for mobile) -->
+                <div id="quick-phrase-rail" class="quick-phrase-rail" aria-label="Quick phrase shortcuts" style="display:none;">
+                    <button type="button" class="quick-phrase-chip" data-phrase="I saw a red car speeding away.">🚗 Red car sped away</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="It happened near the entrance.">📍 Near the entrance</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I heard shouting before the impact.">🗣️ Heard shouting</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I can describe the person's clothing.">👕 Clothing details</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I noticed the license plate started with...">🔢 License plate info</button>
+                    <button type="button" class="quick-phrase-chip" data-phrase="I need to correct one detail.">✏️ Need a correction</button>
                 </div>
 
-                <!-- Chat transcript -->
+                <!-- Chat transcript — the main interaction area -->
                 <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite" aria-label="Interview conversation">
-                    <p class="empty-state">Tap the big mic below and talk naturally with Officer Ray. You can also use quick phrases, then add typed details anytime.</p>
+                    <div class="welcome-prompt">
+                        <div class="welcome-icon">🛡️</div>
+                        <h2>Officer Ray is here to help</h2>
+                        <p>Press the microphone button below and tell me what happened.<br>You can speak naturally — I'll guide you through the report.</p>
+                        <p class="welcome-hint">You can also type if you prefer.</p>
+                    </div>
                 </div>
 
                 <!-- Typing indicator -->
                 <div class="typing-indicator hidden" id="typing-indicator">
                     <span class="typing-avatar">🛡️</span>
                     <div class="typing-content">
-                        <span class="typing-label">Detective Ray is analyzing...</span>
+                        <span class="typing-label">Officer Ray is thinking...</span>
                         <div class="typing-dots">
                             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                         </div>
@@ -261,26 +224,24 @@
                     <button id="tap-interrupt-btn" type="button" class="btn btn-secondary" aria-label="Interrupt Officer Ray and start talking">Tap to interrupt</button>
                 </div>
 
-                <!-- Suggested Actions -->
-                <div class="suggested-actions" id="suggested-actions">
-                    <button class="suggestion-btn" data-action="correct" aria-label="Correct something">✏️ Correct something</button>
-                    <button class="suggestion-btn" data-action="generate" aria-label="Generate scene">🎬 Generate scene</button>
-                    <button class="suggestion-btn" data-action="details" aria-label="Add more details">➕ Add more details</button>
+                <!-- Suggested Actions (hidden — keep IDs for app.js) -->
+                <div class="suggested-actions" id="suggested-actions" style="display:none;">
+                    <button class="suggestion-btn" data-action="correct">✏️ Correct something</button>
+                    <button class="suggestion-btn" data-action="generate">🎬 Generate scene</button>
+                    <button class="suggestion-btn" data-action="details">➕ Add more details</button>
                 </div>
-                <!-- Guided Mode Suggestions -->
                 <div id="guided-suggestions" style="display:none;"></div>
-                <!-- Mode Toggles -->
-                <div class="mode-toggles" id="mode-toggles">
-                    <button class="mode-toggle-btn" id="guided-mode-btn" aria-label="Toggle guided interview mode">📋 Guided</button>
-                    <button class="mode-toggle-btn" id="child-mode-btn" aria-label="Toggle child-friendly mode">🧒 Child Mode</button>
-                    <button class="mode-toggle-btn" id="high-contrast-btn" aria-label="Toggle high contrast mode">🔲 High Contrast</button>
+                <!-- Mode Toggles (hidden — keep IDs for app.js) -->
+                <div class="mode-toggles" id="mode-toggles" style="display:none;">
+                    <button class="mode-toggle-btn" id="guided-mode-btn">📋 Guided</button>
+                    <button class="mode-toggle-btn" id="child-mode-btn">🧒 Child Mode</button>
+                    <button class="mode-toggle-btn" id="high-contrast-btn">🔲 High Contrast</button>
                 </div>
 
-                <!-- Voice Control - always visible, voice-first -->
-                <div class="voice-first-label">Voice-first — click mic or type below</div>
+                <!-- Voice Control — BIG, simple mic button -->
                 <div class="controls expanded" id="voice-controls">
-                    <!-- VAD Controls -->
-                    <div class="vad-controls" id="vad-controls">
+                    <!-- VAD Controls (hidden — keep IDs for app.js) -->
+                    <div class="vad-controls" id="vad-controls" style="display:none;">
                         <div class="vad-toggle-row">
                             <label class="toggle-switch">
                                 <input type="checkbox" id="vad-enabled" aria-label="Enable voice activity detection">
@@ -336,31 +297,31 @@
                         <span id="voice-dock-mic-text" class="voice-dock-mic-text">Tap to talk</span>
                     </button>
                     <div class="voice-dock-actions">
-                        <button id="dock-repeat-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to repeat the question">🔁 Repeat</button>
-                        <button id="dock-slow-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to slow down">🐢 Slow down</button>
-                        <button id="dock-moment-btn" type="button" class="voice-dock-action-btn" aria-label="Pause auto listen and take a moment">⏸ Need a moment</button>
-                        <button id="dock-more-btn" type="button" class="voice-dock-action-btn voice-dock-more-btn" aria-label="Show more voice controls" aria-expanded="false">⋯ More</button>
+                        <button id="dock-repeat-btn" type="button" class="voice-dock-action-btn">🔁 Repeat</button>
+                        <button id="dock-slow-btn" type="button" class="voice-dock-action-btn">🐢 Slow down</button>
+                        <button id="dock-moment-btn" type="button" class="voice-dock-action-btn">⏸ Need a moment</button>
+                        <button id="dock-more-btn" type="button" class="voice-dock-action-btn voice-dock-more-btn" aria-expanded="false">⋯ More</button>
                     </div>
                     <div id="voice-dock-more-panel" class="voice-dock-more-panel hidden">
-                        <button id="dock-repeat-more-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to repeat the question">🔁 Repeat</button>
-                        <button id="dock-slow-more-btn" type="button" class="voice-dock-action-btn" aria-label="Ask Officer Ray to slow down">🐢 Slow down</button>
-                        <button id="dock-moment-more-btn" type="button" class="voice-dock-action-btn" aria-label="Pause auto listen and take a moment">⏸ Need a moment</button>
-                        <button id="dock-help-btn" type="button" class="voice-dock-action-btn" aria-label="Open voice help sheet">❓ Voice help</button>
-                        <button id="dock-auto-btn" type="button" class="voice-dock-action-btn" aria-label="Toggle auto listen mode">🔁 Auto-listen</button>
-                        <button id="dock-audio-toggle-btn" type="button" class="voice-dock-action-btn" aria-label="Disable or enable automatic audio playback" aria-pressed="false">🔊 Audio on</button>
+                        <button id="dock-repeat-more-btn" type="button" class="voice-dock-action-btn">🔁 Repeat</button>
+                        <button id="dock-slow-more-btn" type="button" class="voice-dock-action-btn">🐢 Slow down</button>
+                        <button id="dock-moment-more-btn" type="button" class="voice-dock-action-btn">⏸ Need a moment</button>
+                        <button id="dock-help-btn" type="button" class="voice-dock-action-btn">❓ Voice help</button>
+                        <button id="dock-auto-btn" type="button" class="voice-dock-action-btn">🔁 Auto-listen</button>
+                        <button id="dock-audio-toggle-btn" type="button" class="voice-dock-action-btn" aria-pressed="false">🔊 Audio on</button>
                         <div class="voice-speed-group" role="group" aria-label="Officer Ray speaking speed">
                             <span class="voice-speed-label">Ray speed</span>
-                            <button id="dock-speed-09-btn" type="button" class="voice-dock-action-btn voice-speed-btn" aria-label="Set speech speed to point nine">0.9x</button>
-                            <button id="dock-speed-10-btn" type="button" class="voice-dock-action-btn voice-speed-btn is-active" aria-label="Set speech speed to one">1.0x</button>
-                            <button id="dock-speed-11-btn" type="button" class="voice-dock-action-btn voice-speed-btn" aria-label="Set speech speed to one point one">1.1x</button>
+                            <button id="dock-speed-09-btn" type="button" class="voice-dock-action-btn voice-speed-btn">0.9x</button>
+                            <button id="dock-speed-10-btn" type="button" class="voice-dock-action-btn voice-speed-btn is-active">1.0x</button>
+                            <button id="dock-speed-11-btn" type="button" class="voice-dock-action-btn voice-speed-btn">1.1x</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Text Input — collapsed bar, expandable (secondary to voice) -->
+                <!-- Text Input — simple bar -->
                 <div class="text-input text-input-collapsed" id="text-input-bar">
-                    <button id="chat-mic-btn" class="btn btn-mic" disabled aria-label="Record voice" title="Hold to record" style="display:none;">🎤</button>
-                    <!-- Language Selector for Translation -->
+                    <button id="chat-mic-btn" class="btn btn-mic" disabled style="display:none;">🎤</button>
+                    <!-- Language Selector -->
                     <select id="language-selector" class="language-selector" aria-label="Select your language" title="Select your language">
                         <option value="en">🇺🇸 English</option>
                         <option value="es">🇪🇸 Español</option>
@@ -382,196 +343,24 @@
                         <option value="th">🇹🇭 ไทย</option>
                         <option value="he">🇮🇱 עברית</option>
                     </select>
-                    <button id="upload-evidence-btn" class="evidence-upload-btn" onclick="uploadEvidence()" aria-label="Attach photo evidence" title="Attach photo">
-                        📎
-                    </button>
-                    <button id="upload-sketch-btn" class="evidence-upload-btn" onclick="uploadSketch()" aria-label="Upload hand-drawn sketch" title="Upload Sketch">
-                        ✏️
-                    </button>
-                    <button id="camera-btn" class="btn btn-secondary" title="Take Photo" aria-label="Take photo" onclick="document.getElementById('camera-input').click()">📸</button>
+                    <button id="upload-evidence-btn" class="evidence-upload-btn" onclick="uploadEvidence()" aria-label="Attach photo" title="Attach photo">📎</button>
+                    <button id="upload-sketch-btn" class="evidence-upload-btn" onclick="uploadSketch()" style="display:none;">✏️</button>
+                    <button id="camera-btn" class="btn btn-secondary" title="Take Photo" onclick="document.getElementById('camera-input').click()">📸</button>
                     <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" style="display:none;" onchange="window.app?.handlePhotoUpload(event)">
-                    <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)" aria-hidden="true">
-                    <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)" aria-hidden="true">
+                    <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)">
+                    <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)">
                     <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type instead...">⌨️ Type instead...</button>
-                    <input type="text" id="text-input" placeholder="Describe what you witnessed..." disabled aria-label="Type your statement">
-                    <span id="text-char-counter" class="text-char-counter" aria-live="polite">0 chars</span>
+                    <input type="text" id="text-input" placeholder="Type what you saw here..." disabled aria-label="Type your statement">
+                    <span id="text-char-counter" class="text-char-counter" aria-live="polite" style="display:none;">0 chars</span>
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
-                    <button id="retry-last-btn" class="btn btn-secondary" disabled aria-label="Retry last message" title="Retry last message">↻</button>
-                    <button id="auto-scroll-toggle" class="btn btn-secondary" aria-label="Toggle auto-scroll" title="Auto-scroll on" aria-pressed="true">⇣</button>
-                    <button id="compact-mode-toggle" class="btn btn-secondary" aria-label="Toggle compact mode" title="Toggle compact mode" aria-pressed="false">▤</button>
-                    <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" aria-label="Review testimony summary" title="Review Testimony" style="display:none;">
-                        📋
-                    </button>
+                    <button id="retry-last-btn" class="btn btn-secondary" disabled style="display:none;">↻</button>
+                    <button id="auto-scroll-toggle" class="btn btn-secondary" style="display:none;" aria-pressed="true">⇣</button>
+                    <button id="compact-mode-toggle" class="btn btn-secondary" style="display:none;" aria-pressed="false">▤</button>
+                    <button id="review-testimony-btn" class="btn btn-secondary review-testimony-btn" onclick="showTestimonySummary()" style="display:none;">📋</button>
                 </div>
 
-                <div class="keyboard-hint">
-                    Press <kbd>Space</kbd> to record · <kbd>Esc</kbd> to cancel · Enable <em>Auto-detect voice</em> for hands-free
-                </div>
-
-                <!-- Quick Analysis Bar -->
-                <div class="quick-analysis-bar" id="quick-analysis-bar" style="display:none;">
-                    <span class="qab-label">Quick Analysis:</span>
-                    <div class="qab-buttons">
-                        <button class="qab-btn" onclick="window.app?._showCredibilityScore?.()" title="Credibility Score" aria-label="Run credibility score">🛡️ Credibility</button>
-                        <button class="qab-btn" onclick="window.app?._showTestimonyDigest?.()" title="Testimony Digest" aria-label="Run testimony digest">📋 Digest</button>
-                        <button class="qab-btn" onclick="window.app?._showBiasAnalysis?.()" title="Cognitive Bias Analysis" aria-label="Run bias analysis">🧠 Bias</button>
-                        <button class="qab-btn" onclick="window.app?._showSettlementRisk?.()" title="Settlement Risk" aria-label="Run settlement risk assessment">⚖️ Settlement</button>
-                        <button class="qab-btn" onclick="window.app?._showGrandJuryReadiness?.()" title="Grand Jury Readiness" aria-label="Run grand jury readiness check">🏛️ Grand Jury</button>
-                        <button class="qab-btn" onclick="window.app?._showStatementImportance?.()" title="Statement Importance Ranking" aria-label="Run statement importance ranking">⭐ Importance</button>
-                        <button class="qab-btn" onclick="window.app?._showTestimonySwot?.()" title="SWOT Analysis" aria-label="Run SWOT analysis">🧩 SWOT</button>
-                        <button class="qab-btn" onclick="window.app?.runKeyEvidenceExtractor?.()" title="Key Evidence Extractor" aria-label="Run key evidence extractor">🔍 Evidence</button>
-                        <button class="qab-btn" onclick="window.app?.runDeceptionIndicators?.()" title="Deception Indicators" aria-label="Run deception indicators">🎭 Deception</button>
-                        <button class="qab-btn" onclick="window.app?.runDefenseStrategyPreview?.()" title="Defense Strategy Preview" aria-label="Run defense strategy preview">⚔️ Defense</button>
-                        <button class="qab-btn" onclick="window.app?.runReliabilityMatrix?.()" title="Witness Reliability Matrix" aria-label="Run reliability matrix">📊 Reliability</button>
-                        <button class="qab-btn" onclick="window.app?.runJurisdictionAnalysis?.()" title="Jurisdiction Analysis" aria-label="Run jurisdiction analysis">⚖️ Jurisdiction</button>
-                        <button class="qab-btn" onclick="window.app?.runProsecutionStrength?.()" title="Prosecution Strength Score" aria-label="Run prosecution strength score">⚖️ Prosecution</button>
-                        <button class="qab-btn" onclick="window.app?.runCoachingDetection?.()" title="Witness Coaching Detection" aria-label="Run coaching detection">🎓 Coaching</button>
-                        <button class="qab-btn" onclick="window.app?.runAlibiVerification?.()" title="Alibi Verification Analysis" aria-label="Run alibi verification">🔍 Alibi</button>
-                        <button class="qab-btn" onclick="window.app?.runExpertWitnessNeeds?.()" title="Expert Witness Assessment" aria-label="Run expert witness assessment">🔬 Experts</button>
-                        <button class="qab-btn" onclick="window.app?.runTemporalConsistency?.()" title="Temporal Consistency Check" aria-label="Run temporal consistency check">📅 Timeline</button>
-                        <button class="qab-btn" onclick="window.app?.runPleaDealAnalysis?.()" title="Plea Deal Probability Analysis" aria-label="Run plea deal analysis">🤝 Plea Deal</button>
-                        <button class="qab-btn" onclick="window.app?.runMotiveAnalysis?.()" title="Witness Motive & Intent Analysis" aria-label="Run motive analysis">🎯 Motive</button>
-                        <button class="qab-btn" onclick="window.app?.runCrossExamQuestions?.()" title="Cross-Examination Question Generator" aria-label="Generate cross-exam questions">❓ Cross-Exam</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessImpact?.()" title="Witness Impact Score" aria-label="Run witness impact score">📈 Impact</button>
-                        <button class="qab-btn" onclick="window.app?.runVulnerabilityRadar?.()" title="Case Vulnerability Radar" aria-label="Run vulnerability radar">📡 Radar</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryPersuasion?.()" title="Jury Persuasion Score" aria-label="Run jury persuasion score">🎭 Jury</button>
-                        <button class="qab-btn" onclick="window.app?.runCredibilityMap?.()" title="Statement Credibility Map" aria-label="Run statement credibility map">🗺️ Cred Map</button>
-                        <button class="qab-btn" onclick="window.app?.runEmotionalVolatility?.()" title="Emotional Volatility Index" aria-label="Run emotional volatility index">💢 Volatility</button>
-                        <button class="qab-btn" onclick="window.app?.runLegalExposure?.()" title="Legal Exposure Calculator" aria-label="Run legal exposure calculator">⚠️ Exposure</button>
-                        <button class="qab-btn" onclick="window.app?.runCompetencyAssessment?.()" title="Witness Competency Assessment" aria-label="Run competency assessment">📋 Competency</button>
-                        <button class="qab-btn" onclick="window.app?.runNarrativeArc?.()" title="Narrative Arc Analyzer" aria-label="Run narrative arc analysis">🎬 Narrative</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessPreparation?.()" title="Witness Preparation Quality" aria-label="Run witness preparation quality">📚 Preparation</button>
-                        <button class="qab-btn" onclick="window.app?.runContradictionHeatmap?.()" title="Contradiction Heatmap" aria-label="Run contradiction heatmap">🔥 Heatmap</button>
-                        <button class="qab-btn" onclick="window.app?.runDemeanorAnalysis?.()" title="Witness Demeanor Analysis" aria-label="Run demeanor analysis">🎭 Demeanor</button>
-                        <button class="qab-btn" onclick="window.app?.runPrivilegeScan?.()" title="Privilege & Admissibility Scanner" aria-label="Run privilege scan">🔐 Privilege</button>
-                        <button class="qab-btn" onclick="window.app?.runReadabilityScore?.()" title="Jury Readability Analysis" aria-label="Run jury readability analysis">📖 Readability</button>
-                        <button class="qab-btn" onclick="window.app?.runCorroborationFinder?.()" title="Corroboration Evidence Finder" aria-label="Run corroboration finder">🔗 Corroborate</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryInstructions?.()" title="Jury Instruction Drafter" aria-label="Generate jury instructions">⚖️ Jury Inst.</button>
-                        <button class="qab-btn" onclick="window.app?.runCredibilityMatrix?.()" title="Witness Credibility Matrix" aria-label="Run credibility matrix analysis">📊 Cred Matrix</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionRisk?.()" title="Deposition Risk Scorecard" aria-label="Run deposition risk scorecard">🎯 Depo Risk</button>
-                        <button class="qab-btn" onclick="window.app?.runExpertChallenge?.()" title="Expert Witness Challenger" aria-label="Challenge expert witness">🔬 Expert Challenge</button>
-                        <button class="qab-btn" onclick="window.app?.runTimelineGaps?.()" title="Timeline Gap Detector" aria-label="Detect timeline gaps">⏳ Timeline Gaps</button>
-                        <button class="qab-btn" onclick="window.app?.runEmotionalArc?.()" title="Emotional Arc Analyzer" aria-label="Analyze emotional arc">🌊 Emotional Arc</button>
-                        <button class="qab-btn" onclick="window.app?.runDeceptionMarkers?.()" title="Deception Marker Detector" aria-label="Detect deception markers">🕵️ Deception</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseStrength?.()" title="Case Strength Meter" aria-label="Assess case strength">💪 Case Strength</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseRisk?.()" title="Case Risk Assessment" aria-label="Run case risk assessment">🎯 Case Risk</button>
-                        <button class="qab-btn" onclick="window.app?.runAvailabilityRisk?.()" title="Witness Availability Risk" aria-label="Run witness availability risk">⏰ Availability</button>
-                        <button class="qab-btn" onclick="window.app?.runClosingArgument?.()" title="Closing Argument Builder" aria-label="Build closing argument">🎤 Closing Arg</button>
-                        <button class="qab-btn" onclick="window.app?.runTimelineReconstruction?.()" title="Timeline Reconstruction" aria-label="Reconstruct event timeline">🕐 Timeline</button>
-                        <button class="qab-btn" onclick="window.app?.runTraumaIndicators?.()" title="Trauma Indicator Analysis" aria-label="Analyze trauma indicators">🧠 Trauma</button>
-                        <button class="qab-btn" onclick="window.app?.runCorroborationMap?.()" title="Corroboration Mapper" aria-label="Map evidence corroboration">🗺️ Corroboration</button>
-                        <button class="qab-btn" onclick="window.app?.runImpeachmentOpportunities?.()" title="Impeachment Opportunities" aria-label="Find impeachment opportunities">⚡ Impeachment</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessPsychology?.()" title="Witness Psychology Profile" aria-label="Profile witness psychology">🧬 Psychology</button>
-                        <button class="qab-btn" onclick="window.app?.runStatementVelocity?.()" title="Statement Velocity Analysis" aria-label="Analyze statement velocity">📊 Velocity</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceAdmissibility?.()" title="Evidence Admissibility Risk" aria-label="Assess evidence admissibility">⚖️ Admissibility</button>
-                        <button class="qab-btn" onclick="window.app?.runTrialReadiness?.()" title="Trial Readiness Score" aria-label="Score trial readiness">🏛️ Trial Ready</button>
-                        <button class="qab-btn" onclick="window.app?.runLinguisticPatterns?.()" title="Linguistic Pattern Analysis" aria-label="Analyze linguistic patterns">🔤 Linguistic</button>
-                        <button class="qab-btn" onclick="window.app?.runReliabilityScore?.()" title="Witness Reliability Score" aria-label="Score witness reliability">🎯 Reliability</button>
-                        <button class="qab-btn" onclick="window.app?.runLegalStrategy?.()" title="Legal Strategy Optimizer" aria-label="Optimize legal strategy">⚖️ Strategy</button>
-                        <button class="qab-btn" onclick="window.app?.runMemoryConsistency?.()" title="Memory Consistency Tracker" aria-label="Track memory consistency">🧠 Memory</button>
-                        <button class="qab-btn" onclick="window.app?.runObjectionPredictor?.()" title="Objection Predictor" aria-label="Predict trial objections">🚫 Objections</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessInfluence?.()" title="Witness Influence Analysis" aria-label="Analyze witness influence">🔮 Influence</button>
-                        <button class="qab-btn" onclick="window.app?.runBehavioralBaseline?.()" title="Behavioral Baseline Analysis" aria-label="Analyze behavioral baseline">🎭 Behavioral</button>
-                        <button class="qab-btn" onclick="window.app?.runCredibilityDecay?.()" title="Credibility Decay Tracker" aria-label="Track credibility decay">📉 Cred Decay</button>
-                        <button class="qab-btn" onclick="window.app?.runNarrativeCoherence?.()" title="Narrative Coherence Score" aria-label="Score narrative coherence">📖 Coherence</button>
-                        <button class="qab-btn" onclick="window.app?.runStressMapping?.()" title="Witness Stress Mapping" aria-label="Map witness stress">🌡️ Stress Map</button>
-                        <button class="qab-btn" onclick="window.app?.runPrecedentMatcher?.()" title="Case Precedent Matcher" aria-label="Match legal precedents">⚖️ Precedents</button>
-                        <button class="qab-btn" onclick="window.app?.runDemeanorScore?.()" title="Witness Demeanor Score" aria-label="Score witness demeanor">🎭 Demeanor</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseTheory?.()" title="Case Theory Evaluator" aria-label="Evaluate case theory">⚖️ Theory</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryImpact?.()" title="Jury Impact Predictor" aria-label="Predict jury impact">👥 Jury Impact</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceChain?.()" title="Evidence Chain Mapper" aria-label="Map evidence chain">🔗 Evid Chain</button>
-                        <button class="qab-btn" onclick="window.app?.runPrepIndex?.()" title="Witness Preparation Index" aria-label="Assess witness preparation">📋 Prep Index</button>
-                        <button class="qab-btn" onclick="window.app?.runFatigueAnalysis?.()" title="Witness Fatigue Analysis" aria-label="Analyze witness fatigue">😴 Fatigue</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseComplexity?.()" title="Case Complexity Index" aria-label="Assess case complexity">🔢 Complexity</button>
-                        <button class="qab-btn" onclick="window.app?.runAppealProbability?.()" title="Appeal Probability Assessment" aria-label="Assess appeal probability">⚖️ Appeal Risk</button>
-                        <button class="qab-btn" onclick="window.app?.runDamagesEstimate?.()" title="Damages Estimation Calculator" aria-label="Estimate potential damages">💰 Damages</button>
-                        <button class="qab-btn" onclick="window.app?.runRecantationRisk?.()" title="Witness Recantation Risk Assessment" aria-label="Assess recantation risk">⚠️ Recantation Risk</button>
-                        <button class="qab-btn" onclick="window.app?.runCostOptimizer?.()" title="Deposition Cost Optimizer" aria-label="Optimize deposition costs">💡 Cost Optimizer</button>
-                        <button class="qab-btn" onclick="window.app?.runKeyMoments?.()" title="Key Moment Detector" aria-label="Detect pivotal testimony moments">🎯 Key Moments</button>
-                        <button class="qab-btn" onclick="window.app?.runBiasAssessment?.()" title="Witness Bias Assessment" aria-label="Assess witness cognitive biases">🧠 Bias Assessment</button>
-                        <button class="qab-btn" onclick="window.app?.runCrossExamBlueprint?.()" title="Cross-Examination Blueprint" aria-label="Generate cross-exam strategy">📋 Cross-Exam Blueprint</button>
-                        <button class="qab-btn" onclick="window.app?.runCredibilityTimeline?.()" title="Witness Credibility Timeline" aria-label="Track credibility evolution">📈 Credibility Timeline</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionSummary?.()" title="Deposition Summary Generator" aria-label="Generate executive summary">📝 Depo Summary</button>
-                        <button class="qab-btn" onclick="window.app?.runTestimonyPatterns?.()" title="Testimony Pattern Analyzer" aria-label="Detect linguistic patterns">🔍 Testimony Patterns</button>
-                        <button class="qab-btn" onclick="window.app?.runStrategicQuestions?.()" title="Strategic Question Generator" aria-label="Generate strategic questions">❓ Strategic Questions</button>
-                        <button class="qab-btn" onclick="window.app?.runOutcomeSimulator?.()" title="Case Outcome Simulator" aria-label="Simulate case outcomes">🎲 Outcome Simulator</button>
-                        <button class="qab-btn" onclick="window.app?.runJurySelection?.()" title="Jury Selection Advisor" aria-label="AI jury selection analysis">👥 Jury Selection</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceGaps?.()" title="Evidence Gap Analyzer" aria-label="Identify evidence gaps">🔍 Evidence Gaps</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessComparison?.()" title="Witness Comparison Matrix" aria-label="Compare witnesses side by side">⚖️ Witness Compare</button>
-                        <button class="qab-btn" onclick="window.app?.runRedactionAssistant?.()" title="Testimony Redaction Assistant" aria-label="AI redaction suggestions">🔒 Redaction Assist</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseLawResearch?.()" title="Case Law Research" aria-label="Find relevant case law">📚 Case Law Research</button>
-                        <button class="qab-btn" onclick="window.app?.runCoachingDetector?.()" title="Witness Coaching Detector" aria-label="Detect signs of witness coaching">🎭 Coaching Detector</button>
-                        <button class="qab-btn" onclick="window.app?.runTranscriptIndex?.()" title="Deposition Transcript Index" aria-label="Auto-index deposition transcript">📑 Transcript Index</button>
-                        <button class="qab-btn" onclick="window.app?.runSettlementCalculator?.()" title="Settlement Value Calculator" aria-label="Calculate settlement range">💲 Settlement Calc</button>
-                        <button class="qab-btn" onclick="window.app?.runAuthenticityScore?.()" title="Testimony Authenticity Scorer" aria-label="Score testimony authenticity">✅ Authenticity</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessRelationships?.()" title="Witness Relationship Mapper" aria-label="Map witness relationships">🔗 Witness Relations</button>
-                        <button class="qab-btn" onclick="window.app?.runImpeachmentPlanner?.()" title="Impeachment Strategy Planner" aria-label="Plan impeachment strategy">⚔️ Impeachment Plan</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessPrepReport?.()" title="Witness Prep Report" aria-label="Generate witness prep report">📋 Witness Prep</button>
-                        <button class="qab-btn" onclick="window.app?.runMotionGenerator?.()" title="Motion in Limine Generator" aria-label="Generate motions in limine">📜 Motion Gen</button>
-                        <button class="qab-btn" onclick="window.app?.runVerdictPredictor?.()" title="Jury Verdict Predictor" aria-label="Predict jury verdict">🔮 Verdict Predict</button>
-                        <button class="qab-btn" onclick="window.app?.runReliabilityIndex?.()" title="Testimony Reliability Index" aria-label="Calculate reliability index">📏 Reliability Idx</button>
-                        <button class="qab-btn" onclick="window.app?.runExpertEvaluator?.()" title="Expert Witness Evaluator" aria-label="Evaluate expert witnesses">🎓 Expert Eval</button>
-                        <button class="qab-btn" onclick="window.app?.runMediationReadiness?.()" title="Mediation Readiness Assessment" aria-label="Assess mediation readiness">🤝 Mediation</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessSequencing?.()" title="Witness Sequencing Optimizer" aria-label="Optimize witness order">🔢 Witness Order</button>
-                        <button class="qab-btn" onclick="window.app?.runDiscoveryDeficiency?.()" title="Discovery Deficiency Analyzer" aria-label="Analyze discovery gaps">🔎 Discovery Gaps</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryPerception?.()" title="Jury Perception Analyzer" aria-label="Analyze jury perception">🎭 Jury Perception</button>
-                        <button class="qab-btn" onclick="window.app?.runLegalStandardMatcher?.()" title="Legal Standard Matcher" aria-label="Match legal standards">⚖️ Legal Standards</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessFatigue?.()" title="Witness Fatigue Detector" aria-label="Detect witness fatigue">😴 Fatigue Detect</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionCostEstimator?.()" title="Deposition Cost Estimator" aria-label="Estimate deposition costs">💰 Depo Costs</button>
-                        <button class="qab-btn" onclick="window.app?.runTestimonyAnchors?.()" title="Testimony Anchor Points" aria-label="Extract anchor points">⚓ Anchors</button>
-                        <button class="qab-btn" onclick="window.app?.runPrivilegeLogGenerator?.()" title="Privilege Log Generator" aria-label="Generate privilege log">🔒 Privilege Log</button>
-                        <button class="qab-btn" onclick="window.app?.runTrialExhibitPlanner?.()" title="Trial Exhibit Planner" aria-label="Plan trial exhibits">📎 Exhibit Plan</button>
-                        <button class="qab-btn" onclick="window.app?.runOpposingCounselProfiler?.()" title="Opposing Counsel Profiler" aria-label="Profile opposing counsel">🕵️ Opp Counsel</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessRehabilitation?.()" title="Witness Rehabilitation Planner" aria-label="Plan witness rehabilitation">🩹 Witness Rehab</button>
-                        <button class="qab-btn" onclick="window.app?.runDamagesNarrative?.()" title="Damages Narrative Builder" aria-label="Build damages narrative">💵 Damages Story</button>
-                        <button class="qab-btn" onclick="window.app?.runSettlementValueCalculator?.()" title="Settlement Value Calculator" aria-label="Calculate settlement value">🏦 Settlement Calc</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessCoachingDetector?.()" title="Witness Coaching Detector" aria-label="Detect witness coaching">🎭 Coaching Detect</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseTheoryValidator?.()" title="Case Theory Validator" aria-label="Validate case theory">🧪 Theory Test</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionSummaryGenerator?.()" title="Deposition Summary Generator" aria-label="Generate deposition summary">📋 Depo Summary</button>
-                        <button class="qab-btn" onclick="window.app?.runCrossExaminationPlanner?.()" title="Cross-Examination Planner" aria-label="Plan cross-examination">⚔️ Cross-Exam</button>
-                        <button class="qab-btn" onclick="window.app?.runTestimonyRedlineComparison?.()" title="Testimony Redline Comparison" aria-label="Compare testimony versions">📝 Redline</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionObjectionTracker?.()" title="Deposition Objection Tracker" aria-label="Track objections">⚖️ Objections</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessMemoryAssessment?.()" title="Witness Memory Assessment" aria-label="Assess witness memory">🧠 Memory</button>
-                        <button class="qab-btn" onclick="window.app?.runRule30b6TopicCoverage?.()" title="Rule 30(b)(6) Topic Coverage" aria-label="Analyze corporate designee coverage">🏢 30(b)(6)</button>
-                        <button class="qab-btn" onclick="window.app?.runTrialPreparationChecklist?.()" title="Trial Preparation Checklist" aria-label="Generate trial prep checklist">✅ Trial Prep</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessRelationshipMapper?.()" title="Witness Relationship Mapper" aria-label="Map witness relationships">🔗 Relationships</button>
-                        <button class="qab-btn" onclick="window.app?.runStatuteOfLimitationsTracker?.()" title="Statute of Limitations Tracker" aria-label="Track SOL deadlines">⏰ SOL Tracker</button>
-                        <button class="qab-btn" onclick="window.app?.runDiscoveryGapAnalyzer?.()" title="Discovery Gap Analyzer" aria-label="Analyze discovery gaps">🔍 Discovery Gaps</button>
-                        <button class="qab-btn" onclick="window.app?.runVoirDireQuestionGenerator?.()" title="Voir Dire Question Generator" aria-label="Generate voir dire questions">👥 Voir Dire</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceSufficiencyScorer?.()" title="Evidence Sufficiency Scorer" aria-label="Score evidence sufficiency">📊 Evidence Score</button>
-                        <button class="qab-btn" onclick="window.app?.runExpertWitnessComparison?.()" title="Expert Witness Comparison Matrix" aria-label="Compare expert witnesses">🎯 Expert Compare</button>
-                        <button class="qab-btn" onclick="window.app?.runDaubertChallengeAnalyzer?.()" title="Daubert Challenge Analyzer" aria-label="Analyze Daubert challenges">🔬 Daubert</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryInstructionsDrafter?.()" title="Jury Instructions Drafter" aria-label="Draft jury instructions">📜 Jury Inst.</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseChronologyBuilder?.()" title="Case Chronology Builder" aria-label="Build case chronology">📅 Chronology</button>
-                        <button class="qab-btn" onclick="window.app?.runPrivilegeReviewAssistant?.()" title="Privilege Review Assistant" aria-label="Review privilege issues">🔒 Privilege</button>
-                        <button class="qab-btn" onclick="window.app?.runImpeachmentPreparation?.()" title="Impeachment Preparation Tool" aria-label="Prepare impeachment strategies">⚔️ Impeachment</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessCredibilityDashboard?.()" title="Witness Credibility Dashboard" aria-label="Score witness credibility">🎯 Credibility</button>
-                        <button class="qab-btn" onclick="window.app?.runMotionInLimineGenerator?.()" title="Motion in Limine Generator" aria-label="Generate motions in limine">⚖️ Motions</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionDigestGenerator?.()" title="Deposition Digest Generator" aria-label="Generate deposition digests">📋 Depo Digest</button>
-                        <button class="qab-btn" onclick="window.app?.runExhibitCrossReferenceMatrix?.()" title="Exhibit Cross-Reference Matrix" aria-label="Cross-reference exhibits">🗂️ Exhibit Map</button>
-                        <button class="qab-btn" onclick="window.app?.runTestimonyPatternAnalyzer?.()" title="Testimony Pattern Analyzer" aria-label="Analyze testimony patterns">🔤 Patterns</button>
-                        <button class="qab-btn" onclick="window.app?.runClosingArgumentBuilder?.()" title="Closing Argument Outline Builder" aria-label="Build closing argument outline">🎤 Closing</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessPreparationSimulator?.()" title="Witness Preparation Simulator" aria-label="Simulate witness preparation">🎓 Prep Sim</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceChainOfCustody?.()" title="Evidence Chain of Custody" aria-label="Track evidence chain of custody">🔗 Custody</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseOutcomePredictor?.()" title="Case Outcome Predictor" aria-label="Predict case outcome">🔮 Predictor</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionQuestionBank?.()" title="Deposition Question Bank" aria-label="Generate deposition questions">❓ Depo Q's</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessTimelineOverlay?.()" title="Witness Timeline Overlay" aria-label="Overlay witness timelines">📊 Timeline</button>
-                        <button class="qab-btn" onclick="window.app?.runLegalAuthorityResearch?.()" title="Legal Authority Research" aria-label="Research legal authorities">📚 Legal Auth</button>
-                        <button class="qab-btn" onclick="window.app?.runJuryPerceptionAnalyzer?.()" title="Jury Perception Analyzer" aria-label="Analyze jury perception">👁️ Jury View</button>
-                        <button class="qab-btn" onclick="window.app?.runSettlementDemandDrafter?.()" title="Settlement Demand Drafter" aria-label="Draft settlement demand">💰 Demand</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessReliabilityScorecard?.()" title="Witness Reliability Scorecard" aria-label="Score witness reliability">📊 Reliability</button>
-                        <button class="qab-btn" onclick="window.app?.runDepositionCostEstimator?.()" title="Deposition Cost Estimator" aria-label="Estimate deposition costs">💲 Depo Cost</button>
-                        <button class="qab-btn" onclick="window.app?.runEvidenceAdmissibilityChecker?.()" title="Evidence Admissibility Checker" aria-label="Check evidence admissibility">✅ Admissible</button>
-                        <button class="qab-btn" onclick="window.app?.runCaseSWOTAnalyzer?.()" title="Case SWOT Analyzer" aria-label="SWOT analysis of case">🎯 SWOT</button>
-                        <button class="qab-btn" onclick="window.app?.runExaminationFlowBuilder?.()" title="Examination Flow Builder" aria-label="Build examination flow">🔀 Exam Flow</button>
-                        <button class="qab-btn" onclick="window.app?.runWitnessDemeanorAnalyzer?.()" title="Witness Demeanor Analyzer" aria-label="Analyze witness demeanor">🎭 Demeanor</button>
-                        <button class="qab-btn" onclick="window.app?.runDamagesCalculator?.()" title="Damages Calculator" aria-label="Calculate damages">💵 Damages</button>
-                        <button class="qab-btn" onclick="window.app?.runBurdenOfProofTracker?.()" title="Burden of Proof Tracker" aria-label="Track burden of proof">⚖️ Burden</button>
-                        <button class="qab-btn" onclick="window.app?.runMediationPrepKit?.()" title="Mediation Prep Kit" aria-label="Prepare for mediation">🤝 Mediation</button>
-                        <button class="qab-btn" onclick="window.app?.runJudicialTendencyAnalyzer?.()" title="Judicial Tendency Analyzer" aria-label="Analyze judicial tendencies">👨‍⚖️ Judge</button>
-                        <button class="qab-btn qab-btn-more" id="qab-more-btn" onclick="window.app?.handleSlashCommand?.('/help')" title="More tools (type /help)" aria-label="More analysis tools">⋯ More</button>
-                    </div>
-                </div>
+                <!-- Quick Analysis Bar (hidden from witnesses — admin only) -->
+                <div class="quick-analysis-bar" id="quick-analysis-bar" style="display:none;"></div>
             </section>
 
             <!-- RIGHT COLUMN: Secondary - Scene & Timeline -->
@@ -1123,8 +912,8 @@
         </div>
     </div>
 
-    <!-- Help Button -->
-    <button class="help-button" id="help-btn" data-tooltip="Help & Tutorial" aria-label="Help">
+    <!-- Help Button (hidden for simplified UI) -->
+    <button class="help-button" id="help-btn" data-tooltip="Help & Tutorial" aria-label="Help" style="display:none;">
         ?
     </button>
 
@@ -1515,11 +1304,9 @@
     </div>
 
     <!-- Version Display -->
-    <div class="version-badge" id="version-display">
+    <div class="version-badge" id="version-display" style="display:none;">
         <span class="version-label">WitnessReplay</span>
         <span class="version-number">v2.0</span>
-        <span class="version-separator">•</span>
-        <span class="version-challenge">Gemini Live Agent Challenge</span>
     </div>
 
     <!-- Digital Signature Modal -->

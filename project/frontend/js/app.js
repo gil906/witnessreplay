@@ -683,7 +683,7 @@ class WitnessReplayApp {
         if (!this.isMobileVoiceUI || !this.chatTranscript) return;
         const empty = this.chatTranscript.querySelector('.empty-state');
         if (empty) {
-            empty.textContent = 'Tap the big mic below and speak naturally with Officer Ray. Use quick phrase chips for fast details.';
+            empty.textContent = 'Tap the microphone and tell Officer Ray what happened.';
         }
     }
 
@@ -2401,7 +2401,7 @@ class WitnessReplayApp {
 
             // Show quick analysis bar when session is active
             const qab = document.getElementById('quick-analysis-bar');
-            if (qab) qab.style.display = 'flex';
+            if (qab) qab.style.display = '';
             
             // Connect WebSocket
             this.connectWebSocket();
@@ -3385,7 +3385,7 @@ class WitnessReplayApp {
     }
     
     displayMessage(text, speaker) {
-        if (this.chatTranscript.querySelector('.empty-state')) {
+        if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
             this.chatTranscript.innerHTML = '';
         }
         
@@ -3397,8 +3397,8 @@ class WitnessReplayApp {
         messageDiv.className = `message message-${speaker}`;
         messageDiv.setAttribute('role', 'listitem');
         
-        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
-        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '�️' : 'ℹ️';
+        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Officer Ray' : 'System';
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
@@ -3463,7 +3463,7 @@ class WitnessReplayApp {
      * Display a message with optional translation information
      */
     displayMessageWithTranslation(text, speaker, originalText = null, language = null) {
-        if (this.chatTranscript.querySelector('.empty-state')) {
+        if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
             this.chatTranscript.innerHTML = '';
         }
         
@@ -3474,8 +3474,8 @@ class WitnessReplayApp {
         messageDiv.className = `message message-${speaker}`;
         messageDiv.setAttribute('role', 'listitem');
         
-        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '🔍' : 'ℹ️';
-        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Detective Ray' : 'System';
+        const avatar = speaker === 'user' ? '👤' : speaker === 'agent' ? '�️' : 'ℹ️';
+        let labelText = speaker === 'user' ? 'You' : speaker === 'agent' ? 'Officer Ray' : 'System';
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
@@ -4453,7 +4453,7 @@ class WitnessReplayApp {
 
             // Show quick analysis bar when session is loaded
             const qab = document.getElementById('quick-analysis-bar');
-            if (qab) qab.style.display = 'flex';
+            if (qab) qab.style.display = '';
             
         } catch (error) {
             console.error('Error loading session:', error);
