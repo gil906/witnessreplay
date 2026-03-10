@@ -6181,22 +6181,36 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
                 "session_id": session.id
             })
 
-        # Now assign all reports to cases AFTER all are created
-        # This lets Gemini see all cases and make proper grouping decisions
-        # Add delay between calls to respect rate limits (5 RPM for gemini-2.5-flash)
-        import time as _time
-        for i, cr in enumerate(created_reports):
+        # Assign reports to cases — group by incident type from metadata
+        # This is fast because we use the known case_type metadata instead of calling Gemini for each
+        case_groups = {}  # case_type+location -> case_id
+        for cr in created_reports:
             try:
                 sess = await firestore_service.get_session(cr["session_id"])
-                if sess and not sess.case_id:
-                    if i > 0:
-                        await asyncio.sleep(12)  # 12s between calls to stay under rate limits
-                    logger.info(f"Assigning report {cr['report_number']} ({cr['title']}) to case...")
-                    case_id = await case_manager.assign_report_to_case(sess)
+                if not sess:
+                    continue
+                
+                # Group by case_type + location from metadata
+                case_type = sess.metadata.get("case_type", "unknown")
+                location = sess.metadata.get("location", "unknown")
+                group_key = f"{case_type}:{location.split(',')[0].strip().lower()}"
+                
+                if group_key in case_groups:
+                    # Add to existing case
+                    case_id = case_groups[group_key]
+                    case = await firestore_service.get_case(case_id)
+                    if case and sess.id not in case.report_ids:
+                        case.report_ids.append(sess.id)
+                        await firestore_service.update_case(case)
                     sess.case_id = case_id
-                    await firestore_service.update_session(sess)
-                    cr["case_id"] = case_id
-                    logger.info(f"  -> Assigned to case {case_id}")
+                else:
+                    # Create new case
+                    case_id = await case_manager._create_case_for_report(sess)
+                    case_groups[group_key] = case_id
+                    sess.case_id = case_id
+                
+                await firestore_service.update_session(sess)
+                cr["case_id"] = case_id
             except Exception as e:
                 logger.warning(f"Case assignment for {cr['report_number']}: {e}")
                 cr["case_id"] = None
