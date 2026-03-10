@@ -76,10 +76,10 @@ class ImagenService:
 
             try:
                 result = await asyncio.to_thread(
-                    self.client.models.generate_image,
+                    self.client.models.generate_images,
                     model=model,
                     prompt=self._build_scene_prompt(prompt),
-                    config=types.GenerateImageConfig(
+                    config=types.GenerateImagesConfig(
                         number_of_images=1,
                         aspect_ratio="16:9",
                         safety_filter_level="BLOCK_ONLY_HIGH",
