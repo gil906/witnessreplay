@@ -157,16 +157,22 @@ Reply with EXACTLY one line:
         case_number = await firestore_service.get_next_case_number()
 
         title = report.title if report.title != "Untitled Session" else f"Case {case_number}"
+        
+        # Build a summary from witness statements for matching purposes
+        report_text = self._get_report_text(report)
+        summary = report_text[:500] if report_text else ""
+        location = report.metadata.get("location", "")
 
         case = Case(
             id=str(uuid.uuid4()),
             case_number=case_number,
             title=title,
+            summary=summary,
             report_ids=[report.id],
-            location=report.metadata.get("location", ""),
+            location=location,
             timeframe={
                 "start": report.created_at.isoformat() if report.created_at else "",
-                "description": "Pending analysis"
+                "description": report.created_at.strftime("%B %d, %Y") if report.created_at else "Unknown date"
             },
             metadata={"auto_created": True}
         )
