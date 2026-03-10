@@ -123,7 +123,7 @@ Reply with EXACTLY one line:
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.0,
-                    max_output_tokens=100,
+                    max_output_tokens=200,
                 )
             )
 
@@ -132,19 +132,27 @@ Reply with EXACTLY one line:
                 return None
 
             answer = response.text.strip()
-            logger.info(f"Case matching response for '{report.title}': {answer}")
+            logger.info(f"Case matching for '{report.title}': raw response = '{answer}'")
 
-            if answer.startswith("MATCH:"):
-                matched_id = answer.replace("MATCH:", "").strip()
-                # Verify this case_id actually exists
-                for case in cases:
-                    if case.id == matched_id:
-                        logger.info(f"Report '{report.title}' matched to case {case.case_number}")
-                        return case.id
-                logger.warning(f"Gemini returned unknown case_id: {matched_id}")
-                return None
+            # Parse response - look for MATCH: anywhere in the response
+            for line in answer.split('\n'):
+                line = line.strip()
+                if line.upper().startswith("MATCH:"):
+                    matched_id = line.split(":", 1)[1].strip()
+                    # Verify this case_id actually exists
+                    for case in cases:
+                        if case.id == matched_id:
+                            logger.info(f"✅ Report '{report.title}' MATCHED to case {case.case_number} ({case.title})")
+                            return case.id
+                    logger.warning(f"Gemini returned unknown case_id: {matched_id}")
+                    return None
 
-            logger.info(f"Report '{report.title}' did not match any existing case")
+            # If no MATCH found, check if Gemini said NO MATCH explicitly or just gave random text
+            if "NO MATCH" in answer.upper() or "NO_MATCH" in answer.upper() or "DOES NOT MATCH" in answer.upper():
+                logger.info(f"Report '{report.title}' explicitly did not match any case")
+            else:
+                logger.warning(f"Unexpected Gemini response for case matching: '{answer[:200]}'")
+            
             return None
 
         except Exception as e:
