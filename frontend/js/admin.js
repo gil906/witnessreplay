@@ -13,7 +13,7 @@ class AdminPortal {
         this.filteredReports = [];
         this.currentCase = null;
         this.currentView = 'cases';
-        this.fetchTimeout = 10000;
+        this.fetchTimeout = 30000;
         this.authToken = null;
         this.selectedCases = new Set();
         this.searchDebounceTimer = null;
@@ -588,9 +588,10 @@ class AdminPortal {
         }
     }
     
-    async fetchWithTimeout(url, options = {}) {
+    async fetchWithTimeout(url, options = {}, customTimeout = null) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.fetchTimeout);
+        const timeoutMs = customTimeout || this.fetchTimeout;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         
         const headers = {
             ...options.headers
@@ -1995,11 +1996,13 @@ class AdminPortal {
     
     async seedMockData() {
         try {
-            this.showToast('Seeding demo data...', 'info');
+            const btn = document.getElementById('seed-data-btn');
+            if (btn) { btn.disabled = true; btn.querySelector('strong').textContent = '⏳ Seeding...'; }
+            this.showToast('Seeding demo data (this takes ~2 minutes)...', 'info');
             const response = await this.fetchWithTimeout('/api/admin/seed-mock-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
-            });
+            }, 300000);
             
             if (!response.ok) throw new Error('Seed failed');
             
@@ -2009,6 +2012,9 @@ class AdminPortal {
         } catch (error) {
             console.error('Error seeding data:', error);
             this.showToast('Failed to seed demo data: ' + error.message, 'error');
+        } finally {
+            const btn = document.getElementById('seed-data-btn');
+            if (btn) { btn.disabled = false; const s = btn.querySelector('strong'); if (s) s.textContent = 'Seed Demo Data'; }
         }
     }
 
@@ -2017,11 +2023,11 @@ class AdminPortal {
             const btn = document.getElementById('fix-reports-btn');
             if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing...'; }
             
-            this.showToast('Fixing reports: assigning cases, generating images...', 'info');
+            this.showToast('Fixing reports: assigning cases, generating images (takes ~2 min)...', 'info');
             const response = await this.fetchWithTimeout('/api/admin/fix-orphan-reports', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
-            }, 120000); // 2 min timeout — image generation is slow
+            }, 300000);
             
             if (!response.ok) throw new Error('Fix failed');
             
