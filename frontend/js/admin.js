@@ -1280,7 +1280,11 @@ class AdminPortal {
                        ${this.selectedCases.has(caseData.id) ? 'checked' : ''}
                        data-case-index="${index}"
                        onclick="event.stopPropagation(); window.adminPortal?.handleCaseCheckboxClick(event, '${caseData.id}', ${index})">
-                <div class="case-icon">📁</div>
+                ${caseData.scene_image_url ? `
+                <div class="case-thumbnail">
+                    <img src="${caseData.scene_image_url}" alt="Scene" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'case-icon\\'>📁</div>'">
+                </div>
+                ` : '<div class="case-icon">📁</div>'}
                 <div class="case-info">
                     <div class="case-header">
                         <div>
@@ -1948,6 +1952,9 @@ class AdminPortal {
             const stmtCount = statements.length;
             const reliabilityClass = stmtCount > 5 ? 'high' : stmtCount > 2 ? 'medium' : 'low';
             const reliabilityLabel = stmtCount > 5 ? 'High' : stmtCount > 2 ? 'Medium' : 'Low';
+
+            // Get AI-generated report image from image_url field or scene_versions
+            const reportImageUrl = report.image_url || (scenes.length > 0 ? scenes[scenes.length - 1].image_url : null);
             
             return `
                 <div class="report-detail-card">
@@ -1961,10 +1968,31 @@ class AdminPortal {
                         <div class="report-detail-meta">
                             <span>${statements.length} statement${statements.length !== 1 ? 's' : ''}</span>
                             <span>${scenes.length} scene${scenes.length !== 1 ? 's' : ''}</span>
+                            ${reportImageUrl ? '<span class="has-image-badge" title="Has AI scene image">🎬</span>' : ''}
                             <span class="expand-icon">▶</span>
                         </div>
                     </div>
                     <div class="report-detail-body">
+                        ${reportImageUrl ? `
+                        <div class="report-scene-image-section">
+                            <h4>🤖 AI Scene Reconstruction</h4>
+                            <div class="report-scene-image-container">
+                                <img src="${reportImageUrl}" alt="AI scene reconstruction for ${report.title || 'report'}" 
+                                     class="report-scene-image" loading="lazy"
+                                     onerror="this.parentElement.style.display='none'">
+                            </div>
+                        </div>
+                        ` : `
+                        <div class="report-scene-image-section no-image">
+                            <div class="no-image-placeholder">
+                                <span class="no-image-icon">🎬</span>
+                                <p>No AI scene image generated yet</p>
+                                <button class="btn-small btn-generate-scene" onclick="window.adminPortal?.generateReportScene('${report.id}')">
+                                    Generate Scene Image
+                                </button>
+                            </div>
+                        </div>
+                        `}
                         ${statements.length > 0 ? `
                         <div class="report-statements">
                             ${statements.map((stmt, j) => `
@@ -2040,6 +2068,31 @@ class AdminPortal {
         } finally {
             const btn = document.getElementById('fix-reports-btn');
             if (btn) { btn.disabled = false; btn.textContent = '🔧 Fix Reports'; }
+        }
+    }
+
+    async generateReportScene(reportId) {
+        try {
+            this.showToast('Generating AI scene image...', 'info');
+            const response = await this.fetchWithTimeout(`/api/sessions/${reportId}/generate-scene`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }, 120000);
+
+            if (!response.ok) throw new Error('Scene generation failed');
+
+            const data = await response.json();
+            this.showToast('Scene image generation started! It will appear shortly.', 'success');
+
+            // Refresh case detail after a short delay to show the new image
+            setTimeout(async () => {
+                if (this.currentCase) {
+                    await this.showCaseDetail(this.currentCase.id);
+                }
+            }, 8000);
+        } catch (error) {
+            console.error('Error generating report scene:', error);
+            this.showToast('Failed to generate scene: ' + error.message, 'error');
         }
     }
     

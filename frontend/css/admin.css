@@ -754,6 +754,21 @@
     border-radius: 8px;
 }
 
+.case-thumbnail {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+.case-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .case-info {
     flex: 1;
     min-width: 0;
@@ -1756,6 +1771,85 @@
 
 .report-detail-card.expanded .report-detail-body {
     display: block;
+}
+
+/* ─── Report Scene Image ──────────────────────────────────── */
+
+.report-scene-image-section {
+    margin: 0.75rem 0;
+}
+
+.report-scene-image-section h4 {
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.report-scene-image-container {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: #1a2a3a;
+}
+
+.report-scene-image {
+    width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.report-scene-image:hover {
+    transform: scale(1.02);
+}
+
+.report-scene-image-section.no-image {
+    text-align: center;
+}
+
+.no-image-placeholder {
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.no-image-icon {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 0.5rem;
+    opacity: 0.5;
+}
+
+.no-image-placeholder p {
+    color: #64748b;
+    font-size: 0.8rem;
+    margin-bottom: 0.75rem;
+}
+
+.btn-generate-scene {
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    color: white;
+    border: none;
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.btn-generate-scene:hover {
+    opacity: 0.85;
+}
+
+.has-image-badge {
+    font-size: 0.75rem;
+    opacity: 0.7;
 }
 
 .report-statements {

@@ -5944,6 +5944,7 @@ async def get_case_detail(case_id: str):
         for report_id in case.report_ids:
             session = await firestore_service.get_session(report_id)
             if session:
+                session_metadata = dict(getattr(session, 'metadata', {}) or {})
                 reports.append({
                     "id": session.id,
                     "title": session.title,
@@ -5951,6 +5952,7 @@ async def get_case_detail(case_id: str):
                     "source_type": getattr(session, 'source_type', 'chat'),
                     "created_at": session.created_at.isoformat() if session.created_at else None,
                     "statement_count": len(session.witness_statements),
+                    "image_url": session_metadata.get("report_scene_image_url"),
                     "statements": [
                         {"id": s.id, "text": s.text, "timestamp": s.timestamp.isoformat() if s.timestamp else None}
                         for s in session.witness_statements
@@ -6158,6 +6160,22 @@ Make the source_type vary between "voice", "chat", "phone", "email" across repor
                     session.case_id = case_id
 
                 await firestore_service.update_session(session)
+
+                # Generate scene image for this report using Gemini
+                try:
+                    all_text = " ".join(report.get("statements", []))
+                    img_url = await imagen_service.generate_report_scene(
+                        session.id, all_text[:500], []
+                    )
+                    if img_url:
+                        metadata = dict(session.metadata or {})
+                        metadata["report_scene_image_url"] = img_url
+                        session.metadata = metadata
+                        await firestore_service.update_session(session)
+                        logger.info(f"Generated image for report {report_number}")
+                except Exception as img_err:
+                    logger.warning(f"Image generation failed for {report_number}: {img_err}")
+
                 created_reports.append({
                     "report_number": report_number,
                     "title": report.get("title", ""),
@@ -6167,6 +6185,22 @@ Make the source_type vary between "voice", "chat", "phone", "email" across repor
                 })
             except Exception as e:
                 logger.warning(f"Failed to create report: {e}")
+
+        # Generate case images for newly created cases
+        for case_id in case_groups.values():
+            try:
+                case = await firestore_service.get_case(case_id)
+                if case and not case.scene_image_url:
+                    case_desc = f"{case.title}. {case.summary or ''}"
+                    img_url = await imagen_service.generate_case_scene(
+                        case.id, case.summary or case.title, case_desc[:500]
+                    )
+                    if img_url:
+                        case.scene_image_url = img_url
+                        await firestore_service.update_case(case)
+                        logger.info(f"Generated image for case {case.case_number}")
+            except Exception as e:
+                logger.warning(f"Case image generation failed: {e}")
 
         all_cases = await firestore_service.list_cases()
         cases_info = [
@@ -6254,7 +6288,7 @@ async def fix_orphan_reports(auth=Depends(require_admin_auth)):
                             )
                             if result:
                                 metadata["report_scene_image_url"] = result if isinstance(result, str) else result.get("url", "")
-                                metadata["report_scene_model"] = "imagen"
+                                metadata["report_scene_model"] = "gemini"
                                 session.metadata = metadata
                                 actions.append("image_generated")
                     except Exception as e:
@@ -6886,7 +6920,7 @@ async def generate_case_scene(case_id: str, body: SceneGenerateRequest = None):
                 "entity_type": "case",
                 "entity_id": case_id,
                 "image_path": path,
-                "model_used": "imagen",
+                "model_used": "gemini",
                 "prompt": description[:500],
             })
             await publish_event("image_generated", {"entity_type": "case", "entity_id": case_id, "image_path": path})
@@ -6916,7 +6950,7 @@ async def generate_report_scene(session_id: str, body: SceneGenerateRequest = No
                 "entity_type": "report",
                 "entity_id": session_id,
                 "image_path": path,
-                "model_used": "imagen",
+                "model_used": "gemini",
                 "prompt": description[:500],
             })
             await publish_event("image_generated", {"entity_type": "report", "entity_id": session_id, "image_path": path})

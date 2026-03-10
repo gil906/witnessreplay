@@ -815,7 +815,7 @@ class WebSocketHandler:
 
             if should_generate_report_scene:
                 try:
-                    report_model_used = "imagen"
+                    report_model_used = "gemini"
                     report_path = await imagen_service.generate_report_scene(
                         self.session_id,
                         description,
@@ -901,7 +901,7 @@ class WebSocketHandler:
                                 ((case.metadata or {}).get("scene_description", "") or combined_text or description or case.title)
                             ).strip()
 
-                            case_model_used = "imagen"
+                            case_model_used = "gemini"
                             case_path = await imagen_service.generate_case_scene(
                                 case.id,
                                 case_summary,

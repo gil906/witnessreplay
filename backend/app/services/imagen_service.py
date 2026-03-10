@@ -43,6 +43,9 @@ class ImagenService:
     async def generate_scene(self, prompt: str, quality: str = "fast") -> Optional[bytes]:
         """Generate a scene image from a text prompt.
 
+        Tries Gemini native image generation first (higher quotas),
+        then falls back to Imagen 4 models.
+
         Args:
             prompt: Scene description text.
             quality: 'fast', 'standard', or 'ultra' — controls model selection order.
@@ -50,6 +53,17 @@ class ImagenService:
         Returns:
             PNG image bytes, or None if all models exhausted / unavailable.
         """
+        # --- Try Gemini image generation first (much higher quotas) ---
+        try:
+            from app.services.gemini_image_service import gemini_image_service
+            gemini_bytes = await gemini_image_service.generate_image(prompt)
+            if gemini_bytes:
+                logger.info("Generated scene image via Gemini native image generation")
+                return gemini_bytes
+        except Exception as e:
+            logger.warning("Gemini image generation unavailable, falling back to Imagen: %s", e)
+
+        # --- Fallback to Imagen 4 ---
         if not self.client:
             return None
 
