@@ -1429,6 +1429,22 @@ class AdminPortal {
         }
         
         container.innerHTML = this.filteredReports.map(r => this.renderReportCard(r)).join('');
+        
+        // Add click handlers to report cards
+        container.querySelectorAll('.report-card').forEach(card => {
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', (e) => {
+                // Don't navigate if clicking dropdown/select
+                if (e.target.closest('select, button, a, .verification-select')) return;
+                const reportId = card.dataset.reportId;
+                const report = this.reports.find(r => r.id === reportId);
+                if (report && report.case_id) {
+                    this.showCaseDetail(report.case_id);
+                } else if (reportId) {
+                    this.showReportDetail(reportId);
+                }
+            });
+        });
     }
     
     renderReportCard(report) {
@@ -1494,6 +1510,26 @@ class AdminPortal {
     openCaseDetail(caseId) {
         // Wrapper for showCaseDetail - useful for onclick handlers
         this.showCaseDetail(caseId);
+    }
+    
+    async showReportDetail(reportId) {
+        // For unassigned reports, load the session and show detail panel
+        try {
+            const response = await this.fetchWithTimeout(`/api/sessions/${reportId}`);
+            if (!response.ok) throw new Error('Failed to load report');
+            const session = await response.json();
+            // If report now has a case, navigate there
+            if (session.case_id) {
+                this.showCaseDetail(session.case_id);
+                return;
+            }
+            // Show a quick toast with report info for unassigned reports
+            const title = session.title || 'Witness Report';
+            const stmtCount = (session.witness_statements || []).length;
+            this.showToast(`📝 ${this._sanitize(title)} — ${stmtCount} statements. Not yet assigned to a case.`, 'info');
+        } catch (e) {
+            this.showToast('Could not load report details', 'error');
+        }
     }
     
     async showCaseDetail(caseId) {

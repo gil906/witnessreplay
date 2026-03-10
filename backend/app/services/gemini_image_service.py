@@ -18,10 +18,11 @@ from google.genai import types
 logger = logging.getLogger(__name__)
 
 # Gemini models that support image generation output
+# See https://ai.google.dev/gemini-api/docs/image-generation
 GEMINI_IMAGE_MODELS = [
-    "gemini-2.0-flash-preview-image-generation",
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
+    "gemini-2.5-flash-image",               # Nano Banana – fast, high-volume
+    "gemini-3.1-flash-image-preview",        # Nano Banana 2 – best balance
+    "gemini-3-pro-image-preview",            # Nano Banana Pro – professional
 ]
 
 IMAGES_DIR = "/app/data/images"
@@ -75,23 +76,35 @@ class GeminiImageService:
                     model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
+                        response_modalities=["TEXT", "IMAGE"],
                     ),
                 )
 
-                # Extract image from response parts
-                if result and result.candidates:
-                    for candidate in result.candidates:
-                        if candidate.content and candidate.content.parts:
-                            for part in candidate.content.parts:
-                                if hasattr(part, 'inline_data') and part.inline_data:
-                                    if part.inline_data.mime_type and 'image' in part.inline_data.mime_type:
-                                        image_bytes = part.inline_data.data
-                                        if isinstance(image_bytes, str):
-                                            image_bytes = base64.b64decode(image_bytes)
-                                        if image_bytes:
-                                            logger.info("Generated image with Gemini model %s", model_name)
-                                            return image_bytes
+                # Extract image from response parts using the SDK helpers
+                if result and hasattr(result, 'parts') and result.parts:
+                    for part in result.parts:
+                        # Try SDK as_image() helper first (returns PIL Image)
+                        try:
+                            pil_image = part.as_image()
+                            if pil_image:
+                                import io
+                                buf = io.BytesIO()
+                                pil_image.save(buf, format="PNG")
+                                image_bytes = buf.getvalue()
+                                if image_bytes:
+                                    logger.info("Generated image with Gemini model %s (as_image)", model_name)
+                                    return image_bytes
+                        except Exception:
+                            pass
+                        # Fallback: check inline_data directly
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            if part.inline_data.mime_type and 'image' in part.inline_data.mime_type:
+                                image_bytes = part.inline_data.data
+                                if isinstance(image_bytes, str):
+                                    image_bytes = base64.b64decode(image_bytes)
+                                if image_bytes:
+                                    logger.info("Generated image with Gemini model %s (inline_data)", model_name)
+                                    return image_bytes
 
                 logger.warning("No image data in response from %s", model_name)
 

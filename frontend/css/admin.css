@@ -4352,6 +4352,8 @@ html {
 
     body.side-panel-open .admin-dashboard {
         width: 50%;
+        margin: 0;
+        margin-left: 0;
         padding-right: 1.5rem;
     }
 
