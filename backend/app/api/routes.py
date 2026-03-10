@@ -6190,7 +6190,7 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
                 sess = await firestore_service.get_session(cr["session_id"])
                 if sess and not sess.case_id:
                     if i > 0:
-                        await asyncio.sleep(15)  # 15s between calls = 4 RPM, well under limit
+                        await asyncio.sleep(8)  # 8s between calls to stay under rate limits
                     logger.info(f"Assigning report {cr['report_number']} ({cr['title']}) to case...")
                     case_id = await case_manager.assign_report_to_case(sess)
                     sess.case_id = case_id

@@ -661,8 +661,8 @@ async def timeout_middleware(request: Request, call_next):
     """Timeout protection with endpoint-specific limits."""
     path = request.url.path
     # Longer timeouts for AI/streaming/image-generation endpoints
-    if any(p in path for p in ['/ws', '/stream', '/generate', '/tts', '/scene', '/image', '/interview']):
-        timeout_seconds = 180.0
+    if any(p in path for p in ['/ws', '/stream', '/generate', '/tts', '/scene', '/image', '/interview', '/seed', '/fix-orphan']):
+        timeout_seconds = 300.0
     elif any(p in path for p in ['/health', '/status', '/ping']):
         timeout_seconds = 10.0
     else:
