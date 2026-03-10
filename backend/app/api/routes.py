@@ -6050,21 +6050,7 @@ async def upload_evidence_photo(session_id: str):
 async def seed_mock_data(auth=Depends(require_admin_auth)):
     """Seed the database with mock reports and cases for demonstration."""
     try:
-        # First, clean all existing sessions and cases
-        logger.info("Cleaning existing data before seed...")
-        existing_sessions = await firestore_service.list_sessions(limit=500)
-        for s in existing_sessions:
-            try:
-                await firestore_service.delete_session(s.id)
-            except Exception:
-                pass
-        existing_cases = await firestore_service.list_cases(limit=500)
-        for c in existing_cases:
-            try:
-                await firestore_service.delete_case(c.id)
-            except Exception:
-                pass
-        logger.info(f"Cleaned {len(existing_sessions)} sessions, {len(existing_cases)} cases")
+        logger.info("Generating new demo reports with Gemini...")
 
         # Generate mock reports using Gemini for variety
         from google import genai as genai_client
