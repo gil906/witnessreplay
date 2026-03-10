@@ -6066,160 +6066,121 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
                 pass
         logger.info(f"Cleaned {len(existing_sessions)} sessions, {len(existing_cases)} cases")
 
-        mock_reports = [
-            # --- Car Accident Reports ---
-            {
-                "title": "Car Accident on Main Street",
-                "source_type": "chat",
-                "statements": [
-                    "I was walking on Main Street around 3:15 PM on February 22nd when I heard a loud crash.",
-                    "A red sedan ran the red light at the intersection of Main and Oak Avenue.",
-                    "It hit a blue SUV that was turning left. The SUV spun around and hit a parked white van.",
-                    "The driver of the red car looked like a young man, maybe in his 20s, wearing a black hoodie.",
-                    "There were two people in the SUV - a woman driving and a child in the back seat.",
-                    "Glass was everywhere on the road. The front of the red car was completely smashed."
-                ],
-                "metadata": {"location": "Main Street & Oak Avenue", "case_type": "accident"}
-            },
-            {
-                "title": "Witnessed collision at Main/Oak intersection",
-                "source_type": "phone",
-                "statements": [
-                    "I called because I saw an accident today around 3:20 PM at Main Street.",
-                    "A red car, maybe a Toyota, blew through the intersection really fast.",
-                    "It crashed into another car that was making a left turn. I think it was a dark blue Honda.",
-                    "The red car driver was a younger guy. He got out and was holding his head.",
-                    "The lady in the other car was screaming. Someone ran over to help with the kid in the backseat.",
-                    "An ambulance arrived about 10 minutes later."
-                ],
-                "metadata": {"location": "Main St intersection", "case_type": "accident"}
-            },
-            {
-                "title": "Traffic accident report near Main Street",
-                "source_type": "voice",
-                "statements": [
-                    "I was in the coffee shop on the corner of Main and Oak around 3:15, maybe 3:20 PM on the 22nd.",
-                    "I heard the crash and looked out the window. A red compact car had hit a blue SUV.",
-                    "The red car came from the east on Oak Avenue, must have been going at least 50 in a 30 zone.",
-                    "After the impact the SUV hit a white vehicle parked on the street.",
-                    "I ran out to help. The SUV driver was a woman, about 35-40, she seemed disoriented.",
-                    "There was a little girl in the back, maybe 5 years old. She was crying but looked okay.",
-                    "The red car driver was young, wearing dark clothes. He seemed dazed."
-                ],
-                "metadata": {"location": "Corner of Main & Oak", "case_type": "accident"}
-            },
-            # --- Convenience Store Robbery ---
-            {
-                "title": "Robbery at QuickMart Store",
-                "source_type": "chat",
-                "statements": [
-                    "I was buying groceries at QuickMart on 5th Avenue around 9:45 PM on February 21st.",
-                    "Two men came in wearing ski masks. One had a gun, the other had a knife.",
-                    "The one with the gun was tall, maybe 6 feet, wearing all black clothes.",
-                    "The shorter one with the knife went behind the counter and grabbed cash from the register.",
-                    "They yelled at everyone to get on the floor. The whole thing lasted about 3 minutes.",
-                    "They ran out the front door and got into a dark colored car, maybe black or dark gray.",
-                    "I think it was a newer model sedan, maybe a Nissan or Honda."
-                ],
-                "metadata": {"location": "QuickMart, 5th Avenue", "case_type": "crime"}
-            },
-            {
-                "title": "Armed robbery witness account",
-                "source_type": "email",
-                "statements": [
-                    "I am writing to report what I witnessed at the QuickMart on 5th Avenue last night around 9:45 PM, February 21st.",
-                    "Two masked individuals entered the store. The taller one, approximately 6 foot 1, brandished a handgun.",
-                    "The shorter individual, about 5 foot 7, jumped over the counter with a large knife.",
-                    "The taller one was wearing a black jacket and black pants. The shorter one wore a gray hoodie and jeans.",
-                    "They took money from the register and I noticed the shorter one also grabbed cigarettes.",
-                    "They fled in a dark vehicle heading south on 5th Avenue. The car looked like a black Honda Civic, newer model.",
-                    "The store clerk was very shaken but not physically harmed."
-                ],
-                "metadata": {"location": "QuickMart, 5th Avenue", "case_type": "crime"}
-            },
-            # --- Hit and Run ---
-            {
-                "title": "Hit and run on Elm Boulevard",
-                "source_type": "voice",
-                "statements": [
-                    "I saw a pedestrian get hit by a car on Elm Boulevard around 7:30 PM on February 23rd.",
-                    "The car was a silver or light gray pickup truck, pretty large, maybe a Ford F-150.",
-                    "It was driving too fast and ran over the crosswalk. A man was crossing the street.",
-                    "The man fell and the truck just kept going. It turned right onto Cedar Lane.",
-                    "The victim was an older man, maybe 60s, wearing a brown jacket. He was on the ground holding his leg.",
-                    "I called 911 immediately. Some other people stopped to help."
-                ],
-                "metadata": {"location": "Elm Boulevard near Cedar Lane", "case_type": "accident"}
-            }
-        ]
+        # Generate mock reports using Gemini for variety
+        from google import genai as genai_client
+        client = genai_client.Client(api_key=settings.google_api_key)
+
+        gen_prompt = """Generate 6 realistic witness reports for a police department system. Create 3 different incidents with multiple witnesses for some:
+
+INCIDENT 1 (2-3 witnesses): A traffic accident. Pick a random realistic street name, time, and date.
+INCIDENT 2 (2 witnesses): A crime (robbery, assault, theft, etc). Different location and date from incident 1.
+INCIDENT 3 (1 witness): A different type of incident (hit-and-run, vandalism, suspicious activity, etc). Different location and date.
+
+For each report, provide:
+- A short title (what a witness would call it)
+- The incident type: "accident" or "crime"
+- A specific location (street names, intersections)
+- 5-7 witness statements (first-person, natural language, as if someone is telling a police officer what they saw). Each statement should be 1-2 sentences.
+- Each witness should describe the same event from slightly different perspectives with slightly different details (one noticed the car color, another noticed what someone was wearing, etc.)
+
+Reply in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
+[
+  {
+    "incident_id": 1,
+    "title": "...",
+    "case_type": "accident",
+    "location": "...",
+    "source_type": "voice",
+    "statements": ["stmt1", "stmt2", "stmt3", "stmt4", "stmt5"]
+  }
+]
+
+Make the source_type vary between "voice", "chat", "phone", "email" across reports. Make it realistic and varied — different cities, times, people described."""
+
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=gen_prompt,
+                config={"temperature": 1.0, "max_output_tokens": 4000}
+            )
+            raw_text = response.text.strip()
+            # Clean up response — remove markdown code blocks if present
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("\n", 1)[1] if "\n" in raw_text else raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3].strip()
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:].strip()
+            
+            generated_reports = json.loads(raw_text)
+            logger.info(f"Gemini generated {len(generated_reports)} reports")
+        except Exception as e:
+            logger.error(f"Gemini report generation failed: {e}, falling back to defaults")
+            # Minimal fallback
+            generated_reports = [
+                {"incident_id": 1, "title": "Car Accident on 5th Avenue", "case_type": "accident", "location": "5th Avenue & Pine St", "source_type": "voice",
+                 "statements": ["I saw two cars collide at the intersection around 3 PM.", "A red sedan ran the light and hit a blue SUV.", "The SUV driver seemed hurt.", "Glass was everywhere.", "Someone called 911 right away."]},
+                {"incident_id": 1, "title": "Collision witnessed at 5th and Pine", "case_type": "accident", "location": "5th Ave intersection", "source_type": "phone",
+                 "statements": ["I heard a loud crash and looked out my window.", "A red car had hit another car in the intersection.", "The driver of the red car got out looking dazed.", "There was a woman in the other car screaming.", "An ambulance came about 10 minutes later."]},
+                {"incident_id": 2, "title": "Robbery at corner store", "case_type": "crime", "location": "Market Street", "source_type": "chat",
+                 "statements": ["Two men ran into the store with masks on.", "One had a weapon, looked like a handgun.", "They grabbed cash from the register.", "They ran out and got into a dark SUV.", "The whole thing lasted maybe 2 minutes."]},
+                {"incident_id": 2, "title": "Armed robbery witness report", "case_type": "crime", "location": "Market St shop", "source_type": "email",
+                 "statements": ["I was buying coffee when two masked men burst in.", "The taller one pointed a gun at the cashier.", "They took the money and some items.", "They fled heading south in a black vehicle.", "The cashier was very shaken but unharmed."]},
+                {"incident_id": 3, "title": "Hit and run on Oak Boulevard", "case_type": "accident", "location": "Oak Boulevard", "source_type": "voice",
+                 "statements": ["A truck hit a pedestrian crossing the street.", "It was a gray pickup, maybe a Ford.", "The driver didn't stop, just kept going.", "The victim was an older gentleman.", "I called 911 immediately."]},
+                {"incident_id": 3, "title": "Suspicious vehicle near school", "case_type": "crime", "location": "Elm Street", "source_type": "chat",
+                 "statements": ["A van has been parked near the school for hours.", "It's a white van with no plates.", "Someone was sitting inside watching the kids.", "I felt uneasy and called to report it.", "The van left when a police car drove by."]},
+            ]
 
         created_reports = []
-        for mock in mock_reports:
-            report_number = await firestore_service.get_next_report_number()
-            session = ReconstructionSession(
-                id=str(uuid.uuid4()),
-                title=mock["title"],
-                source_type=mock["source_type"],
-                report_number=report_number,
-                witness_statements=[
-                    WitnessStatement(
-                        id=str(uuid.uuid4()),
-                        text=stmt_text,
-                    )
-                    for stmt_text in mock["statements"]
-                ],
-                metadata=mock.get("metadata", {}),
-                status="completed"
-            )
+        case_groups = {}  # incident_id -> case_id
 
-            await firestore_service.create_session(session)
-
-            created_reports.append({
-                "report_number": report_number,
-                "title": mock["title"],
-                "source_type": mock["source_type"],
-                "session_id": session.id
-            })
-
-        # Assign reports to cases — group by incident type from metadata
-        # For demo data, group by case_type (accident/crime) + first significant location word
-        case_groups = {}  # group_key -> case_id
-        for cr in created_reports:
+        for report in generated_reports:
             try:
-                sess = await firestore_service.get_session(cr["session_id"])
-                if not sess:
-                    continue
+                report_number = await firestore_service.get_next_report_number()
+                incident_id = report.get("incident_id", len(created_reports))
                 
-                case_type = sess.metadata.get("case_type", "unknown")
-                location = sess.metadata.get("location", "unknown").lower()
-                # Normalize location: extract the main street/area name
-                # "Main Street & Oak Avenue" / "Main St intersection" / "Corner of Main & Oak" -> "main"
-                import re as _re
-                loc_words = _re.findall(r'[a-z]+', location)
-                # Use first meaningful word (skip common words)
-                skip_words = {"at", "on", "near", "corner", "of", "the", "and", "st", "ave", "blvd", "rd", "street", "avenue", "boulevard", "intersection", "road"}
-                loc_key = next((w for w in loc_words if w not in skip_words and len(w) > 2), "unknown")
-                group_key = f"{case_type}:{loc_key}"
-                
-                if group_key in case_groups:
-                    # Add to existing case
-                    case_id = case_groups[group_key]
+                session = ReconstructionSession(
+                    id=str(uuid.uuid4()),
+                    title=report.get("title", f"Report {report_number}"),
+                    source_type=report.get("source_type", "voice"),
+                    report_number=report_number,
+                    witness_statements=[
+                        WitnessStatement(id=str(uuid.uuid4()), text=stmt)
+                        for stmt in report.get("statements", [])
+                    ],
+                    metadata={
+                        "case_type": report.get("case_type", "unknown"),
+                        "location": report.get("location", ""),
+                        "generated_by": "gemini"
+                    },
+                    status="completed"
+                )
+                await firestore_service.create_session(session)
+
+                # Group by incident_id
+                if incident_id in case_groups:
+                    case_id = case_groups[incident_id]
                     case = await firestore_service.get_case(case_id)
-                    if case and sess.id not in case.report_ids:
-                        case.report_ids.append(sess.id)
+                    if case and session.id not in case.report_ids:
+                        case.report_ids.append(session.id)
                         await firestore_service.update_case(case)
-                    sess.case_id = case_id
+                    session.case_id = case_id
                 else:
-                    # Create new case
-                    case_id = await case_manager._create_case_for_report(sess)
-                    case_groups[group_key] = case_id
-                    sess.case_id = case_id
-                
-                await firestore_service.update_session(sess)
-                cr["case_id"] = case_id
+                    case_id = await case_manager._create_case_for_report(session)
+                    case_groups[incident_id] = case_id
+                    session.case_id = case_id
+
+                await firestore_service.update_session(session)
+                created_reports.append({
+                    "report_number": report_number,
+                    "title": report.get("title", ""),
+                    "source_type": report.get("source_type", "voice"),
+                    "case_id": case_id,
+                    "session_id": session.id
+                })
             except Exception as e:
-                logger.warning(f"Case assignment for {cr['report_number']}: {e}")
-                cr["case_id"] = None
+                logger.warning(f"Failed to create report: {e}")
 
         all_cases = await firestore_service.list_cases()
         cases_info = [
