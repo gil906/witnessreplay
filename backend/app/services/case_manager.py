@@ -78,96 +78,77 @@ class CaseManager:
         return await self._find_matching_case_llm(report, cases)
 
     async def _find_matching_case_llm(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
-        """LLM-based case matching fallback with multi-model verification.
-        
-        This is a high-stakes decision as incorrect matching can corrupt case data.
-        Uses cross-verification between Gemini and Gemma to ensure accuracy.
-        """
+        """Simple, direct Gemini call to determine if a report matches an existing case."""
         try:
             report_text = self._get_report_text(report)
             if not report_text:
                 return None
 
-            cases_info = []
+            cases_descriptions = []
             for case in cases:
-                cases_info.append({
-                    "case_id": case.id,
-                    "case_number": case.case_number,
-                    "title": case.title,
-                    "summary": case.summary,
-                    "location": case.location,
-                    "timeframe": case.timeframe,
-                    "report_count": len(case.report_ids)
-                })
+                cases_descriptions.append(
+                    f"CASE_ID: {case.id}\n"
+                    f"Case Number: {case.case_number}\n"
+                    f"Title: {case.title}\n"
+                    f"Summary: {case.summary or 'N/A'}\n"
+                    f"Location: {case.location or 'N/A'}\n"
+                    f"Reports: {len(case.report_ids)}\n"
+                )
 
-            prompt = f"""You are a case management AI for law enforcement. Your job is to determine if a new witness report describes the EXACT SAME incident as an existing case.
+            cases_text = "\n---\n".join(cases_descriptions)
 
-STRICT MATCHING RULES — a report should ONLY match an existing case if ALL of these are true:
-1. SAME TYPE of incident (e.g., car accident matches car accident, NOT robbery)
-2. SAME LOCATION or very nearby area (same street/intersection)
-3. SAME DATE AND TIME (within a few hours of each other)
-4. SAME KEY DETAILS (similar vehicles, people, or events described)
+            prompt = f"""You are a police case classifier. Determine if this NEW witness report belongs to an EXISTING case.
 
-DO NOT MATCH if:
-- Different type of incident (accident vs robbery vs hit-and-run)
-- Different location (different street, different part of town)
-- Different date (even one day apart = different incident)
-- The descriptions don't clearly refer to the same specific event
+RULES:
+- MATCH only if the report describes the EXACT SAME specific incident (same event, same place, same time).
+- A car accident and a robbery are DIFFERENT incidents — never group them together.
+- A hit-and-run and a car accident at a different location are DIFFERENT incidents.
+- Two witnesses describing the same car crash at the same intersection = SAME incident.
+- If unsure, answer NO MATCH.
 
 NEW REPORT:
 Title: {report.title}
-Created: {report.created_at.isoformat() if report.created_at else 'unknown'}
-Witness statements: {report_text[:1000]}
+Date: {report.created_at.isoformat() if report.created_at else 'unknown'}
+Statements: {report_text[:800]}
 
 EXISTING CASES:
-{json.dumps(cases_info, indent=2, default=str)}
+{cases_text}
 
-If this report describes the EXACT SAME specific incident as an existing case, set matches_existing_case=true and provide the case_id.
-If there is ANY doubt, set matches_existing_case=false — it's better to create a new case than to incorrectly merge different incidents."""
+Reply with EXACTLY one line:
+- If it matches a case: MATCH:case_id_here
+- If it does NOT match any case: NO MATCH"""
 
-            analysis_model = await model_selector.get_best_model_for_task("analysis")
-
-            # Use multi-model verification for this high-stakes matching decision
-            verification = await multi_model_verifier.verify_extraction(
-                prompt=prompt,
-                response_schema=CaseMatchResponse,
-                primary_model=analysis_model,
-                temperature=0.1,
-                comparison_fields=["matches_existing_case", "matched_case_id"],
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=100,
+                )
             )
 
-            # Handle verification results
-            if verification.result == VerificationResult.ERROR:
-                logger.warning("Multi-model verification failed for case matching")
+            if not response or not response.text:
+                logger.warning("Empty response from Gemini for case matching")
                 return None
 
-            if verification.result == VerificationResult.DISCREPANCY:
-                # Models disagree on case matching - be conservative and don't match
-                logger.warning(
-                    f"Case matching discrepancy for report {report.id}: "
-                    f"models disagreed, not matching to avoid corruption. "
-                    f"Discrepancies: {verification.discrepancies}"
-                )
+            answer = response.text.strip()
+            logger.info(f"Case matching response for '{report.title}': {answer}")
+
+            if answer.startswith("MATCH:"):
+                matched_id = answer.replace("MATCH:", "").strip()
+                # Verify this case_id actually exists
+                for case in cases:
+                    if case.id == matched_id:
+                        logger.info(f"Report '{report.title}' matched to case {case.case_number}")
+                        return case.id
+                logger.warning(f"Gemini returned unknown case_id: {matched_id}")
                 return None
 
-            if verification.primary_response and verification.primary_response.parsed_response:
-                result = verification.primary_response.parsed_response
-
-                if result.matches_existing_case and result.matched_case_id:
-                    # Verify the case_id exists
-                    for case in cases:
-                        if case.id == result.matched_case_id:
-                            logger.info(
-                                f"Report {report.id} matched to case {case.case_number} "
-                                f"(verified, confidence: {verification.confidence_score})"
-                            )
-                            return case.id
-
-            logger.info(f"Report {report.id} did not match any existing case")
+            logger.info(f"Report '{report.title}' did not match any existing case")
             return None
 
         except Exception as e:
-            logger.error(f"Error matching report to case (LLM): {e}")
+            logger.error(f"Error in LLM case matching: {e}")
             return None
 
     async def _create_case_for_report(self, report: ReconstructionSession) -> str:
