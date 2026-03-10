@@ -78,81 +78,82 @@ class CaseManager:
         return await self._find_matching_case_llm(report, cases)
 
     async def _find_matching_case_llm(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
-        """Simple, direct Gemini call to determine if a report matches an existing case."""
+        """Simple direct Gemini call to match reports to cases using numbered labels."""
         try:
             report_text = self._get_report_text(report)
             if not report_text:
                 return None
 
-            cases_descriptions = []
-            for case in cases:
-                cases_descriptions.append(
-                    f"CASE_ID: {case.id}\n"
-                    f"Case Number: {case.case_number}\n"
-                    f"Title: {case.title}\n"
-                    f"Summary: {case.summary or 'N/A'}\n"
-                    f"Location: {case.location or 'N/A'}\n"
-                    f"Reports: {len(case.report_ids)}\n"
+            # Build numbered case descriptions — easier for Gemini than UUIDs
+            case_map = {}  # number -> case object
+            case_descriptions = []
+            for idx, case in enumerate(cases, 1):
+                case_map[idx] = case
+                case_descriptions.append(
+                    f"[{idx}] {case.title}\n"
+                    f"    Summary: {(case.summary or 'No summary')[:300]}\n"
+                    f"    Location: {case.location or 'Unknown'}\n"
+                    f"    Reports: {len(case.report_ids)}"
                 )
 
-            cases_text = "\n---\n".join(cases_descriptions)
+            cases_text = "\n".join(case_descriptions)
 
-            prompt = f"""You are a police case classifier. Determine if this NEW witness report belongs to an EXISTING case.
+            prompt = f"""You are a police case classifier. Given a NEW witness report, determine if it describes the SAME specific incident as any existing case.
 
-RULES:
-- MATCH only if the report describes the EXACT SAME specific incident (same event, same place, same time).
-- A car accident and a robbery are DIFFERENT incidents — never group them together.
-- A hit-and-run and a car accident at a different location are DIFFERENT incidents.
-- Two witnesses describing the same car crash at the same intersection = SAME incident.
-- If unsure, answer NO MATCH.
+Match criteria — ALL must be true:
+- Same TYPE of incident (car crash = car crash, robbery = robbery)
+- Same LOCATION (same street or intersection)  
+- Same TIME PERIOD (same day/date)
+- Descriptions clearly refer to the same event
 
-NEW REPORT:
-Title: {report.title}
-Date: {report.created_at.isoformat() if report.created_at else 'unknown'}
-Statements: {report_text[:800]}
+Do NOT match different types of incidents together (e.g., car accident ≠ robbery).
+
+NEW WITNESS REPORT:
+"{report.title}"
+Statements: {report_text[:600]}
 
 EXISTING CASES:
 {cases_text}
 
-Reply with EXACTLY one line:
-- If it matches a case: MATCH:case_id_here
-- If it does NOT match any case: NO MATCH"""
+If the new report matches an existing case, reply with just the number like: 1
+If it does NOT match any case, reply with: 0"""
 
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.0,
-                    max_output_tokens=200,
+                    max_output_tokens=50,
                 )
             )
 
             if not response or not response.text:
-                logger.warning("Empty response from Gemini for case matching")
+                logger.warning("Empty Gemini response for case matching")
                 return None
 
             answer = response.text.strip()
-            logger.info(f"Case matching for '{report.title}': raw response = '{answer}'")
+            logger.info(f"Case matching for '{report.title}': Gemini says '{answer}'")
 
-            # Parse response - look for MATCH: anywhere in the response
-            for line in answer.split('\n'):
-                line = line.strip()
-                if line.upper().startswith("MATCH:"):
-                    matched_id = line.split(":", 1)[1].strip()
-                    # Verify this case_id actually exists
-                    for case in cases:
-                        if case.id == matched_id:
-                            logger.info(f"✅ Report '{report.title}' MATCHED to case {case.case_number} ({case.title})")
-                            return case.id
-                    logger.warning(f"Gemini returned unknown case_id: {matched_id}")
-                    return None
-
-            # If no MATCH found, check if Gemini said NO MATCH explicitly or just gave random text
-            if "NO MATCH" in answer.upper() or "NO_MATCH" in answer.upper() or "DOES NOT MATCH" in answer.upper():
-                logger.info(f"Report '{report.title}' explicitly did not match any case")
+            # Parse the number from response
+            import re
+            numbers = re.findall(r'\d+', answer)
+            if numbers:
+                match_num = int(numbers[0])
+                if match_num > 0 and match_num in case_map:
+                    matched_case = case_map[match_num]
+                    logger.info(f"✅ Report '{report.title}' MATCHED to [{match_num}] {matched_case.case_number}: {matched_case.title}")
+                    return matched_case.id
+                elif match_num == 0:
+                    logger.info(f"Report '{report.title}' = NO MATCH (Gemini said 0)")
+                else:
+                    logger.warning(f"Invalid case number {match_num} from Gemini")
             else:
-                logger.warning(f"Unexpected Gemini response for case matching: '{answer[:200]}'")
-            
+                logger.warning(f"Could not parse number from Gemini response: '{answer}'")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in LLM case matching: {e}")
             return None
 
         except Exception as e:
