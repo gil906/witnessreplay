@@ -6050,6 +6050,22 @@ async def upload_evidence_photo(session_id: str):
 async def seed_mock_data(auth=Depends(require_admin_auth)):
     """Seed the database with mock reports and cases for demonstration."""
     try:
+        # First, clean all existing sessions and cases
+        logger.info("Cleaning existing data before seed...")
+        existing_sessions = await firestore_service.list_sessions(limit=500)
+        for s in existing_sessions:
+            try:
+                await firestore_service.delete_session(s.id)
+            except Exception:
+                pass
+        existing_cases = await firestore_service.list_cases(limit=500)
+        for c in existing_cases:
+            try:
+                await firestore_service.delete_case(c.id)
+            except Exception:
+                pass
+        logger.info(f"Cleaned {len(existing_sessions)} sessions, {len(existing_cases)} cases")
+
         mock_reports = [
             # --- Car Accident Reports ---
             {
@@ -6167,14 +6183,20 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
 
         # Now assign all reports to cases AFTER all are created
         # This lets Gemini see all cases and make proper grouping decisions
-        for cr in created_reports:
+        # Add delay between calls to respect rate limits (5 RPM for gemini-2.5-flash)
+        import time as _time
+        for i, cr in enumerate(created_reports):
             try:
                 sess = await firestore_service.get_session(cr["session_id"])
                 if sess and not sess.case_id:
+                    if i > 0:
+                        await asyncio.sleep(15)  # 15s between calls = 4 RPM, well under limit
+                    logger.info(f"Assigning report {cr['report_number']} ({cr['title']}) to case...")
                     case_id = await case_manager.assign_report_to_case(sess)
                     sess.case_id = case_id
                     await firestore_service.update_session(sess)
                     cr["case_id"] = case_id
+                    logger.info(f"  -> Assigned to case {case_id}")
             except Exception as e:
                 logger.warning(f"Case assignment for {cr['report_number']}: {e}")
                 cr["case_id"] = None

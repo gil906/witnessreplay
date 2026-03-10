@@ -155,6 +155,17 @@ class FirestoreService:
             logger.info(f"Deleted session {session_id} from memory")
         return True
     
+    async def delete_case(self, case_id: str) -> bool:
+        """Delete a case."""
+        try:
+            db = await self._get_sqlite()
+            await db._db.execute("DELETE FROM cases WHERE id = ?", (case_id,))
+            await db._db.commit()
+            logger.info(f"Deleted case {case_id}")
+        except Exception as e:
+            logger.warning(f"delete_case failed: {e}")
+        return True
+    
     async def list_sessions(self, limit: int = 50) -> List[ReconstructionSession]:
         """List all sessions from Firestore or in-memory."""
         if self.client:
