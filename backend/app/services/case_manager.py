@@ -118,14 +118,31 @@ EXISTING CASES:
 If the new report matches an existing case, reply with just the number like: 1
 If it does NOT match any case, reply with: 0"""
 
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    max_output_tokens=50,
-                )
-            )
+            # Use flash-lite (10 RPM) to avoid rate limits on flash (5 RPM)
+            import time as _time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model="gemini-2.5-flash-lite",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.0,
+                            max_output_tokens=50,
+                        )
+                    )
+                    break
+                except Exception as retry_err:
+                    err_str = str(retry_err).lower()
+                    if "429" in err_str or "rate" in err_str or "quota" in err_str or "exhausted" in err_str:
+                        wait_time = 15 * (attempt + 1)
+                        logger.warning(f"Rate limited on attempt {attempt+1}, waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        if attempt == max_retries - 1:
+                            logger.error(f"Rate limited after {max_retries} retries for case matching")
+                            return None
+                    else:
+                        raise
 
             if not response or not response.text:
                 logger.warning("Empty Gemini response for case matching")
