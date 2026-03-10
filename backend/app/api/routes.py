@@ -6158,16 +6158,26 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
 
             await firestore_service.create_session(session)
 
-            case_id = await case_manager.assign_report_to_case(session)
-            session.case_id = case_id
-            await firestore_service.update_session(session)
-
             created_reports.append({
                 "report_number": report_number,
                 "title": mock["title"],
                 "source_type": mock["source_type"],
-                "case_id": case_id
+                "session_id": session.id
             })
+
+        # Now assign all reports to cases AFTER all are created
+        # This lets Gemini see all cases and make proper grouping decisions
+        for cr in created_reports:
+            try:
+                sess = await firestore_service.get_session(cr["session_id"])
+                if sess and not sess.case_id:
+                    case_id = await case_manager.assign_report_to_case(sess)
+                    sess.case_id = case_id
+                    await firestore_service.update_session(sess)
+                    cr["case_id"] = case_id
+            except Exception as e:
+                logger.warning(f"Case assignment for {cr['report_number']}: {e}")
+                cr["case_id"] = None
 
         all_cases = await firestore_service.list_cases()
         cases_info = [

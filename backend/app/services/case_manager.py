@@ -62,29 +62,19 @@ class CaseManager:
         return await self._create_case_for_report(report)
 
     async def _find_matching_case(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
-        """Use embeddings for fast case matching, fall back to LLM if needed."""
-        from app.services.embedding_service import embedding_service
-
+        """Use Gemini LLM to intelligently match reports to existing cases.
+        
+        Checks: incident type, location, date/time, description similarity.
+        Only groups reports that clearly describe the SAME specific incident.
+        """
         report_text = self._get_report_text(report)
         if not report_text:
             return None
 
-        # Build candidate list from existing cases
-        candidates = []
-        for case in cases:
-            case_text = f"{case.title}. {case.summary or ''}. Location: {case.location or ''}. Reports: {len(case.report_ids)}"
-            candidates.append((case.id, case_text))
-
-        if not candidates:
+        if not cases:
             return None
 
-        # Try embedding-based matching first (100 RPM vs 5 RPM!)
-        match_id = await embedding_service.find_most_similar(report_text, candidates, threshold=0.72)
-        if match_id:
-            logger.info(f"Report {report.id} matched via embedding similarity")
-            return match_id
-
-        # Fall back to LLM-based matching only if embeddings fail
+        # Always use LLM for case matching — embeddings are too loose
         return await self._find_matching_case_llm(report, cases)
 
     async def _find_matching_case_llm(self, report: ReconstructionSession, cases: List[Case]) -> Optional[str]:
@@ -110,23 +100,30 @@ class CaseManager:
                     "report_count": len(case.report_ids)
                 })
 
-            prompt = f"""You are a case management AI. Analyze this new witness report and determine if it belongs to any existing case.
+            prompt = f"""You are a case management AI for law enforcement. Your job is to determine if a new witness report describes the EXACT SAME incident as an existing case.
 
-A report should match a case if:
-- It describes the same incident/event (same type of event like accident, crime etc)
-- Similar time period (same day or close dates)
-- Similar location or area
-- Describes similar key elements (vehicles, people, actions)
+STRICT MATCHING RULES — a report should ONLY match an existing case if ALL of these are true:
+1. SAME TYPE of incident (e.g., car accident matches car accident, NOT robbery)
+2. SAME LOCATION or very nearby area (same street/intersection)
+3. SAME DATE AND TIME (within a few hours of each other)
+4. SAME KEY DETAILS (similar vehicles, people, or events described)
+
+DO NOT MATCH if:
+- Different type of incident (accident vs robbery vs hit-and-run)
+- Different location (different street, different part of town)
+- Different date (even one day apart = different incident)
+- The descriptions don't clearly refer to the same specific event
 
 NEW REPORT:
 Title: {report.title}
 Created: {report.created_at.isoformat() if report.created_at else 'unknown'}
-Statements: {report_text}
+Witness statements: {report_text[:1000]}
 
 EXISTING CASES:
 {json.dumps(cases_info, indent=2, default=str)}
 
-Determine if this report matches any existing case. If it matches, provide the case_id."""
+If this report describes the EXACT SAME specific incident as an existing case, set matches_existing_case=true and provide the case_id.
+If there is ANY doubt, set matches_existing_case=false — it's better to create a new case than to incorrectly merge different incidents."""
 
             analysis_model = await model_selector.get_best_model_for_task("analysis")
 
