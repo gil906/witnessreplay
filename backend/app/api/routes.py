@@ -6182,18 +6182,24 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
             })
 
         # Assign reports to cases — group by incident type from metadata
-        # This is fast because we use the known case_type metadata instead of calling Gemini for each
-        case_groups = {}  # case_type+location -> case_id
+        # For demo data, group by case_type (accident/crime) + first significant location word
+        case_groups = {}  # group_key -> case_id
         for cr in created_reports:
             try:
                 sess = await firestore_service.get_session(cr["session_id"])
                 if not sess:
                     continue
                 
-                # Group by case_type + location from metadata
                 case_type = sess.metadata.get("case_type", "unknown")
-                location = sess.metadata.get("location", "unknown")
-                group_key = f"{case_type}:{location.split(',')[0].strip().lower()}"
+                location = sess.metadata.get("location", "unknown").lower()
+                # Normalize location: extract the main street/area name
+                # "Main Street & Oak Avenue" / "Main St intersection" / "Corner of Main & Oak" -> "main"
+                import re as _re
+                loc_words = _re.findall(r'[a-z]+', location)
+                # Use first meaningful word (skip common words)
+                skip_words = {"at", "on", "near", "corner", "of", "the", "and", "st", "ave", "blvd", "rd", "street", "avenue", "boulevard", "intersection", "road"}
+                loc_key = next((w for w in loc_words if w not in skip_words and len(w) > 2), "unknown")
+                group_key = f"{case_type}:{loc_key}"
                 
                 if group_key in case_groups:
                     # Add to existing case
