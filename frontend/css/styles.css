@@ -12359,6 +12359,53 @@ textarea:disabled {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Mobile: compact chip rail for quick templates */
+.qt-chip-rail {
+    padding: 8px 12px;
+    border-radius: 0;
+    margin-bottom: 0;
+    border: none;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+    background: rgba(15, 15, 30, 0.3);
+}
+.qt-chip-rail .qt-label {
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+.qt-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+}
+.qt-chips::-webkit-scrollbar { display: none; }
+.qt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: rgba(30, 30, 60, 0.5);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.qt-chip:hover, .qt-chip:active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+.qt-chip .qt-icon { font-size: 0.9em; }
+
 /* Mobile responsive for new features */
 @media (max-width: 768px) {
     .witness-profile-card { display: none; }

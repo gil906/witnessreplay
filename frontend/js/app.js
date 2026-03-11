@@ -10018,20 +10018,20 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
             transcript.parentNode.insertBefore(wrapper, transcript);
         }
     } else {
-        // Mobile: keep the original grid layout
+        // Mobile: compact horizontal chip rail (minimal footprint)
         const bar = document.createElement('div');
         bar.id = 'quick-templates-bar';
-        bar.className = 'quick-templates-bar';
-        bar.innerHTML = '<div class="qt-label">🚀 Quick Start — Select incident type:</div><div class="qt-grid"></div>';
-        const grid = bar.querySelector('.qt-grid');
+        bar.className = 'quick-templates-bar qt-chip-rail';
+        bar.innerHTML = '<div class="qt-label">Quick start:</div><div class="qt-chips"></div>';
+        const chips = bar.querySelector('.qt-chips');
 
         templates.forEach(t => {
             const btn = document.createElement('button');
-            btn.className = 'qt-btn';
-            btn.innerHTML = `<span class="qt-icon">${t.icon}</span><span class="qt-text">${t.label}</span>`;
+            btn.className = 'qt-chip';
+            btn.innerHTML = `<span class="qt-icon">${t.icon}</span> ${t.label}`;
             btn.title = t.prompt;
             btn.addEventListener('click', () => selectTemplate(t, bar));
-            grid.appendChild(btn);
+            chips.appendChild(btn);
         });
 
         transcript.parentNode.insertBefore(bar, transcript);
