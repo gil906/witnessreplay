@@ -320,6 +320,8 @@ class TTSPlayer {
         this.onPlaybackStart = null;
         this.onPlaybackEnd = null;
         this.onPlaybackUnavailable = null;
+        this._generationController = null;
+        this.fastStartFallbackMs = 450;
         
         // Fetch available voices on init
         this.fetchVoices();
@@ -403,6 +405,23 @@ class TTSPlayer {
         return this.availableVoices;
     }
 
+    hasPendingPlayback() {
+        return this.isPlaying
+            || this.isProcessing
+            || this.queue.length > 0
+            || !!this.currentSource
+            || !!this.currentUtterance
+            || !!this._generationController;
+    }
+
+    _abortActiveGeneration() {
+        if (!this._generationController) return;
+        try {
+            this._generationController.abort();
+        } catch (_) {}
+        this._generationController = null;
+    }
+
     async primePlayback() {
         try {
             if (!this.audioContext || this.audioContext.state === 'closed') {
@@ -455,16 +474,16 @@ class TTSPlayer {
         while (this.queue.length > 0) {
             const item = this.queue.shift();
             const text = item?.text;
-            let played = false;
+            let result = { played: false, interrupted: false };
             try {
-                played = await this._playText(text);
+                result = await this._playText(text);
             } catch (error) {
                 console.error('TTS playback error:', error);
             } finally {
-                item?.resolve?.(played);
+                item?.resolve?.(result.played);
             }
 
-            if (!played) {
+            if (!result.played && !result.interrupted) {
                 this.onPlaybackUnavailable?.(text);
             }
         }
@@ -481,42 +500,94 @@ class TTSPlayer {
         this._playbackCallbackActive = true;
         this.onPlaybackStart?.();
     }
+
+    async _requestGeneratedAudio(text, signal) {
+        const response = await fetch('/api/tts/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                text: text,
+                voice: this.voice,
+            }),
+            signal,
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const message = error.detail || `TTS API error: ${response.status}`;
+            const requestError = new Error(message);
+            requestError.status = response.status;
+            throw requestError;
+        }
+
+        const data = await response.json();
+        if (!data.audio_base64) {
+            throw new Error('TTS API returned no audio payload');
+        }
+
+        return {
+            audio_base64: data.audio_base64,
+            mime_type: data.mime_type,
+        };
+    }
     
     async _playText(text) {
+        let controller = null;
         try {
-            const response = await fetch('/api/tts/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    text: text,
-                    voice: this.voice,
-                }),
-            });
-            
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                const message = error.detail || `TTS API error: ${response.status}`;
-                const requestError = new Error(message);
-                requestError.status = response.status;
-                throw requestError;
+            let audioPayload = null;
+            if (this.webSpeechSupported && this.fastStartFallbackMs > 0) {
+                controller = new AbortController();
+                this._generationController = controller;
+                const audioRequest = this._requestGeneratedAudio(text, controller.signal);
+                audioRequest.catch(() => null);
+                audioPayload = await Promise.race([
+                    audioRequest,
+                    new Promise((resolve) => setTimeout(() => resolve(null), this.fastStartFallbackMs)),
+                ]);
+
+                if (!audioPayload) {
+                    controller.abort();
+                    if (this._generationController === controller) {
+                        this._generationController = null;
+                    }
+
+                    const fallbackPlayed = await this._playWithWebSpeech(text);
+                    if (fallbackPlayed) {
+                        return { played: true, interrupted: false };
+                    }
+
+                    controller = new AbortController();
+                    this._generationController = controller;
+                    audioPayload = await this._requestGeneratedAudio(text, controller.signal);
+                }
+            } else {
+                controller = new AbortController();
+                this._generationController = controller;
+                audioPayload = await this._requestGeneratedAudio(text, controller.signal);
             }
-            
-            const data = await response.json();
-            
-            if (data.audio_base64) {
-                await this._playAudioBase64(data.audio_base64, data.mime_type);
-                return true;
+
+            if (this._generationController === controller) {
+                this._generationController = null;
             }
-            throw new Error('TTS API returned no audio payload');
+
+            await this._playAudioBase64(audioPayload.audio_base64, audioPayload.mime_type);
+            return { played: true, interrupted: false };
         } catch (error) {
+            if (error?.name === 'AbortError') {
+                return { played: false, interrupted: true };
+            }
             console.error('TTS generation failed:', error);
             const fallbackPlayed = await this._playWithWebSpeech(text);
             if (!fallbackPlayed && (String(error.message || '').includes('429') || String(error.message || '').toLowerCase().includes('quota'))) {
                 console.warn('TTS quota reached and browser speech fallback unavailable');
             }
-            return fallbackPlayed;
+            return { played: fallbackPlayed, interrupted: false };
+        } finally {
+            if (this._generationController === controller) {
+                this._generationController = null;
+            }
         }
     }
     
@@ -717,6 +788,7 @@ class TTSPlayer {
     }
     
     stop() {
+        this._abortActiveGeneration();
         if (this.currentSource) {
             try {
                 this.currentSource.stop();

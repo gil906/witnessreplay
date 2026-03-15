@@ -82,7 +82,7 @@ class ImagenService:
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
                         aspect_ratio="16:9",
-                        safety_filter_level="BLOCK_ONLY_HIGH",
+                        safety_filter_level="BLOCK_LOW_AND_ABOVE",
                         person_generation="ALLOW_ADULT",
                     ),
                 )

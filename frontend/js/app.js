@@ -809,7 +809,7 @@ class WitnessReplayApp {
     }
 
     interruptAgentSpeech() {
-        if (this.ttsPlayer && this.ttsPlayer.isCurrentlyPlaying()) {
+        if (this.ttsPlayer?.hasPendingPlayback?.()) {
             this.ttsPlayer.interrupt?.('tap_interrupt');
         }
         clearTimeout(this._aiSpeakingTimeout);
@@ -2892,11 +2892,12 @@ class WitnessReplayApp {
                 this.ui.showToast('Scene updated', 'success', 2000);
                 
                 // Item 24: Update scene preview from scene_update
-                if (message.data.image_data) {
+                const sceneImageUrl = this._getSceneImageUrl(message.data);
+                if (sceneImageUrl) {
                     const previewPanel = document.getElementById('scene-preview-panel');
                     const previewImage = document.getElementById('scene-preview-image');
                     if (previewPanel) previewPanel.style.display = 'block';
-                    if (previewImage) previewImage.src = 'data:image/png;base64,' + message.data.image_data;
+                    if (previewImage) previewImage.src = sceneImageUrl;
                 }
                 
                 // Update mobile scene preview strip
@@ -3152,7 +3153,7 @@ class WitnessReplayApp {
         }
         
         // Interrupt TTS if speaking (user wants to talk)
-        if (this.ttsPlayer && this.ttsPlayer.isCurrentlyPlaying()) {
+        if (this.ttsPlayer?.hasPendingPlayback?.()) {
             this.ttsPlayer.interrupt?.('toggle_recording');
             this._isSpeakingResponse = false;
             this._setMicSpeakingState(false);
@@ -3180,7 +3181,7 @@ class WitnessReplayApp {
             this._syncAutoListenButtonState();
         }
         try {
-            if (this.ttsPlayer?.isCurrentlyPlaying()) {
+            if (this.ttsPlayer?.hasPendingPlayback?.()) {
                 this.ttsPlayer.interrupt?.('start_recording');
                 this._isSpeakingResponse = false;
                 this._setMicSpeakingState(false);
@@ -3903,8 +3904,44 @@ class WitnessReplayApp {
             this._typingMsgInterval = null;
         }
     }
+
+    _getSceneImageUrl(data) {
+        if (!data || typeof data !== 'object') return null;
+
+        const imageUrl = typeof data.image_url === 'string' ? data.image_url.trim() : '';
+        if (imageUrl) return imageUrl;
+
+        const base64Image = typeof data.base64_image === 'string' ? data.base64_image.trim() : '';
+        if (base64Image) {
+            return base64Image.startsWith('data:')
+                ? base64Image
+                : `data:image/png;base64,${base64Image}`;
+        }
+
+        const imageData = typeof data.image_data === 'string' ? data.image_data.trim() : '';
+        if (imageData) {
+            return imageData.startsWith('data:')
+                ? imageData
+                : `data:image/png;base64,${imageData}`;
+        }
+
+        return null;
+    }
     
     updateScene(data) {
+        const sceneImageUrl = this._getSceneImageUrl(data);
+        const inferredStatementCount = typeof data.statement_count === 'number'
+            ? data.statement_count
+            : ((sceneImageUrl || (Array.isArray(data.elements) && data.elements.length > 0))
+                ? Math.max(this.statementCount || 0, 1)
+                : this.statementCount);
+
+        if (typeof inferredStatementCount === 'number' && Number.isFinite(inferredStatementCount)) {
+            this.statementCount = inferredStatementCount;
+            this.ui?.updateStats({ statementCount: inferredStatementCount });
+            this._syncWorkspaceLayout();
+        }
+
         // Crossfade animation for scene changes
         const existingImage = this.sceneDisplay.querySelector('.scene-image');
         
@@ -3928,8 +3965,8 @@ class WitnessReplayApp {
         this.currentVersion = data.version || this.currentVersion + 1;
         if (this.versionCountEl) this.versionCountEl.textContent = this.currentVersion;
         
-        if (data.statement_count) {
-            if (this.statementCountEl) this.statementCountEl.textContent = data.statement_count;
+        if (this.statementCountEl && Number.isFinite(this.statementCount)) {
+            this.statementCountEl.textContent = this.statementCount;
         }
         
         // Load environmental conditions for this version
@@ -3992,7 +4029,8 @@ class WitnessReplayApp {
     }
     
     setSceneImage(data) {
-        if (data.image_url) {
+        const imageUrl = this._getSceneImageUrl(data);
+        if (imageUrl) {
             // Clear existing scene
             this.sceneDisplay.innerHTML = '';
             
@@ -4033,47 +4071,11 @@ class WitnessReplayApp {
                 this.showSceneError('Failed to load scene image', data);
             };
             
-            img.src = data.image_url;
+            img.src = imageUrl;
             sceneContainer.appendChild(img);
             this.sceneDisplay.appendChild(sceneContainer);
             
             // Show scene controls
-            const controls = this.sceneDisplay.querySelector('.scene-controls');
-            if (controls) controls.classList.remove('hidden');
-        } else if (data.base64_image) {
-            // Similar handling for base64 images
-            this.sceneDisplay.innerHTML = '';
-            
-            const sceneContainer = document.createElement('div');
-            sceneContainer.style.position = 'relative';
-            sceneContainer.style.width = '100%';
-            sceneContainer.style.height = '100%';
-            sceneContainer.style.display = 'flex';
-            sceneContainer.style.alignItems = 'center';
-            sceneContainer.style.justifyContent = 'center';
-            
-            const versionBadge = document.createElement('div');
-            versionBadge.className = 'scene-version-badge';
-            versionBadge.innerHTML = `
-                <span class="badge-icon">🎬</span>
-                <span>Version ${data.version || this.currentVersion}</span>
-            `;
-            sceneContainer.appendChild(versionBadge);
-            
-            const img = new Image();
-            img.className = 'scene-image scene-entering';
-            img.alt = 'Scene reconstruction';
-            img.loading = 'lazy';
-            img.onload = () => {
-                setTimeout(() => {
-                    img.classList.remove('scene-entering');
-                    img.classList.add('loaded');
-                }, 600);
-            };
-            img.src = `data:image/png;base64,${data.base64_image}`;
-            sceneContainer.appendChild(img);
-            this.sceneDisplay.appendChild(sceneContainer);
-            
             const controls = this.sceneDisplay.querySelector('.scene-controls');
             if (controls) controls.classList.remove('hidden');
         }
@@ -4556,7 +4558,7 @@ class WitnessReplayApp {
         versionDiv.dataset.version = data.version || this.currentVersion;
         
         const changes = data.changes ? `<div class="timeline-changes">✨ ${this._sanitizeHTML(data.changes)}</div>` : '';
-        const thumbnailSrc = data.image_url || (data.base64_image ? `data:image/png;base64,${data.base64_image}` : '');
+        const thumbnailSrc = this._getSceneImageUrl(data) || '';
         
         versionDiv.innerHTML = `
             <div class="timeline-version">Version ${data.version || this.currentVersion}</div>
@@ -4947,7 +4949,7 @@ class WitnessReplayApp {
      * Display an inline scene update card in the chat transcript
      */
     _displaySceneCard(data) {
-        const imageUrl = data.image_url || (data.image_data ? 'data:image/png;base64,' + data.image_data : null) || (data.base64_image ? 'data:image/png;base64,' + data.base64_image : null);
+        const imageUrl = this._getSceneImageUrl(data);
         if (!imageUrl && !data.description) return;
         
         if (this.chatTranscript.querySelector('.empty-state')) {
@@ -4968,9 +4970,11 @@ class WitnessReplayApp {
             html += `<div class="scene-card-thumb"><img src="${imageUrl}" alt="Scene v${version}" class="scene-card-image" loading="lazy"></div>`;
         }
         
-        if (data.description) {
+        if (data.description && imageUrl) {
             const desc = data.description.length > 120 ? data.description.substring(0, 120) + '…' : data.description;
             html += `<div class="scene-card-desc">${this._escapeHtml(desc)}</div>`;
+        } else if (!imageUrl) {
+            html += `<div class="scene-card-desc">Scene details updated. The latest reconstruction is loading in the scene panel.</div>`;
         }
         
         card.innerHTML = html;
@@ -5019,14 +5023,7 @@ class WitnessReplayApp {
         const stripImg = document.getElementById('mobile-scene-strip-img');
         if (!strip || !stripImg) return;
 
-        let imageUrl = null;
-        if (data.image_data) {
-            imageUrl = 'data:image/png;base64,' + data.image_data;
-        } else if (data.base64_image) {
-            imageUrl = 'data:image/png;base64,' + data.base64_image;
-        } else if (data.image_url) {
-            imageUrl = data.image_url;
-        }
+        const imageUrl = this._getSceneImageUrl(data);
         if (!imageUrl) return;
 
         stripImg.src = imageUrl;
@@ -5120,12 +5117,13 @@ class WitnessReplayApp {
         if (barEl) barEl.style.width = Math.round(completeness * 100) + '%';
         
         // Item 24: Update scene preview panel
-        if (data.image_data) {
+        const sceneImageUrl = this._getSceneImageUrl(data);
+        if (sceneImageUrl) {
             const previewPanel = document.getElementById('scene-preview-panel');
             const previewImage = document.getElementById('scene-preview-image');
             const elemCount = document.getElementById('scene-elements-count');
             if (previewPanel) previewPanel.style.display = 'block';
-            if (previewImage) previewImage.src = 'data:image/png;base64,' + data.image_data;
+            if (previewImage) previewImage.src = sceneImageUrl;
             if (elemCount) elemCount.textContent = `${(data.elements || []).length} elements detected`;
             // Update mobile scene preview strip
             this._updateMobileSceneStrip(data);

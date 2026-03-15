@@ -345,6 +345,24 @@ img {
     justify-content: flex-end;
 }
 
+.admin-access-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    min-height: 38px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.admin-access-icon {
+    line-height: 1;
+}
+
+.admin-access-label {
+    line-height: 1;
+}
+
 /* Connection Status Indicator — Liquid Glass pill */
 .connection-status {
     display: flex;
@@ -10501,6 +10519,15 @@ img.loaded,
     .hamburger-menu-btn:active {
         transform: scale(0.92);
         background: rgba(255, 255, 255, 0.1);
+    }
+
+    .admin-access-btn {
+        padding: 7px 10px;
+        min-height: 34px;
+    }
+
+    .admin-access-label {
+        display: none;
     }
 
     /* Hide toolbar items on mobile — they go in hamburger menu */

@@ -74,8 +74,9 @@
                     <button id="theme-toggle" class="theme-toggle header-menu-item" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle theme" style="display:none;">
                         <span class="theme-icon">🌙</span>
                     </button>
-                    <button id="admin-portal-btn" class="btn btn-primary header-menu-item" data-tooltip="Admin Portal" aria-label="Open admin portal">
-                        🛡️ Admin
+                    <button id="admin-portal-btn" class="btn btn-secondary admin-access-btn" data-tooltip="Admin Portal" aria-label="Open admin portal">
+                        <span class="admin-access-icon" aria-hidden="true">🛡️</span>
+                        <span class="admin-access-label">Admin</span>
                     </button>
                     <!-- Hamburger menu button (mobile only) -->
                     <button id="hamburger-menu-btn" class="hamburger-menu-btn" aria-label="Open menu" onclick="document.getElementById('mobile-menu-overlay').classList.toggle('open'); document.getElementById('mobile-menu-dropdown').classList.toggle('open')">
