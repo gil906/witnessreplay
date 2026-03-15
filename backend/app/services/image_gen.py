@@ -7,11 +7,11 @@ import re
 from typing import Optional, List, Tuple, Dict, Any
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from google import genai
 
 from app.config import settings
 from app.models.schemas import SceneElement
 from app.services.model_selector import model_selector
+from app.services.api_key_manager import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class ImageGenerationService:
     def _initialize_client(self):
         try:
             if settings.google_api_key:
-                self.client = genai.Client(api_key=settings.google_api_key)
+                self.client = get_genai_client()
                 self.model = settings.gemini_vision_model
                 logger.info("Gemini image generation client initialized")
             else:

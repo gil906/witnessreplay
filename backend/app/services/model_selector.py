@@ -182,6 +182,14 @@ def _rate_limit_cooldown_seconds(error: Optional[Exception], default_seconds: in
     return default_seconds
 
 
+def _get_key_manager():
+    try:
+        from app.services.api_key_manager import get_key_manager
+        return get_key_manager()
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # QuotaTracker – per-model RPM / TPM / RPD tracking
 # ---------------------------------------------------------------------------
@@ -263,6 +271,9 @@ class QuotaTracker:
         async with self._lock:
             self._reset_if_new_day()
             self._prune_minute_window(model)
+            key_manager = _get_key_manager()
+            if key_manager and key_manager.has_multi_account_rotation():
+                return key_manager.has_available_account(model)
             quota = MODEL_QUOTAS.get(model, {})
 
             rpm_limit = quota.get("rpm", 0)
@@ -284,7 +295,12 @@ class QuotaTracker:
             rpm_limit = quota.get("rpm", 0)
             if not rpm_limit:
                 return 0.0
-            return len(self._minute_counts[model]) / rpm_limit
+            key_manager = _get_key_manager()
+            multiplier = 1
+            if key_manager and key_manager.has_multi_account_rotation():
+                multiplier = key_manager.get_capacity_multiplier(model)
+            effective_limit = max(1, rpm_limit * multiplier)
+            return len(self._minute_counts[model]) / effective_limit
 
     async def wait_for_quota(self, model: str, timeout: float = 60.0) -> bool:
         """Wait up to *timeout* seconds for quota to become available.
@@ -301,28 +317,39 @@ class QuotaTracker:
         async with self._lock:
             self._reset_if_new_day()
             status: Dict[str, Any] = {}
+            key_manager = _get_key_manager()
             for model, quota in MODEL_QUOTAS.items():
                 self._prune_minute_window(model)
                 rpm_limit = quota.get("rpm", 0)
                 tpm_limit = quota.get("tpm", 0)
                 rpd_limit = quota.get("rpd", 0)
+                multiplier = 1
+                if key_manager and key_manager.has_multi_account_rotation():
+                    multiplier = key_manager.get_capacity_multiplier(model)
+                effective_rpm_limit = rpm_limit * multiplier if rpm_limit else 0
+                effective_tpm_limit = tpm_limit * multiplier if tpm_limit else 0
+                effective_rpd_limit = rpd_limit * multiplier if rpd_limit else 0
                 rpm_used = len(self._minute_counts.get(model, []))
                 rpd_used = self._daily_counts.get(model, 0)
                 tpm_used = self._daily_tokens.get(model, 0)
                 status[model] = {
-                    "rpm": {"used": rpm_used, "limit": rpm_limit,
-                            "remaining": max(0, rpm_limit - rpm_used) if rpm_limit else None},
-                    "tpm": {"used": tpm_used, "limit": tpm_limit,
-                            "remaining": max(0, tpm_limit - tpm_used) if tpm_limit else None},
-                    "rpd": {"used": rpd_used, "limit": rpd_limit,
-                            "remaining": max(0, rpd_limit - rpd_used) if rpd_limit else None},
+                    "rpm": {"used": rpm_used, "limit": effective_rpm_limit,
+                            "remaining": max(0, effective_rpm_limit - rpm_used) if effective_rpm_limit else None},
+                    "tpm": {"used": tpm_used, "limit": effective_tpm_limit,
+                            "remaining": max(0, effective_tpm_limit - tpm_used) if effective_tpm_limit else None},
+                    "rpd": {"used": rpd_used, "limit": effective_rpd_limit,
+                            "remaining": max(0, effective_rpd_limit - rpd_used) if effective_rpd_limit else None},
                     "available": True,
+                    "account_capacity_multiplier": multiplier,
                 }
                 # Mark unavailable if any hard limit is hit
-                if rpm_limit and rpm_used >= rpm_limit:
+                if effective_rpm_limit and rpm_used >= effective_rpm_limit:
                     status[model]["available"] = False
-                if rpd_limit and rpd_used >= rpd_limit:
+                if effective_rpd_limit and rpd_used >= effective_rpd_limit:
                     status[model]["available"] = False
+                if key_manager and key_manager.has_multi_account_rotation():
+                    status[model]["available"] = key_manager.has_available_account(model)
+                    status[model]["available_accounts"] = key_manager.get_available_account_count(model)
             return status
 
 

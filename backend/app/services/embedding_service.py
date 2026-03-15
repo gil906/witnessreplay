@@ -10,9 +10,9 @@ import json
 import math
 from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime, timezone
-from google import genai
 
 from app.services.token_estimator import token_estimator
+from app.services.api_key_manager import get_genai_client, get_key_manager
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class EmbeddingService:
     def _initialize(self):
         from app.config import settings
         if settings.google_api_key:
-            self.client = genai.Client(api_key=settings.google_api_key)
+            self.client = get_genai_client()
             logger.info("EmbeddingService initialized")
 
     def _get_token_usage(self) -> int:
@@ -133,7 +133,10 @@ class EmbeddingService:
         self._cache_misses += 1
 
         self._reset_daily_if_needed()
-        if self._request_count >= 1000:
+        key_manager = get_key_manager()
+        if self._request_count >= 1000 and not (
+            key_manager and key_manager.has_multi_account_rotation() and key_manager.has_available_account(self.MODEL)
+        ):
             logger.warning("Embedding daily quota exhausted")
             return None, {"error": "daily_quota_exhausted", "limit": 1000}
 

@@ -207,7 +207,7 @@ cd witnessreplay/project
 
 # Configure environment
 cp .env.example .env
-# Edit .env — at minimum set GOOGLE_API_KEY and ADMIN_PASSWORD
+# Edit `.env` — at minimum set `GOOGLE_API_KEY` (or `GOOGLE_API_PRIMARY_KEY`) and `ADMIN_PASSWORD`
 
 # Run with Docker Compose
 docker compose up --build -d
@@ -265,8 +265,18 @@ gcloud builds submit --config deploy/cloudbuild.yaml .
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `GOOGLE_API_KEY` | Gemini API key | **Yes** | — |
-| `GOOGLE_API_KEYS` | Comma-separated keys for rotation | No | — |
+| `GOOGLE_API_KEY` | Primary/default Gemini API key for backward compatibility | **Yes*** | — |
+| `GOOGLE_API_KEYS` | Legacy comma-separated Gemini keys for rotation | No | — |
+| `GOOGLE_API_PRIMARY_KEY` | Primary Gemini API key (highest priority) | **Yes*** | — |
+| `GOOGLE_API_SECONDARY_KEY` | Secondary Gemini API key for automatic failover | No | — |
+| `GOOGLE_API_TERTIARY_KEY` | Tertiary Gemini API key for final failover | No | — |
+| `GOOGLE_API_PRIMARY_EMAIL` | Label email for primary account status views | No | — |
+| `GOOGLE_API_SECONDARY_EMAIL` | Label email for secondary account status views | No | — |
+| `GOOGLE_API_TERTIARY_EMAIL` | Label email for tertiary account status views | No | — |
+| `GOOGLE_API_PRIMARY_PROJECT_ID` | Google project ID for primary Gemini account | No | — |
+| `GOOGLE_API_SECONDARY_PROJECT_ID` | Google project ID for secondary Gemini account | No | — |
+| `GOOGLE_API_TERTIARY_PROJECT_ID` | Google project ID for tertiary Gemini account | No | — |
+| `GOOGLE_API_ACCOUNTS_JSON` | Advanced JSON account config override | No | — |
 | `GCP_PROJECT_ID` | Google Cloud project ID | For cloud features | — |
 | `GCS_BUCKET` | Cloud Storage bucket for images | For cloud features | `witnessreplay-images` |
 | `FIRESTORE_COLLECTION` | Firestore collection name | No | `reconstruction_sessions` |
@@ -283,6 +293,8 @@ gcloud builds submit --config deploy/cloudbuild.yaml .
 | `SESSION_TIMEOUT_MINUTES` | Session expiry | No | `60` |
 | `MAX_SESSION_SIZE_MB` | Max session data size | No | `100` |
 | `DATABASE_PATH` | SQLite database path | No | `/app/data/witnessreplay.db` |
+
+\* Set either `GOOGLE_API_KEY` or `GOOGLE_API_PRIMARY_KEY`. If you provide Primary/Secondary/Tertiary keys, the app now prefers Primary first and automatically fails over when a model/account hits quota or a `429`.
 
 ---
 

@@ -59,17 +59,15 @@ async def lifespan(app: FastAPI):
     # Validate configuration on startup
     settings.validate_config()
     
-    # Initialize API key rotation if multiple keys configured
-    if settings.google_api_keys:
-        from app.services.api_key_manager import initialize_key_manager
-        keys = [k.strip() for k in settings.google_api_keys.split(',') if k.strip()]
-        if len(keys) > 1:
-            initialize_key_manager(keys)
-            logger.info(f"API key rotation enabled with {len(keys)} keys")
-        else:
-            logger.info("Single API key mode (no rotation)")
+    # Initialize Gemini account router before services create clients.
+    from app.services.api_key_manager import initialize_key_manager
+    key_manager = initialize_key_manager()
+    if key_manager and key_manager.total_accounts > 1:
+        logger.info("Gemini account rotation enabled with %s accounts", key_manager.total_accounts)
+    elif key_manager and key_manager.total_accounts == 1:
+        logger.info("Gemini single-account mode enabled")
     else:
-        logger.info("Single API key mode (no rotation)")
+        logger.info("Gemini API key not configured")
     
     # Initialize SQLite database
     from app.services.database import DatabaseService

@@ -12,8 +12,8 @@ import base64
 from typing import Optional
 from datetime import datetime
 
-from google import genai
 from google.genai import types
+from app.services.api_key_manager import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class GeminiImageService:
     def _initialize(self):
         from app.config import settings
         if settings.google_api_key:
-            self.client = genai.Client(api_key=settings.google_api_key)
+            self.client = get_genai_client()
             logger.info("GeminiImageService initialized with Google API key")
         else:
             logger.warning("GeminiImageService: no Google API key")

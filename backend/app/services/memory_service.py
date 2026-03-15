@@ -445,12 +445,12 @@ class MemoryService:
         
         # Use AI to extract key facts (could use structured output)
         try:
-            from google import genai
             from app.services.model_selector import model_selector, call_with_retry
+            from app.services.api_key_manager import get_genai_client
             import asyncio
             
             if settings.google_api_key:
-                client = genai.Client(api_key=settings.google_api_key)
+                client = get_genai_client()
                 
                 extraction_prompt = f"""Extract key facts from this witness testimony that should be remembered for future interviews.
 

@@ -22,6 +22,7 @@ from app.services.imagen_service import imagen_service
 from app.services.embedding_service import embedding_service
 from app.services.translation_service import translation_service
 from app.services.case_manager import case_manager
+from app.services.api_key_manager import get_genai_client
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 
@@ -210,9 +211,8 @@ class WebSocketHandler:
                     try:
                         all_text = " ".join([s.text for s in session.witness_statements if s.text])
                         if all_text.strip():
-                            from google import genai as genai_client
                             model = await model_selector.get_best_model_for_task("analysis")
-                            client = genai_client.Client(api_key=settings.google_api_key)
+                            client = get_genai_client()
                             summary_prompt = (
                                 "You are a law enforcement report writer. Based on the following witness statements, "
                                 "generate a concise incident report summary. Include: what happened, when, where, "

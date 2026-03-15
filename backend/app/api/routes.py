@@ -72,12 +72,12 @@ from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
 from app.services.model_selector import generate_content_with_fallback, model_selector
 from app.services.imagen_service import imagen_service
+from app.services.api_key_manager import get_genai_client, get_key_manager
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 from app.api.auth import authenticate, require_admin_auth, revoke_session, check_rate_limit, require_api_key, authenticate_user_credentials
 from app.api.auth import create_session as create_auth_session
 from app.services.api_key_service import api_key_service
-from google import genai
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -357,7 +357,7 @@ async def _generate_report_summary_text(session: ReconstructionSession) -> Tuple
 
     if settings.google_api_key:
         try:
-            client = genai.Client(api_key=settings.google_api_key)
+            client = get_genai_client()
             model = await model_selector.get_best_model_for_task("analysis")
             response = await asyncio.to_thread(
                 client.models.generate_content,
@@ -3624,7 +3624,7 @@ For each element, identify:
         prompt += "\n\nProvide a structured analysis of this sketch."
         
         # Create multimodal content
-        client = genai.Client(api_key=settings.google_api_key)
+        client = get_genai_client()
         
         # Encode image to base64
         image_base64 = base64.b64encode(image_data).decode('utf-8')
@@ -3977,7 +3977,7 @@ async def list_models():
         # Run blocking API call in thread pool to avoid blocking event loop
         def fetch_models():
             """Fetch models from Gemini API (runs in thread pool)."""
-            client = genai.Client(api_key=settings.google_api_key)
+            client = get_genai_client()
             models = []
             for model in client.models.list():
                 # Filter for generation models only
@@ -6610,8 +6610,7 @@ async def seed_mock_data(auth=Depends(require_admin_auth)):
         logger.info("Generating new demo reports with Gemini...")
 
         # Generate mock reports using Gemini for variety
-        from google import genai as genai_client
-        client = genai_client.Client(api_key=settings.google_api_key)
+        client = get_genai_client()
 
         gen_prompt = """Generate 6 realistic witness reports for a police department system. Create 3 different incidents with multiple witnesses for some:
 
@@ -11618,9 +11617,7 @@ async def api_send_audio(session_id: str, data: dict, api_key=Depends(require_ap
         raise HTTPException(status_code=400, detail="Invalid base64 audio data")
 
     try:
-        from google import genai as _genai
-
-        client = _genai.Client(api_key=settings.google_api_key)
+        client = get_genai_client()
         mime_map = {"webm": "audio/webm", "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg"}
         mime = mime_map.get(audio_format, f"audio/{audio_format}")
 
@@ -19879,48 +19876,74 @@ async def get_key_admissions(session_id: str):
     }
 
 
-# ── Admin API Key Manager ───────────────────────────────────────────────
-_api_key_info = {
-    "last_rotated": datetime.utcnow().isoformat() + "Z",
-    "rotation_count": 0,
-    "usage_today": 0,
-    "usage_limit": 1000
-}
-
 @router.get("/admin/api-key-manager")
 async def get_api_key_manager_status(auth=Depends(require_admin_auth)):
     """View API key status and usage stats (admin only)."""
+    key_manager = get_key_manager()
+    if not key_manager:
+        return {
+            "key_configured": False,
+            "key_masked": "NOT SET",
+            "provider": "Google Gemini",
+            "status": "missing",
+            "multi_account_enabled": False,
+            "total_accounts": 0,
+            "healthy_accounts": 0,
+            "rate_limited_accounts": 0,
+            "failed_accounts": 0,
+            "rotation_count": 0,
+            "last_rotated": None,
+            "accounts": [],
+            "environment_keys": {
+                "GOOGLE_API_KEY": "configured" if bool(settings.google_api_key) else "missing",
+                "GOOGLE_API_PRIMARY_KEY": "configured" if bool(settings.google_api_primary_key) else "missing",
+                "GOOGLE_API_SECONDARY_KEY": "configured" if bool(settings.google_api_secondary_key) else "missing",
+                "GOOGLE_API_TERTIARY_KEY": "configured" if bool(settings.google_api_tertiary_key) else "missing",
+            },
+        }
 
-    # Check if GOOGLE_API_KEY is configured
-    key_env = os.environ.get("GOOGLE_API_KEY", "")
-    key_configured = len(key_env) > 4
-    key_masked = f"{key_env[:4]}...{key_env[-4:]}" if len(key_env) > 8 else ("***" if key_env else "NOT SET")
+    status_payload = key_manager.get_status()
+    primary_account = (status_payload.get("accounts") or [None])[0]
+    healthy_accounts = int(status_payload.get("healthy_keys", 0) or 0)
+    total_accounts = int(status_payload.get("total_accounts", 0) or 0)
 
     return {
-        "key_configured": key_configured,
-        "key_masked": key_masked,
+        "key_configured": total_accounts > 0,
+        "key_masked": primary_account.get("masked_key") if isinstance(primary_account, dict) else "NOT SET",
         "provider": "Google Gemini",
-        "last_rotated": _api_key_info["last_rotated"],
-        "rotation_count": _api_key_info["rotation_count"],
-        "usage_today": _api_key_info["usage_today"],
-        "usage_limit": _api_key_info["usage_limit"],
-        "usage_pct": round(_api_key_info["usage_today"] / max(_api_key_info["usage_limit"], 1) * 100, 1),
-        "status": "active" if key_configured else "missing",
+        "status": "active" if healthy_accounts > 0 else "degraded",
+        "multi_account_enabled": bool(status_payload.get("enabled")),
+        "total_accounts": total_accounts,
+        "healthy_accounts": healthy_accounts,
+        "rate_limited_accounts": int(status_payload.get("rate_limited_keys", 0) or 0),
+        "failed_accounts": int(status_payload.get("failed_keys", 0) or 0),
+        "rotation_count": int(status_payload.get("rotation_count", 0) or 0),
+        "last_rotated": status_payload.get("last_rotated"),
+        "accounts": status_payload.get("accounts", []),
         "environment_keys": {
-            "GOOGLE_API_KEY": "configured" if key_configured else "missing",
-            "GOOGLE_PROJECT_ID": "configured" if os.environ.get("GOOGLE_PROJECT_ID") else "not set",
-            "GOOGLE_REGION": os.environ.get("GOOGLE_REGION", "not set")
-        }
+            "GOOGLE_API_KEY": "configured" if bool(settings.google_api_key) else "missing",
+            "GOOGLE_API_PRIMARY_KEY": "configured" if bool(settings.google_api_primary_key) else "missing",
+            "GOOGLE_API_SECONDARY_KEY": "configured" if bool(settings.google_api_secondary_key) else "missing",
+            "GOOGLE_API_TERTIARY_KEY": "configured" if bool(settings.google_api_tertiary_key) else "missing",
+        },
     }
 
 
 @router.post("/admin/api-key-manager")
 async def rotate_api_key_log(auth=Depends(require_admin_auth)):
-    """Log an API key rotation event (admin only)."""
-    _api_key_info["last_rotated"] = datetime.utcnow().isoformat() + "Z"
-    _api_key_info["rotation_count"] += 1
-    _api_key_info["usage_today"] = 0
-    return {"status": "rotation_logged", "rotation_count": _api_key_info["rotation_count"]}
+    """Reload the API key manager from current environment configuration."""
+    from app.services.api_key_manager import initialize_key_manager
+
+    key_manager = initialize_key_manager(force=True)
+    if not key_manager:
+        return {"status": "missing", "total_accounts": 0}
+    status_payload = key_manager.get_status()
+    return {
+        "status": "reloaded",
+        "total_accounts": status_payload.get("total_accounts", 0),
+        "rotation_count": status_payload.get("rotation_count", 0),
+        "last_rotated": status_payload.get("last_rotated"),
+    }
 
 
 # ── Admin Scheduled Tasks Dashboard ─────────────────────────────────────

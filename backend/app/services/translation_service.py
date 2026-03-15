@@ -6,10 +6,10 @@ Detects witness language and translates between languages.
 import logging
 import asyncio
 from typing import Optional, Tuple, Dict, Any
-from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.services.api_key_manager import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class TranslationService:
         """Initialize the Gemini client."""
         try:
             if settings.google_api_key:
-                self.client = genai.Client(api_key=settings.google_api_key)
+                self.client = get_genai_client()
                 logger.info("Translation service initialized")
             else:
                 logger.warning("GOOGLE_API_KEY not set, translation service not initialized")

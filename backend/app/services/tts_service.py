@@ -8,11 +8,11 @@ import wave
 from typing import Optional, List
 from datetime import datetime, timezone
 
-from google import genai
 from google.genai import types
 
 from app.config import settings
 from app.services.model_selector import MODEL_QUOTAS, is_retryable_model_error
+from app.services.api_key_manager import get_genai_client, get_key_manager
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class TTSService:
 
     def _initialize(self):
         if settings.google_api_key:
-            self.client = genai.Client(api_key=settings.google_api_key)
+            self.client = get_genai_client()
             logger.info("TTSService initialized with Google API key")
         else:
             logger.warning("TTSService: no Google API key, TTS disabled")
@@ -131,6 +131,12 @@ class TTSService:
 
     def _can_make_request(self, model: str) -> tuple[bool, str]:
         """Check if we can make a TTS request within rate limits."""
+        key_manager = get_key_manager()
+        if key_manager and key_manager.has_multi_account_rotation():
+            if key_manager.has_available_account(model):
+                return True, "OK"
+            return False, f"No Gemini account currently available for {model}"
+
         self._reset_if_new_day()
         self._prune_minute_window(model)
         rpm_limit, rpd_limit = self._get_limits(model)

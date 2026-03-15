@@ -5,8 +5,8 @@ import re
 from typing import Optional, Any, Dict, List, Tuple
 from datetime import datetime
 
-from google import genai
 from google.genai import types
+from app.services.api_key_manager import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class ImagenService:
         from app.config import settings
 
         if settings.google_api_key:
-            self.client = genai.Client(api_key=settings.google_api_key)
+            self.client = get_genai_client()
             logger.info("ImagenService initialized with Google API key")
         else:
             logger.warning("ImagenService: no Google API key, Imagen generation disabled")

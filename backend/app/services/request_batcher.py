@@ -438,8 +438,8 @@ async def classification_batch_processor(items: List[Dict]) -> List[Any]:
     
     Returns list of classification results.
     """
-    from google import genai
     from app.config import settings
+    from app.services.api_key_manager import get_genai_client
     from app.services.model_selector import model_selector, call_with_retry
     import asyncio
     import json
@@ -449,7 +449,9 @@ async def classification_batch_processor(items: List[Dict]) -> List[Any]:
     
     # Get a lightweight model for classification
     model = await model_selector.get_best_model_for_task("classification")
-    client = genai.Client(api_key=settings.google_api_key)
+    client = get_genai_client()
+    if not client:
+        return [{"error": "api_key_not_configured"}] * len(items)
     
     # Build a combined prompt for batch classification
     batch_prompt = """You are a classification assistant. Classify each of the following items into one of the provided categories.

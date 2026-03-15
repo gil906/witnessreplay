@@ -13,6 +13,16 @@ class Settings(BaseSettings):
     # Google AI Configuration
     google_api_key: str = ""
     google_api_keys: str = ""  # Comma-separated list for rotation/fallback
+    google_api_accounts_json: str = ""
+    google_api_primary_key: str = ""
+    google_api_secondary_key: str = ""
+    google_api_tertiary_key: str = ""
+    google_api_primary_email: str = ""
+    google_api_secondary_email: str = ""
+    google_api_tertiary_email: str = ""
+    google_api_primary_project_id: str = ""
+    google_api_secondary_project_id: str = ""
+    google_api_tertiary_project_id: str = ""
     
     # Google Cloud Project Configuration
     gcp_project_id: str = ""
@@ -95,10 +105,22 @@ class Settings(BaseSettings):
         validate_assignment=True  # Allow runtime updates
     )
 
+    def model_post_init(self, __context) -> None:
+        ordered_keys = [
+            self.google_api_primary_key.strip(),
+            self.google_api_secondary_key.strip(),
+            self.google_api_tertiary_key.strip(),
+        ]
+        ordered_keys = [key for key in ordered_keys if key]
+        if not self.google_api_key and ordered_keys:
+            self.google_api_key = ordered_keys[0]
+        if not self.google_api_keys and len(ordered_keys) > 1:
+            self.google_api_keys = ",".join(ordered_keys)
+
     def validate_config(self):
         """Log warnings for missing configurations."""
         warnings = []
-        if not self.google_api_key:
+        if not (self.google_api_key or self.google_api_accounts_json):
             warnings.append("GOOGLE_API_KEY not set - AI features will not work")
         if not self.gcp_project_id:
             warnings.append("GCP_PROJECT_ID not set - Firestore will not work")

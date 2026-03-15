@@ -4,7 +4,6 @@ import asyncio
 import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from google import genai
 from google.genai import types
 
 from app.config import settings
@@ -19,6 +18,7 @@ from app.services.firestore import firestore_service
 from app.services.model_selector import model_selector
 from app.services.response_cache import response_cache
 from app.services.multi_model_verifier import multi_model_verifier, VerificationResult
+from app.services.api_key_manager import get_genai_client
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class CaseManager:
     def _initialize(self):
         try:
             if settings.google_api_key:
-                self.client = genai.Client(api_key=settings.google_api_key)
+                self.client = get_genai_client()
                 logger.info("CaseManager initialized with Gemini client")
         except Exception as e:
             logger.error(f"Failed to initialize CaseManager: {e}")

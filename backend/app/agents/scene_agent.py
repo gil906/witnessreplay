@@ -4,7 +4,6 @@ import asyncio
 import re
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
-from google import genai
 
 from app.config import settings
 from app.models.schemas import SceneElement, WitnessStatement, SceneVersion, SceneExtractionResponse
@@ -14,6 +13,7 @@ from app.services.token_estimator import token_estimator, TokenEstimate, QuotaCh
 from app.services.interview_branching import interview_branching
 from app.services.prompt_optimizer import prompt_optimizer
 from app.services.timeline_disambiguator import timeline_disambiguator
+from app.services.api_key_manager import get_genai_client
 from google.genai import types
 from app.services.model_selector import model_selector, call_with_retry, is_retryable_model_error
 from typing import AsyncIterator
@@ -243,7 +243,7 @@ class SceneReconstructionAgent:
         """Initialize the Gemini model for conversation."""
         try:
             if settings.google_api_key:
-                self.client = genai.Client(api_key=settings.google_api_key)
+                self.client = get_genai_client()
                 self._log_structured("agent_initialized")
             else:
                 logger.warning("GOOGLE_API_KEY not set, agent not initialized")
