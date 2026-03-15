@@ -94,7 +94,7 @@ VOICE_DEFAULT_PREFERENCES = {
     "tts_enabled": True,
     "auto_listen": True,
     "playback_speed": 1.0,
-    "voice": "Puck",
+    "voice": "Charon",
 }
 VOICE_QUICK_PHRASES = [
     "Start from the beginning.",
@@ -8340,7 +8340,7 @@ async def cleanup_queue(max_age_hours: int = 1):
 class TTSRequest(BaseModel):
     """Request model for TTS generation."""
     text: str
-    voice: str = "Puck"
+    voice: str = "Charon"
 
 
 class TTSResponse(BaseModel):
@@ -8365,7 +8365,7 @@ async def generate_tts(
     
     Args:
         text: The text to convert to speech (max ~8000 characters).
-        voice: Voice preset to use (default: Puck).
+        voice: Voice preset to use (default: Charon).
     
     Returns:
         Base64-encoded audio data with metadata.
@@ -8414,7 +8414,7 @@ async def get_tts_voices():
     """
     return {
         "voices": tts_service.get_available_voices(),
-        "default": "Puck",
+        "default": "Charon",
     }
 
 

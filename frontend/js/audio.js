@@ -321,7 +321,10 @@ class TTSPlayer {
         this.onPlaybackEnd = null;
         this.onPlaybackUnavailable = null;
         this._generationController = null;
-        this.fastStartFallbackMs = 450;
+        // Keep Detective Ray on the configured Gemini voice during the main
+        // conversation. Browser speech remains a last-resort fallback only if
+        // generated audio actually fails.
+        this.fastStartFallbackMs = 0;
         
         // Fetch available voices on init
         this.fetchVoices();

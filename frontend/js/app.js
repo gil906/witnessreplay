@@ -954,7 +954,7 @@ class WitnessReplayApp {
             auto_listen: !!this.autoListenEnabled,
             tts_enabled: this.audioOutputDisabled ? false : (this.ttsPlayer ? this.ttsPlayer.isEnabled() : true),
             playback_speed: this.ttsPlayer?.getPlaybackSpeed ? this.ttsPlayer.getPlaybackSpeed() : 1.0,
-            voice: this.ttsPlayer?.getVoice ? this.ttsPlayer.getVoice() : 'Puck',
+            voice: this.ttsPlayer?.getVoice ? this.ttsPlayer.getVoice() : 'Charon',
         };
     }
 
