@@ -965,20 +965,14 @@
     
     <!-- Initialize Scene Element Library and 3D Viewer -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (window.sceneElementLibrary) {
-                window.sceneElementLibrary.init();
-            }
-            if (window.scene3DViewer) {
-                window.scene3DViewer.init();
-            }
-        });
+        // Scene editing tools lazy-load on first use so the interview flow
+        // starts faster on mobile devices.
         
         // Toggle between 2D and 3D scene views
         let currentSceneView = '2d';
         let currentPerspective = 'bird';
         
-        function toggleSceneView(view) {
+        async function toggleSceneView(view) {
             if (view === currentSceneView) return;
             currentSceneView = view;
             
@@ -1002,6 +996,7 @@
                 if (perspectiveGroup) perspectiveGroup.style.display = 'none';
                 
                 if (window.scene3DViewer) {
+                    await window.scene3DViewer.init();
                     window.scene3DViewer.activate(canvas3d);
                 }
             } else {

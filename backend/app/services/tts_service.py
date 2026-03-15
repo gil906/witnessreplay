@@ -200,6 +200,15 @@ class TTSService:
                         return inline_data.data
         return None
 
+    @staticmethod
+    def _build_speech_config(voice: str) -> types.SpeechConfig:
+        """Build SpeechConfig in the SDK shape expected by both TTS APIs."""
+        return types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice)
+            )
+        )
+
     async def _generate_native_audio_live(
         self,
         model: str,
@@ -207,12 +216,11 @@ class TTSService:
         voice: str,
     ) -> Optional[bytes]:
         """Generate audio using Gemini Native Audio via Live API."""
-        config = {
-            "response_modalities": ["AUDIO"],
-            "system_instruction": TTS_SYSTEM_INSTRUCTION,
-            # Passing voice name string keeps Native Audio stable with current SDK.
-            "speech_config": voice,
-        }
+        config = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            system_instruction=TTS_SYSTEM_INSTRUCTION,
+            speech_config=self._build_speech_config(voice),
+        )
         audio_chunks: List[bytes] = []
         mime_type: Optional[str] = None
 
@@ -261,13 +269,7 @@ class TTSService:
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 system_instruction=TTS_SYSTEM_INSTRUCTION,
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice,
-                        )
-                    )
-                ),
+                speech_config=self._build_speech_config(voice),
             ),
         )
         return self._extract_audio_from_generate_content(response)

@@ -12,6 +12,7 @@ class SceneElementLibrary {
         this.placedElements = [];
         this.elementIdCounter = 0;
         this.isInitialized = false;
+        this.initPromise = null;
     }
 
     /**
@@ -19,15 +20,28 @@ class SceneElementLibrary {
      */
     async init() {
         if (this.isInitialized) return;
-        
+
+        if (this.initPromise) {
+            await this.initPromise;
+            return;
+        }
+
+        this.initPromise = (async () => {
+            try {
+                await this.loadElements();
+                this.renderPalette();
+                this.setupEventListeners();
+                this.isInitialized = true;
+                console.debug('[SceneElements] Library initialized with', this.categories.length, 'categories');
+            } catch (error) {
+                console.error('[SceneElements] Failed to initialize:', error);
+            }
+        })();
+
         try {
-            await this.loadElements();
-            this.renderPalette();
-            this.setupEventListeners();
-            this.isInitialized = true;
-            console.debug('[SceneElements] Library initialized with', this.categories.length, 'categories');
-        } catch (error) {
-            console.error('[SceneElements] Failed to initialize:', error);
+            await this.initPromise;
+        } finally {
+            this.initPromise = null;
         }
     }
 
@@ -542,7 +556,10 @@ class SceneElementLibrary {
     /**
      * Toggle palette visibility
      */
-    togglePalette() {
+    async togglePalette() {
+        if (!this.isInitialized) {
+            await this.init();
+        }
         const palette = document.getElementById('scene-element-palette');
         if (palette) {
             palette.classList.toggle('collapsed');

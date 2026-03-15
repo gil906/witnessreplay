@@ -15,18 +15,35 @@ class Scene3DViewer {
         this.animationId = null;
         this.gridHelper = null;
         this.groundPlane = null;
+        this.isInitialized = false;
+        this.initPromise = null;
     }
 
     /**
      * Initialize the 3D viewer
      */
     async init() {
-        // Check if Three.js is loaded
-        if (typeof THREE === 'undefined') {
-            console.warn('[Scene3D] Three.js not loaded, loading dynamically...');
-            await this.loadThreeJS();
+        if (this.isInitialized) return;
+
+        if (this.initPromise) {
+            await this.initPromise;
+            return;
         }
-        console.debug('[Scene3D] Initialized');
+
+        this.initPromise = (async () => {
+            if (typeof THREE === 'undefined') {
+                console.warn('[Scene3D] Three.js not loaded, loading dynamically...');
+                await this.loadThreeJS();
+            }
+            this.isInitialized = true;
+            console.debug('[Scene3D] Initialized');
+        })();
+
+        try {
+            await this.initPromise;
+        } finally {
+            this.initPromise = null;
+        }
     }
 
     /**
@@ -503,11 +520,6 @@ class Scene3DViewer {
 
 // Global instance
 window.scene3DViewer = new Scene3DViewer();
-
-// Initialize when DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.scene3DViewer.init();
-});
 
 // Export for module use
 if (typeof module !== 'undefined' && module.exports) {

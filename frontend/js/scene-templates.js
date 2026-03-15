@@ -8,6 +8,7 @@ class SceneTemplateManager {
         this.templates = [];
         this.isInitialized = false;
         this.selectedTemplate = null;
+        this.initPromise = null;
     }
 
     /**
@@ -15,13 +16,26 @@ class SceneTemplateManager {
      */
     async init() {
         if (this.isInitialized) return;
-        
+
+        if (this.initPromise) {
+            await this.initPromise;
+            return;
+        }
+
+        this.initPromise = (async () => {
+            try {
+                await this.loadTemplates();
+                this.isInitialized = true;
+                console.debug('[SceneTemplates] Manager initialized with', this.templates.length, 'templates');
+            } catch (error) {
+                console.error('[SceneTemplates] Failed to initialize:', error);
+            }
+        })();
+
         try {
-            await this.loadTemplates();
-            this.isInitialized = true;
-            console.debug('[SceneTemplates] Manager initialized with', this.templates.length, 'templates');
-        } catch (error) {
-            console.error('[SceneTemplates] Failed to initialize:', error);
+            await this.initPromise;
+        } finally {
+            this.initPromise = null;
         }
     }
 
@@ -45,7 +59,11 @@ class SceneTemplateManager {
     /**
      * Show template selector modal
      */
-    showTemplateSelector() {
+    async showTemplateSelector() {
+        if (!this.isInitialized) {
+            await this.init();
+        }
+
         // Remove existing modal if any
         const existingModal = document.getElementById('template-selector-modal');
         if (existingModal) existingModal.remove();
@@ -121,6 +139,7 @@ class SceneTemplateManager {
 
         if (!templateId) {
             // Blank canvas selected
+            this.selectedTemplate = null;
             this.clearAndPrepareCanvas();
             console.debug('[SceneTemplates] Starting with blank canvas');
             return;
@@ -176,6 +195,9 @@ class SceneTemplateManager {
                 ...element,
                 instanceId: element.instanceId || `${element.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                 category: this.getElementCategory(element.id),
+                rotation: Number.isFinite(element.rotation) ? element.rotation : 0,
+                width: element.width || 40,
+                height: element.height || 40,
                 zIndex: window.sceneElementLibrary ? window.sceneElementLibrary.placedElements.length : 0
             };
 
@@ -237,7 +259,9 @@ class SceneTemplateManager {
             'tree': 'environment', 'building': 'environment', 'house': 'environment', 'road': 'environment',
             'sidewalk': 'environment', 'intersection': 'environment', 'parking_lot': 'environment',
             'traffic_light': 'environment', 'stop_sign': 'environment', 'streetlight': 'environment',
-            'fence': 'environment', 'bush': 'environment'
+            'fence': 'environment', 'bush': 'environment',
+            'shell_casing': 'evidence', 'blood_spatter': 'evidence', 'weapon': 'evidence',
+            'phone': 'evidence', 'bag': 'evidence', 'skid_mark': 'evidence'
         };
         return categoryMap[elementId] || 'environment';
     }
@@ -266,14 +290,6 @@ class SceneTemplateManager {
 
 // Create global instance
 window.sceneTemplateManager = new SceneTemplateManager();
-
-// Auto-initialize when scene element library is ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Initialize after a short delay to ensure scene library is ready
-    setTimeout(() => {
-        window.sceneTemplateManager.init();
-    }, 500);
-});
 
 // Export for module use
 if (typeof module !== 'undefined' && module.exports) {

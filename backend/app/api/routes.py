@@ -1,4 +1,5 @@
 import logging
+import copy
 import re
 import random
 from typing import Any, Dict, List, Optional
@@ -483,6 +484,187 @@ async def get_template_by_id(template_id: str):
 
 # ── Scene Elements Library ────────────────────────────────
 
+SCENE_ELEMENTS_FALLBACK = {
+    "version": "builtin-2026-03-15",
+    "categories": [
+        {
+            "id": "vehicles",
+            "name": "Vehicles",
+            "icon": "🚗",
+            "elements": [
+                {"id": "car", "name": "Car", "icon": "🚗", "description": "Passenger car", "defaultWidth": 64, "defaultHeight": 40},
+                {"id": "suv", "name": "SUV", "icon": "🚙", "description": "Sport utility vehicle", "defaultWidth": 68, "defaultHeight": 42},
+                {"id": "truck", "name": "Truck", "icon": "🚚", "description": "Pickup or work truck", "defaultWidth": 72, "defaultHeight": 44},
+                {"id": "motorcycle", "name": "Motorcycle", "icon": "🏍️", "description": "Motorcycle or dirt bike", "defaultWidth": 48, "defaultHeight": 28},
+                {"id": "bicycle", "name": "Bicycle", "icon": "🚲", "description": "Bicycle", "defaultWidth": 44, "defaultHeight": 28},
+                {"id": "police_car", "name": "Police Car", "icon": "🚓", "description": "Patrol vehicle", "defaultWidth": 68, "defaultHeight": 42},
+                {"id": "ambulance", "name": "Ambulance", "icon": "🚑", "description": "Emergency vehicle", "defaultWidth": 72, "defaultHeight": 44},
+            ],
+        },
+        {
+            "id": "people",
+            "name": "People",
+            "icon": "🧍",
+            "elements": [
+                {"id": "witness", "name": "Witness", "icon": "🧍", "description": "Reporting witness", "defaultWidth": 32, "defaultHeight": 48},
+                {"id": "suspect", "name": "Suspect", "icon": "🏃", "description": "Potential suspect", "defaultWidth": 32, "defaultHeight": 48},
+                {"id": "victim", "name": "Victim", "icon": "🧎", "description": "Victim position", "defaultWidth": 32, "defaultHeight": 48},
+                {"id": "officer", "name": "Officer", "icon": "👮", "description": "Responding officer", "defaultWidth": 32, "defaultHeight": 48},
+                {"id": "group", "name": "Group", "icon": "🧑‍🤝‍🧑", "description": "Small group of people", "defaultWidth": 52, "defaultHeight": 48},
+            ],
+        },
+        {
+            "id": "environment",
+            "name": "Environment",
+            "icon": "🌳",
+            "elements": [
+                {"id": "road", "name": "Road", "icon": "🛣️", "description": "Road segment", "defaultWidth": 140, "defaultHeight": 72},
+                {"id": "intersection", "name": "Intersection", "icon": "➕", "description": "Street intersection", "defaultWidth": 180, "defaultHeight": 180},
+                {"id": "parking_lot", "name": "Parking Lot", "icon": "🅿️", "description": "Parking lot area", "defaultWidth": 180, "defaultHeight": 120},
+                {"id": "building", "name": "Building", "icon": "🏢", "description": "Commercial building", "defaultWidth": 96, "defaultHeight": 96},
+                {"id": "house", "name": "House", "icon": "🏠", "description": "Residential house", "defaultWidth": 88, "defaultHeight": 88},
+                {"id": "tree", "name": "Tree", "icon": "🌳", "description": "Tree or large shrub", "defaultWidth": 52, "defaultHeight": 64},
+                {"id": "traffic_light", "name": "Traffic Light", "icon": "🚦", "description": "Traffic signal", "defaultWidth": 36, "defaultHeight": 56},
+                {"id": "stop_sign", "name": "Stop Sign", "icon": "🛑", "description": "Stop sign", "defaultWidth": 36, "defaultHeight": 36},
+                {"id": "sidewalk", "name": "Sidewalk", "icon": "⬜", "description": "Sidewalk or walkway", "defaultWidth": 120, "defaultHeight": 40},
+                {"id": "streetlight", "name": "Streetlight", "icon": "💡", "description": "Streetlight or lamp post", "defaultWidth": 28, "defaultHeight": 72},
+            ],
+        },
+        {
+            "id": "evidence",
+            "name": "Evidence",
+            "icon": "🧪",
+            "elements": [
+                {"id": "shell_casing", "name": "Shell Casing", "icon": "🔸", "description": "Recovered shell casing", "defaultWidth": 20, "defaultHeight": 20},
+                {"id": "blood_spatter", "name": "Blood Spatter", "icon": "🩸", "description": "Blood evidence", "defaultWidth": 32, "defaultHeight": 32},
+                {"id": "weapon", "name": "Weapon", "icon": "🔫", "description": "Firearm or weapon", "defaultWidth": 36, "defaultHeight": 24},
+                {"id": "phone", "name": "Phone", "icon": "📱", "description": "Mobile phone", "defaultWidth": 24, "defaultHeight": 36},
+                {"id": "bag", "name": "Bag", "icon": "🎒", "description": "Bag or backpack", "defaultWidth": 36, "defaultHeight": 40},
+                {"id": "skid_mark", "name": "Skid Mark", "icon": "〰️", "description": "Vehicle skid marks", "defaultWidth": 90, "defaultHeight": 18},
+            ],
+        },
+        {
+            "id": "furniture",
+            "name": "Furniture",
+            "icon": "🪑",
+            "elements": [
+                {"id": "table", "name": "Table", "icon": "🟫", "description": "Table or desk", "defaultWidth": 72, "defaultHeight": 48},
+                {"id": "chair", "name": "Chair", "icon": "🪑", "description": "Chair", "defaultWidth": 32, "defaultHeight": 32},
+                {"id": "door", "name": "Door", "icon": "🚪", "description": "Doorway", "defaultWidth": 32, "defaultHeight": 56},
+                {"id": "window", "name": "Window", "icon": "🪟", "description": "Window", "defaultWidth": 52, "defaultHeight": 40},
+                {"id": "couch", "name": "Couch", "icon": "🛋️", "description": "Couch or sofa", "defaultWidth": 84, "defaultHeight": 44},
+            ],
+        },
+    ],
+}
+
+SCENE_TEMPLATES_FALLBACK = {
+    "version": "builtin-2026-03-15",
+    "lastUpdated": "2026-03-15",
+    "templates": [
+        {
+            "id": "intersection",
+            "name": "Intersection Collision",
+            "description": "Four-way intersection with two vehicles and a witness position.",
+            "icon": "🚦",
+            "category": "outdoor",
+            "canvasSize": {"width": 960, "height": 480},
+            "elements": [
+                {"id": "intersection", "name": "Intersection", "icon": "➕", "x": 360, "y": 120, "width": 180, "height": 180, "locked": True},
+                {"id": "traffic_light", "name": "Traffic Light", "icon": "🚦", "x": 328, "y": 90, "width": 32, "height": 56},
+                {"id": "traffic_light", "name": "Traffic Light", "icon": "🚦", "x": 544, "y": 302, "width": 32, "height": 56},
+                {"id": "car", "name": "Car", "icon": "🚗", "x": 372, "y": 156, "width": 64, "height": 40, "rotation": 0},
+                {"id": "suv", "name": "SUV", "icon": "🚙", "x": 470, "y": 206, "width": 68, "height": 42, "rotation": 90},
+                {"id": "witness", "name": "Witness", "icon": "🧍", "x": 300, "y": 250, "width": 32, "height": 48},
+            ],
+        },
+        {
+            "id": "parking_lot",
+            "name": "Parking Lot Encounter",
+            "description": "Parking lot layout with a witness, officer, and parked vehicles.",
+            "icon": "🅿️",
+            "category": "outdoor",
+            "canvasSize": {"width": 960, "height": 440},
+            "elements": [
+                {"id": "parking_lot", "name": "Parking Lot", "icon": "🅿️", "x": 280, "y": 90, "width": 240, "height": 150, "locked": True},
+                {"id": "car", "name": "Car", "icon": "🚗", "x": 326, "y": 132, "width": 64, "height": 40},
+                {"id": "truck", "name": "Truck", "icon": "🚚", "x": 414, "y": 132, "width": 72, "height": 44},
+                {"id": "witness", "name": "Witness", "icon": "🧍", "x": 552, "y": 150, "width": 32, "height": 48},
+                {"id": "officer", "name": "Officer", "icon": "👮", "x": 608, "y": 164, "width": 32, "height": 48},
+                {"id": "phone", "name": "Phone", "icon": "📱", "x": 520, "y": 230, "width": 24, "height": 36},
+            ],
+        },
+        {
+            "id": "room_interior",
+            "name": "Room Interior",
+            "description": "Indoor room setup for burglary, assault, or witness placement.",
+            "icon": "🏠",
+            "category": "indoor",
+            "canvasSize": {"width": 860, "height": 460},
+            "elements": [
+                {"id": "table", "name": "Table", "icon": "🟫", "x": 360, "y": 190, "width": 80, "height": 52},
+                {"id": "chair", "name": "Chair", "icon": "🪑", "x": 332, "y": 252, "width": 32, "height": 32},
+                {"id": "chair", "name": "Chair", "icon": "🪑", "x": 448, "y": 252, "width": 32, "height": 32},
+                {"id": "door", "name": "Door", "icon": "🚪", "x": 180, "y": 150, "width": 32, "height": 56},
+                {"id": "window", "name": "Window", "icon": "🪟", "x": 556, "y": 130, "width": 52, "height": 40},
+                {"id": "couch", "name": "Couch", "icon": "🛋️", "x": 520, "y": 240, "width": 84, "height": 44},
+                {"id": "witness", "name": "Witness", "icon": "🧍", "x": 274, "y": 208, "width": 32, "height": 48},
+                {"id": "suspect", "name": "Suspect", "icon": "🏃", "x": 610, "y": 224, "width": 32, "height": 48},
+            ],
+        },
+        {
+            "id": "residential_street",
+            "name": "Residential Street",
+            "description": "Street scene with houses, trees, lighting, and witness placement.",
+            "icon": "🏘️",
+            "category": "outdoor",
+            "canvasSize": {"width": 980, "height": 420},
+            "elements": [
+                {"id": "road", "name": "Road", "icon": "🛣️", "x": 310, "y": 198, "width": 260, "height": 76, "locked": True},
+                {"id": "house", "name": "House", "icon": "🏠", "x": 184, "y": 104, "width": 88, "height": 88},
+                {"id": "house", "name": "House", "icon": "🏠", "x": 650, "y": 102, "width": 88, "height": 88},
+                {"id": "tree", "name": "Tree", "icon": "🌳", "x": 150, "y": 220, "width": 52, "height": 64},
+                {"id": "streetlight", "name": "Streetlight", "icon": "💡", "x": 602, "y": 176, "width": 28, "height": 72},
+                {"id": "car", "name": "Car", "icon": "🚗", "x": 390, "y": 214, "width": 64, "height": 40},
+                {"id": "witness", "name": "Witness", "icon": "🧍", "x": 540, "y": 154, "width": 32, "height": 48},
+            ],
+        },
+    ],
+}
+
+_SCENE_ELEMENTS_CACHE: Optional[Dict[str, Any]] = None
+_SCENE_TEMPLATES_CACHE: Optional[Dict[str, Any]] = None
+
+
+def _load_scene_elements_library() -> Dict[str, Any]:
+    global _SCENE_ELEMENTS_CACHE
+    if _SCENE_ELEMENTS_CACHE is not None:
+        return copy.deepcopy(_SCENE_ELEMENTS_CACHE)
+
+    elements_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_elements.json")
+    try:
+        with open(elements_path, "r", encoding="utf-8") as file_obj:
+            _SCENE_ELEMENTS_CACHE = json.load(file_obj)
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        logger.warning("Using built-in scene element library fallback: %s", error)
+        _SCENE_ELEMENTS_CACHE = copy.deepcopy(SCENE_ELEMENTS_FALLBACK)
+    return copy.deepcopy(_SCENE_ELEMENTS_CACHE)
+
+
+def _load_scene_templates_library() -> Dict[str, Any]:
+    global _SCENE_TEMPLATES_CACHE
+    if _SCENE_TEMPLATES_CACHE is not None:
+        return copy.deepcopy(_SCENE_TEMPLATES_CACHE)
+
+    templates_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_templates.json")
+    try:
+        with open(templates_path, "r", encoding="utf-8") as file_obj:
+            _SCENE_TEMPLATES_CACHE = json.load(file_obj)
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        logger.warning("Using built-in scene template fallback: %s", error)
+        _SCENE_TEMPLATES_CACHE = copy.deepcopy(SCENE_TEMPLATES_FALLBACK)
+    return copy.deepcopy(_SCENE_TEMPLATES_CACHE)
+
 @router.get("/scene-elements")
 async def list_scene_elements(category: Optional[str] = None):
     """
@@ -494,28 +676,18 @@ async def list_scene_elements(category: Optional[str] = None):
     Returns:
         Scene elements organized by category
     """
-    import json as json_module
-    elements_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_elements.json")
-    try:
-        with open(elements_path, "r") as f:
-            data = json_module.load(f)
-        
-        if category:
-            # Filter to specific category
-            filtered = [c for c in data.get("categories", []) if c["id"] == category]
-            if not filtered:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Category '{category}' not found"
-                )
-            return {"categories": filtered, "version": data.get("version")}
-        
-        return data
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Scene elements library not found"
-        )
+    data = _load_scene_elements_library()
+
+    if category:
+        filtered = [scene_category for scene_category in data.get("categories", []) if scene_category["id"] == category]
+        if not filtered:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Category '{category}' not found"
+            )
+        return {"categories": filtered, "version": data.get("version")}
+
+    return data
 
 
 @router.get("/scene-elements/{element_id}")
@@ -529,26 +701,17 @@ async def get_scene_element(element_id: str):
     Returns:
         Element details or 404 if not found
     """
-    import json as json_module
-    elements_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_elements.json")
-    try:
-        with open(elements_path, "r") as f:
-            data = json_module.load(f)
-        
-        for category in data.get("categories", []):
-            for element in category.get("elements", []):
-                if element["id"] == element_id:
-                    return element
-        
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Element '{element_id}' not found"
-        )
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Scene elements library not found"
-        )
+    data = _load_scene_elements_library()
+
+    for category in data.get("categories", []):
+        for element in category.get("elements", []):
+            if element["id"] == element_id:
+                return element
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Element '{element_id}' not found"
+    )
 
 
 @router.get("/scene-templates")
@@ -562,32 +725,22 @@ async def list_scene_templates(category: Optional[str] = None):
     Returns:
         List of scene templates with element positions
     """
-    import json as json_module
-    templates_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_templates.json")
-    try:
-        with open(templates_path, "r") as f:
-            data = json_module.load(f)
-        
-        templates = data.get("templates", [])
-        
-        if category:
-            templates = [t for t in templates if t.get("category") == category]
-            if not templates:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No templates found for category '{category}'"
-                )
-        
-        return {
-            "templates": templates,
-            "version": data.get("version"),
-            "lastUpdated": data.get("lastUpdated")
-        }
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Scene templates library not found"
-        )
+    data = _load_scene_templates_library()
+    templates = data.get("templates", [])
+
+    if category:
+        templates = [template for template in templates if template.get("category") == category]
+        if not templates:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No templates found for category '{category}'"
+            )
+
+    return {
+        "templates": templates,
+        "version": data.get("version"),
+        "lastUpdated": data.get("lastUpdated")
+    }
 
 
 @router.get("/scene-templates/{template_id}")
@@ -601,25 +754,16 @@ async def get_scene_template(template_id: str):
     Returns:
         Template details with all element positions
     """
-    import json as json_module
-    templates_path = os.path.join(os.path.dirname(__file__), "..", "data", "scene_templates.json")
-    try:
-        with open(templates_path, "r") as f:
-            data = json_module.load(f)
-        
-        for template in data.get("templates", []):
-            if template["id"] == template_id:
-                return template
-        
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Template '{template_id}' not found"
-        )
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Scene templates library not found"
-        )
+    data = _load_scene_templates_library()
+
+    for template in data.get("templates", []):
+        if template["id"] == template_id:
+            return template
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Template '{template_id}' not found"
+    )
 
 
 @router.get("/sessions")
