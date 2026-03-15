@@ -473,7 +473,9 @@ class WebSocketHandler:
                         contents=[
                             types.Content(parts=[
                                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-                                types.Part.from_text("Transcribe this audio exactly. Return ONLY the transcribed text, nothing else."),
+                                types.Part.from_text(
+                                    text="Transcribe this audio exactly. Return ONLY the transcribed text, nothing else."
+                                ),
                             ])
                         ]
                     )
