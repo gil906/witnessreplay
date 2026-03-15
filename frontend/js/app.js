@@ -82,6 +82,8 @@ class WitnessReplayApp {
         this.lastCallMetrics = null;
         this._isPageClosing = false;
         this._pageLifecycleHandler = null;
+        this._wsSessionId = null;
+        this._reconnectCountdown = null;
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -212,10 +214,7 @@ class WitnessReplayApp {
         this._isPageClosing = true;
 
         // Clean up all intervals to prevent memory leaks
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
+        this._clearReconnectState();
         if (this.durationTimer) {
             clearInterval(this.durationTimer);
             this.durationTimer = null;
@@ -229,11 +228,7 @@ class WitnessReplayApp {
             this._autoListenTimer = null;
         }
 
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            try {
-                this.ws.close(1000, 'tab closing');
-            } catch (_) {}
-        }
+        this._disposeWebSocket(this.ws, 'tab closing');
 
         if (!this.sessionId) return;
         const closeUrl = `/api/sessions/${this.sessionId}/close?reason=tab_close`;
@@ -349,7 +344,11 @@ class WitnessReplayApp {
                 if (indicator) indicator.classList.remove('popup-open');
                 this._reconnectAttempt = 0;
                 this.connectionError = null;
-                this._autoCreateSession();
+                if (this.sessionId) {
+                    this.connectWebSocket({ force: true });
+                } else {
+                    this._autoCreateSession();
+                }
             });
         }
     }
@@ -2483,18 +2482,54 @@ class WitnessReplayApp {
         this.durationTimer = setInterval(tick, 1000);
     }
     
-    connectWebSocket() {
-        if (this.ws) {
-            this.ws.close();
-        }
-        
+    _clearReconnectState() {
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        
+        if (this._reconnectCountdown) {
+            clearInterval(this._reconnectCountdown);
+            this._reconnectCountdown = null;
+        }
+    }
+
+    _disposeWebSocket(socket = this.ws, reason = 'superseded') {
+        if (!socket) return;
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        if (socket === this.ws) {
+            this.ws = null;
+            this._wsSessionId = null;
+        }
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            try {
+                socket.close(1000, reason);
+            } catch (_) {}
+        }
+    }
+
+    connectWebSocket(options = {}) {
+        const force = options?.force === true;
+        if (!this.sessionId) {
+            return;
+        }
+
+        const existingSocket = this.ws;
+        const hasLiveConnection = existingSocket
+            && this._wsSessionId === this.sessionId
+            && (existingSocket.readyState === WebSocket.OPEN || existingSocket.readyState === WebSocket.CONNECTING);
+        if (hasLiveConnection && !force) {
+            return;
+        }
+
+        this._clearReconnectState();
+        this._disposeWebSocket(existingSocket, force ? 'manual reconnect' : 'superseded');
+
+        const sessionId = this.sessionId;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
+        const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}`;
         
         this._addConnectionStep(`WebSocket → ${wsUrl}`);
         
@@ -2509,12 +2544,17 @@ class WitnessReplayApp {
         this.updateConnectionStatus('connecting');
         this._updateMicState('connecting');
         
-        this.ws = new WebSocket(wsUrl);
+        const socket = new WebSocket(wsUrl);
+        this.ws = socket;
+        this._wsSessionId = sessionId;
         
-        this.ws.onopen = () => {
+        // Ignore late events from superseded sockets so they cannot schedule reconnect loops.
+        socket.onopen = () => {
+            if (this.ws !== socket) return;
             this._isPageClosing = false;
             this._autoListenPausedUntilManual = false;
             this._syncAutoListenButtonState();
+            this._clearReconnectState();
             this._reconnectAttempt = 0;
             this.connectionError = null;
             this._addConnectionStep('✅ Connected!');
@@ -2535,16 +2575,18 @@ class WitnessReplayApp {
             this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
         
-        this.ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
+            if (this.ws !== socket) return;
             const message = JSON.parse(event.data);
             if (message.type === 'ping') {
-                this.ws.send(JSON.stringify({type: 'pong', data: {}}));
+                socket.send(JSON.stringify({type: 'pong', data: {}}));
                 return;
             }
             this.handleWebSocketMessage(message);
         };
         
-        this.ws.onerror = (error) => {
+        socket.onerror = (error) => {
+            if (this.ws !== socket) return;
             console.error('WebSocket error:', error);
             this.connectionError = `WebSocket failed to connect to ${window.location.host}. This may be a CORS/origin issue.`;
             this._addConnectionStep(`❌ WebSocket error (check browser console)`);
@@ -2552,7 +2594,10 @@ class WitnessReplayApp {
             this._setConversationState('ready', { silent: true });
         };
         
-        this.ws.onclose = (event) => {
+        socket.onclose = (event) => {
+            if (this.ws !== socket) return;
+            this.ws = null;
+            this._wsSessionId = null;
             if (this._isPageClosing) {
                 return;
             }
@@ -2574,7 +2619,7 @@ class WitnessReplayApp {
             this._setConversationState('ready', { silent: true });
             
             // Reconnect with exponential backoff
-            if (this.sessionId) {
+            if (this.sessionId === sessionId) {
                 this._scheduleReconnect();
             } else {
                 
@@ -2610,6 +2655,9 @@ class WitnessReplayApp {
     }
     
     _scheduleReconnect() {
+        if (this._isPageClosing || !this.sessionId || this.reconnectTimer) {
+            return;
+        }
         if (this._reconnectAttempt >= 10) {
             this.ui?.showToast('❌ Connection lost. Please refresh the page.', 'error', 0);
             this.updateConnectionStatus('disconnected');
@@ -3014,7 +3062,11 @@ class WitnessReplayApp {
         if (this.micBtn.classList.contains('disconnected')) {
             this._reconnectAttempt = 0;
             this.connectionError = null;
-            this._autoCreateSession();
+            if (this.sessionId) {
+                this.connectWebSocket({ force: true });
+            } else {
+                this._autoCreateSession();
+            }
             return;
         }
         
