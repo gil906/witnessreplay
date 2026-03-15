@@ -2,12 +2,15 @@
 Model selector service with quota-based fallback chains.
 Tracks per-model RPM/TPM/RPD quotas and provides smart routing.
 """
+import asyncio
+import json
 import logging
 import random
-import asyncio
-from typing import List, Optional, Dict, Tuple, Any, Callable
-from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from app.config import settings
 
@@ -22,13 +25,22 @@ CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
     ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
     ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
     ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3.1-flash-lite-preview", {"rpm": 15, "tpm": 250_000, "rpd": 500}),
 ]
 
 # Routine conversational tasks should preserve higher-tier Flash budgets.
 ROUTINE_CHAT_MODELS: List[Tuple[str, Dict[str, int]]] = [
     ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3.1-flash-lite-preview", {"rpm": 15, "tpm": 250_000, "rpd": 500}),
     ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
     ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+]
+
+TRANSCRIPTION_MODELS: List[Tuple[str, Dict[str, int]]] = [
+    ("gemini-3.1-flash-lite-preview", {"rpm": 15, "tpm": 250_000, "rpd": 500}),
+    ("gemini-2.5-flash-lite", {"rpm": 10, "tpm": 250_000, "rpd": 20}),
+    ("gemini-3-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
+    ("gemini-2.5-flash", {"rpm": 5, "tpm": 250_000, "rpd": 20}),
 ]
 
 LIGHTWEIGHT_MODELS: List[Tuple[str, Dict[str, int]]] = [
@@ -62,8 +74,16 @@ LIVE_MODELS: List[Tuple[str, Dict[str, int]]] = [
 
 # Convenience mapping: model name → quota dict
 MODEL_QUOTAS: Dict[str, Dict[str, int]] = {}
-for _chain in (CHAT_MODELS, LIGHTWEIGHT_MODELS, IMAGE_MODELS,
-               EMBEDDING_MODELS, TTS_MODELS, LIVE_MODELS):
+for _chain in (
+    CHAT_MODELS,
+    ROUTINE_CHAT_MODELS,
+    TRANSCRIPTION_MODELS,
+    LIGHTWEIGHT_MODELS,
+    IMAGE_MODELS,
+    EMBEDDING_MODELS,
+    TTS_MODELS,
+    LIVE_MODELS,
+):
     for _name, _quota in _chain:
         MODEL_QUOTAS[_name] = _quota
 
@@ -80,7 +100,7 @@ TASK_CHAINS: Dict[str, List[Tuple[str, Dict[str, int]]]] = {
     "scene": ROUTINE_CHAT_MODELS,
     "classification": LIGHTWEIGHT_WITH_FALLBACK,
     "summarization": ROUTINE_CHAT_MODELS,
-    "transcription": ROUTINE_CHAT_MODELS,
+    "transcription": TRANSCRIPTION_MODELS,
     "extraction": LIGHTWEIGHT_WITH_FALLBACK,
     "verification": LIGHTWEIGHT_WITH_FALLBACK,
     "intent": LIGHTWEIGHT_WITH_FALLBACK,
@@ -119,6 +139,49 @@ def is_retryable_model_error(error: Exception) -> bool:
     )
 
 
+def _persistent_state_dir() -> Path:
+    """Return a directory that survives container restarts."""
+    configured_path = Path(settings.database_path).expanduser()
+    candidate = configured_path.resolve().parent
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except OSError:
+        fallback = Path("/tmp/witnessreplay_data")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _quota_tracker_state_path() -> Path:
+    return _persistent_state_dir() / "quota_tracker_state.json"
+
+
+def _model_selector_state_path() -> Path:
+    return _persistent_state_dir() / "model_selector_state.json"
+
+
+def _rate_limit_cooldown_seconds(error: Optional[Exception], default_seconds: int = 60) -> int:
+    """Choose a cooldown based on what kind of quota error Google returned."""
+    if error is None:
+        return default_seconds
+
+    message = str(error).lower()
+    if any(token in message for token in ("requests per day", "request per day", "rpd", "daily limit", "per day")):
+        pacific_now = datetime.now(ZoneInfo("America/Los_Angeles"))
+        next_reset = (pacific_now + timedelta(days=1)).replace(
+            hour=0, minute=5, second=0, microsecond=0
+        )
+        return max(300, int((next_reset - pacific_now).total_seconds()))
+
+    if any(token in message for token in ("requests per minute", "tokens per minute", "rpm", "tpm", "per minute")):
+        return max(default_seconds, 10 * 60)
+
+    if "resource has been exhausted" in message or "quota" in message or "rate limit" in message:
+        return max(default_seconds, 5 * 60)
+
+    return default_seconds
+
+
 # ---------------------------------------------------------------------------
 # QuotaTracker – per-model RPM / TPM / RPD tracking
 # ---------------------------------------------------------------------------
@@ -132,16 +195,48 @@ class QuotaTracker:
         self._daily_tokens: Dict[str, int] = defaultdict(int)
         self._last_reset_date: str = ""
         self._lock = asyncio.Lock()
+        self._state_path = _quota_tracker_state_path()
+        self._load_state()
 
     # -- internal helpers --------------------------------------------------
 
+    def _load_state(self):
+        try:
+            if not self._state_path.exists():
+                return
+            payload = json.loads(self._state_path.read_text())
+            self._last_reset_date = str(payload.get("last_reset_date", "") or "")
+            self._daily_counts = defaultdict(int, {
+                model: int(count)
+                for model, count in (payload.get("daily_counts") or {}).items()
+            })
+            self._daily_tokens = defaultdict(int, {
+                model: int(count)
+                for model, count in (payload.get("daily_tokens") or {}).items()
+            })
+            self._reset_if_new_day()
+        except Exception as exc:
+            logger.warning("QuotaTracker: could not load state: %s", exc)
+
+    def _save_state(self):
+        try:
+            payload = {
+                "last_reset_date": self._last_reset_date,
+                "daily_counts": dict(self._daily_counts),
+                "daily_tokens": dict(self._daily_tokens),
+            }
+            self._state_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        except Exception as exc:
+            logger.warning("QuotaTracker: could not save state: %s", exc)
+
     def _reset_if_new_day(self):
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
         if today != self._last_reset_date:
             logger.info(f"QuotaTracker: new day {today}, resetting daily counters")
             self._daily_counts.clear()
             self._daily_tokens.clear()
             self._last_reset_date = today
+            self._save_state()
 
     def _prune_minute_window(self, model: str):
         """Remove entries older than 60 s from the per-minute window."""
@@ -161,6 +256,7 @@ class QuotaTracker:
             self._daily_counts[model] = self._daily_counts.get(model, 0) + 1
             self._daily_tokens[model] = self._daily_tokens.get(model, 0) + tokens_used
             self._prune_minute_window(model)
+            self._save_state()
 
     async def can_make_request(self, model: str) -> bool:
         """Return True if the model has remaining quota for a request."""
@@ -251,23 +347,57 @@ class ModelSelector:
         self._current_scene_model: Optional[str] = None
         self._current_chat_model: Optional[str] = None
         self.quota = quota_tracker
+        self._state_path = _model_selector_state_path()
+        self._load_rate_limits()
 
     # -- rate-limit bookkeeping (kept for backward compat) -----------------
 
     def _cleanup_rate_limits(self):
         now = datetime.now(timezone.utc)
-        expired = [m for m, t in self._rate_limited_models.items()
-                   if now - t > timedelta(seconds=60)]
+        expired = [m for m, expires_at in self._rate_limited_models.items() if expires_at <= now]
+        if not expired:
+            return
         for m in expired:
             del self._rate_limited_models[m]
             logger.info(f"Model {m} rate limit expired, now available")
+        self._save_rate_limits()
+
+    def _load_rate_limits(self):
+        try:
+            if not self._state_path.exists():
+                return
+            payload = json.loads(self._state_path.read_text())
+            now = datetime.now(timezone.utc)
+            restored: Dict[str, datetime] = {}
+            for model, expires_at in (payload.get("rate_limited_models") or {}).items():
+                expiry = datetime.fromisoformat(expires_at)
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry > now:
+                    restored[model] = expiry
+            self._rate_limited_models = restored
+        except Exception as exc:
+            logger.warning("ModelSelector: could not load state: %s", exc)
+
+    def _save_rate_limits(self):
+        try:
+            payload = {
+                "rate_limited_models": {
+                    model: expires_at.isoformat()
+                    for model, expires_at in self._rate_limited_models.items()
+                }
+            }
+            self._state_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        except Exception as exc:
+            logger.warning("ModelSelector: could not save state: %s", exc)
 
     def _is_rate_limited(self, model_name: str) -> bool:
         if model_name not in self._rate_limited_models:
             return False
-        limit_time = self._rate_limited_models[model_name]
-        if datetime.now(timezone.utc) - limit_time > timedelta(seconds=60):
+        expires_at = self._rate_limited_models[model_name]
+        if datetime.now(timezone.utc) >= expires_at:
             del self._rate_limited_models[model_name]
+            self._save_rate_limits()
             return False
         return True
 
@@ -290,6 +420,27 @@ class ModelSelector:
             return first_model
         logger.warning("All models in chain exhausted, returning first anyway")
         return first_model
+
+    async def get_candidate_models_for_task(self, task_type: str) -> List[str]:
+        """Return ordered candidates for a task, preferring currently available models."""
+        chain = TASK_CHAINS.get(task_type, CHAT_MODELS)
+        async with self._lock:
+            self._cleanup_rate_limits()
+            available: List[str] = []
+            constrained: List[str] = []
+
+            for model, _ in chain:
+                if model in available or model in constrained:
+                    continue
+                if self._is_rate_limited(model):
+                    constrained.append(model)
+                    continue
+                if await quota_tracker.can_make_request(model):
+                    available.append(model)
+                else:
+                    constrained.append(model)
+
+            return available + constrained
 
     async def _pick_from_chain_optimized(
         self, chain: List[Tuple[str, Dict[str, int]]], task_type: str = "unknown"
@@ -446,10 +597,23 @@ class ModelSelector:
                 "unavailable_models": unavailable_models,
             }
 
-    async def mark_rate_limited(self, model_name: str):
+    async def mark_rate_limited(
+        self,
+        model_name: str,
+        *,
+        error: Optional[Exception] = None,
+        cooldown_seconds: int = 60,
+    ):
         async with self._lock:
-            self._rate_limited_models[model_name] = datetime.now(timezone.utc)
-            logger.warning(f"Model {model_name} marked as rate limited")
+            applied_cooldown = _rate_limit_cooldown_seconds(error, default_seconds=cooldown_seconds)
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=applied_cooldown)
+            self._rate_limited_models[model_name] = expires_at
+            self._save_rate_limits()
+            logger.warning(
+                "Model %s marked unavailable for %ss",
+                model_name,
+                applied_cooldown,
+            )
 
     async def get_all_models_status(self) -> List[Dict]:
         """Return status of all known models (backward compatible)."""
@@ -497,8 +661,7 @@ class ModelSelector:
     def _get_rate_limit_expiry(self, model_name: str) -> Optional[int]:
         if model_name not in self._rate_limited_models:
             return None
-        limit_time = self._rate_limited_models[model_name]
-        expires_at = limit_time + timedelta(seconds=60)
+        expires_at = self._rate_limited_models[model_name]
         delta = expires_at - datetime.now(timezone.utc)
         return max(0, int(delta.total_seconds()))
 
@@ -566,7 +729,7 @@ async def call_with_retry(
                     f"retrying in {wait:.1f}s: {err[:120]}"
                 )
                 if model_name:
-                    await model_selector.mark_rate_limited(model_name)
+                    await model_selector.mark_rate_limited(model_name, error=e)
                 await asyncio.sleep(wait)
             else:
                 # Record failure for non-retryable errors
@@ -618,6 +781,71 @@ async def call_with_retry(
                 error=e,
             )
         raise
+
+
+async def generate_content_with_fallback(
+    client: Any,
+    task_type: str,
+    *,
+    contents: Any,
+    config: Optional[Dict[str, Any]] = None,
+) -> Tuple[Any, str]:
+    """Generate content by walking a task's model chain until one succeeds."""
+    candidates = await model_selector.get_candidate_models_for_task(task_type)
+    if not candidates:
+        candidates = model_selector.get_model_chain(task_type)
+
+    last_error: Optional[Exception] = None
+    attempted_models = False
+    for model_name in candidates:
+        if not await quota_tracker.can_make_request(model_name):
+            last_error = RuntimeError(
+                f"Tracked quota is exhausted for task '{task_type}' on model '{model_name}'"
+            )
+            logger.info(
+                "Skipping model %s for task %s due to tracked quota exhaustion",
+                model_name,
+                task_type,
+            )
+            continue
+
+        try:
+            attempted_models = True
+            kwargs: Dict[str, Any] = {
+                "model": model_name,
+                "contents": contents,
+            }
+            if config is not None:
+                kwargs["config"] = config
+
+            response = await asyncio.to_thread(client.models.generate_content, **kwargs)
+
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage_metadata"):
+                usage = response.usage_metadata
+                input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+            await quota_tracker.record_request(model_name, tokens_used=input_tokens + output_tokens)
+            return response, model_name
+        except Exception as error:
+            last_error = error
+            if is_retryable_model_error(error):
+                logger.warning(
+                    "Model %s failed for task %s, trying fallback: %s",
+                    model_name,
+                    task_type,
+                    str(error)[:160],
+                )
+                await model_selector.mark_rate_limited(model_name, error=error)
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    if candidates and not attempted_models:
+        raise RuntimeError(f"All candidate models for task '{task_type}' are currently out of quota")
+    raise RuntimeError(f"No candidate models configured for task '{task_type}'")
 
 
 # ---------------------------------------------------------------------------

@@ -70,7 +70,7 @@ from app.services.interview_templates import get_all_templates, get_template, ge
 from app.services.tts_service import tts_service
 from app.services.custody_chain import custody_chain_service
 from app.services.spatial_validation import spatial_validator, validate_scene_spatial, get_spatial_corrections
-from app.services.model_selector import model_selector
+from app.services.model_selector import generate_content_with_fallback, model_selector
 from app.services.imagen_service import imagen_service
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
@@ -10669,9 +10669,9 @@ async def api_send_audio(session_id: str, data: dict, api_key=Depends(require_ap
         mime_map = {"webm": "audio/webm", "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg"}
         mime = mime_map.get(audio_format, f"audio/{audio_format}")
 
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=settings.gemini_model,
+        response, _model = await generate_content_with_fallback(
+            client,
+            "transcription",
             contents=[
                 "Transcribe the following audio accurately. Return only the transcription text.",
                 {"inline_data": {"mime_type": mime, "data": audio_b64}},

@@ -17,7 +17,7 @@ from app.models.schemas import (
 from app.services.firestore import firestore_service
 from app.services.storage import storage_service
 from app.services.image_gen import image_service
-from app.services.model_selector import model_selector, quota_tracker
+from app.services.model_selector import generate_content_with_fallback, model_selector, quota_tracker
 from app.services.imagen_service import imagen_service
 from app.services.embedding_service import embedding_service
 from app.services.translation_service import translation_service
@@ -465,13 +465,11 @@ class WebSocketHandler:
                     }
                     mime_type = mime_map.get(audio_format, "audio/webm")
                     
-                    # Use quota-aware Gemini model for transcription
+                    # Use quota-aware Gemini model for transcription with full fallback chain
                     from google.genai import types
-                    transcription_model = await model_selector.get_best_model_for_task("transcription")
-                    logger.info("Sending audio to Gemini (%s) for transcription...", transcription_model)
-                    transcription_response = await asyncio.to_thread(
-                        self.agent.client.models.generate_content,
-                        model=transcription_model,
+                    transcription_response, transcription_model = await generate_content_with_fallback(
+                        self.agent.client,
+                        "transcription",
                         contents=[
                             types.Content(parts=[
                                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
@@ -479,14 +477,11 @@ class WebSocketHandler:
                                     text="Transcribe this audio exactly. Return ONLY the transcribed text, nothing else."
                                 ),
                             ])
-                        ]
+                        ],
                     )
-                    
+                    logger.info("Transcription succeeded with Gemini model %s", transcription_model)
+
                     transcribed_text = transcription_response.text.strip() if transcription_response.text else ""
-                    await quota_tracker.record_request(
-                        transcription_model,
-                        tokens_used=max(1, len(transcribed_text) // 4) if transcribed_text else 0,
-                    )
                     cleaned_text = self._sanitize_transcribed_text(transcribed_text)
 
                     if cleaned_text:
@@ -535,13 +530,14 @@ class WebSocketHandler:
                     
                     # Send specific error back to client
                     if "429" in error_str or "quota" in error_str.lower():
-                        user_msg = "API quota reached. Please type your statement instead."
+                        user_msg = "Voice transcription models are busy right now. Please try again in a moment, or type your statement instead."
                     elif "400" in error_str:
                         user_msg = f"Audio format issue. Try speaking longer. ({error_str[:80]})"
                     else:
                         user_msg = f"Transcription error: {error_str[:100]}. Try typing instead."
                     
                     await self.send_message("error", {"message": user_msg})
+                    await self._set_status("ready", "Ready to listen")
                     return
             
             await self.send_message("error", {

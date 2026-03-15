@@ -71,7 +71,9 @@ class WitnessReplayApp {
         this._autoListenPausedUntilManual = false;
         this._lastVoiceHintState = null;
         this._lastVoiceHintToastAt = 0;
-        this._micPermissionGranted = false; // Track if user has granted mic permission via gesture
+        this._micPermissionGranted = localStorage.getItem('witnessreplayMicPermissionGranted') === 'true';
+        this._micPermissionProbe = null;
+        this._micPermissionStatus = null;
         this.conversationState = 'ready';
         this.lastAgentMessage = '';
         this._stopRecordingPromise = null;
@@ -155,6 +157,7 @@ class WitnessReplayApp {
         
         // Initialize connection status popup
         this.initializeConnectionPopup();
+        this._refreshMicrophonePermissionState();
         
         // Auto-create session on page load so WebSocket connects immediately
         this.connectionError = null;
@@ -270,6 +273,37 @@ class WitnessReplayApp {
         }
         this.offlineQueue = [];
         localStorage.removeItem('wr_offline_queue');
+    }
+
+    _setMicPermissionGranted(granted) {
+        this._micPermissionGranted = !!granted;
+        try {
+            localStorage.setItem('witnessreplayMicPermissionGranted', String(this._micPermissionGranted));
+        } catch (_) {}
+    }
+
+    async _refreshMicrophonePermissionState() {
+        if (this._micPermissionProbe) {
+            return this._micPermissionProbe;
+        }
+        if (!navigator.permissions || typeof navigator.permissions.query !== 'function') {
+            return this._micPermissionGranted;
+        }
+
+        this._micPermissionProbe = navigator.permissions.query({ name: 'microphone' }).then((status) => {
+            this._setMicPermissionGranted(status.state === 'granted');
+            if (this._micPermissionStatus !== status && typeof status.addEventListener === 'function') {
+                status.addEventListener('change', () => {
+                    this._setMicPermissionGranted(status.state === 'granted');
+                });
+            }
+            this._micPermissionStatus = status;
+            return this._micPermissionGranted;
+        }).catch(() => this._micPermissionGranted).finally(() => {
+            this._micPermissionProbe = null;
+        });
+
+        return this._micPermissionProbe;
     }
 
     async _autoCreateSession() {
@@ -755,6 +789,7 @@ class WitnessReplayApp {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
         }
+        this.stopVADListening();
         const btn = document.getElementById('auto-listen-btn');
         if (btn) btn.innerHTML = '⏸️ Manual';
         this._syncAutoListenChip();
@@ -1443,6 +1478,7 @@ class WitnessReplayApp {
         );
         if (this.autoListenEnabled) {
             this._autoListenPausedUntilManual = false;
+            this._triggerAutoListen();
         }
         this._syncAutoListenButtonState();
         this._vibrate(this.autoListenEnabled ? [10, 20, 10] : [18]);
@@ -1451,6 +1487,9 @@ class WitnessReplayApp {
         if (!this.autoListenEnabled && this._autoListenTimer) {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
+        }
+        if (!this.autoListenEnabled) {
+            this.stopVADListening();
         }
         this.syncVoicePreferencesToSession();
     }
@@ -1503,19 +1542,30 @@ class WitnessReplayApp {
         if (this.isRecording) return;
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         if (this.micBtn && (this.micBtn.classList.contains('connecting') || this.micBtn.classList.contains('disconnected'))) return;
-        // On iOS, getUserMedia requires a user gesture. Only auto-listen if
-        // the user has already granted mic permission via a manual tap.
-        if (!this._micPermissionGranted) return;
-        
-        // Brief 1-second pause, then auto-start recording
+
+        const armAutoListen = async () => {
+            if (this.isRecording || this._isSpeakingResponse) return;
+            const permissionGranted = this._micPermissionGranted || await this._refreshMicrophonePermissionState();
+            if (!permissionGranted) return;
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+            if (window.VoiceActivityDetector) {
+                if (!this.vadListening) {
+                    console.debug('[VoiceConversation] Auto-listen: arming passive VAD');
+                    await this.startVADListening();
+                }
+                return;
+            }
+
+            console.debug('[VoiceConversation] Auto-listen: starting recording');
+            this.startRecording({ trigger: 'auto_listen' });
+        };
+
         if (this._autoListenTimer) clearTimeout(this._autoListenTimer);
         this._autoListenTimer = setTimeout(() => {
             this._autoListenTimer = null;
-            if (!this.isRecording && !this._isSpeakingResponse && this.ws && this.ws.readyState === WebSocket.OPEN) {
-                console.debug('[VoiceConversation] Auto-listen: starting recording');
-                this.startRecording({ trigger: 'auto_listen' });
-            }
-        }, 1000);
+            void armAutoListen();
+        }, 700);
     }
 
     _isLikelySilentAutoCapture(qualityMetrics, audioBlob) {
@@ -1551,6 +1601,7 @@ class WitnessReplayApp {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
         }
+        this.stopVADListening();
         this._setConversationState('ready');
         this.ui?.setStatus('Waiting for witness input...', 'default');
         this._syncAutoListenButtonState();
@@ -2085,6 +2136,7 @@ class WitnessReplayApp {
             
             await this.vad.start();
             this.vadListening = true;
+            this._setMicPermissionGranted(true);
             
             // Update indicator
             if (this.vadIndicator) {
@@ -2098,6 +2150,9 @@ class WitnessReplayApp {
             
         } catch (error) {
             console.error('[VAD] Failed to start:', error);
+            if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+                this._setMicPermissionGranted(false);
+            }
             this.ui?.showToast('Could not start voice detection: ' + error.message, 'error');
             
             // Reset toggle
@@ -2108,8 +2163,9 @@ class WitnessReplayApp {
         }
     }
     
-    stopVADListening() {
+    stopVADListening(options = {}) {
         if (!this.vadListening) return;
+        const keepConversationState = options?.keepConversationState === true;
         
         if (this.vad) {
             this.vad.stop();
@@ -2124,8 +2180,10 @@ class WitnessReplayApp {
             this.vadIndicator.classList.remove('listening', 'speech-detected', 'recording');
         }
         
-        this.setStatus('Ready to listen');
-        this._setConversationState('ready');
+        if (!keepConversationState) {
+            this.setStatus('Ready to listen');
+            this._setConversationState('ready');
+        }
         console.debug('[VAD] Stopped listening');
     }
     
@@ -3148,7 +3206,7 @@ class WitnessReplayApp {
             
             // Stop VAD listening to avoid conflicts (we'll restart after recording)
             if (this.vadListening) {
-                this.stopVADListening();
+                this.stopVADListening({ keepConversationState: true });
             }
             
             // Show "initializing" state on mic button
@@ -3164,9 +3222,12 @@ class WitnessReplayApp {
                 try {
                     const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     testStream.getTracks().forEach(t => t.stop());
-                    this._micPermissionGranted = true;
+                    this._setMicPermissionGranted(true);
                 } catch (permErr) {
                     console.error('Microphone permission denied:', permErr);
+                    if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
+                        this._setMicPermissionGranted(false);
+                    }
                     if (this.micBtn) {
                         this.micBtn.classList.remove('processing');
                         this.micBtn.removeAttribute('aria-busy');
@@ -3268,6 +3329,9 @@ class WitnessReplayApp {
             }
         } catch (error) {
             console.error('Error starting recording:', error);
+            if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+                this._setMicPermissionGranted(false);
+            }
             this.ui.showToast('Microphone error: ' + error.message, 'error');
             this.playSound('error');
             this.displaySystemMessage('🎤 Could not access microphone. Please type your statement instead.');
@@ -3384,9 +3448,9 @@ class WitnessReplayApp {
         if (!canUseProcessorStats && !stream) return;
 
         const BASE_THRESHOLD = 0.008;
-        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 1800 : 2200;
+        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 1500 : 1900;
         const CHECK_INTERVAL = 90;
-        const MIN_SPEECH_MS = 450;
+        const MIN_SPEECH_MS = 320;
         const MAX_RECORDING_MS = this._recordingTrigger === 'auto_listen' ? 30000 : 90000;
 
         try {
@@ -3423,13 +3487,17 @@ class WitnessReplayApp {
 
                 const now = Date.now();
                 let rms = 0;
+                let peakLevel = 0;
+                let isNoiseGated = false;
                 let speechThreshold = BASE_THRESHOLD;
 
                 if (canUseProcessorStats) {
                     const stats = processor.getStats();
                     rms = Number(stats?.currentRMS || 0);
+                    peakLevel = Number(stats?.peakLevel || 0);
+                    isNoiseGated = Boolean(stats?.isNoiseGated);
                     const noiseFloor = Math.max(0.003, Number(stats?.noiseFloor || 0.003));
-                    speechThreshold = Math.max(BASE_THRESHOLD, noiseFloor * 2.2);
+                    speechThreshold = Math.min(0.08, Math.max(BASE_THRESHOLD, noiseFloor * 2.6));
                 } else if (analyser && buf) {
                     if (ctx?.state === 'suspended' && typeof ctx.resume === 'function') {
                         ctx.resume().catch(() => {});
@@ -3445,7 +3513,9 @@ class WitnessReplayApp {
                 }
 
                 smoothedRMS = smoothedRMS === 0 ? rms : (0.75 * smoothedRMS + 0.25 * rms);
-                const isSpeech = smoothedRMS >= speechThreshold;
+                const isSpeech = canUseProcessorStats
+                    ? (!isNoiseGated && (smoothedRMS >= speechThreshold || peakLevel >= speechThreshold * 2.6))
+                    : smoothedRMS >= speechThreshold;
 
                 if (isSpeech) {
                     if (!speechCandidateSince) {
@@ -3565,6 +3635,7 @@ class WitnessReplayApp {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
         }
+        this.stopVADListening();
         this._hideRayListeningCue();
         if (!this.isRecording && !this._isSpeakingResponse) {
             this._setConversationState('ready', { silent: true });
