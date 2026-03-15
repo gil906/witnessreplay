@@ -98,13 +98,6 @@
         <div class="main-content" id="main-workspace">
             <!-- LEFT COLUMN: Primary - Chat & Voice -->
             <section class="chat-panel" role="main">
-                <!-- Simple progress indicator -->
-                <div class="reporting-steps">
-                    <div class="step active"><span class="step-num">1</span> Describe Incident</div>
-                    <div class="step"><span class="step-num">2</span> Answer Questions</div>
-                    <div class="step"><span class="step-num">3</span> Review &amp; Export</div>
-                </div>
-
                 <!-- Multi-Witness Selector Bar (hidden by default) -->
                 <div id="witness-selector-bar" class="witness-selector-bar" style="display:none;">
                     <div class="witness-tabs" id="witness-tabs"></div>
@@ -143,20 +136,8 @@
                 <!-- Mobile Call Header -->
                 <div id="mobile-call-header" class="mobile-call-header" role="region" aria-label="Officer Ray call status">
                     <div class="mobile-call-header-main">
-                        <div>
-                            <h3 class="mobile-call-title">📞 Officer Ray</h3>
-                            <div class="mobile-call-chips">
-                                <span id="mobile-call-state-chip" class="mobile-call-chip state-ready" aria-live="polite">Ready</span>
-                                <span id="mobile-call-speaker-chip" class="mobile-call-chip" aria-live="polite">Speaker on</span>
-                                <span id="mobile-call-autolisten-chip" class="mobile-call-chip" aria-live="polite">Auto-listen on</span>
-                            </div>
-                        </div>
-                        <button id="mobile-call-help-btn" type="button" class="mobile-call-help-btn" aria-label="Open voice call help">❓</button>
-                    </div>
-                    <div class="mobile-call-meta">
-                        <span class="mobile-call-elapsed-label">Elapsed</span>
-                        <span id="mobile-call-elapsed" class="mobile-call-elapsed" aria-live="polite">00:00</span>
-                        <span id="ray-listening-cue" class="ray-listening-cue hidden" aria-live="polite">Ray is listening</span>
+                        <h3 class="mobile-call-title">Officer Ray</h3>
+                        <span id="mobile-call-state-chip" class="mobile-call-chip state-ready" aria-live="polite">Ready</span>
                     </div>
                 </div>
 
@@ -202,18 +183,18 @@
                 <div id="chat-transcript" class="chat-transcript" role="log" aria-live="polite" aria-label="Interview conversation">
                     <div class="welcome-prompt">
                         <div class="welcome-badge">SECURE REPORTING</div>
-                        <div class="welcome-avatar">
-                            <div class="welcome-avatar-ring"></div>
-                            <span class="welcome-avatar-icon">🛡️</span>
-                        </div>
-                        <h2>Hi, I'm Officer Ray</h2>
-                        <p>I'm here to take your report. Just tap the microphone and tell me what happened — I'll guide you through the rest.</p>
-                        <div class="welcome-features">
-                            <div class="welcome-feature"><span>🎤</span> Voice-first</div>
-                            <div class="welcome-feature"><span>🔒</span> Confidential</div>
-                            <div class="welcome-feature"><span>🌍</span> Any language</div>
-                        </div>
+                    <div class="welcome-avatar">
+                        <div class="welcome-avatar-ring"></div>
+                        <span class="welcome-avatar-icon">🛡️</span>
                     </div>
+                    <h2>Hi, I'm Officer Ray</h2>
+                    <p>Tap the microphone and describe what happened. If speaking is difficult, you can type your report below instead.</p>
+                    <div class="welcome-features">
+                        <div class="welcome-feature"><span>🎤</span> Voice-first</div>
+                        <div class="welcome-feature"><span>⌨️</span> Type anytime</div>
+                        <div class="welcome-feature"><span>🔒</span> Private</div>
+                    </div>
+                </div>
                 </div>
 
                 <!-- Typing indicator -->
@@ -304,26 +285,6 @@
                         <span class="voice-dock-mic-icon" aria-hidden="true">🎤</span>
                         <span id="voice-dock-mic-text" class="voice-dock-mic-text">Tap to talk</span>
                     </button>
-                    <div class="voice-dock-actions">
-                        <button id="dock-repeat-btn" type="button" class="voice-dock-action-btn">🔁 Repeat</button>
-                        <button id="dock-slow-btn" type="button" class="voice-dock-action-btn">🐢 Slow down</button>
-                        <button id="dock-moment-btn" type="button" class="voice-dock-action-btn">⏸ Need a moment</button>
-                        <button id="dock-more-btn" type="button" class="voice-dock-action-btn voice-dock-more-btn" aria-expanded="false">⋯ More</button>
-                    </div>
-                    <div id="voice-dock-more-panel" class="voice-dock-more-panel hidden">
-                        <button id="dock-repeat-more-btn" type="button" class="voice-dock-action-btn">🔁 Repeat</button>
-                        <button id="dock-slow-more-btn" type="button" class="voice-dock-action-btn">🐢 Slow down</button>
-                        <button id="dock-moment-more-btn" type="button" class="voice-dock-action-btn">⏸ Need a moment</button>
-                        <button id="dock-help-btn" type="button" class="voice-dock-action-btn">❓ Voice help</button>
-                        <button id="dock-auto-btn" type="button" class="voice-dock-action-btn">🔁 Auto-listen</button>
-                        <button id="dock-audio-toggle-btn" type="button" class="voice-dock-action-btn" aria-pressed="false">🔊 Audio on</button>
-                        <div class="voice-speed-group" role="group" aria-label="Officer Ray speaking speed">
-                            <span class="voice-speed-label">Ray speed</span>
-                            <button id="dock-speed-09-btn" type="button" class="voice-dock-action-btn voice-speed-btn">0.9x</button>
-                            <button id="dock-speed-10-btn" type="button" class="voice-dock-action-btn voice-speed-btn is-active">1.0x</button>
-                            <button id="dock-speed-11-btn" type="button" class="voice-dock-action-btn voice-speed-btn">1.1x</button>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Text Input — simple bar -->
@@ -357,8 +318,8 @@
                     <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" style="display:none;" onchange="window.app?.handlePhotoUpload(event)">
                     <input type="file" id="evidence-file-input" accept="image/*" style="display:none" onchange="handleEvidenceUpload(event)">
                     <input type="file" id="sketch-file-input" accept="image/*" style="display:none" onchange="handleSketchUpload(event)">
-                    <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type instead...">⌨️ Type instead...</button>
-                    <input type="text" id="text-input" placeholder="Type what you saw here..." disabled aria-label="Type your statement">
+                    <button class="text-input-expand-btn" id="text-input-expand-btn" aria-label="Type a message" title="Or type your report instead">⌨️ Or type your report</button>
+                    <input type="text" id="text-input" placeholder="Type your report here if you prefer not to speak." disabled aria-label="Type your statement">
                     <span id="text-char-counter" class="text-char-counter" aria-live="polite" style="display:none;">0 chars</span>
                     <button id="send-btn" class="btn btn-primary" disabled aria-label="Send message">Send</button>
                     <button id="retry-last-btn" class="btn btn-secondary" disabled style="display:none;">↻</button>
@@ -373,33 +334,6 @@
 
             <!-- RIGHT COLUMN: Secondary - Scene & Timeline -->
             <aside class="scene-panel" role="complementary">
-                <!-- Scene Stats -->
-                <div class="scene-stats" id="progress-tracker">
-                    <div class="stat-card"><div class="stat-value" id="version-count">0</div><div class="stat-label">Versions</div></div>
-                    <div class="stat-card"><div class="stat-value" id="statement-count">0</div><div class="stat-label">Statements</div></div>
-                    <div class="stat-card"><div class="stat-value" id="session-duration">0m</div><div class="stat-label">Duration</div></div>
-                    <div class="stat-card" id="complexity-card" style="display:none;"><div class="stat-value" id="complexity-score">--</div><div class="stat-label">Complexity</div></div>
-                    <div class="stat-card warning" id="contradiction-card" style="display:none;"><div class="stat-value" id="contradiction-count">0</div><div class="stat-label">Contradictions</div></div>
-                </div>
-
-                <!-- Investigation Progress -->
-                <div class="investigation-progress" id="investigation-progress">
-                    <div class="progress-header">
-                        <span class="progress-title">Report Completeness</span>
-                        <span class="progress-pct" id="progress-pct">0%</span>
-                    </div>
-                    <div class="progress-bar-track">
-                        <div class="progress-bar-fill" id="progress-bar-fill" style="width:0%"></div>
-                    </div>
-                    <ul class="progress-checklist" id="progress-checklist">
-                        <li data-cat="location"><span class="check-icon">⬜</span> 📍 Location identified</li>
-                        <li data-cat="people"><span class="check-icon">⬜</span> 👥 People described</li>
-                        <li data-cat="vehicles"><span class="check-icon">⬜</span> 🚗 Vehicles noted</li>
-                        <li data-cat="timeline"><span class="check-icon">⬜</span> ⏱️ Timeline established</li>
-                        <li data-cat="evidence"><span class="check-icon">⬜</span> 🔍 Evidence collected</li>
-                    </ul>
-                </div>
-
                 <!-- Scene Display -->
                 <h3 class="section-title">Scene Reconstruction</h3>
                 <div id="scene-display" class="scene-display" role="img" aria-label="Reconstructed scene">

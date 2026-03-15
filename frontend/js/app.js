@@ -131,23 +131,13 @@ class WitnessReplayApp {
         this._initAutoTheme(); // Auto dark/light theme detection
         this._initCommandPalette(); // Feature 49: Command palette (Ctrl+K)
         this._initAutoSave(); // Auto-save interview progress
-        this._initSessionNotes(); // Session notes panel
-        this._initInterviewStatsBadge(); // Interview stats badge in header
-        this._initExportChatBtn(); // Export chat transcript button
-        this._initFocusMode(); // Focus mode indicator
         this._initChatSearch(); // Chat message search overlay
         this._initMessagePinning(); // Pin/bookmark important messages
         this._initAutoSaveIndicator(); // Save state indicator
         this._initMessageDoubleClickCopy(); // Double-click to copy messages
-        this._initPhaseProgressBar(); // Interview phase progress bar
         this._initSmartPlaceholder(); // Smart dynamic input placeholder
         this._initSessionTimer(); // Session duration live timer
-        this._initQualityScore(); // Interview quality score widget
-        this._initInfoChecklist(); // Interview info checklist
-        this._initScrollNav(); // Scroll navigation buttons
-        this._initWitnessProfileCard(); // Witness profile card
         this._initContextMenu(); // Message context menu
-        this._initQuickTemplates(); // Quick incident templates
         this._initCredibilityGauge(); // Witness credibility score gauge
         this._initAutoSummaryTracker(); // Auto-summary after N messages
         
@@ -464,6 +454,7 @@ class WitnessReplayApp {
         this.sceneDescription = document.getElementById('scene-description');
         this.chatTranscript = document.getElementById('chat-transcript');
         this.timeline = document.getElementById('timeline');
+        this.mainWorkspace = document.getElementById('main-workspace');
         this.sessionIdEl = document.getElementById('session-id');
         this.newSessionBtn = document.getElementById('new-session-btn');
         this.sessionsListBtn = document.getElementById('sessions-list-btn');
@@ -684,6 +675,7 @@ class WitnessReplayApp {
         this._setConversationState('ready', { silent: true });
         this._initMobileVoiceCoachmark();
         this._updateMobileEmptyStateCopy();
+        this._syncWorkspaceLayout();
     }
 
     _syncMobileElapsedTimer() {
@@ -719,8 +711,14 @@ class WitnessReplayApp {
         if (!this.isMobileVoiceUI || !this.chatTranscript) return;
         const empty = this.chatTranscript.querySelector('.empty-state');
         if (empty) {
-            empty.textContent = 'Tap the microphone and tell Officer Ray what happened.';
+            empty.textContent = 'Tap the microphone to start your report, or type below if that is easier.';
         }
+    }
+
+    _syncWorkspaceLayout() {
+        const workspace = this.mainWorkspace || document.getElementById('main-workspace');
+        if (!workspace) return;
+        workspace.classList.toggle('voice-first-home', (this.statementCount || 0) === 0);
     }
 
     openMobileVoiceHelp() {
@@ -1308,8 +1306,6 @@ class WitnessReplayApp {
             { id: 'comfort-support-btn', label: '💚 Get support' },
             { type: 'separator' },
             { type: 'label', text: 'Panels' },
-            { type: 'toggle-panel', label: '📊 Report Progress', selector: '#investigation-progress' },
-            { type: 'toggle-panel', label: '📈 Scene Stats', selector: '.scene-stats' },
             { type: 'toggle-panel', label: '🌤️ Environment', selector: '#environmental-conditions-panel' },
             { type: 'toggle-panel', label: '🎨 Scene Elements', selector: '#scene-editor-container' },
             { type: 'toggle-panel', label: '📋 Evidence Board', selector: '#evidence-board' },
@@ -2456,10 +2452,11 @@ class WitnessReplayApp {
             
             // Clear UI
             const emptyCopy = this.isMobileVoiceUI
-                ? 'Tap the big mic below and talk naturally with Officer Ray. Quick phrase chips can help you start fast.'
-                : 'Your conversation will appear here. Start by describing what happened.';
+                ? 'Tap the microphone to start your report, or type below if that is easier.'
+                : 'Use the microphone to begin your report. You can also type below at any time.';
             this.chatTranscript.innerHTML = `<p class="empty-state">${this._escapeHtml(emptyCopy)}</p>`;
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
+            this._syncWorkspaceLayout();
             
             // Update stats
             this.ui.updateStats({
@@ -2953,9 +2950,10 @@ class WitnessReplayApp {
 
             case 'call_state': {
                 const callState = message.data || {};
-                if (typeof callState.statement_count === 'number' && this.ui) {
+                if (typeof callState.statement_count === 'number') {
                     this.statementCount = callState.statement_count;
-                    this.ui.updateStats({ statementCount: callState.statement_count });
+                    this.ui?.updateStats({ statementCount: callState.statement_count });
+                    this._syncWorkspaceLayout();
                 }
                 if (callState.is_speaking) {
                     this._setConversationState('speaking', { silent: true });
@@ -3765,25 +3763,11 @@ class WitnessReplayApp {
         if (speaker === 'user') this._updatePhaseProgress?.();
         if (speaker === 'agent') this._addReadAloudButton?.(messageDiv);
         
-        // Update quality score periodically (every 3 user messages)
-        if (speaker === 'user') {
-            this._qualityMsgCount = (this._qualityMsgCount || 0) + 1;
-            if (this._qualityMsgCount % 3 === 0) {
-                this._updateQualityScore?.().then(() => {
-                    if (this._lastQualityData) this._updateInfoChecklist?.(this._lastQualityData);
-                });
-            }
-        }
-        
-        // Show quick reply suggestions after agent messages
-        if (speaker === 'agent') {
-            this._showQuickReplies(text);
-        }
-        
         // Track statement count for user messages
         if (speaker === 'user') {
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this._syncWorkspaceLayout();
         }
         
         // Update interview progress phases
@@ -3870,15 +3854,11 @@ class WitnessReplayApp {
         this.chatTranscript.appendChild(messageDiv);
         this._scrollChatToBottom();
         
-        // Show quick reply suggestions after agent messages
-        if (speaker === 'agent') {
-            this._showQuickReplies(text);
-        }
-        
         // Track statement count for user messages
         if (speaker === 'user') {
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this._syncWorkspaceLayout();
         }
         
         // Update interview progress phases
@@ -7019,6 +6999,7 @@ Corrections: ${reliability.correction_count || 0}`;
 
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this._syncWorkspaceLayout();
             this.updateInterviewProgress();
         };
         reader.onerror = () => {
@@ -7114,6 +7095,7 @@ Corrections: ${reliability.correction_count || 0}`;
             // Update stats
             this.statementCount++;
             if (this.statementCountEl) this.statementCountEl.textContent = this.statementCount;
+            this._syncWorkspaceLayout();
             this.updateInterviewProgress();
 
             this.ui.showToast('✏️ Sketch uploaded and analyzed!', 'success');
@@ -10289,18 +10271,11 @@ WitnessReplayApp.prototype._initQuickTemplates = function() {
     }
 })();
 
-// Hook: Show AI suggestion chips after agent messages + update witness profile
+// Hook: Keep the automatic summary running without adding extra homepage widgets
 (function() {
     const origDisplay2 = WitnessReplayApp.prototype.displayMessage;
     WitnessReplayApp.prototype.displayMessage = function(text, speaker) {
         const result = origDisplay2.call(this, text, speaker);
-        if (speaker === 'agent' && this.sessionId) {
-            // Fetch follow-up suggestions after a short delay
-            setTimeout(() => this._fetchAndShowSuggestions?.(), 800);
-        }
-        if (speaker === 'user' && text && !text.startsWith('/')) {
-            this._updateWitnessProfile?.(text);
-        }
         // Auto-summary check
         if (speaker === 'user' && text && !text.startsWith('/')) {
             this._autoSummaryMsgCount = (this._autoSummaryMsgCount || 0) + 1;
