@@ -448,6 +448,7 @@ class CaseResponse(BaseModel):
     updated_at: datetime
     scene_image_url: Optional[str] = None
     timeframe: Dict[str, Any] = {}
+    case_type: Optional[str] = None
     incident_type: Optional[str] = None
     priority_score: Optional[float] = None
     priority_label: Optional[str] = None
@@ -462,7 +463,8 @@ class SceneGenerateRequest(BaseModel):
     @field_validator('quality')
     @classmethod
     def validate_quality(cls, v):
-        valid = ['fast', 'standard', 'hd']
+        v = (v or "").strip().lower()
+        valid = ['fast', 'standard', 'generate', 'ultra', 'hd']
         if v not in valid:
             raise ValueError(f'quality must be one of {valid}')
         return v

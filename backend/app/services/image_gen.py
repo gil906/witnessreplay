@@ -4,7 +4,7 @@ import math
 import hashlib
 import random
 import re
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Any
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from google import genai
@@ -35,6 +35,57 @@ TYPE_COLORS: Dict[str, Tuple[int, int, int]] = {
 # Type icons for legend
 TYPE_ICONS: Dict[str, str] = {
     "vehicle": "▬", "person": "●", "object": "◆", "location_feature": "▣",
+}
+
+SCENE_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "for", "from",
+    "had", "has", "have", "he", "her", "here", "his", "i", "if", "in", "into",
+    "is", "it", "its", "just", "me", "my", "of", "on", "or", "our", "she", "so",
+    "that", "the", "their", "there", "they", "this", "to", "up", "us", "was",
+    "we", "were", "with", "would", "you", "your",
+}
+
+SCENE_CONCRETE_TERMS = {
+    "alley", "ambulance", "apartment", "aquarium", "avenue", "backed", "bar", "bike",
+    "black", "blew", "blue", "boulevard", "bridge", "brown", "building", "bus",
+    "cafe", "camry", "car", "cashier", "collision", "corner", "crash", "crosswalk",
+    "curb", "dark", "door", "driver", "drive", "east", "evidence", "fell", "fled",
+    "ford", "front", "gray", "green", "gun", "headlights", "hit", "honda", "hood",
+    "hydrant", "intersection", "jeep", "left", "license", "light", "lot", "market",
+    "motorcycle", "north", "parked", "parking", "pedestrian", "pickup", "plaza",
+    "pole", "red", "register", "right", "road", "robbery", "sedan", "seattle",
+    "shoe", "sidewalk", "silver", "south", "starbucks", "stop", "store", "street",
+    "suv", "suspect", "taxi", "theft", "toyota", "traffic", "truck", "turn",
+    "van", "vehicle", "victim", "walked", "white", "woman", "yellow",
+}
+
+PLACEHOLDER_SCENE_PATTERNS = [
+    re.compile(r"^\s*$"),
+    re.compile(r"^session\s+\d", re.IGNORECASE),
+    re.compile(r"^untitled\s+(session|case)\b", re.IGNORECASE),
+    re.compile(r"^\d{2}:\d{2}:\d{2}(?::\d{2})?$"),
+    re.compile(r"^cli completion hint check$", re.IGNORECASE),
+]
+
+PLACEHOLDER_SCENE_PHRASES = {
+    "that will be all",
+    "thats all",
+    "that's all",
+    "thats perfect",
+    "that's perfect",
+    "thank you",
+    "thanks",
+    "goodbye",
+    "bye",
+    "we'll act to report",
+    "we will act to report",
+    "start from the beginning",
+    "what happened next",
+    "repeat that slowly",
+}
+
+GENERIC_ELEMENT_DESCRIPTIONS = {
+    "", "car", "vehicle", "person", "object", "scene", "road", "street", "location feature",
 }
 
 
@@ -113,11 +164,127 @@ class ImageGenerationService:
             "Create a realistic witness-scene reconstruction image. "
             "Use only the details explicitly described by the witness. "
             "Do not add template-style roads, generic intersections, empty plazas, or placeholder scenery unless the witness described them. "
+            "If some details are missing, keep the unspecified background understated and neutral instead of inventing extra buildings, traffic, or landmarks. "
             "Show an oblique camera angle of the whole scene with realistic lighting and spatial relationships. "
             "Do not include labels, legends, map markers, UI overlays, or text in the image.\n\n"
             f"Scene summary:\n{scene_description}\n\n"
             f"Structured scene elements:\n{details_block}"
         )
+
+    def assess_scene_detail(
+        self,
+        scene_description: str,
+        elements: List[Any] = [],
+    ) -> Dict[str, Any]:
+        """Assess whether a scene description is detailed enough to generate a useful preview."""
+        text = re.sub(r"\s+", " ", (scene_description or "").strip())
+        lowered = text.lower()
+
+        for pattern in PLACEHOLDER_SCENE_PATTERNS:
+            if pattern.match(text):
+                return {
+                    "is_sufficient": False,
+                    "reason": "placeholder_text",
+                    "word_count": 0,
+                    "concrete_term_count": 0,
+                    "rich_element_count": 0,
+                    "concrete_terms": [],
+                }
+
+        if lowered in PLACEHOLDER_SCENE_PHRASES:
+            return {
+                "is_sufficient": False,
+                "reason": "filler_phrase",
+                "word_count": 0,
+                "concrete_term_count": 0,
+                "rich_element_count": 0,
+                "concrete_terms": [],
+            }
+
+        words = re.findall(r"[a-z0-9']+", lowered)
+        meaningful_words = [word for word in words if word not in SCENE_STOPWORDS]
+        concrete_terms = sorted({
+            word
+            for word in meaningful_words
+            if word in SCENE_CONCRETE_TERMS or any(ch.isdigit() for ch in word)
+        })
+
+        rich_element_count = 0
+        for element in elements or []:
+            if isinstance(element, dict):
+                elem_type = str(element.get("type", "") or "").strip().lower()
+                description = str(element.get("description", "") or "").strip().lower()
+                position = element.get("position")
+                color = str(element.get("color", "") or "").strip().lower()
+                size = str(element.get("size", "") or "").strip().lower()
+            else:
+                elem_type = str(getattr(element, "type", "") or "").strip().lower()
+                description = str(getattr(element, "description", "") or "").strip().lower()
+                position = getattr(element, "position", None)
+                color = str(getattr(element, "color", "") or "").strip().lower()
+                size = str(getattr(element, "size", "") or "").strip().lower()
+
+            if description and description not in GENERIC_ELEMENT_DESCRIPTIONS:
+                rich_element_count += 1
+                continue
+
+            if elem_type and (position or color or size):
+                rich_element_count += 1
+
+        sufficient = False
+        reason = "needs_more_detail"
+        word_count = len(meaningful_words)
+        concrete_term_count = len(concrete_terms)
+
+        if rich_element_count >= 3 and (concrete_term_count >= 2 or word_count >= 8):
+            sufficient = True
+            reason = "elements_support_scene"
+        elif concrete_term_count >= 4 and word_count >= 10 and len(text) >= 50:
+            sufficient = True
+            reason = "concrete_scene_text"
+        elif concrete_term_count >= 3 and word_count >= 12 and len(text) >= 80:
+            sufficient = True
+            reason = "long_form_scene_text"
+
+        return {
+            "is_sufficient": sufficient,
+            "reason": reason,
+            "word_count": word_count,
+            "concrete_term_count": concrete_term_count,
+            "rich_element_count": rich_element_count,
+            "concrete_terms": concrete_terms[:10],
+        }
+
+    def has_sufficient_scene_detail(
+        self,
+        scene_description: str,
+        elements: List[Any] = [],
+    ) -> bool:
+        """Return True when scene detail is concrete enough for a useful generated preview."""
+        return self.assess_scene_detail(scene_description, elements).get("is_sufficient", False)
+
+    def generate_pil_scene_fallback(
+        self,
+        scene_description: str,
+        elements: List[SceneElement] = [],
+    ) -> Optional[bytes]:
+        """Render a deterministic PIL fallback only when the scene is concrete enough."""
+        detail = self.assess_scene_detail(scene_description, elements)
+        if not detail["is_sufficient"]:
+            logger.info(
+                "Skipping PIL scene fallback; scene detail is insufficient (%s, words=%s, concrete_terms=%s, rich_elements=%s)",
+                detail["reason"],
+                detail["word_count"],
+                detail["concrete_term_count"],
+                detail["rich_element_count"],
+            )
+            return None
+
+        image = self._create_scene_diagram(scene_description, elements)
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        logger.info("Generated scene diagram image (PIL fallback)")
+        return buf.getvalue()
 
     async def generate_scene_image(
         self,
@@ -126,6 +293,17 @@ class ImageGenerationService:
         is_correction: bool = False,
         previous_description: Optional[str] = None,
     ) -> Optional[bytes]:
+        detail = self.assess_scene_detail(scene_description, elements)
+        if not detail["is_sufficient"]:
+            logger.info(
+                "Skipping scene image generation until more concrete detail is available (%s, words=%s, concrete_terms=%s, rich_elements=%s)",
+                detail["reason"],
+                detail["word_count"],
+                detail["concrete_term_count"],
+                detail["rich_element_count"],
+            )
+            return None
+
         # Try Imagen AI generation first
         try:
             from app.services.imagen_service import imagen_service
@@ -140,11 +318,7 @@ class ImageGenerationService:
 
         # Fallback to PIL diagram
         try:
-            image = self._create_scene_diagram(scene_description, elements)
-            buf = BytesIO()
-            image.save(buf, format="PNG")
-            logger.info("Generated scene diagram image (PIL fallback)")
-            return buf.getvalue()
+            return self.generate_pil_scene_fallback(scene_description, elements)
         except Exception as e:
             logger.error(f"Failed to generate scene image: {e}")
             return None

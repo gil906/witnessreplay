@@ -104,6 +104,42 @@ class CaseLinkingService:
 
         return result
 
+    @staticmethod
+    def _merge_grouping_metadata(metadata: Optional[Dict]) -> Dict:
+        merged = dict(metadata or {})
+        grouping = merged.get("grouping", {}) if isinstance(merged.get("grouping"), dict) else {}
+        for key in ("incident_type", "incident_subtype", "severity", "location", "location_key", "reported_day"):
+            if grouping.get(key) and not merged.get(key):
+                merged[key] = grouping[key]
+        return merged
+
+    def _build_case_text(self, case: Case) -> str:
+        metadata = self._merge_grouping_metadata(case.metadata)
+        timeframe = case.timeframe if isinstance(case.timeframe, dict) else {}
+        parts = [
+            case.title,
+            case.summary or "",
+            f"Location: {case.location or metadata.get('location') or ''}",
+            metadata.get("incident_type") or "",
+            metadata.get("incident_subtype") or "",
+            metadata.get("severity") or "",
+            timeframe.get("description", ""),
+        ]
+        return ". ".join(part for part in parts if part).strip()
+
+    @staticmethod
+    def _extract_case_timestamp(case: Case) -> Optional[datetime]:
+        timeframe = case.timeframe if isinstance(case.timeframe, dict) else {}
+        for value in (timeframe.get("start"), case.created_at):
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str) and value:
+                try:
+                    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+        return None
+
     async def find_similar_cases(
         self,
         case_id: str,
@@ -115,7 +151,10 @@ class CaseLinkingService:
         if not case:
             return []
 
-        all_cases = await firestore_service.list_cases(limit=100)
+        all_cases = [
+            candidate for candidate in await firestore_service.list_cases(limit=0)
+            if (candidate.status or "").lower() != "merged"
+        ]
         
         # Get already linked case IDs to exclude
         excluded_ids = {case_id}
@@ -130,33 +169,41 @@ class CaseLinkingService:
             return []
 
         results = []
-        case_text = f"{case.title}. {case.summary or ''}. Location: {case.location or ''}"
+        case_text = self._build_case_text(case)
+        case_meta = self._merge_grouping_metadata(case.metadata)
 
         for candidate in candidates:
             matching_factors = []
             scores = []
+            candidate_meta = self._merge_grouping_metadata(candidate.metadata)
 
             # 1. Semantic similarity via embeddings
-            candidate_text = f"{candidate.title}. {candidate.summary or ''}. Location: {candidate.location or ''}"
+            candidate_text = self._build_case_text(candidate)
             semantic_score = await self._compute_semantic_similarity(case_text, candidate_text)
             if semantic_score >= self.SEMANTIC_THRESHOLD:
                 matching_factors.append("semantic")
                 scores.append(semantic_score)
 
             # 2. Location similarity
-            location_score = self._compute_location_similarity(case.location, candidate.location)
+            location_score = self._compute_location_similarity(
+                case.location or case_meta.get("location"),
+                candidate.location or candidate_meta.get("location"),
+            )
             if location_score > 0.3:
                 matching_factors.append("location")
                 scores.append(location_score)
 
             # 3. Time proximity
-            time_score = self._compute_time_proximity(case.created_at, candidate.created_at)
+            time_score = self._compute_time_proximity(
+                self._extract_case_timestamp(case),
+                self._extract_case_timestamp(candidate),
+            )
             if time_score > 0.3:
                 matching_factors.append("time_proximity")
                 scores.append(time_score)
 
             # 4. MO/Incident type matching
-            mo_score = self._compute_mo_similarity(case.metadata, candidate.metadata)
+            mo_score = self._compute_mo_similarity(case_meta, candidate_meta)
             if mo_score > 0.5:
                 matching_factors.append("mo")
                 scores.append(mo_score)
@@ -286,6 +333,9 @@ class CaseLinkingService:
         """Compute MO (modus operandi) similarity based on incident type metadata."""
         if not meta_a or not meta_b:
             return 0.0
+
+        meta_a = self._merge_grouping_metadata(meta_a)
+        meta_b = self._merge_grouping_metadata(meta_b)
 
         score = 0.0
         factors = 0

@@ -1446,16 +1446,132 @@ class AdminPortal {
             });
         });
     }
+
+    getReportImageUrl(report) {
+        if (!report || typeof report !== 'object') return null;
+        const scenes = Array.isArray(report.scene_versions) ? report.scene_versions : [];
+        const latestSceneImage = scenes.length > 0 ? scenes[scenes.length - 1]?.image_url : null;
+        return (
+            report.image_url ||
+            report.scene_image_url ||
+            report.metadata?.report_scene_image_url ||
+            latestSceneImage ||
+            null
+        );
+    }
+
+    getReportSceneDescription(report) {
+        if (!report || typeof report !== 'object') return '';
+        const scenes = Array.isArray(report.scene_versions) ? report.scene_versions : [];
+        const latestSceneDescription = scenes.length > 0 ? scenes[scenes.length - 1]?.description : '';
+        return String(report.scene_description || latestSceneDescription || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    getReportScenePlaceholderText(report) {
+        const status = String(
+            report?.scene_generation_status ||
+            report?.metadata?.report_scene_generation_status ||
+            ''
+        ).toLowerCase();
+        const reason = String(
+            report?.scene_generation_reason ||
+            report?.metadata?.report_scene_generation_reason ||
+            ''
+        ).toLowerCase();
+
+        if (status === 'failed') {
+            return 'The last scene generation attempt failed. Try again shortly.';
+        }
+        if (
+            status === 'skipped' ||
+            reason === 'insufficient_detail' ||
+            reason === 'needs_more_detail'
+        ) {
+            return 'Need more concrete witness detail before a preview can be generated.';
+        }
+        return 'No AI scene image generated yet';
+    }
+
+    parseBackgroundTaskResult(rawResult) {
+        if (!rawResult) return null;
+        if (typeof rawResult === 'object') return rawResult;
+        if (typeof rawResult !== 'string') return null;
+
+        try {
+            return JSON.parse(rawResult);
+        } catch (error) {
+            return {
+                status: 'generated',
+                path: rawResult
+            };
+        }
+    }
+
+    formatFixReportsSummary(result) {
+        const summary = result?.summary || {};
+        const parts = [];
+
+        const linkageRepairs = (summary.case_links_repaired || 0) + (summary.case_memberships_repaired || 0);
+        if (linkageRepairs) {
+            parts.push(`${linkageRepairs} case links repaired`);
+        }
+
+        const summariesFilled = (summary.report_summaries_generated || 0) + (summary.case_summaries_generated || 0);
+        if (summariesFilled) {
+            parts.push(`${summariesFilled} summaries filled`);
+        }
+
+        const previewsFixed =
+            (summary.report_images_restored || 0) +
+            (summary.report_images_generated || 0) +
+            (summary.case_previews_restored || 0) +
+            (summary.case_images_generated || 0);
+        if (previewsFixed) {
+            parts.push(`${previewsFixed} previews repaired`);
+        }
+
+        const statusesCleaned = (summary.report_statuses_cleaned || 0) + (summary.case_statuses_cleaned || 0);
+        if (statusesCleaned) {
+            parts.push(`${statusesCleaned} statuses cleaned`);
+        }
+
+        if (summary.reports_cleaned) {
+            parts.push(`${summary.reports_cleaned} empty reports removed`);
+        }
+
+        const previewsStillMissing = (summary.report_images_skipped || 0) + (summary.case_images_skipped || 0);
+        if (previewsStillMissing) {
+            parts.push(`${previewsStillMissing} previews still need more detail`);
+        }
+
+        const failures = (summary.report_images_failed || 0) + (summary.case_images_failed || 0);
+        if (failures) {
+            parts.push(`${failures} preview repairs failed`);
+        }
+
+        if (summary.errors) {
+            parts.push(`${summary.errors} errors`);
+        }
+
+        return parts.length ? parts.join(' • ') : 'No report repairs were needed.';
+    }
     
     renderReportCard(report) {
         const sourceType = report.source_type || 'chat';
         const sourceIcon = this.getSourceIcon(sourceType);
         const sourceBadgeClass = `source-badge ${sourceType}`;
         const verification = report.metadata?.verification || 'pending';
+        const reportImageUrl = this.getReportImageUrl(report);
         
         return `
             <div class="case-card report-card" data-report-id="${report.id}">
-                <div class="case-icon">${sourceIcon}</div>
+                ${reportImageUrl ? `
+                <div class="case-thumbnail">
+                    <img src="${reportImageUrl}" alt="Scene" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'case-icon\\'>${sourceIcon}</div>'">
+                </div>
+                ` : `<div class="case-icon">${sourceIcon}</div>`}
                 <div class="case-info">
                     <div class="case-header">
                         <div>
@@ -1990,7 +2106,16 @@ class AdminPortal {
             const reliabilityLabel = stmtCount > 5 ? 'High' : stmtCount > 2 ? 'Medium' : 'Low';
 
             // Get AI-generated report image from image_url field or scene_versions
-            const reportImageUrl = report.image_url || (scenes.length > 0 ? scenes[scenes.length - 1].image_url : null);
+            const reportImageUrl = this.getReportImageUrl(report);
+            const reportSceneDescription = this.getReportSceneDescription(report);
+            const sceneDescriptionHtml = reportSceneDescription
+                ? `<p class="report-scene-description">${this._sanitize(
+                    reportSceneDescription.length > 280
+                        ? `${reportSceneDescription.substring(0, 280)}…`
+                        : reportSceneDescription
+                )}</p>`
+                : '';
+            const placeholderText = this.getReportScenePlaceholderText(report);
             
             return `
                 <div class="report-detail-card">
@@ -2017,15 +2142,17 @@ class AdminPortal {
                                      class="report-scene-image" loading="lazy"
                                      onerror="this.parentElement.style.display='none'">
                             </div>
+                            ${sceneDescriptionHtml}
                         </div>
                         ` : `
                         <div class="report-scene-image-section no-image">
                             <div class="no-image-placeholder">
                                 <span class="no-image-icon">🎬</span>
-                                <p>No AI scene image generated yet</p>
+                                <p>${this._sanitize(placeholderText)}</p>
                                 <button class="btn-small btn-generate-scene" onclick="window.adminPortal?.generateReportScene('${report.id}')">
                                     Generate Scene Image
                                 </button>
+                                ${sceneDescriptionHtml}
                             </div>
                         </div>
                         `}
@@ -2083,28 +2210,101 @@ class AdminPortal {
     }
 
     async fixOrphanReports() {
+        const btn = document.getElementById('fix-reports-btn');
+        const titleEl = btn?.querySelector('strong');
+        const detailEl = btn?.querySelector('div span:last-child');
+        const setButtonState = (title, detail, disabled) => {
+            if (!btn) return;
+            btn.disabled = disabled;
+            btn.setAttribute('aria-busy', disabled ? 'true' : 'false');
+            if (titleEl) {
+                titleEl.textContent = title;
+            } else {
+                btn.textContent = title;
+            }
+            if (detailEl && detail != null) {
+                detailEl.textContent = detail;
+            }
+        };
+
         try {
-            const btn = document.getElementById('fix-reports-btn');
-            if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing...'; }
-            
-            this.showToast('Fixing reports: assigning cases, generating images (takes ~2 min)...', 'info');
+            setButtonState('⏳ Starting repair...', 'Launching background job', true);
+            this.showToast('Starting report repair in the background...', 'info');
             const response = await this.fetchWithTimeout('/api/admin/fix-orphan-reports', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
-            }, 300000);
-            
-            if (!response.ok) throw new Error('Fix failed');
-            
-            const data = await response.json();
-            this.showToast(data.message || 'Reports fixed!', 'success');
-            await this.loadCases();
+            }, 120000);
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.detail || 'Fix failed');
+            }
+
+            const taskId = data.task_id;
+            if (!taskId) {
+                throw new Error(data.message || 'Missing repair task id');
+            }
+
+            setButtonState('⏳ Repairing...', 'Checking cases, summaries & previews', true);
+            const task = await this.waitForBackgroundTask(taskId, {
+                timeoutMs: 900000,
+                intervalMs: 2000
+            });
+
+            if (task.status === 'timeout') {
+                const timeoutMessage = 'Report repair is still running in the background. Refresh again shortly.';
+                this.showToast(timeoutMessage, 'info', 5000);
+                this.addNotification('Report Repair Running', timeoutMessage, 'info');
+                return;
+            }
+
+            if (task.status === 'failed') {
+                throw new Error(task.error || 'Fix reports task failed');
+            }
+
+            const result = this.parseBackgroundTaskResult(task.result) || {};
+            const summary = result.summary || {};
+            const needsReview =
+                (summary.errors || 0) > 0 ||
+                (summary.report_images_failed || 0) > 0 ||
+                (summary.case_images_failed || 0) > 0 ||
+                (summary.report_images_skipped || 0) > 0 ||
+                (summary.case_images_skipped || 0) > 0;
+            const severity = needsReview ? 'warning' : 'success';
+            const summaryText = this.formatFixReportsSummary(result);
+
+            this.showToast(result.message || 'Report repair completed.', severity, 6000);
+            this.addNotification('Report Repair Complete', summaryText, severity);
+            console.info('Fix reports result', result);
+
+            await this.loadCases({ silent: true });
+            if (this.currentCase?.id) {
+                await this.showCaseDetail(this.currentCase.id).catch(() => {});
+            }
         } catch (error) {
             console.error('Error fixing reports:', error);
-            this.showToast('Failed to fix reports: ' + error.message, 'error');
+            const message = 'Failed to fix reports: ' + error.message;
+            this.showToast(message, 'error');
+            this.addNotification('Report Repair Failed', error.message, 'error');
         } finally {
-            const btn = document.getElementById('fix-reports-btn');
-            if (btn) { btn.disabled = false; btn.textContent = '🔧 Fix Reports'; }
+            setButtonState('Fix Reports', 'Repair links, summaries & previews', false);
         }
+    }
+
+    async waitForBackgroundTask(taskId, { timeoutMs = 45000, intervalMs = 1500 } = {}) {
+        const startedAt = Date.now();
+        while ((Date.now() - startedAt) < timeoutMs) {
+            const response = await this.fetchWithTimeout(`/api/tasks/${taskId}`);
+            if (!response.ok) {
+                throw new Error(`Task status check failed (${response.status})`);
+            }
+            const task = await response.json();
+            if (task.status === 'completed' || task.status === 'failed') {
+                return task;
+            }
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+        }
+        return { status: 'timeout', task_id: taskId };
     }
 
     async generateReportScene(reportId) {
@@ -2118,14 +2318,41 @@ class AdminPortal {
             if (!response.ok) throw new Error('Scene generation failed');
 
             const data = await response.json();
-            this.showToast('Scene image generation started! It will appear shortly.', 'success');
+            const taskId = data.task_id;
+            if (!taskId) {
+                throw new Error('Missing background task id');
+            }
 
-            // Refresh case detail after a short delay to show the new image
-            setTimeout(async () => {
-                if (this.currentCase) {
-                    await this.showCaseDetail(this.currentCase.id);
-                }
-            }, 8000);
+            const task = await this.waitForBackgroundTask(taskId);
+            if (task.status === 'failed') {
+                throw new Error(task.error || 'Scene generation failed');
+            }
+
+            await this.loadCases({ silent: true });
+            if (this.currentCase) {
+                await this.showCaseDetail(this.currentCase.id);
+            }
+
+            if (task.status === 'timeout') {
+                this.showToast('Scene generation is still running. Refresh again shortly.', 'info');
+                return;
+            }
+
+            const taskResult = this.parseBackgroundTaskResult(task.result);
+            if (
+                task.status === 'completed' &&
+                (taskResult?.status === 'generated' || taskResult?.path)
+            ) {
+                this.showToast('Scene image generated successfully!', 'success');
+                return;
+            }
+
+            if (taskResult?.status === 'skipped') {
+                this.showToast('Need more concrete witness detail before a preview can be generated.', 'warning');
+                return;
+            }
+
+            this.showToast('Scene generation completed without a usable image.', 'warning');
         } catch (error) {
             console.error('Error generating report scene:', error);
             this.showToast('Failed to generate scene: ' + error.message, 'error');

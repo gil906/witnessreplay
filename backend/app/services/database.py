@@ -67,6 +67,9 @@ class DatabaseService:
                 source_type TEXT DEFAULT 'chat',
                 report_number TEXT DEFAULT '',
                 case_id TEXT,
+                witness_name TEXT,
+                witness_contact TEXT,
+                witness_location TEXT,
                 metadata TEXT DEFAULT '{}',
                 created_at TEXT,
                 updated_at TEXT
@@ -340,12 +343,30 @@ class DatabaseService:
                 created_at TEXT
             );
         """)
+        await self._ensure_columns("sessions", {
+            "witness_name": "TEXT",
+            "witness_contact": "TEXT",
+            "witness_location": "TEXT",
+        })
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_statements_session ON statements(session_id)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_scene_versions_session ON scene_versions(session_id)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await self._db.commit()
+
+    async def _ensure_columns(self, table_name: str, columns: Dict[str, str]):
+        """Add missing columns for lightweight SQLite migrations."""
+        existing_columns = set()
+        async with self._db.execute(f"PRAGMA table_info({table_name})") as cursor:
+            async for row in cursor:
+                existing_columns.add(row["name"])
+
+        for column_name, definition in columns.items():
+            if column_name not in existing_columns:
+                await self._db.execute(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+                )
 
     async def close(self):
         if self._db:
@@ -378,17 +399,48 @@ class DatabaseService:
             metadata = session_dict.get("metadata", {})
             if not isinstance(metadata, str):
                 metadata = json.dumps(metadata)
+            report_number = session_dict.get("report_number", "")
+            if report_number:
+                async with self._db.execute(
+                    "SELECT id FROM sessions WHERE report_number = ? AND id != ? LIMIT 1",
+                    (report_number, session_dict.get("id")),
+                ) as cursor:
+                    duplicate = await cursor.fetchone()
+                if duplicate:
+                    logger.error(
+                        "Refusing to save session %s with duplicate report_number %s",
+                        session_dict.get("id"),
+                        report_number,
+                    )
+                    return False
             await self._db.execute(
-                """INSERT OR REPLACE INTO sessions
-                   (id, title, status, source_type, report_number, case_id, metadata, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO sessions
+                   (id, title, status, source_type, report_number, case_id,
+                     witness_name, witness_contact, witness_location,
+                     metadata, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     title = excluded.title,
+                     status = excluded.status,
+                     source_type = excluded.source_type,
+                     report_number = excluded.report_number,
+                     case_id = excluded.case_id,
+                     witness_name = excluded.witness_name,
+                     witness_contact = excluded.witness_contact,
+                     witness_location = excluded.witness_location,
+                     metadata = excluded.metadata,
+                     created_at = COALESCE(sessions.created_at, excluded.created_at),
+                     updated_at = excluded.updated_at""",
                 (
                     session_dict.get("id"),
                     session_dict.get("title", "Untitled Session"),
                     session_dict.get("status", "active"),
                     session_dict.get("source_type", "chat"),
-                    session_dict.get("report_number", ""),
+                    report_number,
                     session_dict.get("case_id"),
+                    session_dict.get("witness_name"),
+                    session_dict.get("witness_contact"),
+                    session_dict.get("witness_location"),
                     metadata,
                     session_dict.get("created_at", now),
                     now,
@@ -480,11 +532,14 @@ class DatabaseService:
             logger.error(f"SQLite delete_session error: {e}")
             return False
 
-    async def list_sessions(self, limit: int = 50) -> List[dict]:
+    async def list_sessions(self, limit: Optional[int] = 50) -> List[dict]:
         rows = []
-        async with self._db.execute(
-            "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
-        ) as cursor:
+        query = "SELECT * FROM sessions ORDER BY updated_at DESC"
+        params: tuple = ()
+        if limit is not None and limit > 0:
+            query += " LIMIT ?"
+            params = (limit,)
+        async with self._db.execute(query, params) as cursor:
             async for row in cursor:
                 rows.append(self._row_to_dict(row))
         return rows
@@ -503,14 +558,40 @@ class DatabaseService:
             metadata = case_dict.get("metadata", {})
             if not isinstance(metadata, str):
                 metadata = json.dumps(metadata)
+            case_number = case_dict.get("case_number")
+            if case_number:
+                async with self._db.execute(
+                    "SELECT id FROM cases WHERE case_number = ? AND id != ? LIMIT 1",
+                    (case_number, case_dict.get("id")),
+                ) as cursor:
+                    duplicate = await cursor.fetchone()
+                if duplicate:
+                    logger.error(
+                        "Refusing to save case %s with duplicate case_number %s",
+                        case_dict.get("id"),
+                        case_number,
+                    )
+                    return False
             await self._db.execute(
-                """INSERT OR REPLACE INTO cases
+                """INSERT INTO cases
                    (id, case_number, title, summary, location, timeframe,
-                    scene_image_url, report_ids, status, metadata, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     scene_image_url, report_ids, status, metadata, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     case_number = excluded.case_number,
+                     title = excluded.title,
+                     summary = excluded.summary,
+                     location = excluded.location,
+                     timeframe = excluded.timeframe,
+                     scene_image_url = excluded.scene_image_url,
+                     report_ids = excluded.report_ids,
+                     status = excluded.status,
+                     metadata = excluded.metadata,
+                     created_at = COALESCE(cases.created_at, excluded.created_at),
+                     updated_at = excluded.updated_at""",
                 (
                     case_dict.get("id"),
-                    case_dict.get("case_number"),
+                    case_number,
                     case_dict.get("title", "Untitled Case"),
                     case_dict.get("summary", ""),
                     case_dict.get("location", ""),
@@ -539,11 +620,14 @@ class DatabaseService:
                 return self._row_to_dict(row)
         return None
 
-    async def list_cases(self, limit: int = 50) -> List[dict]:
+    async def list_cases(self, limit: Optional[int] = 50) -> List[dict]:
         rows = []
-        async with self._db.execute(
-            "SELECT * FROM cases ORDER BY updated_at DESC LIMIT ?", (limit,)
-        ) as cursor:
+        query = "SELECT * FROM cases ORDER BY updated_at DESC"
+        params: tuple = ()
+        if limit is not None and limit > 0:
+            query += " LIMIT ?"
+            params = (limit,)
+        async with self._db.execute(query, params) as cursor:
             async for row in cursor:
                 rows.append(self._row_to_dict(row))
         return rows
@@ -557,6 +641,27 @@ class DatabaseService:
         async with self._db.execute("SELECT COUNT(*) FROM sessions") as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+    async def _get_max_sequence(self, table: str, column: str, prefix: str) -> int:
+        start_index = len(prefix) + 1
+        query = f"""
+            SELECT MAX(
+                CASE
+                    WHEN {column} LIKE ? THEN CAST(SUBSTR({column}, ?) AS INTEGER)
+                    ELSE 0
+                END
+            )
+            FROM {table}
+        """
+        async with self._db.execute(query, (f"{prefix}%", start_index)) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0)
+
+    async def get_max_case_sequence(self, prefix: str = "CASE-2026-") -> int:
+        return await self._get_max_sequence("cases", "case_number", prefix)
+
+    async def get_max_report_sequence(self, prefix: str = "RPT-2026-") -> int:
+        return await self._get_max_sequence("sessions", "report_number", prefix)
 
     # ── Helpers ───────────────────────────────────────────
 

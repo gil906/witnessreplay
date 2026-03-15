@@ -2,7 +2,7 @@ import logging
 import copy
 import re
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
@@ -113,6 +113,348 @@ def _guard_limit(limit: int) -> int:
     return max(1, min(limit, MAX_LIST_LIMIT))
 
 
+def _latest_scene_description(session: ReconstructionSession) -> str:
+    latest_scene = (getattr(session, "scene_versions", None) or [])[-1] if (getattr(session, "scene_versions", None) or []) else None
+    return str(getattr(latest_scene, "description", "") or "").strip()
+
+
+def _statement_scene_fragments(session: ReconstructionSession, limit: Optional[int] = None) -> List[str]:
+    fragments: List[str] = []
+    for statement in getattr(session, "witness_statements", []) or []:
+        text = (
+            getattr(statement, "original_text", None)
+            or getattr(statement, "text", None)
+            or ""
+        )
+        text = str(text or "").strip()
+        if text:
+            fragments.append(text)
+    if limit is None:
+        return fragments
+    return fragments[:limit]
+
+
+async def _resolve_generated_image_path(entity_type: str, entity_id: str) -> Optional[str]:
+    image_rows = await firestore_service.list_images_for_entity(entity_type, entity_id)
+    for row in image_rows:
+        path = str(row.get("image_path", "") or "").strip()
+        if path:
+            return path
+    return None
+
+
+async def _resolve_report_image_candidate(
+    session: ReconstructionSession,
+    session_metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    metadata = session_metadata if session_metadata is not None else dict(getattr(session, "metadata", {}) or {})
+    image_url = str(metadata.get("report_scene_image_url", "") or "").strip()
+    if image_url:
+        return image_url, "metadata"
+
+    latest_scene = (getattr(session, "scene_versions", None) or [])[-1] if (getattr(session, "scene_versions", None) or []) else None
+    latest_image = str(getattr(latest_scene, "image_url", "") or "").strip() if latest_scene else ""
+    if latest_image:
+        return latest_image, "scene_version"
+
+    generated_path = await _resolve_generated_image_path("report", session.id)
+    if generated_path:
+        return generated_path, "generated_report"
+
+    return None, None
+
+
+async def _resolve_report_image_url(
+    session: ReconstructionSession,
+    session_metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    image_url, _ = await _resolve_report_image_candidate(session, session_metadata=session_metadata)
+    return image_url
+
+
+async def _resolve_case_image_candidate(case: Case) -> Tuple[Optional[str], Optional[str]]:
+    image_url = str(getattr(case, "scene_image_url", "") or "").strip()
+    if image_url:
+        return image_url, "case"
+
+    generated_path = await _resolve_generated_image_path("case", case.id)
+    if generated_path:
+        return generated_path, "generated_case"
+
+    for report_id in list(dict.fromkeys(getattr(case, "report_ids", []) or []))[:6]:
+        session = await firestore_service.get_session(report_id)
+        if not session:
+            continue
+        report_image_url, report_image_source = await _resolve_report_image_candidate(session)
+        if report_image_url:
+            return report_image_url, f"report:{report_image_source or 'fallback'}"
+
+    return None, None
+
+
+async def _resolve_case_image_url(case: Case) -> Optional[str]:
+    image_url, _ = await _resolve_case_image_candidate(case)
+    return image_url
+
+
+def _build_report_scene_request_description(
+    session: ReconstructionSession,
+    explicit_description: Optional[str] = None,
+) -> str:
+    metadata = dict(getattr(session, "metadata", {}) or {})
+    return imagen_service.build_report_scene_description(
+        primary_description=explicit_description or "",
+        statements=_statement_scene_fragments(session),
+        elements=getattr(session, "current_scene_elements", []) or [],
+        title=getattr(session, "title", "") or "",
+        ai_summary=str(metadata.get("ai_summary", "") or ""),
+        latest_scene_description=_latest_scene_description(session),
+    )
+
+
+async def _build_case_scene_request_description(
+    case: Case,
+    explicit_description: Optional[str] = None,
+) -> Tuple[str, List[ReconstructionSession]]:
+    reports: List[ReconstructionSession] = []
+    report_fragments: List[str] = []
+
+    for report_id in case.report_ids[:10]:
+        session = await firestore_service.get_session(report_id)
+        if not session:
+            continue
+        reports.append(session)
+
+        metadata = dict(getattr(session, "metadata", {}) or {})
+        latest_scene_description = _latest_scene_description(session)
+        if latest_scene_description:
+            report_fragments.append(latest_scene_description)
+        ai_summary = str(metadata.get("ai_summary", "") or "").strip()
+        if ai_summary:
+            report_fragments.append(ai_summary)
+        report_fragments.extend(_statement_scene_fragments(session))
+
+    case_metadata = dict(getattr(case, "metadata", {}) or {})
+    description = imagen_service.build_case_scene_description(
+        case_summary=(case.summary or case.title or ""),
+        scene_description=explicit_description or case_metadata.get("scene_description", "") or case.summary or "",
+        report_fragments=report_fragments,
+        title=case.title or "",
+    )
+    return description, reports
+
+
+def _collect_case_scene_elements(
+    reports: List[ReconstructionSession],
+    limit: int = 16,
+) -> List[Any]:
+    """Collect the richest deduplicated scene elements across a case's reports."""
+    collected: List[Any] = []
+    seen: set[str] = set()
+
+    for report in reports:
+        latest_scene = (getattr(report, "scene_versions", None) or [])[-1] if (getattr(report, "scene_versions", None) or []) else None
+        candidate_groups = [
+            list(getattr(latest_scene, "elements", []) or []) if latest_scene else [],
+            list(getattr(report, "current_scene_elements", []) or []),
+        ]
+
+        for group in candidate_groups:
+            for element in group:
+                if isinstance(element, dict):
+                    elem_type = str(element.get("type", "") or "").strip().lower()
+                    description = str(element.get("description", "") or "").strip().lower()
+                    position = str(element.get("position", "") or "").strip().lower()
+                    color = str(element.get("color", "") or "").strip().lower()
+                else:
+                    elem_type = str(getattr(element, "type", "") or "").strip().lower()
+                    description = str(getattr(element, "description", "") or "").strip().lower()
+                    position = str(getattr(element, "position", "") or "").strip().lower()
+                    color = str(getattr(element, "color", "") or "").strip().lower()
+
+                key = "|".join((elem_type, description, position, color))
+                if not key.strip("|") or key in seen:
+                    continue
+
+                seen.add(key)
+                collected.append(element)
+                if len(collected) >= limit:
+                    return collected
+
+    return collected
+
+
+def _resolve_report_scene_description(
+    session: ReconstructionSession,
+    session_metadata: Optional[Dict[str, Any]] = None,
+) -> str:
+    metadata = session_metadata if session_metadata is not None else dict(getattr(session, "metadata", {}) or {})
+
+    latest_description = _latest_scene_description(session)
+    if latest_description:
+        return latest_description
+
+    stored_description = str(metadata.get("report_scene_description", "") or "").strip()
+    if stored_description:
+        return stored_description
+
+    return _build_report_scene_request_description(session)[:1600]
+
+
+def _serialize_scene_task_result(result: Dict[str, Any]) -> str:
+    payload = {
+        "status": result.get("status"),
+        "reason": result.get("reason"),
+        "detail_reason": result.get("detail_reason"),
+        "path": result.get("path"),
+        "model_used": result.get("model_used"),
+        "quality": result.get("quality"),
+    }
+    return json.dumps(payload, default=str)
+
+
+def _report_statement_text(session: ReconstructionSession, limit: Optional[int] = None) -> str:
+    fragments = _statement_scene_fragments(session, limit=limit)
+    return "\n".join(fragment.strip() for fragment in fragments if str(fragment or "").strip()).strip()
+
+
+def _build_report_summary_prompt(report_text: str) -> str:
+    return (
+        "You are a law enforcement report writer. Based on the following witness statements, "
+        "generate a concise incident report summary. Include what happened, when, where, "
+        "who was involved, and any important corroborating details.\n\n"
+        f"Witness statements:\n{report_text}\n\n"
+        "Write a professional incident report summary in 2 short paragraphs:"
+    )
+
+
+def _build_fallback_summary(text: str, max_chars: int = 600) -> Optional[str]:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(cleaned) < 80:
+        return None
+
+    sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", cleaned) if sentence.strip()]
+    selected: List[str] = []
+    current_length = 0
+
+    for sentence in sentences:
+        if len(selected) >= 3:
+            break
+        projected_length = current_length + len(sentence) + (1 if selected else 0)
+        if projected_length > max_chars:
+            break
+        selected.append(sentence)
+        current_length = projected_length
+
+    summary = " ".join(selected).strip() or cleaned[:max_chars].strip()
+    return summary[:max_chars] if summary else None
+
+
+async def _generate_report_summary_text(session: ReconstructionSession) -> Tuple[Optional[str], str]:
+    report_text = _report_statement_text(session)
+    if not report_text:
+        return None, "no_text"
+
+    if settings.google_api_key:
+        try:
+            client = genai.Client(api_key=settings.google_api_key)
+            model = await model_selector.get_best_model_for_task("analysis")
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model,
+                contents=_build_report_summary_prompt(report_text),
+            )
+            summary_text = str(getattr(response, "text", "") or "").strip()
+            if summary_text:
+                return summary_text, "ai"
+        except Exception as exc:
+            logger.warning("Repair summary generation failed for report %s: %s", session.id, exc)
+
+    fallback_summary = _build_fallback_summary(report_text, max_chars=520)
+    if fallback_summary:
+        return fallback_summary, "fallback"
+    return None, "insufficient_detail"
+
+
+def _build_case_summary_fallback(case: Case, reports: List[ReconstructionSession]) -> Optional[str]:
+    fragments: List[str] = []
+
+    for report in reports[:4]:
+        metadata = dict(getattr(report, "metadata", {}) or {})
+        candidate = str(metadata.get("ai_summary", "") or "").strip()
+        if not candidate:
+            candidate = _build_fallback_summary(_report_statement_text(report), max_chars=220)
+        if candidate:
+            fragments.append(candidate)
+
+    if not fragments:
+        return None
+
+    combined = " ".join(fragments).strip()
+    if len(combined) < 80:
+        return None
+    return combined[:700]
+
+
+def _normalize_case_report_ids(existing_ids: List[str], desired_ids: List[str]) -> List[str]:
+    normalized: List[str] = []
+    desired_lookup = set(dict.fromkeys(desired_ids or []))
+    seen = set()
+
+    for report_id in existing_ids or []:
+        if report_id in desired_lookup and report_id not in seen:
+            normalized.append(report_id)
+            seen.add(report_id)
+
+    for report_id in desired_ids or []:
+        if report_id not in seen:
+            normalized.append(report_id)
+            seen.add(report_id)
+
+    return normalized
+
+
+def _serialize_background_task_result_value(result: Any) -> Optional[str]:
+    if result is None:
+        return None
+    if isinstance(result, (dict, list)):
+        return json.dumps(result, default=str)
+    return str(result)
+
+
+def _normalize_background_task_record(task_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    normalized["task_id"] = task_id
+    if normalized.get("created_at") and not normalized.get("started_at"):
+        normalized["started_at"] = normalized["created_at"]
+
+    result = normalized.get("result")
+    if isinstance(result, str):
+        stripped = result.strip()
+        if stripped and stripped[:1] in {"{", "["}:
+            try:
+                normalized["result"] = json.loads(stripped)
+            except json.JSONDecodeError:
+                pass
+
+    return normalized
+
+
+async def _persist_background_task_state(task_id: str, payload: Dict[str, Any]) -> None:
+    try:
+        await firestore_service.save_background_task({
+            "id": task_id,
+            "task_type": payload.get("task_type"),
+            "status": payload.get("status", "pending"),
+            "result": _serialize_background_task_result_value(payload.get("result")),
+            "error": str(payload.get("error")) if payload.get("error") else None,
+            "created_at": payload.get("started_at") or payload.get("created_at") or datetime.utcnow().isoformat(),
+            "completed_at": payload.get("completed_at"),
+        })
+    except Exception:
+        pass
+
+
 def _normalize_voice_preferences(
     raw_preferences: Optional[Dict[str, Any]],
     base_preferences: Optional[Dict[str, Any]] = None,
@@ -215,24 +557,47 @@ _task_results: dict = {}
 # Active viewers tracking (in-memory)
 _case_viewers: Dict[str, Dict[str, str]] = {}  # case_id -> {user_id: username}
 
-async def run_background_task(task_id: str, coro):
+async def run_background_task(task_id: str, coro, task_type: Optional[str] = None):
     """Run a coroutine as a background task and track its status."""
+    started_at = datetime.utcnow().isoformat()
+    running_state = _normalize_background_task_record(
+        task_id,
+        {
+            "task_type": task_type,
+            "status": "running",
+            "started_at": started_at,
+        },
+    )
+    _task_results[task_id] = running_state
+    await _persist_background_task_state(task_id, running_state)
+
     try:
-        _task_results[task_id] = {"status": "running", "started_at": datetime.utcnow().isoformat()}
         result = await coro
-        _task_results[task_id] = {
-            "status": "completed",
-            "result": str(result) if result else None,
-            "completed_at": datetime.utcnow().isoformat(),
-        }
+        completed_state = _normalize_background_task_record(
+            task_id,
+            {
+                "task_type": task_type,
+                "status": "completed",
+                "started_at": started_at,
+                "completed_at": datetime.utcnow().isoformat(),
+                "result": result,
+            },
+        )
+        _task_results[task_id] = completed_state
     except Exception as e:
-        logger.error(f"Background task {task_id} failed: {e}")
-        _task_results[task_id] = {"status": "failed", "error": str(e)}
-    # Persist to DB best-effort
-    try:
-        await firestore_service.save_background_task({"id": task_id, **_task_results[task_id]})
-    except Exception:
-        pass
+        logger.exception("Background task %s failed", task_id)
+        _task_results[task_id] = _normalize_background_task_record(
+            task_id,
+            {
+                "task_type": task_type,
+                "status": "failed",
+                "started_at": started_at,
+                "completed_at": datetime.utcnow().isoformat(),
+                "error": str(e),
+            },
+        )
+
+    await _persist_background_task_state(task_id, _task_results[task_id])
 
 
 # ── SSE event system ──────────────────────────────────────
@@ -771,8 +1136,14 @@ async def list_sessions(limit: int = 50):
     """List all reconstruction sessions."""
     try:
         sessions = await firestore_service.list_sessions(limit=limit)
-        sessions_list = [
-            SessionResponse(
+        sessions_list = []
+        for session in sessions:
+            session_metadata = dict(getattr(session, 'metadata', {}) or {})
+            report_image_url = await _resolve_report_image_url(session, session_metadata)
+            if report_image_url and not session_metadata.get("report_scene_image_url"):
+                session_metadata["report_scene_image_url"] = report_image_url
+
+            sessions_list.append(SessionResponse(
                 id=session.id,
                 title=session.title,
                 created_at=session.created_at,
@@ -784,11 +1155,13 @@ async def list_sessions(limit: int = 50):
                 source_type=getattr(session, 'source_type', 'chat'),
                 report_number=getattr(session, 'report_number', ''),
                 case_id=getattr(session, 'case_id', None),
+                witness_name=getattr(session, 'witness_name', None),
+                witness_contact=getattr(session, 'witness_contact', None),
+                witness_location=getattr(session, 'witness_location', None),
                 active_witness_id=getattr(session, 'active_witness_id', None),
-                metadata=getattr(session, 'metadata', {})
+                metadata=session_metadata
             )
-            for session in sessions
-        ]
+            )
         # Return object with sessions key for admin portal
         return {"sessions": sessions_list}
     except Exception as e:
@@ -812,6 +1185,8 @@ async def list_orphan_reports(limit: int = 50):
                 "report_number": getattr(session, "report_number", ""),
                 "title": session.title,
                 "source_type": getattr(session, "source_type", "chat"),
+                "witness_name": getattr(session, "witness_name", None),
+                "witness_location": getattr(session, "witness_location", None),
                 "statement_count": len(getattr(session, "witness_statements", []) or []),
                 "created_at": session.created_at.isoformat() if session.created_at else None,
                 "updated_at": session.updated_at.isoformat() if session.updated_at else None,
@@ -903,18 +1278,16 @@ async def create_session(session_data: SessionCreate):
             witness_location=session_data.witness_location,
             metadata=metadata
         )
-        
-        success = await firestore_service.create_session(session)
+
+        async with firestore_service._sequence_lock:
+            session.report_number = await firestore_service._next_report_number_unlocked()
+            success = await firestore_service.create_session(session)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create session"
             )
-        
-        # Assign report number
-        session.report_number = await firestore_service.get_next_report_number()
-        await firestore_service.update_session(session)
-        
+
         # Initialize agent for this session with template context
         agent = get_agent(session.id)
         if template:
@@ -3364,17 +3737,33 @@ async def close_session_on_client_exit(session_id: str, reason: str = "tab_close
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-        metadata = dict(session.metadata or {})
-        metadata["closed_by_client"] = True
-        metadata["close_reason"] = (reason or "tab_close")[:80]
-        metadata["closed_at"] = datetime.utcnow().isoformat()
-        session.metadata = metadata
+        close_metadata = {
+            "closed_by_client": True,
+            "close_reason": (reason or "tab_close")[:80],
+            "closed_at": datetime.utcnow().isoformat(),
+        }
 
-        if session.status == "active":
-            session.status = "completed"
-        session.updated_at = datetime.utcnow()
+        # Re-read before persisting so we don't clobber a concurrent case assignment
+        # or other report updates that landed immediately before unload.
+        latest_session = await firestore_service.get_session(session_id) or session
+        metadata = dict(latest_session.metadata or {})
+        metadata.update(close_metadata)
+        latest_session.metadata = metadata
 
-        success = await firestore_service.update_session(session)
+        if latest_session.status == "active":
+            latest_session.status = "completed"
+
+        if latest_session.witness_statements:
+            try:
+                assigned_case_id = await case_manager.assign_report_to_case(latest_session)
+                latest_session = await firestore_service.get_session(session_id) or latest_session
+                latest_session.case_id = assigned_case_id
+            except Exception as case_error:
+                logger.warning("Close-session case assignment skipped for %s: %s", session_id, case_error)
+
+        latest_session.updated_at = datetime.utcnow()
+
+        success = await firestore_service.update_session(latest_session)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -3382,7 +3771,12 @@ async def close_session_on_client_exit(session_id: str, reason: str = "tab_close
             )
 
         remove_agent(session_id)
-        return {"closed": True, "session_id": session_id, "status": session.status}
+        return {
+            "closed": True,
+            "session_id": session_id,
+            "status": latest_session.status,
+            "case_id": latest_session.case_id,
+        }
 
     except HTTPException:
         raise
@@ -5553,6 +5947,8 @@ async def list_cases(limit: int = 50, sort_by: str = "updated"):
             report_count = len(case.report_ids)
             # Calculate priority score
             priority = priority_scoring_service.calculate_priority(case, report_count)
+            incident_type = (case.metadata or {}).get("incident_type")
+            case_image_url = await _resolve_case_image_url(case)
             
             cases_list.append(CaseResponse(
                 id=case.id,
@@ -5564,8 +5960,10 @@ async def list_cases(limit: int = 50, sort_by: str = "updated"):
                 report_count=report_count,
                 created_at=case.created_at,
                 updated_at=case.updated_at,
-                scene_image_url=case.scene_image_url,
+                scene_image_url=case_image_url,
                 timeframe=case.timeframe,
+                case_type=incident_type,
+                incident_type=incident_type,
                 priority_score=priority.total_score,
                 priority_label=priority.priority_label,
                 priority=priority.model_dump()
@@ -5598,6 +5996,8 @@ async def list_cases_by_priority(limit: int = 50, min_score: float = 0):
         for case in cases:
             report_count = len(case.report_ids)
             priority = priority_scoring_service.calculate_priority(case, report_count)
+            incident_type = (case.metadata or {}).get("incident_type")
+            case_image_url = await _resolve_case_image_url(case)
             
             if priority.total_score >= min_score:
                 cases_list.append(CaseResponse(
@@ -5610,8 +6010,10 @@ async def list_cases_by_priority(limit: int = 50, min_score: float = 0):
                     report_count=report_count,
                     created_at=case.created_at,
                     updated_at=case.updated_at,
-                    scene_image_url=case.scene_image_url,
+                    scene_image_url=case_image_url,
                     timeframe=case.timeframe,
+                    case_type=incident_type,
+                    incident_type=incident_type,
                     priority_score=priority.total_score,
                     priority_label=priority.priority_label,
                     priority=priority.model_dump()
@@ -6089,14 +6491,23 @@ async def get_case_detail(case_id: str):
             session = await firestore_service.get_session(report_id)
             if session:
                 session_metadata = dict(getattr(session, 'metadata', {}) or {})
+                report_image_url = await _resolve_report_image_url(session, session_metadata)
+                report_scene_description = _resolve_report_scene_description(session, session_metadata)
                 reports.append({
                     "id": session.id,
                     "title": session.title,
                     "report_number": getattr(session, 'report_number', ''),
                     "source_type": getattr(session, 'source_type', 'chat'),
+                    "witness_name": getattr(session, 'witness_name', None),
+                    "witness_location": getattr(session, 'witness_location', None),
+                    "case_id": getattr(session, 'case_id', None),
                     "created_at": session.created_at.isoformat() if session.created_at else None,
                     "statement_count": len(session.witness_statements),
-                    "image_url": session_metadata.get("report_scene_image_url"),
+                    "image_url": report_image_url,
+                    "scene_description": report_scene_description,
+                    "scene_generation_status": session_metadata.get("report_scene_generation_status"),
+                    "scene_generation_reason": session_metadata.get("report_scene_generation_reason"),
+                    "scene_model": session_metadata.get("report_scene_model"),
                     "statements": [
                         {"id": s.id, "text": s.text, "timestamp": s.timestamp.isoformat() if s.timestamp else None}
                         for s in session.witness_statements
@@ -6122,7 +6533,7 @@ async def get_case_detail(case_id: str):
             "location": case.location,
             "status": case.status,
             "timeframe": case.timeframe,
-            "scene_image_url": case.scene_image_url,
+            "scene_image_url": await _resolve_case_image_url(case),
             "created_at": case.created_at.isoformat() if case.created_at else None,
             "updated_at": case.updated_at.isoformat() if case.updated_at else None,
             "reports": reports,
@@ -6307,13 +6718,18 @@ Make the source_type vary between "voice", "chat", "phone", "email" across repor
 
                 # Generate scene image for this report using Gemini
                 try:
-                    all_text = " ".join(report.get("statements", []))
-                    img_url = await imagen_service.generate_report_scene(
-                        session.id, all_text[:500], []
+                    description = _build_report_scene_request_description(session)
+                    result = await imagen_service.generate_report_scene_with_fallback(
+                        session.id,
+                        description,
+                        [e.model_dump() for e in session.current_scene_elements[:10]],
+                        quality="standard",
                     )
+                    img_url = result.get("path")
                     if img_url:
                         metadata = dict(session.metadata or {})
                         metadata["report_scene_image_url"] = img_url
+                        metadata["report_scene_model"] = result.get("model_used") or "ai_generated"
                         session.metadata = metadata
                         await firestore_service.update_session(session)
                         logger.info(f"Generated image for report {report_number}")
@@ -6335,10 +6751,15 @@ Make the source_type vary between "voice", "chat", "phone", "email" across repor
             try:
                 case = await firestore_service.get_case(case_id)
                 if case and not case.scene_image_url:
-                    case_desc = f"{case.title}. {case.summary or ''}"
-                    img_url = await imagen_service.generate_case_scene(
-                        case.id, case.summary or case.title, case_desc[:500]
+                    case_desc, reports = await _build_case_scene_request_description(case)
+                    result = await imagen_service.generate_case_scene_with_fallback(
+                        case.id,
+                        case.summary or case.title,
+                        case_desc,
+                        elements=_collect_case_scene_elements(reports),
+                        quality="standard",
                     )
+                    img_url = result.get("path")
                     if img_url:
                         case.scene_image_url = img_url
                         await firestore_service.update_case(case)
@@ -6362,115 +6783,535 @@ Make the source_type vary between "voice", "chat", "phone", "email" across repor
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/admin/fix-orphan-reports")
-async def fix_orphan_reports(auth=Depends(require_admin_auth)):
-    """Re-process reports: assign to cases, generate images, create summaries."""
-    try:
-        # list_sessions doesn't load statements, so get IDs then load each fully
-        session_summaries = await firestore_service.list_sessions(limit=500)
-        fixed = []
-        cleaned = []
-        errors = []
+@router.post("/admin/fix-orphan-reports", response_model=BackgroundTaskResponse)
+async def fix_orphan_reports(_auth=Depends(require_admin_auth)):
+    """Repair report/case linkage, summaries, previews, and stale status in the background."""
+    task_id = f"repair-reports-{uuid.uuid4().hex[:8]}"
+
+    async def _repair():
+        session_summaries = await firestore_service.list_sessions(limit=0)
+        live_sessions: Dict[str, ReconstructionSession] = {}
+        repaired_reports: List[Dict[str, Any]] = []
+        repaired_cases: List[Dict[str, Any]] = []
+        cleaned_reports: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        affected_case_ids = set()
+        stats: Dict[str, int] = {
+            "reports_scanned": 0,
+            "reports_updated": 0,
+            "reports_cleaned": 0,
+            "case_links_repaired": 0,
+            "report_summaries_generated": 0,
+            "report_summary_fallbacks": 0,
+            "report_summaries_skipped": 0,
+            "report_images_restored": 0,
+            "report_images_generated": 0,
+            "report_images_skipped": 0,
+            "report_images_failed": 0,
+            "report_statuses_cleaned": 0,
+            "cases_scanned": 0,
+            "cases_updated": 0,
+            "case_memberships_repaired": 0,
+            "case_summaries_generated": 0,
+            "case_summary_fallbacks": 0,
+            "case_summaries_skipped": 0,
+            "case_previews_restored": 0,
+            "case_images_generated": 0,
+            "case_images_skipped": 0,
+            "case_images_failed": 0,
+            "case_statuses_cleaned": 0,
+            "errors": 0,
+        }
+
+        def _trim_items(items: List[Dict[str, Any]], limit: int) -> Tuple[List[Dict[str, Any]], int]:
+            return items[:limit], max(0, len(items) - limit)
 
         for summary in session_summaries:
+            session_id = getattr(summary, "id", None)
+            if not session_id:
+                continue
+
             try:
-                # Load the full session with statements
-                session = await firestore_service.get_session(summary.id)
+                session = await firestore_service.get_session(session_id)
                 if not session:
                     continue
-                # Delete truly empty sessions (0 statements = witness never spoke)
-                if len(session.witness_statements) == 0:
+
+                live_sessions[session.id] = session
+                stats["reports_scanned"] += 1
+
+                statement_text = _report_statement_text(session)
+                has_scene_state = bool(
+                    (getattr(session, "scene_versions", None) or [])
+                    or (getattr(session, "current_scene_elements", None) or [])
+                )
+
+                if not statement_text and not has_scene_state:
+                    if session.case_id:
+                        affected_case_ids.add(session.case_id)
                     await firestore_service.delete_session(session.id)
-                    cleaned.append({"id": session.id, "title": session.title, "action": "deleted_empty"})
+                    live_sessions.pop(session.id, None)
+                    cleaned_reports.append({
+                        "id": session.id,
+                        "report_number": getattr(session, "report_number", "") or None,
+                        "title": session.title,
+                        "action": "deleted_empty",
+                    })
+                    stats["reports_cleaned"] += 1
                     continue
 
-                actions = []
+                original_case_id = session.case_id
+                original_status = str(session.status or "")
+                metadata = dict(getattr(session, "metadata", {}) or {})
+                report_actions: List[Dict[str, Any]] = []
+                needs_save = False
 
-                # 1. Assign to case if not assigned
-                if not session.case_id:
-                    try:
-                        case_id = await case_manager.assign_report_to_case(session)
-                        if case_id:
-                            session.case_id = case_id
-                            actions.append(f"assigned_to_case_{case_id}")
-                    except Exception as e:
-                        actions.append(f"case_assignment_failed: {str(e)[:60]}")
+                if not str(getattr(session, "report_number", "") or "").strip():
+                    async with firestore_service._sequence_lock:
+                        session.report_number = await firestore_service._next_report_number_unlocked()
+                        session.updated_at = datetime.utcnow()
+                        await firestore_service.update_session(session)
+                    report_actions.append({
+                        "type": "report_number_assigned",
+                        "to": session.report_number,
+                    })
+                    needs_save = True
 
-                # 2. Generate AI summary if missing
-                metadata = dict(session.metadata or {})
-                if not metadata.get("ai_summary"):
-                    try:
-                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
-                        if all_text.strip():
-                            from google import genai as genai_client
-                            client = genai_client.Client(api_key=settings.google_api_key)
-                            model = await model_selector.get_best_model_for_task("analysis")
-                            summary_prompt = (
-                                "You are a law enforcement report writer. Based on the following witness statements, "
-                                "generate a concise incident report summary. Include: what happened, when, where, "
-                                "who was involved, and any important details.\n\n"
-                                f"Witness statements:\n{all_text}\n\n"
-                                "Write a professional incident report summary (2-3 paragraphs):"
-                            )
-                            response = client.models.generate_content(model=model, contents=summary_prompt)
-                            if response and response.text:
-                                metadata["ai_summary"] = response.text
-                                metadata["report_generated_at"] = datetime.utcnow().isoformat()
-                                session.metadata = metadata
-                                actions.append("summary_generated")
-                    except Exception as e:
-                        actions.append(f"summary_failed: {str(e)[:60]}")
-
-                # 3. Generate report scene image if missing
-                if not metadata.get("report_scene_image_url"):
-                    try:
-                        all_text = " ".join([s.text for s in session.witness_statements if s.text])
-                        description = all_text[:500]
-                        if description.strip():
-                            result = await imagen_service.generate_report_scene(
-                                session.id, description, []
-                            )
-                            if result:
-                                metadata["report_scene_image_url"] = result if isinstance(result, str) else result.get("url", "")
-                                metadata["report_scene_model"] = "gemini"
-                                session.metadata = metadata
-                                actions.append("image_generated")
-                    except Exception as e:
-                        actions.append(f"image_failed: {str(e)[:60]}")
-
-                # 4. Mark as completed if still active
-                if session.status == "active":
-                    session.status = "completed"
-                    actions.append("status_completed")
-
-                # Save
-                if actions:
-                    await firestore_service.update_session(session)
-                    fixed.append({"id": session.id, "title": session.title, "actions": actions})
-
-            except Exception as e:
-                errors.append({"id": session.id, "error": str(e)[:100]})
-
-        # Update case summaries for all cases
-        try:
-            all_cases = await firestore_service.list_cases()
-            for case in all_cases:
                 try:
-                    await case_manager.generate_case_summary(case.id)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                    case_id = await case_manager.assign_report_to_case(session)
+                    if case_id:
+                        session.case_id = case_id
+                        affected_case_ids.add(case_id)
+                        if original_case_id and original_case_id != case_id:
+                            affected_case_ids.add(original_case_id)
+                        if case_id != original_case_id:
+                            report_actions.append({
+                                "type": "case_link_repaired",
+                                "from": original_case_id,
+                                "to": case_id,
+                            })
+                            stats["case_links_repaired"] += 1
+                            needs_save = True
+                except Exception as assign_error:
+                    errors.append({
+                        "entity": "report",
+                        "id": session.id,
+                        "step": "case_link",
+                        "error": str(assign_error)[:200],
+                    })
+                    stats["errors"] += 1
+
+                if not str(metadata.get("ai_summary", "") or "").strip():
+                    summary_text, summary_source = await _generate_report_summary_text(session)
+                    if summary_text:
+                        metadata["ai_summary"] = summary_text
+                        metadata["report_generated_at"] = datetime.utcnow().isoformat()
+                        metadata["ai_summary_source"] = f"repair_{summary_source}"
+                        report_actions.append({
+                            "type": "report_summary_generated",
+                            "source": summary_source,
+                        })
+                        stats["report_summaries_generated"] += 1
+                        if summary_source == "fallback":
+                            stats["report_summary_fallbacks"] += 1
+                        needs_save = True
+                    else:
+                        stats["report_summaries_skipped"] += 1
+
+                try:
+                    report_image_url, report_image_source = await _resolve_report_image_candidate(session, metadata)
+                    should_restore_existing_preview = bool(report_image_url) and (
+                        not str(metadata.get("report_scene_image_url", "") or "").strip()
+                        or metadata.get("report_scene_generation_status") != "ready"
+                        or metadata.get("report_scene_preview_source") != report_image_source
+                    )
+
+                    if should_restore_existing_preview:
+                        metadata["report_scene_image_url"] = report_image_url
+                        metadata["report_scene_preview_source"] = report_image_source
+                        metadata["report_scene_generation_status"] = "ready"
+                        metadata["report_scene_generation_reason"] = "existing_image_reconciled"
+                        metadata["report_scene_updated_at"] = metadata.get("report_scene_updated_at") or datetime.utcnow().isoformat()
+                        report_actions.append({
+                            "type": "report_preview_restored",
+                            "source": report_image_source,
+                        })
+                        stats["report_images_restored"] += 1
+                        needs_save = True
+                    elif not report_image_url:
+                        description = _build_report_scene_request_description(session)
+                        result = await imagen_service.generate_report_scene_with_fallback(
+                            session.id,
+                            description,
+                            [e.model_dump() for e in session.current_scene_elements[:10]],
+                            quality="standard",
+                        )
+                        timestamp = datetime.utcnow().isoformat()
+                        metadata["report_scene_generation_status"] = result.get("status")
+                        metadata["report_scene_generation_reason"] = (
+                            result.get("detail_reason")
+                            if result.get("status") == "skipped"
+                            else result.get("reason")
+                        )
+                        metadata["report_scene_last_attempt_at"] = timestamp
+                        metadata["report_scene_quality"] = result.get("quality") or "standard"
+                        if description:
+                            metadata["report_scene_description"] = description[:1600]
+
+                        if result.get("path"):
+                            metadata["report_scene_image_url"] = result["path"]
+                            metadata["report_scene_model"] = result.get("model_used") or "ai_generated"
+                            metadata["report_scene_preview_source"] = "generated"
+                            metadata["report_scene_updated_at"] = timestamp
+                            await firestore_service.save_generated_image({
+                                "id": f"repair-report-image-{session.id}-{uuid.uuid4().hex[:8]}",
+                                "entity_type": "report",
+                                "entity_id": session.id,
+                                "image_path": result["path"],
+                                "model_used": result.get("model_used") or "ai_generated",
+                                "prompt": (result.get("prompt") or description)[:500],
+                            })
+                            report_actions.append({
+                                "type": "report_preview_generated",
+                                "model_used": result.get("model_used") or "ai_generated",
+                            })
+                            stats["report_images_generated"] += 1
+                        else:
+                            report_actions.append({
+                                "type": "report_preview_evaluated",
+                                "status": result.get("status"),
+                                "reason": metadata.get("report_scene_generation_reason"),
+                            })
+                            if result.get("status") == "skipped":
+                                stats["report_images_skipped"] += 1
+                            else:
+                                stats["report_images_failed"] += 1
+                        needs_save = True
+                except Exception as image_error:
+                    errors.append({
+                        "entity": "report",
+                        "id": session.id,
+                        "step": "report_preview",
+                        "error": str(image_error)[:200],
+                    })
+                    stats["errors"] += 1
+
+                normalized_status = str(session.status or "").strip().lower()
+                if session.case_id and statement_text and normalized_status in {"", "active", "processing", "pending"}:
+                    session.status = "completed"
+                    report_actions.append({
+                        "type": "report_status_cleaned",
+                        "from": original_status or None,
+                        "to": "completed",
+                    })
+                    stats["report_statuses_cleaned"] += 1
+                    needs_save = True
+
+                if needs_save:
+                    session.metadata = metadata
+                    session.updated_at = datetime.utcnow()
+                    await firestore_service.update_session(session)
+                    live_sessions[session.id] = session
+                    repaired_reports.append({
+                        "id": session.id,
+                        "report_number": getattr(session, "report_number", "") or None,
+                        "title": session.title,
+                        "case_id": session.case_id,
+                        "actions": report_actions,
+                    })
+                    stats["reports_updated"] += 1
+
+            except Exception as session_error:
+                errors.append({
+                    "entity": "report",
+                    "id": session_id,
+                    "step": "repair",
+                    "error": str(session_error)[:200],
+                })
+                stats["errors"] += 1
+
+        sessions_by_case: Dict[str, List[ReconstructionSession]] = {}
+        for session in live_sessions.values():
+            if not session.case_id:
+                continue
+            sessions_by_case.setdefault(session.case_id, []).append(session)
+
+        all_cases = await firestore_service.list_cases(limit=0)
+        for case in all_cases:
+            stats["cases_scanned"] += 1
+            case_actions: List[Dict[str, Any]] = []
+
+            try:
+                case = await firestore_service.get_case(case.id) or case
+                reports_for_case = sessions_by_case.get(case.id, [])
+                desired_report_ids = [report.id for report in reports_for_case]
+                normalized_report_ids = _normalize_case_report_ids(case.report_ids, desired_report_ids)
+                stale_report_ids = [report_id for report_id in case.report_ids if report_id not in desired_report_ids]
+                missing_report_ids = [report_id for report_id in desired_report_ids if report_id not in case.report_ids]
+                metadata = dict(getattr(case, "metadata", {}) or {})
+                case_dirty = False
+
+                if not str(getattr(case, "case_number", "") or "").strip():
+                    async with firestore_service._sequence_lock:
+                        case.case_number = await firestore_service._next_case_number_unlocked()
+                        case.updated_at = datetime.utcnow()
+                        await firestore_service.update_case(case)
+                    case_actions.append({
+                        "type": "case_number_assigned",
+                        "to": case.case_number,
+                    })
+                    case_dirty = True
+
+                if stale_report_ids or missing_report_ids or normalized_report_ids != case.report_ids:
+                    case.report_ids = normalized_report_ids
+                    case_actions.append({
+                        "type": "case_membership_reconciled",
+                        "added": missing_report_ids,
+                        "removed": stale_report_ids,
+                    })
+                    stats["case_memberships_repaired"] += 1
+                    case_dirty = True
+
+                normalized_status = str(case.status or "").strip().lower()
+                if case.report_ids and normalized_status == "merged":
+                    previous_status = case.status
+                    case.status = "open"
+                    metadata.pop("merged_into", None)
+                    metadata.pop("merged_at", None)
+                    case_actions.append({
+                        "type": "case_status_cleaned",
+                        "from": previous_status or "merged",
+                        "to": "open",
+                    })
+                    stats["case_statuses_cleaned"] += 1
+                    case_dirty = True
+                elif not case.report_ids and metadata.get("merged_into") and normalized_status != "merged":
+                    previous_status = case.status
+                    case.status = "merged"
+                    case_actions.append({
+                        "type": "case_status_cleaned",
+                        "from": previous_status or None,
+                        "to": "merged",
+                    })
+                    stats["case_statuses_cleaned"] += 1
+                    case_dirty = True
+                elif case.report_ids and normalized_status not in {"open", "under_review", "closed", "merged"}:
+                    previous_status = case.status
+                    case.status = "open"
+                    case_actions.append({
+                        "type": "case_status_cleaned",
+                        "from": previous_status or None,
+                        "to": "open",
+                    })
+                    stats["case_statuses_cleaned"] += 1
+                    case_dirty = True
+
+                if case_dirty:
+                    case.metadata = metadata
+                    case.updated_at = datetime.utcnow()
+                    await firestore_service.update_case(case)
+                    case = await firestore_service.get_case(case.id) or case
+                    metadata = dict(getattr(case, "metadata", {}) or {})
+
+                needs_case_summary = bool(case.report_ids) and (
+                    case.id in affected_case_ids
+                    or not str(case.summary or "").strip()
+                    or not str(metadata.get("scene_description", "") or "").strip()
+                )
+                if needs_case_summary:
+                    try:
+                        summary_result = await case_manager.generate_case_summary(case.id)
+                    except Exception as summary_error:
+                        summary_result = None
+                        errors.append({
+                            "entity": "case",
+                            "id": case.id,
+                            "step": "case_summary",
+                            "error": str(summary_error)[:200],
+                        })
+                        stats["errors"] += 1
+
+                    if summary_result:
+                        case_actions.append({
+                            "type": "case_summary_generated",
+                            "source": "ai",
+                        })
+                        stats["case_summaries_generated"] += 1
+                        case = await firestore_service.get_case(case.id) or case
+                        metadata = dict(getattr(case, "metadata", {}) or {})
+                    else:
+                        fallback_summary = _build_case_summary_fallback(case, reports_for_case)
+                        if fallback_summary and not str(case.summary or "").strip():
+                            case.summary = fallback_summary
+                            metadata["case_summary_source"] = "repair_fallback"
+                            if not str(metadata.get("scene_description", "") or "").strip():
+                                metadata["scene_description"] = fallback_summary[:1600]
+                            case.metadata = metadata
+                            case.updated_at = datetime.utcnow()
+                            await firestore_service.update_case(case)
+                            case_actions.append({
+                                "type": "case_summary_generated",
+                                "source": "fallback",
+                            })
+                            stats["case_summaries_generated"] += 1
+                            stats["case_summary_fallbacks"] += 1
+                            case = await firestore_service.get_case(case.id) or case
+                            metadata = dict(getattr(case, "metadata", {}) or {})
+                        else:
+                            stats["case_summaries_skipped"] += 1
+
+                generated_case_preview = False
+                preview_url, _ = await _resolve_case_image_candidate(case)
+                if not preview_url and case.report_ids:
+                    try:
+                        description, case_reports = await _build_case_scene_request_description(case)
+                        result = await imagen_service.generate_case_scene_with_fallback(
+                            case.id,
+                            case.summary or case.title or "",
+                            description,
+                            elements=_collect_case_scene_elements(case_reports),
+                            quality="standard",
+                        )
+                        timestamp = datetime.utcnow().isoformat()
+                        metadata = dict(getattr(case, "metadata", {}) or {})
+                        metadata["case_scene_generation_status"] = result.get("status")
+                        metadata["case_scene_generation_reason"] = (
+                            result.get("detail_reason")
+                            if result.get("status") == "skipped"
+                            else result.get("reason")
+                        )
+                        metadata["case_scene_last_attempt_at"] = timestamp
+                        metadata["case_scene_quality"] = result.get("quality") or "standard"
+                        if description:
+                            metadata["case_scene_description"] = description[:1600]
+
+                        if result.get("path"):
+                            case.scene_image_url = result["path"]
+                            metadata["case_scene_model"] = result.get("model_used") or "ai_generated"
+                            metadata["case_scene_updated_at"] = timestamp
+                            generated_case_preview = True
+                            await firestore_service.save_generated_image({
+                                "id": f"repair-case-image-{case.id}-{uuid.uuid4().hex[:8]}",
+                                "entity_type": "case",
+                                "entity_id": case.id,
+                                "image_path": result["path"],
+                                "model_used": result.get("model_used") or "ai_generated",
+                                "prompt": (result.get("prompt") or description)[:500],
+                            })
+                            case_actions.append({
+                                "type": "case_preview_generated",
+                                "model_used": result.get("model_used") or "ai_generated",
+                            })
+                            stats["case_images_generated"] += 1
+                        else:
+                            case_actions.append({
+                                "type": "case_preview_evaluated",
+                                "status": result.get("status"),
+                                "reason": metadata.get("case_scene_generation_reason"),
+                            })
+                            if result.get("status") == "skipped":
+                                stats["case_images_skipped"] += 1
+                            else:
+                                stats["case_images_failed"] += 1
+
+                        case.metadata = metadata
+                        case.updated_at = datetime.utcnow()
+                        await firestore_service.update_case(case)
+                        case = await firestore_service.get_case(case.id) or case
+                    except Exception as image_error:
+                        errors.append({
+                            "entity": "case",
+                            "id": case.id,
+                            "step": "case_preview",
+                            "error": str(image_error)[:200],
+                        })
+                        stats["errors"] += 1
+
+                metadata = dict(getattr(case, "metadata", {}) or {})
+                final_preview_url, final_preview_source = await _resolve_case_image_candidate(case)
+                final_case_dirty = False
+
+                if final_preview_url:
+                    if (
+                        metadata.get("has_scene") is not True
+                        or metadata.get("scene_image_url") != final_preview_url
+                        or metadata.get("scene_preview_source") != final_preview_source
+                    ):
+                        metadata["has_scene"] = True
+                        metadata["scene_image_url"] = final_preview_url
+                        metadata["scene_preview_source"] = final_preview_source
+                        if not generated_case_preview:
+                            case_actions.append({
+                                "type": "case_preview_restored",
+                                "source": final_preview_source,
+                            })
+                            stats["case_previews_restored"] += 1
+                        final_case_dirty = True
+
+                    if final_preview_source and not str(final_preview_source).startswith("report:") and not case.scene_image_url:
+                        case.scene_image_url = final_preview_url
+                        final_case_dirty = True
+                else:
+                    if metadata.get("has_scene") or metadata.get("scene_image_url") or metadata.get("scene_preview_source"):
+                        metadata["has_scene"] = False
+                        metadata.pop("scene_image_url", None)
+                        metadata.pop("scene_preview_source", None)
+                        case_actions.append({
+                            "type": "case_preview_visibility_cleared",
+                        })
+                        final_case_dirty = True
+
+                if final_case_dirty:
+                    case.metadata = metadata
+                    case.updated_at = datetime.utcnow()
+                    await firestore_service.update_case(case)
+
+                if case_actions:
+                    repaired_cases.append({
+                        "id": case.id,
+                        "case_number": case.case_number,
+                        "title": case.title,
+                        "report_count": len(case.report_ids or []),
+                        "actions": case_actions,
+                    })
+                    stats["cases_updated"] += 1
+
+            except Exception as case_error:
+                errors.append({
+                    "entity": "case",
+                    "id": case.id,
+                    "step": "repair",
+                    "error": str(case_error)[:200],
+                })
+                stats["errors"] += 1
+
+        report_items, report_truncated = _trim_items(repaired_reports, 40)
+        case_items, case_truncated = _trim_items(repaired_cases, 40)
+        cleaned_items, cleaned_truncated = _trim_items(cleaned_reports, 20)
+        error_items, errors_truncated = _trim_items(errors, 20)
 
         return {
-            "message": f"Fixed {len(fixed)} reports, cleaned {len(cleaned)} empty sessions",
-            "fixed": fixed,
-            "cleaned": cleaned,
-            "errors": errors
+            "message": (
+                f"Repair completed: {stats['reports_updated']} reports updated, "
+                f"{stats['cases_updated']} cases updated, "
+                f"{stats['reports_cleaned']} empty reports removed."
+            ),
+            "summary": stats,
+            "reports": report_items,
+            "reports_truncated": report_truncated,
+            "cases": case_items,
+            "cases_truncated": case_truncated,
+            "cleaned": cleaned_items,
+            "cleaned_truncated": cleaned_truncated,
+            "errors": error_items,
+            "errors_truncated": errors_truncated,
         }
-    except Exception as e:
-        logger.error(f"Error fixing orphan reports: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    asyncio.create_task(run_background_task(task_id, _repair(), task_type="fix_reports"))
+    return BackgroundTaskResponse(
+        task_id=task_id,
+        status="pending",
+        message="Report repair started in the background",
+    )
 
 
 # ── Background Task Status ────────────────────────────────
@@ -6484,8 +7325,9 @@ async def get_recent_tasks(limit: int = 50):
     for task_id, result in _task_results.items():
         if not isinstance(result, dict):
             continue
-        sort_ts = result.get("completed_at") or result.get("started_at") or ""
-        recent.append({"task_id": task_id, "_sort_ts": sort_ts, **result})
+        normalized = _normalize_background_task_record(task_id, result)
+        sort_ts = normalized.get("completed_at") or normalized.get("started_at") or ""
+        recent.append({"_sort_ts": sort_ts, **normalized})
 
     recent.sort(key=lambda item: item.get("_sort_ts") or "", reverse=True)
     tasks = [{k: v for k, v in item.items() if k != "_sort_ts"} for item in recent[:limit]]
@@ -6502,13 +7344,13 @@ async def get_recent_tasks(limit: int = 50):
 async def get_task_status(task_id: str):
     """Get the status of a background task."""
     result = _task_results.get(task_id)
-    if result:
-        return result
+    if isinstance(result, dict):
+        return _normalize_background_task_record(task_id, result)
     # Try persistent storage
     stored = await firestore_service.get_background_task(task_id)
     if stored:
-        return stored
-    return {"status": "not_found"}
+        return _normalize_background_task_record(task_id, stored)
+    return {"task_id": task_id, "status": "not_found"}
 
 
 # ── Quota Status (all AI models) ─────────────────────────
@@ -7051,24 +7893,55 @@ async def generate_case_scene(case_id: str, body: SceneGenerateRequest = None):
         raise HTTPException(status_code=404, detail="Case not found")
 
     task_id = f"scene-case-{case_id}-{uuid.uuid4().hex[:8]}"
-    description = (body.description if body and body.description else case.summary) or case.title
+    quality = body.quality if body else "standard"
+    description, reports = await _build_case_scene_request_description(
+        case,
+        explicit_description=body.description if body else None,
+    )
+    case_elements = _collect_case_scene_elements(reports)
 
     async def _generate():
-        from app.services.imagen_service import imagen_service
-        path = await imagen_service.generate_case_scene(case_id, case.summary or "", description)
+        result = await imagen_service.generate_case_scene_with_fallback(
+            case_id,
+            case.summary or case.title or "",
+            description,
+            elements=case_elements,
+            quality=quality,
+        )
+        timestamp = datetime.utcnow().isoformat()
+        path = result.get("path")
+        latest_case = await firestore_service.get_case(case_id) or case
+        case_metadata = dict(getattr(latest_case, "metadata", {}) or {})
+        case_metadata["case_scene_generation_status"] = result.get("status")
+        case_metadata["case_scene_generation_reason"] = (
+            result.get("detail_reason")
+            if result.get("status") == "skipped"
+            else result.get("reason")
+        )
+        case_metadata["case_scene_last_attempt_at"] = timestamp
+        case_metadata["case_scene_quality"] = result.get("quality") or quality
+        if description:
+            case_metadata["case_scene_description"] = description[:1600]
         if path:
-            case.scene_image_url = path
-            await firestore_service.update_case(case)
+            latest_case.scene_image_url = path
+            case_metadata["case_scene_model"] = result.get("model_used") or "ai_generated"
+            case_metadata["case_scene_updated_at"] = timestamp
+        latest_case.metadata = case_metadata
+        await firestore_service.update_case(latest_case)
+        if path:
             await firestore_service.save_generated_image({
                 "id": task_id,
                 "entity_type": "case",
                 "entity_id": case_id,
                 "image_path": path,
-                "model_used": "gemini",
-                "prompt": description[:500],
+                "model_used": result.get("model_used") or "ai_generated",
+                "prompt": (result.get("prompt") or description)[:500],
             })
             await publish_event("image_generated", {"entity_type": "case", "entity_id": case_id, "image_path": path})
-        return path
+            return _serialize_scene_task_result(result)
+        if result.get("status") == "skipped":
+            return _serialize_scene_task_result(result)
+        raise RuntimeError("Scene generation failed after Gemini/Imagen fallbacks")
 
     asyncio.create_task(run_background_task(task_id, _generate()))
     return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene generation started")
@@ -7082,23 +7955,53 @@ async def generate_report_scene(session_id: str, body: SceneGenerateRequest = No
         raise HTTPException(status_code=404, detail="Session not found")
 
     task_id = f"scene-report-{session_id}-{uuid.uuid4().hex[:8]}"
-    description = (body.description if body and body.description else session.title)
+    quality = body.quality if body else "standard"
+    description = _build_report_scene_request_description(
+        session,
+        explicit_description=body.description if body else None,
+    )
     elements = [e.model_dump() for e in session.current_scene_elements[:10]]
 
     async def _generate():
-        from app.services.imagen_service import imagen_service
-        path = await imagen_service.generate_report_scene(session_id, description, elements)
+        result = await imagen_service.generate_report_scene_with_fallback(
+            session_id,
+            description,
+            elements,
+            quality=quality,
+        )
+        timestamp = datetime.utcnow().isoformat()
+        path = result.get("path")
+        latest_session = await firestore_service.get_session(session_id) or session
+        metadata = dict(getattr(latest_session, "metadata", {}) or {})
+        metadata["report_scene_generation_status"] = result.get("status")
+        metadata["report_scene_generation_reason"] = (
+            result.get("detail_reason")
+            if result.get("status") == "skipped"
+            else result.get("reason")
+        )
+        metadata["report_scene_last_attempt_at"] = timestamp
+        metadata["report_scene_quality"] = result.get("quality") or quality
+        metadata["report_scene_description"] = description[:1600]
+        if path:
+            metadata["report_scene_image_url"] = path
+            metadata["report_scene_model"] = result.get("model_used") or "ai_generated"
+            metadata["report_scene_updated_at"] = timestamp
+        latest_session.metadata = metadata
+        await firestore_service.update_session(latest_session)
         if path:
             await firestore_service.save_generated_image({
                 "id": task_id,
                 "entity_type": "report",
                 "entity_id": session_id,
                 "image_path": path,
-                "model_used": "gemini",
-                "prompt": description[:500],
+                "model_used": result.get("model_used") or "ai_generated",
+                "prompt": (result.get("prompt") or description)[:500],
             })
             await publish_event("image_generated", {"entity_type": "report", "entity_id": session_id, "image_path": path})
-        return path
+            return _serialize_scene_task_result(result)
+        if result.get("status") == "skipped":
+            return _serialize_scene_task_result(result)
+        raise RuntimeError("Scene generation failed after Gemini/Imagen fallbacks")
 
     asyncio.create_task(run_background_task(task_id, _generate()))
     return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene generation started")
@@ -7112,17 +8015,55 @@ async def regenerate_case_scene(case_id: str, body: SceneGenerateRequest = None)
         raise HTTPException(status_code=404, detail="Case not found")
 
     task_id = f"regen-case-{case_id}-{uuid.uuid4().hex[:8]}"
-    description = (body.description if body and body.description else case.summary) or case.title
     quality = body.quality if body else "standard"
+    description, reports = await _build_case_scene_request_description(
+        case,
+        explicit_description=body.description if body else None,
+    )
+    case_elements = _collect_case_scene_elements(reports)
 
     async def _regenerate():
-        from app.services.imagen_service import imagen_service
-        path = await imagen_service.regenerate_scene("case", case_id, description, quality=quality)
+        result = await imagen_service.generate_case_scene_with_fallback(
+            case_id,
+            case.summary or case.title or "",
+            description,
+            elements=case_elements,
+            quality=quality,
+        )
+        timestamp = datetime.utcnow().isoformat()
+        path = result.get("path")
+        latest_case = await firestore_service.get_case(case_id) or case
+        case_metadata = dict(getattr(latest_case, "metadata", {}) or {})
+        case_metadata["case_scene_generation_status"] = result.get("status")
+        case_metadata["case_scene_generation_reason"] = (
+            result.get("detail_reason")
+            if result.get("status") == "skipped"
+            else result.get("reason")
+        )
+        case_metadata["case_scene_last_attempt_at"] = timestamp
+        case_metadata["case_scene_quality"] = result.get("quality") or quality
+        if description:
+            case_metadata["case_scene_description"] = description[:1600]
         if path:
-            case.scene_image_url = path
-            await firestore_service.update_case(case)
+            latest_case.scene_image_url = path
+            case_metadata["case_scene_model"] = result.get("model_used") or "ai_generated"
+            case_metadata["case_scene_updated_at"] = timestamp
+        latest_case.metadata = case_metadata
+        await firestore_service.update_case(latest_case)
+        if path:
+            await firestore_service.save_generated_image({
+                "id": task_id,
+                "entity_type": "case",
+                "entity_id": case_id,
+                "image_path": path,
+                "model_used": result.get("model_used") or "ai_generated",
+                "prompt": (result.get("prompt") or description)[:500],
+            })
             await publish_event("image_generated", {"entity_type": "case", "entity_id": case_id, "image_path": path})
-        return path
+            return _serialize_scene_task_result(result)
+        if result.get("status") == "skipped":
+            return _serialize_scene_task_result(result)
+        raise RuntimeError("Scene regeneration failed after Gemini/Imagen fallbacks")
 
     asyncio.create_task(run_background_task(task_id, _regenerate()))
     return BackgroundTaskResponse(task_id=task_id, status="pending", message="Scene regeneration started")
@@ -7620,12 +8561,21 @@ async def get_conversation_summary(session_id: str):
             last_agent_snippet = str(item.get("content", "")).strip()[:180]
             break
 
+    metadata = dict(getattr(session, "metadata", {}) or {})
     latest_scene = (session.scene_versions or [])[-1] if (session.scene_versions or []) else None
+    resolved_image_url = await _resolve_report_image_url(session, metadata)
+    resolved_description = _resolve_report_scene_description(session, metadata)
+    if not resolved_description:
+        resolved_description = str(agent.get_scene_summary().get("description", "") or "").strip()
     scene_snapshot = {
         "latest_version": getattr(latest_scene, "version", None),
-        "image_url": getattr(latest_scene, "image_url", None),
-        "description": getattr(latest_scene, "description", None),
-        "timestamp": latest_scene.timestamp.isoformat() if latest_scene and getattr(latest_scene, "timestamp", None) else None,
+        "image_url": getattr(latest_scene, "image_url", None) or resolved_image_url,
+        "description": getattr(latest_scene, "description", None) or resolved_description,
+        "timestamp": (
+            latest_scene.timestamp.isoformat()
+            if latest_scene and getattr(latest_scene, "timestamp", None)
+            else metadata.get("report_scene_updated_at")
+        ),
     }
 
     return {
@@ -7650,28 +8600,33 @@ async def get_scene_preview(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    latest_scene = (session.scene_versions or [])[-1] if (session.scene_versions or []) else None
     metadata = dict(getattr(session, "metadata", {}) or {})
+    latest_scene = (session.scene_versions or [])[-1] if (session.scene_versions or []) else None
+    resolved_image_url = await _resolve_report_image_url(session, metadata)
+    resolved_description = _resolve_report_scene_description(session, metadata)
+    if not resolved_description:
+        resolved_description = str(get_agent(session_id).get_scene_summary().get("description", "") or "").strip()
     if latest_scene:
         return {
             "session_id": session_id,
             "has_scene": True,
             "version": getattr(latest_scene, "version", len(session.scene_versions or [])),
-            "image_url": getattr(latest_scene, "image_url", None),
-            "description": getattr(latest_scene, "description", ""),
-            "timestamp": latest_scene.timestamp.isoformat() if getattr(latest_scene, "timestamp", None) else None,
+            "image_url": getattr(latest_scene, "image_url", None) or resolved_image_url,
+            "description": getattr(latest_scene, "description", "") or resolved_description,
+            "timestamp": (
+                latest_scene.timestamp.isoformat()
+                if getattr(latest_scene, "timestamp", None)
+                else metadata.get("report_scene_updated_at")
+            ),
             "scene_version_count": len(session.scene_versions or []),
         }
-
-    agent = get_agent(session_id)
-    scene_summary = agent.get_scene_summary()
     return {
         "session_id": session_id,
-        "has_scene": False,
+        "has_scene": bool(resolved_image_url),
         "version": None,
-        "image_url": metadata.get("report_scene_image_url"),
-        "description": scene_summary.get("description", ""),
-        "timestamp": None,
+        "image_url": resolved_image_url,
+        "description": resolved_description,
+        "timestamp": metadata.get("report_scene_updated_at"),
         "scene_version_count": 0,
     }
 
@@ -10552,11 +11507,11 @@ async def api_create_session(data: dict = {}, api_key=Depends(require_api_key)):
             witness_location=data.get("witness_location", ""),
             metadata=data.get("metadata", {}),
         )
-        success = await firestore_service.create_session(session)
+        async with firestore_service._sequence_lock:
+            session.report_number = await firestore_service._next_report_number_unlocked()
+            success = await firestore_service.create_session(session)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to create session")
-        session.report_number = await firestore_service.get_next_report_number()
-        await firestore_service.update_session(session)
         agent = get_agent(session.id)
         greeting = await agent.start_interview()
         return {
@@ -11019,26 +11974,61 @@ async def merge_cases(data: dict, auth=Depends(require_admin_auth)):
         t_reports = json.loads(t_reports) if t_reports else []
     if isinstance(s_reports, str):
         s_reports = json.loads(s_reports) if s_reports else []
-    merged = list(set(t_reports + s_reports))
+    merged = list(dict.fromkeys(t_reports + s_reports))
+    merge_time = datetime.utcnow().isoformat()
     # Update target
+    target_metadata = dict(
+        (target.get("metadata", {}) if isinstance(target, dict) else getattr(target, "metadata", {})) or {}
+    )
+    merged_from = target_metadata.get("merged_from", [])
+    if not isinstance(merged_from, list):
+        merged_from = [merged_from]
+    if source_id not in merged_from:
+        merged_from.append(source_id)
+    target_metadata["merged_from"] = merged_from
+    if hasattr(target, "metadata"):
+        target.metadata = target_metadata
+    elif isinstance(target, dict):
+        target["metadata"] = target_metadata
     if hasattr(target, 'report_ids'):
         target.report_ids = merged
     elif isinstance(target, dict):
         target["report_ids"] = merged
     await firestore_service.update_case(target)
     # Mark source as merged
+    source_metadata = dict(
+        (source.get("metadata", {}) if isinstance(source, dict) else getattr(source, "metadata", {})) or {}
+    )
+    source_metadata["merged_into"] = target_id
+    source_metadata["merged_at"] = merge_time
+    if hasattr(source, "metadata"):
+        source.metadata = source_metadata
+    elif isinstance(source, dict):
+        source["metadata"] = source_metadata
     if hasattr(source, 'status'):
         source.status = 'merged'
+        source.report_ids = []
     elif isinstance(source, dict):
         source["status"] = 'merged'
+        source["report_ids"] = []
     await firestore_service.update_case(source)
+    updated_sessions = await firestore_service.reassign_reports_to_case(s_reports, target_id)
+    try:
+        await case_manager.generate_case_summary(target_id)
+    except Exception as case_summary_error:
+        logger.warning("Failed to refresh merged case summary for %s: %s", target_id, case_summary_error)
     # Audit
     db = get_database()
     await db._db.execute(
         "INSERT INTO audit_log (entity_type, entity_id, action, details) VALUES (?,?,?,?)",
         ("case", target_id, "merge", f"Merged case {source_id} into {target_id}. {len(s_reports)} reports moved."))
     await db._db.commit()
-    return {"status": "merged", "target_reports": len(merged), "source_status": "merged"}
+    return {
+        "status": "merged",
+        "target_reports": len(merged),
+        "source_status": "merged",
+        "updated_sessions": updated_sessions,
+    }
 
 
 # ── Feature 30: Case Deadline/SLA Tracking ───────────────────────

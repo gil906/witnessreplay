@@ -233,14 +233,14 @@ class WebSocketHandler:
                     except Exception as summary_err:
                         logger.warning(f"Failed to generate AI summary on disconnect: {summary_err}")
 
-                # Assign to a case if not already assigned
-                if not session.case_id:
+                # Reconcile the case assignment using the full report before closing.
+                if session.witness_statements:
                     try:
                         case_id = await case_manager.assign_report_to_case(session)
                         session.case_id = case_id
-                        logger.info(f"Auto-assigned session {self.session_id} to case {case_id}")
+                        logger.info(f"Reconciled session {self.session_id} to case {case_id}")
                     except Exception as case_err:
-                        logger.warning(f"Failed to auto-assign case on disconnect: {case_err}")
+                        logger.warning(f"Failed to reconcile case on disconnect: {case_err}")
 
                 # Generate scene image if none exists
                 if not session.scene_versions and len(session.witness_statements) >= 2:
@@ -664,8 +664,10 @@ class WebSocketHandler:
                 session.witness_statements.append(statement)
                 await firestore_service.update_session(session)
 
-                # Auto-assign to case in live flow when enough witness content exists
-                if not session.case_id and text:
+                # Auto-assign only when the report reaches a completion response.
+                # This preserves unique report IDs while avoiding duplicate cases
+                # created from partial early statements.
+                if text and is_completion_response:
                     try:
                         assigned_case_id = await case_manager.assign_report_to_case(session)
                         if assigned_case_id:
@@ -811,11 +813,26 @@ class WebSocketHandler:
             metadata = dict(session.metadata or {})
             metadata_changed = False
 
-            description = (scene_summary.get("description") or session.title or "").strip()
+            elements = scene_summary.get("elements", []) or [
+                elem.model_dump() for elem in (getattr(session, "current_scene_elements", []) or [])[:12]
+            ]
+            statement_fragments = [
+                (getattr(statement, "original_text", None) or getattr(statement, "text", None) or "").strip()
+                for statement in (getattr(session, "witness_statements", []) or [])
+            ]
+            latest_scene_description = (
+                (session.scene_versions[-1].description if session.scene_versions else "") or ""
+            ).strip()
+            description = imagen_service.build_report_scene_description(
+                primary_description=(scene_summary.get("description") or "").strip(),
+                statements=statement_fragments,
+                elements=elements,
+                title=session.title or "",
+                ai_summary=str(metadata.get("ai_summary", "") or ""),
+                latest_scene_description=latest_scene_description,
+            )
             if not description:
                 return
-
-            elements = scene_summary.get("elements", []) or []
 
             # Report image generation (quota-aware + throttled)
             last_report_gen_count = metadata.get("report_scene_statement_count", 0)
@@ -835,33 +852,13 @@ class WebSocketHandler:
 
             if should_generate_report_scene:
                 try:
-                    report_model_used = "gemini"
-                    report_path = await imagen_service.generate_report_scene(
+                    report_result = await imagen_service.generate_report_scene_with_fallback(
                         self.session_id,
                         description,
                         elements,
+                        quality="standard",
                     )
-                    if not report_path:
-                        # Quota/model fallback: generate local diagram image when Imagen is unavailable.
-                        fallback_elements = []
-                        for elem in elements[:15]:
-                            if isinstance(elem, SceneElement):
-                                fallback_elements.append(elem)
-                            elif isinstance(elem, dict):
-                                try:
-                                    fallback_elements.append(SceneElement(**elem))
-                                except Exception:
-                                    continue
-                        fallback_bytes = await image_service.generate_scene_image(
-                            scene_description=description,
-                            elements=fallback_elements,
-                        )
-                        if fallback_bytes:
-                            report_path = imagen_service._save_image(  # intentional internal fallback reuse
-                                fallback_bytes,
-                                f"report_{self.session_id}",
-                            )
-                            report_model_used = "pil_fallback"
+                    report_path = report_result.get("path")
                     if report_path:
                         metadata["report_scene_image_url"] = report_path
                         metadata["report_scene_statement_count"] = statement_count
@@ -872,8 +869,8 @@ class WebSocketHandler:
                             "entity_type": "report",
                             "entity_id": self.session_id,
                             "image_path": report_path,
-                            "model_used": report_model_used,
-                            "prompt": description[:500],
+                            "model_used": report_result.get("model_used") or "ai_generated",
+                            "prompt": (report_result.get("prompt") or description)[:500],
                         })
                 except Exception as e:
                     if self._is_quota_error(e):
@@ -901,44 +898,76 @@ class WebSocketHandler:
                         )
 
                         if should_generate_case_scene:
-                            combined_snippets = []
+                            report_fragments = []
+                            case_elements = []
+                            seen_case_elements = set()
                             for report_id in case.report_ids[:8]:
                                 report = await firestore_service.get_session(report_id)
                                 if not report:
                                     continue
-                                if report.witness_statements:
-                                    snippet = " ".join(
-                                        stmt.text for stmt in report.witness_statements[-2:]
+                                report_metadata = dict(getattr(report, "metadata", {}) or {})
+                                latest_report_scene = (
+                                    (report.scene_versions[-1].description if report.scene_versions else "") or ""
+                                ).strip()
+                                if latest_report_scene:
+                                    report_fragments.append(latest_report_scene)
+                                ai_summary = str(report_metadata.get("ai_summary", "") or "").strip()
+                                if ai_summary:
+                                    report_fragments.append(ai_summary)
+                                for statement in (getattr(report, "witness_statements", []) or []):
+                                    text = (
+                                        getattr(statement, "original_text", None)
+                                        or getattr(statement, "text", None)
+                                        or ""
                                     ).strip()
-                                else:
-                                    snippet = (report.title or "").strip()
-                                if snippet:
-                                    combined_snippets.append(snippet)
+                                    if text:
+                                        report_fragments.append(text)
 
-                            combined_text = " ".join(combined_snippets).strip()
-                            case_summary = (case.summary or combined_text or case.title).strip()
-                            case_scene_description = (
-                                ((case.metadata or {}).get("scene_description", "") or combined_text or description or case.title)
-                            ).strip()
+                                latest_scene_elements = (
+                                    list(getattr(report.scene_versions[-1], "elements", []) or [])
+                                    if getattr(report, "scene_versions", None)
+                                    else []
+                                )
+                                for candidate in latest_scene_elements + list(getattr(report, "current_scene_elements", []) or []):
+                                    if isinstance(candidate, dict):
+                                        elem_type = str(candidate.get("type", "") or "").strip().lower()
+                                        description = str(candidate.get("description", "") or "").strip().lower()
+                                        position = str(candidate.get("position", "") or "").strip().lower()
+                                        color = str(candidate.get("color", "") or "").strip().lower()
+                                    else:
+                                        elem_type = str(getattr(candidate, "type", "") or "").strip().lower()
+                                        description = str(getattr(candidate, "description", "") or "").strip().lower()
+                                        position = str(getattr(candidate, "position", "") or "").strip().lower()
+                                        color = str(getattr(candidate, "color", "") or "").strip().lower()
 
-                            case_model_used = "gemini"
-                            case_path = await imagen_service.generate_case_scene(
+                                    dedupe_key = "|".join((elem_type, description, position, color))
+                                    if not dedupe_key.strip("|") or dedupe_key in seen_case_elements:
+                                        continue
+                                    seen_case_elements.add(dedupe_key)
+                                    case_elements.append(candidate)
+                                    if len(case_elements) >= 16:
+                                        break
+                                if len(case_elements) >= 16:
+                                    break
+
+                            case_summary = (case.summary or case.title or "").strip()
+                            case_scene_description = imagen_service.build_case_scene_description(
+                                case_summary=case_summary,
+                                scene_description=str(((case.metadata or {}).get("scene_description", "") or "")).strip(),
+                                report_fragments=report_fragments,
+                                title=case.title or "",
+                            )
+                            if imagen_service._is_low_information_text(case_summary):
+                                case_summary = case_scene_description or case.title or ""
+
+                            case_result = await imagen_service.generate_case_scene_with_fallback(
                                 case.id,
                                 case_summary,
                                 case_scene_description,
-                                quality="fast",
+                                elements=case_elements,
+                                quality="standard",
                             )
-                            if not case_path:
-                                fallback_bytes = await image_service.generate_scene_image(
-                                    scene_description=case_scene_description,
-                                    elements=[],
-                                )
-                                if fallback_bytes:
-                                    case_path = imagen_service._save_image(
-                                        fallback_bytes,
-                                        f"case_{case.id}",
-                                    )
-                                    case_model_used = "pil_fallback"
+                            case_path = case_result.get("path")
                             if case_path:
                                 case.scene_image_url = case_path
                                 await firestore_service.update_case(case)
@@ -950,8 +979,8 @@ class WebSocketHandler:
                                     "entity_type": "case",
                                     "entity_id": case.id,
                                     "image_path": case_path,
-                                    "model_used": case_model_used,
-                                    "prompt": case_scene_description[:500],
+                                    "model_used": case_result.get("model_used") or "ai_generated",
+                                    "prompt": (case_result.get("prompt") or case_scene_description)[:500],
                                 })
                 except Exception as e:
                     if self._is_quota_error(e):

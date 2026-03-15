@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional, List
 from datetime import datetime
@@ -21,6 +22,7 @@ class FirestoreService:
         self._case_memory_store: dict = {}
         self._memory_store: dict = {}
         self.cases_collection = "cases"
+        self._sequence_lock = asyncio.Lock()
         self._initialize_client()
     
     def _initialize_client(self):
@@ -60,7 +62,9 @@ class FirestoreService:
         try:
             db = await self._get_sqlite()
             session_dict = session.model_dump(mode='json')
-            await db.save_session(session_dict)
+            saved = await db.save_session(session_dict)
+            if not saved:
+                raise RuntimeError("SQLite save_session returned False")
             logger.info(f"Created session {session.id} in SQLite")
         except Exception as e:
             logger.warning(f"SQLite fallback failed, using memory: {e}")
@@ -126,7 +130,9 @@ class FirestoreService:
         try:
             db = await self._get_sqlite()
             session_dict = session.model_dump(mode='json')
-            await db.save_session(session_dict)
+            saved = await db.save_session(session_dict)
+            if not saved:
+                raise RuntimeError("SQLite save_session returned False")
             logger.info(f"Updated session {session.id} in SQLite")
         except Exception as e:
             logger.warning(f"SQLite update_session failed: {e}")
@@ -166,17 +172,101 @@ class FirestoreService:
             logger.warning(f"delete_case failed: {e}")
         return True
     
-    async def list_sessions(self, limit: int = 50) -> List[ReconstructionSession]:
+    @staticmethod
+    def _extract_sequence(value: Optional[str], prefix: str) -> int:
+        if not value or not value.startswith(prefix):
+            return 0
+        suffix = value[len(prefix):]
+        return int(suffix) if suffix.isdigit() else 0
+
+    async def _get_max_session_sequence(self, prefix: str) -> int:
+        if self.client:
+            try:
+                from google.cloud.firestore_v1 import Query
+
+                query = (
+                    self.client.collection(self.collection_name)
+                    .order_by("report_number", direction=Query.DESCENDING)
+                    .limit(25)
+                )
+                docs = query.stream()
+                async for doc in docs:
+                    data = doc.to_dict() or {}
+                    sequence = self._extract_sequence(data.get("report_number"), prefix)
+                    if sequence:
+                        return sequence
+                return 0
+            except Exception as e:
+                logger.warning(f"Failed to read report sequence from Firestore: {e}")
+
+        try:
+            db = await self._get_sqlite()
+            return await db.get_max_report_sequence(prefix=prefix)
+        except Exception:
+            sessions = await self.list_sessions(limit=0)
+            return max(
+                (
+                    self._extract_sequence(getattr(session, "report_number", None), prefix)
+                    for session in sessions
+                ),
+                default=0,
+            )
+
+    async def _get_max_case_sequence(self, prefix: str) -> int:
+        if self.client:
+            try:
+                from google.cloud.firestore_v1 import Query
+
+                query = (
+                    self.client.collection(self.cases_collection)
+                    .order_by("case_number", direction=Query.DESCENDING)
+                    .limit(25)
+                )
+                docs = query.stream()
+                async for doc in docs:
+                    data = doc.to_dict() or {}
+                    sequence = self._extract_sequence(data.get("case_number"), prefix)
+                    if sequence:
+                        return sequence
+                return 0
+            except Exception as e:
+                logger.warning(f"Failed to read case sequence from Firestore: {e}")
+
+        try:
+            db = await self._get_sqlite()
+            return await db.get_max_case_sequence(prefix=prefix)
+        except Exception:
+            cases = await self.list_cases(limit=0)
+            return max(
+                (
+                    self._extract_sequence(getattr(case, "case_number", None), prefix)
+                    for case in cases
+                ),
+                default=0,
+            )
+
+    async def _next_case_number_unlocked(self) -> str:
+        prefix = "CASE-2026-"
+        max_sequence = await self._get_max_case_sequence(prefix)
+        return f"{prefix}{max_sequence + 1:04d}"
+
+    async def _next_report_number_unlocked(self) -> str:
+        prefix = "RPT-2026-"
+        max_sequence = await self._get_max_session_sequence(prefix)
+        return f"{prefix}{max_sequence + 1:04d}"
+
+    async def list_sessions(self, limit: Optional[int] = 50) -> List[ReconstructionSession]:
         """List all sessions from Firestore or in-memory."""
         if self.client:
             try:
                 from google.cloud.firestore_v1 import Query
-                docs = (
+                query = (
                     self.client.collection(self.collection_name)
                     .order_by("updated_at", direction=Query.DESCENDING)
-                    .limit(limit)
-                    .stream()
                 )
+                if limit is not None and limit > 0:
+                    query = query.limit(limit)
+                docs = query.stream()
                 sessions = []
                 async for doc in docs:
                     try:
@@ -209,7 +299,9 @@ class FirestoreService:
             key=lambda s: s.updated_at,
             reverse=True
         )
-        return sessions[:limit]
+        if limit is not None and limit > 0:
+            return sessions[:limit]
+        return sessions
 
     async def list_orphan_sessions(self, limit: int = 50, scan_limit: Optional[int] = None) -> List[ReconstructionSession]:
         """List sessions that do not have a case_id assigned."""
@@ -239,7 +331,9 @@ class FirestoreService:
         try:
             db = await self._get_sqlite()
             case_dict = case.model_dump(mode='json')
-            await db.save_case(case_dict)
+            saved = await db.save_case(case_dict)
+            if not saved:
+                raise RuntimeError("SQLite save_case returned False")
             logger.info(f"Created case {case.id} in SQLite")
         except Exception as e:
             logger.warning(f"SQLite create_case failed: {e}")
@@ -268,17 +362,18 @@ class FirestoreService:
 
         return self._case_memory_store.get(case_id)
 
-    async def list_cases(self, limit: int = 50) -> List[Case]:
+    async def list_cases(self, limit: Optional[int] = 50) -> List[Case]:
         """List all cases from Firestore or SQLite."""
         if self.client:
             try:
                 from google.cloud.firestore_v1 import Query
-                docs = (
+                query = (
                     self.client.collection(self.cases_collection)
                     .order_by("updated_at", direction=Query.DESCENDING)
-                    .limit(limit)
-                    .stream()
                 )
+                if limit is not None and limit > 0:
+                    query = query.limit(limit)
+                docs = query.stream()
                 cases = []
                 async for doc in docs:
                     try:
@@ -310,7 +405,9 @@ class FirestoreService:
             key=lambda c: c.updated_at,
             reverse=True
         )
-        return cases[:limit]
+        if limit is not None and limit > 0:
+            return cases[:limit]
+        return cases
 
     async def update_case(self, case: Case) -> bool:
         """Update an existing case in Firestore or in-memory."""
@@ -329,7 +426,9 @@ class FirestoreService:
         try:
             db = await self._get_sqlite()
             case_dict = case.model_dump(mode='json')
-            await db.save_case(case_dict)
+            saved = await db.save_case(case_dict)
+            if not saved:
+                raise RuntimeError("SQLite save_case returned False")
             logger.info(f"Updated case {case.id} in SQLite")
         except Exception as e:
             logger.warning(f"SQLite update_case failed: {e}")
@@ -339,23 +438,26 @@ class FirestoreService:
 
     async def get_next_case_number(self) -> str:
         """Generate next sequential case number like CASE-2026-XXXX."""
-        try:
-            db = await self._get_sqlite()
-            count = await db.count_cases()
-        except Exception:
-            cases = await self.list_cases(limit=10000)
-            count = len(cases)
-        return f"CASE-2026-{count + 1:04d}"
+        async with self._sequence_lock:
+            return await self._next_case_number_unlocked()
 
     async def get_next_report_number(self) -> str:
         """Generate next sequential report number like RPT-2026-XXXX."""
-        try:
-            db = await self._get_sqlite()
-            count = await db.count_sessions()
-        except Exception:
-            sessions = await self.list_sessions(limit=10000)
-            count = len(sessions)
-        return f"RPT-2026-{count + 1:04d}"
+        async with self._sequence_lock:
+            return await self._next_report_number_unlocked()
+
+    async def reassign_reports_to_case(self, report_ids: List[str], case_id: str) -> int:
+        """Update session.case_id for a set of reports."""
+        updated = 0
+        for report_id in dict.fromkeys(report_ids or []):
+            session = await self.get_session(report_id)
+            if not session or getattr(session, "case_id", None) == case_id:
+                continue
+            session.case_id = case_id
+            session.updated_at = datetime.utcnow()
+            if await self.update_session(session):
+                updated += 1
+        return updated
 
     async def health_check(self) -> bool:
         """Check if storage is accessible."""

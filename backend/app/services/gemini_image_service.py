@@ -25,6 +25,35 @@ GEMINI_IMAGE_MODELS = [
     "gemini-3-pro-image-preview",            # Nano Banana Pro – professional
 ]
 
+QUALITY_ALIASES = {
+    "fast": "fast",
+    "standard": "standard",
+    "generate": "standard",
+    "balanced": "standard",
+    "default": "standard",
+    "ultra": "ultra",
+    "hd": "ultra",
+    "high": "ultra",
+}
+
+QUALITY_MODEL_ORDER = {
+    "fast": [
+        "gemini-2.5-flash-image",
+        "gemini-3.1-flash-image-preview",
+        "gemini-3-pro-image-preview",
+    ],
+    "standard": [
+        "gemini-3.1-flash-image-preview",
+        "gemini-2.5-flash-image",
+        "gemini-3-pro-image-preview",
+    ],
+    "ultra": [
+        "gemini-3-pro-image-preview",
+        "gemini-3.1-flash-image-preview",
+        "gemini-2.5-flash-image",
+    ],
+}
+
 IMAGES_DIR = "/app/data/images"
 
 
@@ -51,11 +80,74 @@ class GeminiImageService:
             "Style: cinematic, realistic, oblique camera angle showing the full scene, "
             "natural lighting, high detail, photorealistic. "
             "Do NOT include any text, labels, UI overlays, legends, or map symbols. "
+            "Do NOT add generic intersections, roads, parking lots, storefronts, or placeholder scenery unless the testimony explicitly supports them. "
+            "If some context is unknown, keep the unseen background subdued and non-specific instead of inventing extra detail. "
             "Do NOT include any graphic violence, blood, or disturbing content. "
             "Show physically plausible placement of vehicles, people, environment, and evidence. "
             f"\n\nScene description from witness testimony:\n{description}\n\n"
             "Generate a single high-quality image of this scene reconstruction."
         )
+
+    def _normalize_quality(self, quality: str) -> str:
+        return QUALITY_ALIASES.get((quality or "").strip().lower(), "standard")
+
+    def _get_model_order(self, quality: str) -> list[str]:
+        return QUALITY_MODEL_ORDER[self._normalize_quality(quality)]
+
+    async def _generate_with_model(self, model_name: str, prompt: str):
+        configs = [
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio="16:9"),
+            ),
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+                image_config=types.ImageConfig(aspect_ratio="16:9"),
+            ),
+            None,
+        ]
+
+        last_error = None
+        for config in configs:
+            try:
+                if config is None:
+                    return await asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=model_name,
+                        contents=[prompt],
+                    )
+                return await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=model_name,
+                    contents=[prompt],
+                    config=config,
+                )
+            except Exception as e:
+                error_str = str(e).lower()
+                last_error = e
+                unsupported_config = any(
+                    token in error_str
+                    for token in (
+                        "response_modalities",
+                        "response modalities",
+                        "image_config",
+                        "unknown field",
+                        "unexpected keyword",
+                        "invalid argument",
+                    )
+                )
+                if config is not None and unsupported_config:
+                    logger.debug(
+                        "Gemini image generation retrying %s without current config after: %s",
+                        model_name,
+                        str(e)[:180],
+                    )
+                    continue
+                raise
+
+        if last_error:
+            raise last_error
+        return None
 
     @staticmethod
     def _iter_response_parts(result):
@@ -69,7 +161,7 @@ class GeminiImageService:
             for part in getattr(content, "parts", None) or []:
                 yield part
 
-    async def generate_image(self, description: str) -> Optional[bytes]:
+    async def generate_image(self, description: str, quality: str = "standard") -> Optional[bytes]:
         """Generate an image from a description using Gemini.
 
         Returns PNG image bytes or None if generation fails.
@@ -79,18 +171,16 @@ class GeminiImageService:
             return None
 
         prompt = self._build_scene_prompt(description)
+        normalized_quality = self._normalize_quality(quality)
 
-        for model_name in GEMINI_IMAGE_MODELS:
+        for model_name in self._get_model_order(normalized_quality):
             try:
-                logger.info("Attempting image generation with %s", model_name)
-                result = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                    ),
+                logger.info(
+                    "Attempting Gemini image generation with %s (quality=%s)",
+                    model_name,
+                    normalized_quality,
                 )
+                result = await self._generate_with_model(model_name, prompt)
 
                 # Extract image from response parts using the SDK helpers
                 image_found = False
@@ -121,11 +211,14 @@ class GeminiImageService:
                                 return image_bytes
                         image_found = True
 
+                response_text = str(getattr(result, "text", "") or "")[:160]
                 logger.warning(
-                    "No usable image data in Gemini response from %s (has_candidates=%s, saw_inline_data=%s)",
+                    "No usable image data in Gemini response from %s (quality=%s, has_candidates=%s, saw_inline_data=%s, text_preview=%r)",
                     model_name,
+                    normalized_quality,
                     bool(getattr(result, "candidates", None)),
                     image_found,
+                    response_text,
                 )
 
             except Exception as e:
@@ -136,7 +229,12 @@ class GeminiImageService:
                 if "not supported" in error_str.lower() or "invalid" in error_str.lower():
                     logger.warning("Gemini model %s doesn't support image gen: %s", model_name, error_str[:100])
                     continue
-                logger.error("Gemini image generation error with %s: %s", model_name, e)
+                logger.error(
+                    "Gemini image generation error with %s (quality=%s): %s",
+                    model_name,
+                    normalized_quality,
+                    e,
+                )
                 continue
 
         logger.warning("All Gemini image models failed")
@@ -153,7 +251,7 @@ class GeminiImageService:
         return f"/data/images/{filename}"
 
     async def generate_report_scene(
-        self, report_id: str, scene_description: str, elements: list
+        self, report_id: str, scene_description: str, elements: list, quality: str = "standard"
     ) -> Optional[str]:
         """Generate a scene image for a report. Returns URL path or None."""
         prompt = scene_description
@@ -166,20 +264,20 @@ class GeminiImageService:
             if descs:
                 prompt += f"\nVisible entities: {descs}"
 
-        image_bytes = await self.generate_image(prompt)
+        image_bytes = await self.generate_image(prompt, quality=quality)
         if image_bytes:
             return self._save_image(image_bytes, f"report_{report_id}")
         return None
 
     async def generate_case_scene(
-        self, case_id: str, case_summary: str, scene_description: str
+        self, case_id: str, case_summary: str, scene_description: str, quality: str = "standard"
     ) -> Optional[str]:
         """Generate a composite scene image for a case. Returns URL path or None."""
         prompt = (
             f"Full scene reconstruction combining multiple witness accounts.\n"
             f"Scene details: {scene_description}\nCase summary: {case_summary}"
         )
-        image_bytes = await self.generate_image(prompt)
+        image_bytes = await self.generate_image(prompt, quality=quality)
         if image_bytes:
             return self._save_image(image_bytes, f"case_{case_id}")
         return None
