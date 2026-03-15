@@ -1,6 +1,7 @@
 import logging
 import json
 import asyncio
+import re
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from google import genai
@@ -56,6 +57,7 @@ class SceneReconstructionAgent:
         self._current_prompt_level: str = "full"  # Track current prompt compression level
         self._pending_timeline_clarification: Optional[Dict[str, Any]] = None  # Timeline disambiguation
         self._timeline_events: List[Dict[str, Any]] = []  # Events for timeline building
+        self.last_response_kind: str = "interview"
         self._initialize_model()
     
     def _log_structured(self, event: str, **kwargs):
@@ -97,6 +99,145 @@ class SceneReconstructionAgent:
             truncated_chars=len(truncated),
         )
         return truncated
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Lowercase and normalize text for lightweight turn heuristics."""
+        normalized = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower())
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    def _last_assistant_prompted_for_more(self) -> bool:
+        """Check whether the previous assistant turn asked if the witness had more to add."""
+        prompt_markers = (
+            "anything else",
+            "add more",
+            "any more",
+            "more details",
+            "anything more",
+            "anything further",
+            "do you remember anything else",
+            "is there anything else",
+        )
+        for message in reversed(self.conversation_history):
+            if message.get("role") != "assistant":
+                continue
+            content = (message.get("content") or "").lower()
+            return any(marker in content for marker in prompt_markers)
+        return False
+
+    def _witness_signaled_completion(self, statement: str) -> bool:
+        """Heuristically detect when the witness indicates they are finished."""
+        normalized = self._normalize_text(statement)
+        if not normalized:
+            return False
+
+        explicit_phrases = (
+            "im done",
+            "i am done",
+            "done talking",
+            "thats all",
+            "that s all",
+            "that is all",
+            "thats it",
+            "that s it",
+            "nothing else",
+            "no more",
+            "no more details",
+            "thats everything",
+            "that s everything",
+            "i have nothing else",
+            "all set",
+            "im finished",
+            "i am finished",
+        )
+        if any(phrase in normalized for phrase in explicit_phrases):
+            return True
+
+        if normalized in {"done", "finished", "nothing else", "no more"}:
+            return True
+
+        return normalized in {"no", "nope", "nah"} and self._last_assistant_prompted_for_more()
+
+    @staticmethod
+    def _build_completion_response(report_number: str = "") -> str:
+        """Create a deterministic close-out response."""
+        report_number = (report_number or "").strip()
+        if report_number:
+            return (
+                f"Thank you for your report. Your report number is {report_number}. "
+                "If you remember anything else later, you can use that number to add more details."
+            )
+        return (
+            "Thank you for your report. I've saved what you've shared. "
+            "If you remember anything else later, you can add more details."
+        )
+
+    def _should_skip_follow_up_repair(self, response: str) -> bool:
+        """Skip local follow-up repair for technical or quota responses."""
+        normalized = self._normalize_text(response)
+        skip_markers = (
+            "technical difficulties",
+            "try again later",
+            "temporarily rate limited",
+            "high demand",
+            "daily limit",
+            "quota",
+            "resource exhausted",
+            "resource has been exhausted",
+        )
+        return any(marker in normalized for marker in skip_markers)
+
+    def _build_follow_up_question(self, statement: str) -> str:
+        """Fallback question when the model fails to continue the interview."""
+        normalized = self._normalize_text(statement)
+        tokens = set(normalized.split())
+
+        if not tokens or tokens <= {"yes", "yeah", "yep", "ok", "okay"}:
+            return "What else can you tell me about what happened?"
+
+        if "report" in tokens and ({"crime", "incident", "accident"} & tokens):
+            return "Tell me what happened."
+
+        weapon_words = {"gun", "knife", "weapon", "shot", "stabbed", "injured", "injury", "bleeding", "hurt"}
+        vehicle_words = {"car", "truck", "van", "vehicle", "plate", "license", "motorcycle", "bike", "suv", "sedan"}
+        person_words = {"man", "woman", "person", "suspect", "guy", "girl", "male", "female", "driver"}
+        location_words = {"street", "road", "intersection", "parking", "store", "house", "apartment", "entrance"}
+        time_words = {"before", "after", "later", "then", "when", "minute", "hour", "morning", "night"}
+
+        if tokens & weapon_words:
+            return "Can you tell me more about the weapon or any injuries you noticed?"
+        if tokens & vehicle_words:
+            return "What else do you remember about the vehicle or the direction it went?"
+        if tokens & person_words:
+            return "What else do you remember about the person's appearance or what they did next?"
+        if tokens & location_words:
+            return "Where exactly did that happen in relation to you or nearby landmarks?"
+        if tokens & time_words:
+            return "What happened just before or just after that?"
+        return "What else do you remember that stands out?"
+
+    def _ensure_follow_up_response(self, statement: str, response: str) -> str:
+        """Make sure the agent keeps the interview moving after each witness turn."""
+        base_response = (response or "").strip()
+        if not base_response:
+            self.last_response_kind = "interview"
+            return self._build_follow_up_question(statement)
+
+        if self._should_skip_follow_up_repair(base_response):
+            self.last_response_kind = "error"
+            return base_response
+
+        if "?" in base_response:
+            self.last_response_kind = "interview"
+            return base_response
+
+        follow_up = self._build_follow_up_question(statement)
+        if base_response.endswith((".", "!", "?")):
+            repaired = f"{base_response} {follow_up}"
+        else:
+            repaired = f"{base_response}. {follow_up}"
+        self.last_response_kind = "interview"
+        return repaired
 
     def _initialize_model(self):
         """Initialize the Gemini model for conversation."""
@@ -224,7 +365,8 @@ class SceneReconstructionAgent:
     async def process_statement(
         self,
         statement: str,
-        is_correction: bool = False
+        is_correction: bool = False,
+        report_number: str = "",
     ) -> Tuple[str, bool, Optional[Dict[str, Any]]]:
         """
         Process a witness statement and generate a response.
@@ -238,7 +380,24 @@ class SceneReconstructionAgent:
             token_info contains estimated tokens and quota status
         """
         if not self.client:
+            self.last_response_kind = "error"
             return "I'm sorry, I'm having technical difficulties. Please try again later.", False, None
+
+        if self._witness_signaled_completion(statement):
+            agent_response = self._build_completion_response(report_number)
+            self.last_response_kind = "completion"
+            self.conversation_history.append({
+                "role": "user",
+                "content": statement,
+                "timestamp": datetime.utcnow().isoformat(),
+                "detected_topics": [],
+            })
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": agent_response,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            return agent_response, False, None
         
         try:
             # Initialize chat if not already done (lazy init with best model)
@@ -305,6 +464,7 @@ class SceneReconstructionAgent:
             
             # Reject if quota exceeded and enforcement is on
             if not quota_check.allowed:
+                self.last_response_kind = "error"
                 return (
                     f"I'm sorry, I'm currently at my daily limit. {quota_check.rejection_reason} "
                     "Please try again tomorrow or use a lighter request.",
@@ -365,9 +525,10 @@ class SceneReconstructionAgent:
                         raise
             
             if not response:
+                self.last_response_kind = "error"
                 return "I'm temporarily rate limited. Please wait a moment and try again.", False, token_info
             
-            agent_response = response.text
+            agent_response = self._ensure_follow_up_response(statement, getattr(response, "text", "") or "")
             
             # Track usage with actual token counts
             input_tokens = self._estimate_tokens(statement_for_model)
@@ -435,15 +596,18 @@ class SceneReconstructionAgent:
         
         except Exception as e:
             if self._is_retryable_model_error(e):
+                self.last_response_kind = "error"
                 self._log_structured("error_rate_limited", error=str(e)[:200])
                 return ("I'm experiencing high demand right now. Could you please "
                         "repeat that in a moment? Your testimony is important.",
                         False, None)
             elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):
+                self.last_response_kind = "error"
                 self._log_structured("error_invalid_request", error=str(e)[:200])
                 return ("I had trouble processing that. Could you rephrase?",
                         False, None)
             else:
+                self.last_response_kind = "error"
                 self._log_structured("error_unexpected", error=str(e)[:200])
                 logger.error(f"Unexpected error processing statement: {e}", exc_info=True)
                 raise
@@ -451,7 +615,8 @@ class SceneReconstructionAgent:
     async def process_statement_streaming(
         self,
         statement: str,
-        is_correction: bool = False
+        is_correction: bool = False,
+        report_number: str = "",
     ) -> AsyncIterator[Tuple[str, bool, bool, Optional[Dict[str, Any]]]]:
         """
         Process a witness statement with streaming response.
@@ -461,7 +626,26 @@ class SceneReconstructionAgent:
             token_info is only provided on the final chunk
         """
         if not self.client:
+            self.last_response_kind = "error"
             yield "I'm sorry, I'm having technical difficulties. Please try again later.", True, False, None
+            return
+
+        if self._witness_signaled_completion(statement):
+            completion_response = self._build_completion_response(report_number)
+            self.last_response_kind = "completion"
+            self.conversation_history.append({
+                "role": "user",
+                "content": statement,
+                "timestamp": datetime.utcnow().isoformat(),
+                "detected_topics": [],
+            })
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": completion_response,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            yield completion_response, False, False, None
+            yield "", True, False, None
             return
         
         try:
@@ -517,6 +701,7 @@ class SceneReconstructionAgent:
             
             # Reject if quota exceeded and enforcement is on
             if not quota_check.allowed:
+                self.last_response_kind = "error"
                 yield (
                     f"I'm sorry, I'm currently at my daily limit. {quota_check.rejection_reason} "
                     "Please try again tomorrow or use a lighter request.",
@@ -585,8 +770,19 @@ class SceneReconstructionAgent:
                         raise
             
             if not full_response:
+                self.last_response_kind = "error"
                 yield "I'm temporarily rate limited. Please wait a moment and try again.", True, False, token_info
                 return
+
+            repaired_response = self._ensure_follow_up_response(statement, full_response)
+            if repaired_response != full_response:
+                if repaired_response.startswith(full_response):
+                    suffix = repaired_response[len(full_response):]
+                else:
+                    suffix = repaired_response
+                if suffix:
+                    yield suffix, False, False, None
+                full_response = repaired_response
             
             # Track usage with actual token counts
             input_tokens = self._estimate_tokens(statement_for_model)
@@ -646,12 +842,15 @@ class SceneReconstructionAgent:
         
         except Exception as e:
             if self._is_retryable_model_error(e):
+                self.last_response_kind = "error"
                 self._log_structured("error_rate_limited", error=str(e)[:200])
                 yield "I'm experiencing high demand right now. Could you please repeat that in a moment?", True, False, None
             elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):
+                self.last_response_kind = "error"
                 self._log_structured("error_invalid_request", error=str(e)[:200])
                 yield "I had trouble processing that. Could you rephrase?", True, False, None
             else:
+                self.last_response_kind = "error"
                 self._log_structured("error_unexpected", error=str(e)[:200])
                 logger.error(f"Unexpected error processing statement: {e}", exc_info=True)
                 yield f"An error occurred: {str(e)}", True, False, None
@@ -1177,6 +1376,7 @@ Items with confidence below 0.7 will be flagged for review."""
         self.detected_topics = []
         self.memory_context = ""
         self.active_witness_id = None
+        self.last_response_kind = "interview"
         self.chat = None
         # Reset branching state for this session
         interview_branching.reset_session(self.session_id)

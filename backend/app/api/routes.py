@@ -10606,7 +10606,9 @@ async def api_send_message(session_id: str, data: dict, api_key=Depends(require_
 
     try:
         agent_response, should_generate_image, token_info = await agent.process_statement(
-            text, is_correction=is_correction
+            text,
+            is_correction=is_correction,
+            report_number=getattr(session, "report_number", ""),
         )
     except Exception as e:
         logger.error(f"API message processing error: {e}")
@@ -10683,7 +10685,10 @@ async def api_send_audio(session_id: str, data: dict, api_key=Depends(require_ap
     # Process transcription through agent
     agent = get_agent(session_id)
     try:
-        agent_response, should_generate_image, token_info = await agent.process_statement(transcription)
+        agent_response, should_generate_image, token_info = await agent.process_statement(
+            transcription,
+            report_number=getattr(session, "report_number", ""),
+        )
     except Exception as e:
         logger.error(f"API audio message processing error: {e}")
         raise HTTPException(status_code=500, detail="AI processing failed")

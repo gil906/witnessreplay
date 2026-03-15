@@ -74,6 +74,9 @@ class WitnessReplayApp {
         this._micPermissionGranted = false; // Track if user has granted mic permission via gesture
         this.conversationState = 'ready';
         this.lastAgentMessage = '';
+        this._stopRecordingPromise = null;
+        this._recordingStartedAt = 0;
+        this._silenceDetect = null;
         this._rayListeningCueTimer = null;
         this._sceneUpdatePulseTimer = null;
         this._mobileVoiceHelpEscHandler = null;
@@ -780,11 +783,20 @@ class WitnessReplayApp {
 
     _syncAutoListenChip() {
         if (this.mobileCallAutoListenChip) {
-            this.mobileCallAutoListenChip.textContent = this.autoListenEnabled ? 'Auto-listen on' : 'Auto-listen off';
-            this.mobileCallAutoListenChip.classList.toggle('is-off', !this.autoListenEnabled);
+            const paused = this.autoListenEnabled && this._autoListenPausedUntilManual;
+            this.mobileCallAutoListenChip.textContent = !this.autoListenEnabled
+                ? 'Auto-listen off'
+                : paused
+                    ? 'Auto-listen paused'
+                    : 'Auto-listen on';
+            this.mobileCallAutoListenChip.classList.toggle('is-off', !this.autoListenEnabled || paused);
         }
         if (this.dockAutoBtn) {
-            this.dockAutoBtn.textContent = this.autoListenEnabled ? '🔁 Auto-listen on' : '🔁 Auto-listen off';
+            this.dockAutoBtn.textContent = !this.autoListenEnabled
+                ? '🔁 Auto-listen off'
+                : this._autoListenPausedUntilManual
+                    ? '⏸ Auto-listen paused'
+                    : '🔁 Auto-listen on';
             this.dockAutoBtn.setAttribute('aria-pressed', String(this.autoListenEnabled));
         }
     }
@@ -1389,13 +1401,14 @@ class WitnessReplayApp {
 
     _syncAutoListenButtonState(buttonEl = null) {
         const btn = buttonEl || document.getElementById('auto-listen-btn');
-        if (!btn) return;
-        if (!this.autoListenEnabled) {
-            btn.innerHTML = '⏸️ Manual';
-            this._syncVoiceSettingsMenu();
-            return;
+        if (btn) {
+            if (!this.autoListenEnabled) {
+                btn.innerHTML = '⏸️ Manual';
+            } else {
+                btn.innerHTML = this._autoListenPausedUntilManual ? '⏸️ Auto Paused' : '🔁 Auto';
+            }
         }
-        btn.innerHTML = this._autoListenPausedUntilManual ? '⏸️ Auto Paused' : '🔁 Auto';
+        this._syncAutoListenChip();
         this._syncVoiceSettingsMenu();
     }
 
@@ -2129,7 +2142,7 @@ class WitnessReplayApp {
         }
         
         // Start actual recording
-        this.startRecording();
+        this.startRecording({ trigger: 'auto_listen' });
     }
     
     onVADSpeechEnd(silenceDuration) {
@@ -2145,7 +2158,7 @@ class WitnessReplayApp {
         }
         
         // Stop recording
-        this.stopRecording();
+        this.stopRecording({ reason: 'vad_silence' });
     }
     
     onVADVolumeChange(smoothed, raw) {
@@ -2764,8 +2777,10 @@ class WitnessReplayApp {
                 const speaker = message.data.speaker || 'agent';
                 const originalText = message.data.original_text;
                 const language = message.data.language;
+                const responseKind = message.data.response_kind;
                 if (speaker === 'agent' && message.data.text) {
                     this.lastAgentMessage = message.data.text;
+                    this._handleAgentResponseKind(responseKind);
                 }
                 
                 // Update mic button state for voice-first UX when agent responds
@@ -2907,6 +2922,8 @@ class WitnessReplayApp {
                     this._showRayListeningCue();
                 } else if (hintState === 'agent_speaking') {
                     this._hideRayListeningCue();
+                } else if (hintState === 'report_complete') {
+                    this._handleAgentResponseKind('completion');
                 }
 
                 const now = Date.now();
@@ -2964,7 +2981,7 @@ class WitnessReplayApp {
     }
     
     handleStreamingText(data) {
-        const { chunk, is_final, speaker, message_id } = data;
+        const { chunk, is_final, speaker, message_id, response_kind } = data;
         
         // Hide typing indicator when streaming starts
         this._hideTyping();
@@ -3029,6 +3046,7 @@ class WitnessReplayApp {
             // TTS: Speak completed streamed agent response
             if (speaker === 'agent' && finalContent) {
                 this.lastAgentMessage = finalContent;
+                this._handleAgentResponseKind(response_kind);
                 this.speakAIResponse(finalContent);
                 if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
                     setTimeout(() => {
@@ -3087,13 +3105,17 @@ class WitnessReplayApp {
         if (this.isRecording) {
             this._autoListenPausedUntilManual = false;
             this._syncAutoListenButtonState();
-            this.stopRecording();
+            this.stopRecording({ reason: 'manual' });
         } else {
             this.startRecording({ trigger: 'manual' });
         }
     }
     
     async startRecording(options = {}) {
+        if (this.isRecording || this._stopRecordingPromise) {
+            return;
+        }
+
         const trigger = options?.trigger === 'auto_listen' ? 'auto_listen' : 'manual';
         this._recordingTrigger = trigger;
         if (trigger !== 'auto_listen') {
@@ -3137,33 +3159,36 @@ class WitnessReplayApp {
                 if (btnText) btnText.textContent = 'Starting mic...';
             }
 
-            // Request permission explicitly — this triggers the browser popup
-            try {
-                const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                testStream.getTracks().forEach(t => t.stop());
-                this._micPermissionGranted = true;
-            } catch (permErr) {
-                console.error('Microphone permission denied:', permErr);
-                if (this.micBtn) {
-                    this.micBtn.classList.remove('processing');
-                    this.micBtn.removeAttribute('aria-busy');
-                }
-                // Distinguish between "never asked" (no user gesture) vs actually denied
-                if (!this._micPermissionGranted && trigger === 'auto_listen') {
-                    // Auto-listen tried without prior permission — silently skip
-                    console.debug('[AutoListen] Skipping — mic permission not yet granted via user gesture');
+            // Request permission explicitly the first time so future turns can reuse it
+            if (!this._micPermissionGranted) {
+                try {
+                    const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    testStream.getTracks().forEach(t => t.stop());
+                    this._micPermissionGranted = true;
+                } catch (permErr) {
+                    console.error('Microphone permission denied:', permErr);
+                    if (this.micBtn) {
+                        this.micBtn.classList.remove('processing');
+                        this.micBtn.removeAttribute('aria-busy');
+                    }
+                    // Distinguish between "never asked" (no user gesture) vs actually denied
+                    if (!this._micPermissionGranted && trigger === 'auto_listen') {
+                        // Auto-listen tried without prior permission — silently skip
+                        console.debug('[AutoListen] Skipping — mic permission not yet granted via user gesture');
+                        this._setConversationState('ready');
+                        return;
+                    }
+                    this.ui.showToast('🎤 Microphone access denied. Check browser permissions.', 'error', 5000);
+                    this.displaySystemMessage('🎤 Microphone access was denied. Please allow microphone access in your browser settings, or type your statement below.');
                     this._setConversationState('ready');
                     return;
                 }
-                this.ui.showToast('🎤 Microphone access denied. Check browser permissions.', 'error', 5000);
-                this.displaySystemMessage('🎤 Microphone access was denied. Please allow microphone access in your browser settings, or type your statement below.');
-                this._setConversationState('ready');
-                return;
             }
             
             if (this.audioRecorder) {
                 const stream = await this.audioRecorder.start();
                 this.isRecording = true;
+                this._recordingStartedAt = Date.now();
                 
                 // Start audio quality analysis on raw stream
                 if (this.audioQualityAnalyzer && stream) {
@@ -3250,8 +3275,13 @@ class WitnessReplayApp {
         }
     }
     
-    async stopRecording() {
+    async stopRecording(options = {}) {
+        if (this._stopRecordingPromise) {
+            return this._stopRecordingPromise;
+        }
         if (!this.isRecording) return;
+
+        const stopReason = options?.reason || 'manual';
 
         // ── Stop silence detection monitor ──
         this._stopRecordingSilenceDetection();
@@ -3266,41 +3296,46 @@ class WitnessReplayApp {
             this.audioQualityIndicator.hide();
             this.audioQualityIndicator.reset();
         }
+
+        const recordingTrigger = this._recordingTrigger;
+        this.isRecording = false;
+        this.vadAutoRecording = false;
+        this.micBtn.classList.remove('recording');
+        const btnText2 = this.micBtn.querySelector('.btn-text');
+        if (btnText2) btnText2.textContent = 'Tap to Report';
         
-        try {
-            if (this.audioRecorder) {
+        // Hide voice controls panel
+        const voiceControls = document.getElementById('voice-controls');
+        if (voiceControls) voiceControls.classList.remove('expanded');
+        if (this.chatMicBtn) {
+            this.chatMicBtn.classList.remove('recording');
+            this.chatMicBtn.textContent = '🎤';
+        }
+        if (this.stopBtn) this.stopBtn.style.display = 'none';
+        this._syncVoiceDockMicLabel();
+
+        // Play recording stop sound
+        this.playSound('recording-stop');
+        this._vibrate(18);
+
+        // Remove pulsing animation from Detective Ray avatar
+        const detectiveAvatar = document.querySelector('.detective-avatar');
+        if (detectiveAvatar) {
+            detectiveAvatar.classList.remove('listening');
+        }
+
+        this._stopRecordingPromise = (async () => {
+            try {
+                if (!this.audioRecorder) return;
+
                 const audioBlob = await this.audioRecorder.stop();
-                this.isRecording = false;
-                this.micBtn.classList.remove('recording');
-                const btnText2 = this.micBtn.querySelector('.btn-text');
-                if (btnText2) btnText2.textContent = 'Tap to Report';
-                
-                // Hide voice controls panel
-                const voiceControls = document.getElementById('voice-controls');
-                if (voiceControls) voiceControls.classList.remove('expanded');
-                if (this.chatMicBtn) {
-                    this.chatMicBtn.classList.remove('recording');
-                    this.chatMicBtn.textContent = '🎤';
-                }
-                if (this.stopBtn) this.stopBtn.style.display = 'none';
-                this._syncVoiceDockMicLabel();
-                
-                // Play recording stop sound
-                this.playSound('recording-stop');
-                this._vibrate(18);
-                
-                // Remove pulsing animation from Detective Ray avatar
-                const detectiveAvatar = document.querySelector('.detective-avatar');
-                if (detectiveAvatar) {
-                    detectiveAvatar.classList.remove('listening');
-                }
-                
-                const wasAutoListen = this._recordingTrigger === 'auto_listen';
+                const wasAutoListen = recordingTrigger === 'auto_listen';
                 if (wasAutoListen && this._isLikelySilentAutoCapture(qualityMetrics, audioBlob)) {
                     this._pauseAutoListenUntilManual('silent_auto_capture');
                     this.recordCallEvent('auto_listen_silence', {
                         audio_bytes: audioBlob?.size || 0,
                         quality_score: qualityMetrics?.qualityScore ?? null,
+                        stop_reason: stopReason,
                     });
 
                     // Restart VAD listening if enabled
@@ -3313,19 +3348,27 @@ class WitnessReplayApp {
                 // Convert to base64 and send with quality metrics
                 this.sendAudioMessage(audioBlob, qualityMetrics);
                 this._setConversationState('thinking');
-                this.recordCallEvent('recording_stopped', { has_quality_metrics: !!qualityMetrics });
-                
+                this.recordCallEvent('recording_stopped', {
+                    has_quality_metrics: !!qualityMetrics,
+                    stop_reason: stopReason,
+                });
+
                 // Restart VAD listening if enabled
                 if (this.vadEnabled && !this.vadListening && this._micPermissionGranted) {
                     setTimeout(() => this.startVADListening(), 500);
                 }
+            } catch (error) {
+                console.error('Error stopping recording:', error);
+                this.setStatus('Error processing audio');
+                this.playSound('error');
+                this._setConversationState('ready');
+            } finally {
+                this._recordingStartedAt = 0;
+                this._stopRecordingPromise = null;
             }
-        } catch (error) {
-            console.error('Error stopping recording:', error);
-            this.setStatus('Error processing audio');
-            this.playSound('error');
-            this._setConversationState('ready');
-        }
+        })();
+
+        return this._stopRecordingPromise;
     }
 
     /**
@@ -3336,62 +3379,102 @@ class WitnessReplayApp {
     _startRecordingSilenceDetection(stream) {
         this._stopRecordingSilenceDetection(); // clean up any prior one
 
-        if (!stream) return;
+        const processor = this.audioRecorder?.processor;
+        const canUseProcessorStats = processor && typeof processor.getStats === 'function';
+        if (!canUseProcessorStats && !stream) return;
 
-        const SILENCE_TIMEOUT = 2.5;   // seconds of silence before auto-stop
-        const SPEECH_THRESHOLD = 0.012; // RMS level considered "talking"
-        const CHECK_INTERVAL = 80;      // ms between checks
-        const MIN_SPEECH_MS = 600;      // must speak ≥600ms before auto-stop kicks in
+        const BASE_THRESHOLD = 0.008;
+        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 1800 : 2200;
+        const CHECK_INTERVAL = 90;
+        const MIN_SPEECH_MS = 450;
+        const MAX_RECORDING_MS = this._recordingTrigger === 'auto_listen' ? 30000 : 90000;
 
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 2048;
-            analyser.smoothingTimeConstant = 0.3;
-            const source = ctx.createMediaStreamSource(stream);
-            source.connect(analyser);
-            const buf = new Float32Array(analyser.fftSize);
+            let ctx = null;
+            let source = null;
+            let analyser = null;
+            let buf = null;
 
+            if (!canUseProcessorStats && stream) {
+                ctx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = ctx.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.smoothingTimeConstant = 0.3;
+                source = ctx.createMediaStreamSource(stream);
+                source.connect(analyser);
+                buf = new Float32Array(analyser.fftSize);
+                if (typeof ctx.resume === 'function' && ctx.state === 'suspended') {
+                    ctx.resume().catch(() => {});
+                }
+            }
+
+            let speechCandidateSince = 0;
             let lastSpeechTime = 0;
-            let speechStartTime = 0;
             let hasSpeechOccurred = false;
             let smoothedRMS = 0;
+            let fallbackNoiseFloor = 0.003;
 
             const intervalId = setInterval(() => {
-                if (!this.isRecording) {
+                if (!this.isRecording || this._stopRecordingPromise) {
                     // Recording already stopped by user — clean up
                     this._stopRecordingSilenceDetection();
                     return;
                 }
 
-                analyser.getFloatTimeDomainData(buf);
-                let sum = 0;
-                for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-                const rms = Math.sqrt(sum / buf.length);
-                smoothedRMS = 0.7 * smoothedRMS + 0.3 * rms;
-
                 const now = Date.now();
-                const isSpeech = smoothedRMS > SPEECH_THRESHOLD;
+                let rms = 0;
+                let speechThreshold = BASE_THRESHOLD;
+
+                if (canUseProcessorStats) {
+                    const stats = processor.getStats();
+                    rms = Number(stats?.currentRMS || 0);
+                    const noiseFloor = Math.max(0.003, Number(stats?.noiseFloor || 0.003));
+                    speechThreshold = Math.max(BASE_THRESHOLD, noiseFloor * 2.2);
+                } else if (analyser && buf) {
+                    if (ctx?.state === 'suspended' && typeof ctx.resume === 'function') {
+                        ctx.resume().catch(() => {});
+                    }
+                    analyser.getFloatTimeDomainData(buf);
+                    let sum = 0;
+                    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+                    rms = Math.sqrt(sum / buf.length);
+                    if (rms > 0 && rms < fallbackNoiseFloor) {
+                        fallbackNoiseFloor = 0.8 * fallbackNoiseFloor + 0.2 * rms;
+                    }
+                    speechThreshold = Math.max(BASE_THRESHOLD, fallbackNoiseFloor * 2.4);
+                }
+
+                smoothedRMS = smoothedRMS === 0 ? rms : (0.75 * smoothedRMS + 0.25 * rms);
+                const isSpeech = smoothedRMS >= speechThreshold;
 
                 if (isSpeech) {
-                    lastSpeechTime = now;
-                    if (!hasSpeechOccurred) {
-                        speechStartTime = now;
+                    if (!speechCandidateSince) {
+                        speechCandidateSince = now;
                     }
-                    if (now - speechStartTime >= MIN_SPEECH_MS) {
+                    lastSpeechTime = now;
+                    if (!hasSpeechOccurred && now - speechCandidateSince >= MIN_SPEECH_MS) {
                         hasSpeechOccurred = true;
                     }
+                } else {
+                    speechCandidateSince = 0;
                 }
 
                 // Only auto-stop if the user actually spoke first
                 if (hasSpeechOccurred && !isSpeech && lastSpeechTime > 0) {
-                    const silenceSec = (now - lastSpeechTime) / 1000;
-                    if (silenceSec >= SILENCE_TIMEOUT) {
-                        console.debug(`[SilenceDetect] ${silenceSec.toFixed(1)}s silence → auto-stop`);
+                    const silenceMs = now - lastSpeechTime;
+                    if (silenceMs >= SILENCE_TIMEOUT_MS) {
+                        console.debug(`[SilenceDetect] ${(silenceMs / 1000).toFixed(1)}s silence → auto-stop`);
                         this._stopRecordingSilenceDetection();
-                        this.stopRecording();
+                        this.stopRecording({ reason: 'silence_detected' });
                         return;
                     }
+                }
+
+                const startedAt = this._recordingStartedAt || now;
+                if (MAX_RECORDING_MS > 0 && now - startedAt >= MAX_RECORDING_MS) {
+                    console.warn('[SilenceDetect] Max recording duration reached → stopping capture');
+                    this._stopRecordingSilenceDetection();
+                    this.stopRecording({ reason: 'max_duration' });
                 }
             }, CHECK_INTERVAL);
 
@@ -3410,8 +3493,8 @@ class WitnessReplayApp {
         if (!this._silenceDetect) return;
         const { ctx, source, intervalId } = this._silenceDetect;
         clearInterval(intervalId);
-        try { source.disconnect(); } catch(e) {}
-        try { if (ctx.state !== 'closed') ctx.close(); } catch(e) {}
+        try { source?.disconnect(); } catch(e) {}
+        try { if (ctx?.state && ctx.state !== 'closed') ctx.close(); } catch(e) {}
         this._silenceDetect = null;
     }
     
@@ -3420,20 +3503,21 @@ class WitnessReplayApp {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64Audio = reader.result.split(',')[1];
+                const audioFormat = this._detectAudioFormat(audioBlob);
                 
                 if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                    this._queueOfflineMessage({ type: 'audio', data: { audio: base64Audio, format: 'webm' } });
+                    this._queueOfflineMessage({ type: 'audio', data: { audio: base64Audio, format: audioFormat } });
                     return;
                 }
                 
                 const audioSizeKB = Math.round(base64Audio.length * 0.75 / 1024);
-                console.debug(`[Audio] Sending ${audioSizeKB}KB audio via WebSocket`);
+                console.debug(`[Audio] Sending ${audioSizeKB}KB ${audioFormat} audio via WebSocket`);
                 
                 const messageData = {
                     type: 'audio',
                     data: {
                         audio: base64Audio,
-                        format: 'webm',
+                        format: audioFormat,
                         capture_mode: this._recordingTrigger === 'auto_listen' ? 'auto_listen' : 'manual',
                     }
                 };
@@ -3463,6 +3547,30 @@ class WitnessReplayApp {
         } catch (error) {
             console.error('Error sending audio:', error);
         }
+    }
+
+    _detectAudioFormat(audioBlob) {
+        const mimeType = String(audioBlob?.type || '').toLowerCase();
+        if (mimeType.includes('ogg')) return 'ogg';
+        if (mimeType.includes('wav')) return 'wav';
+        if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+        if (mimeType.includes('mp4') || mimeType.includes('aac')) return 'mp4';
+        return 'webm';
+    }
+
+    _handleAgentResponseKind(responseKind) {
+        if (responseKind !== 'completion') return;
+        this._autoListenPausedUntilManual = true;
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+        this._hideRayListeningCue();
+        if (!this.isRecording && !this._isSpeakingResponse) {
+            this._setConversationState('ready', { silent: true });
+        }
+        this.ui?.setStatus('Report saved — tap the mic if you remember more.', 'default');
+        this._syncAutoListenButtonState();
     }
     
     sendTextMessage() {

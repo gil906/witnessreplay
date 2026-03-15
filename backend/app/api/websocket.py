@@ -91,7 +91,7 @@ class WebSocketHandler:
         self._last_voice_hint_state = state
         await self.send_message("voice_hint", {"state": state, "message": message})
 
-    async def _set_speaking(self, speaking: bool):
+    async def _set_speaking(self, speaking: bool, *, emit_ready_hint: bool = True):
         """Update speaking state and emit voice hints/call state."""
         previous = self.is_speaking
         self.is_speaking = speaking
@@ -100,16 +100,16 @@ class WebSocketHandler:
 
         if speaking:
             await self._send_voice_hint("agent_speaking", "Agent is speaking now.")
-        else:
+        elif emit_ready_hint:
             await self._send_voice_hint("ready_to_talk", "You're ready to speak.")
         await self._send_call_state()
 
-    async def _set_status(self, status_value: str, message: str):
+    async def _set_status(self, status_value: str, message: str, *, emit_ready_hint: bool = True):
         """Send status updates with call_state sync."""
         self.call_status = status_value
         await self.send_message("status", {"status": status_value, "message": message})
         await self._send_call_state(status=status_value)
-        if status_value == "ready" and not self.is_speaking:
+        if status_value == "ready" and not self.is_speaking and emit_ready_hint:
             await self._send_voice_hint("ready_to_talk", "You're ready to speak.")
     
     async def connect(self):
@@ -321,7 +321,8 @@ class WebSocketHandler:
         chunk: str, 
         is_final: bool = False, 
         message_id: str = None,
-        token_info: dict = None
+        token_info: dict = None,
+        response_kind: Optional[str] = None,
     ):
         """Send a streaming text chunk to the client."""
         if not self.is_connected:
@@ -337,6 +338,8 @@ class WebSocketHandler:
             # Include token estimation info on final chunk
             if is_final and token_info:
                 data["token_info"] = token_info
+            if is_final and response_kind:
+                data["response_kind"] = response_kind
             message = WebSocketMessage(type="text_stream", data=data)
             await self.websocket.send_json(message.model_dump(mode='json'))
         except Exception as e:
@@ -416,8 +419,6 @@ class WebSocketHandler:
     async def handle_audio(self, data: dict):
         """Handle audio data from the client using Gemini for transcription."""
         try:
-            self.is_recording = True
-            await self._send_call_state()
             audio_base64 = data.get("audio")
             audio_format = data.get("format", "webm")
             capture_mode = str(data.get("capture_mode", "manual") or "manual").lower()
@@ -452,12 +453,13 @@ class WebSocketHandler:
                             return
 
                         logger.warning(f"Audio too small ({audio_size_kb:.1f}KB) — likely empty recording")
-                        await self.send_message("error", {"message": "Recording was too short. Hold the mic button and speak, then release."})
+                        await self.send_message("error", {"message": "Recording was too short. Speak, then tap the mic again when you're finished."})
                         return
                     
                     mime_map = {
                         "webm": "audio/webm",
                         "ogg": "audio/ogg",
+                        "mp3": "audio/mpeg",
                         "mp4": "audio/mp4",
                         "wav": "audio/wav",
                     }
@@ -549,9 +551,6 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Error handling audio: {e}")
             await self.send_message("error", {"message": f"Audio processing error: {str(e)}"})
-        finally:
-            self.is_recording = False
-            await self._send_call_state()
     
     async def handle_text(self, data: dict):
         """Handle text input from the client with streaming response and translation."""
@@ -559,6 +558,9 @@ class WebSocketHandler:
             text = data.get("text", "").strip()
             if not text:
                 return
+
+            session = await firestore_service.get_session(self.session_id)
+            report_number = getattr(session, "report_number", "") if session else ""
             
             # Send status update
             await self._set_status("thinking", "Analyzing...")
@@ -583,11 +585,14 @@ class WebSocketHandler:
             should_generate_image = False
             token_info = None
             full_response = ""
+            is_completion_response = False
             await self._set_speaking(True)
             try:
                 # Stream the response (now returns 4-tuple with token_info)
                 async for chunk, is_final, should_gen, tok_info in self.agent.process_statement_streaming(
-                    text, is_correction
+                    text,
+                    is_correction,
+                    report_number=report_number,
                 ):
                     if chunk:
                         full_response += chunk
@@ -597,6 +602,7 @@ class WebSocketHandler:
                     if is_final:
                         should_generate_image = should_gen
                         token_info = tok_info
+                is_completion_response = self.agent.last_response_kind == "completion"
                 
                 # Translate full response if witness language is not English
                 if self.witness_language != "en" and full_response:
@@ -610,16 +616,20 @@ class WebSocketHandler:
                         "original_text": translation_result["original"],
                         "speaker": "agent",
                         "language": self.witness_language,
-                        "message_id": message_id
+                        "message_id": message_id,
+                        "response_kind": self.agent.last_response_kind,
                     })
                 else:
                     # Send final marker for English responses
-                    await self.send_streaming_chunk("", is_final=True, message_id=message_id, token_info=token_info)
+                    await self.send_streaming_chunk(
+                        "",
+                        is_final=True,
+                        message_id=message_id,
+                        token_info=token_info,
+                        response_kind=self.agent.last_response_kind,
+                    )
             finally:
-                await self._set_speaking(False)
-            
-            # Get session to retrieve active witness info
-            session = await firestore_service.get_session(self.session_id)
+                await self._set_speaking(False, emit_ready_hint=not is_completion_response)
             
             # Determine witness info for this statement
             witness_id = None
@@ -706,8 +716,20 @@ class WebSocketHandler:
                         await self.send_message("evidence_tags", {"tags": tags, "source_text": text[:100]})
             except Exception:
                 pass
-            
-            await self._set_status("ready", "Ready to listen")
+
+            if is_completion_response:
+                await self._set_status(
+                    "ready",
+                    "Report saved. Tap the mic if you remember more.",
+                    emit_ready_hint=False,
+                )
+                await self._send_voice_hint(
+                    "report_complete",
+                    "Report saved. Tap the mic if you want to add more later.",
+                    force=True,
+                )
+            else:
+                await self._set_status("ready", "Ready to listen")
         
         except Exception as e:
             logger.error(f"Error handling text: {e}")
@@ -752,7 +774,7 @@ class WebSocketHandler:
         if not tokens:
             return True
 
-        allowed_single = {"yes", "no", "ok", "okay", "stop", "wait", "help"}
+        allowed_single = {"yes", "no", "ok", "okay", "stop", "wait", "help", "done", "finished", "enough"}
         filler = {"um", "uh", "hmm", "mmm", "mm", "ah", "er", "huh", "noise", "static"}
         if len(tokens) == 1:
             token = tokens[0]
