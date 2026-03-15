@@ -227,7 +227,7 @@ class TTSService:
         # Wrap text so the model reads it verbatim instead of treating it as a prompt
         read_instruction = f"Read the following text aloud exactly as written:\n\n{text}"
         async with self.client.aio.live.connect(model=model, config=config) as session:
-            await session.send(read_instruction, end_of_turn=True)
+            await session.send(input=read_instruction, end_of_turn=True)
             async for message in session.receive():
                 server_content = getattr(message, "server_content", None)
                 if not server_content:
