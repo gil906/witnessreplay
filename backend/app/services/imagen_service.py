@@ -14,9 +14,9 @@ class ImagenService:
     """Generates AI scene images using Google Imagen 4."""
 
     MODELS = [
-        "imagen-4-fast-generate",   # Fast, 25 RPD
-        "imagen-4-generate",        # Standard, 25 RPD
-        "imagen-4-ultra-generate",  # Ultra, 25 RPD
+        "imagen-4.0-fast-generate-001",   # Fast, 25 RPD
+        "imagen-4.0-generate-001",        # Standard, 25 RPD
+        "imagen-4.0-ultra-generate-001",  # Ultra, 25 RPD
     ]
 
     IMAGES_DIR = "/app/data/images"
@@ -244,21 +244,21 @@ class ImagenService:
     def _get_model_order(self, quality: str) -> list[str]:
         if quality == "ultra":
             return [
-                "imagen-4-ultra-generate",
-                "imagen-4-generate",
-                "imagen-4-fast-generate",
+                "imagen-4.0-ultra-generate-001",
+                "imagen-4.0-generate-001",
+                "imagen-4.0-fast-generate-001",
             ]
         if quality == "standard":
             return [
-                "imagen-4-generate",
-                "imagen-4-fast-generate",
-                "imagen-4-ultra-generate",
+                "imagen-4.0-generate-001",
+                "imagen-4.0-fast-generate-001",
+                "imagen-4.0-ultra-generate-001",
             ]
         # fast (default)
         return [
-            "imagen-4-fast-generate",
-            "imagen-4-generate",
-            "imagen-4-ultra-generate",
+            "imagen-4.0-fast-generate-001",
+            "imagen-4.0-generate-001",
+            "imagen-4.0-ultra-generate-001",
         ]
 
     def _reset_daily_if_needed(self):

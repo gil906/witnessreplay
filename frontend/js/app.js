@@ -40,8 +40,14 @@ class WitnessReplayApp {
         this.autoScrollEnabled = localStorage.getItem('witnessreplay-auto-scroll') !== 'false';
         this.compactMode = localStorage.getItem('witnessreplay-compact-chat') === 'true';
         this.fetchTimeout = 10000; // 10 second timeout for API calls
+        const shouldResetLegacyAudioMute = localStorage.getItem('witnessreplayVoiceFirstAudioReset') !== 'true';
+        if (shouldResetLegacyAudioMute) {
+            localStorage.removeItem('audioOutputDisabled');
+            localStorage.setItem('witnessreplayVoiceFirstAudioReset', 'true');
+        }
         this.audioOutputDisabled = localStorage.getItem('audioOutputDisabled') === 'true';
         this.soundEnabled = !this.audioOutputDisabled && localStorage.getItem('soundEnabled') !== 'false'; // Default true
+        this.languageSelectionWasManual = localStorage.getItem('witnessLanguageManual') === 'true';
         this.sounds = {}; // Sound effect cache
         this.comparisonMode = false; // Scene comparison mode
         this.previousSceneUrl = null; // For before/after comparison
@@ -1509,7 +1515,21 @@ class WitnessReplayApp {
                 this._setMicSpeakingState(false);
                 this._triggerAutoListen();
             };
+            this.ttsPlayer.onPlaybackUnavailable = () => {
+                this._isSpeakingResponse = false;
+                if (!this.isRecording) {
+                    this._setMicSpeakingState(false);
+                    this._showRayListeningCue();
+                    if (this.autoListenEnabled) {
+                        this._triggerAutoListen();
+                    }
+                }
+            };
         }
+    }
+
+    _canPlayAgentAudio() {
+        return !this.audioOutputDisabled && !!(this.ttsPlayer && this.ttsPlayer.isEnabled());
     }
     
     _setMicSpeakingState(speaking) {
@@ -1645,9 +1665,9 @@ class WitnessReplayApp {
             if (this.autoListenEnabled) this._triggerAutoListen();
             return;
         }
-        if (this.ttsPlayer && this.ttsPlayer.isEnabled()) {
+        if (this._canPlayAgentAudio()) {
             // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
-            this.ttsPlayer.speak(text);
+            void this.ttsPlayer.speak(text);
         } else if (this.autoListenEnabled) {
             // No TTS — still trigger auto-listen after a brief pause
             this._triggerAutoListen();
@@ -2639,6 +2659,13 @@ class WitnessReplayApp {
             
             // Load witnesses for multi-witness support
             this.loadWitnesses();
+
+            if (this.selectedLanguage) {
+                this.setWitnessLanguage(this.selectedLanguage, {
+                    persist: false,
+                    manual: this.languageSelectionWasManual,
+                });
+            }
             
             this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
         };
@@ -2838,31 +2865,6 @@ class WitnessReplayApp {
                     this._handleAgentResponseKind(responseKind);
                 }
                 
-                // Update mic button state for voice-first UX when agent responds
-                if (speaker === 'agent' && this.micBtn && !this.isRecording) {
-                    this.micBtn.classList.remove('processing');
-                    this.micBtn.classList.add('ai-speaking');
-                    const micBtnText = this.micBtn.querySelector('.btn-text');
-                    if (micBtnText) micBtnText.textContent = 'Detective Ray speaking...';
-                    this._setConversationState('speaking');
-                    // If TTS is enabled, callbacks will manage mic state reset.
-                    // Otherwise, reset to idle after a short delay.
-                    if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
-                        clearTimeout(this._aiSpeakingTimeout);
-                        this._aiSpeakingTimeout = setTimeout(() => {
-                            if (this.micBtn && !this.isRecording && !this._isSpeakingResponse) {
-                                this.micBtn.classList.remove('ai-speaking');
-                                const t = this.micBtn.querySelector('.btn-text');
-                                if (t && !this.micBtn.classList.contains('connecting') && !this.micBtn.classList.contains('disconnected')) {
-                                    t.textContent = 'Tap to Report';
-                                }
-                                this._setConversationState('ready');
-                                this._showRayListeningCue();
-                            }
-                        }, 3000);
-                    }
-                }
-                
                 // Prevent duplicate greetings on reconnect
                 if (speaker === 'agent' && !this.hasReceivedGreeting) {
                     this.hasReceivedGreeting = true;
@@ -2955,7 +2957,7 @@ class WitnessReplayApp {
                     this.ui?.updateStats({ statementCount: callState.statement_count });
                     this._syncWorkspaceLayout();
                 }
-                if (callState.is_speaking) {
+                if (this._isSpeakingResponse) {
                     this._setConversationState('speaking', { silent: true });
                 } else if (callState.is_recording) {
                     this._setConversationState('listening', { silent: true });
@@ -3065,9 +3067,6 @@ class WitnessReplayApp {
                 element: messageDiv,
                 content: ''
             };
-            if (speaker === 'agent') {
-                this._setConversationState('speaking');
-            }
         }
         
         const streamData = this.streamingMessages[message_id];
@@ -3104,7 +3103,7 @@ class WitnessReplayApp {
                 this.lastAgentMessage = finalContent;
                 this._handleAgentResponseKind(response_kind);
                 this.speakAIResponse(finalContent);
-                if (!(this.ttsPlayer && this.ttsPlayer.isEnabled())) {
+                if (!this._canPlayAgentAudio()) {
                     setTimeout(() => {
                         if (!this.isRecording && !this._isSpeakingResponse) {
                             this._setConversationState('ready');
@@ -3132,6 +3131,8 @@ class WitnessReplayApp {
     }
     
     toggleRecording() {
+        void this.ttsPlayer?.primePlayback?.();
+
         // If disconnected, attempt reconnect instead of recording
         if (this.micBtn.classList.contains('disconnected')) {
             this._reconnectAttempt = 0;
@@ -3660,17 +3661,7 @@ class WitnessReplayApp {
         this._syncAutoListenButtonState();
         this.lastUserMessage = text;
         this._updateRetryButton();
-        
-        // Feature 8: Auto-detect language on first user message
-        if (this.statementCount === 0) {
-            const detected = this._detectLanguage(text);
-            if (detected !== 'en') {
-                this.setWitnessLanguage(detected);
-                const sel = document.getElementById('language-selector');
-                if (sel) sel.value = detected;
-                this._showLangDetectBadge(detected);
-            }
-        }
+        void this.ttsPlayer?.primePlayback?.();
         
         // Check for distress signals and provide support
         if (this.comfortManager) {
@@ -6491,7 +6482,12 @@ class WitnessReplayApp {
      * Initialize the language selector for translation support
      */
     initializeLanguageSelector() {
-        this.selectedLanguage = localStorage.getItem('witnessLanguage') || 'en';
+        const storedLanguage = localStorage.getItem('witnessLanguage');
+        this.languageSelectionWasManual = localStorage.getItem('witnessLanguageManual') === 'true';
+        this.selectedLanguage = this.languageSelectionWasManual && storedLanguage ? storedLanguage : 'en';
+        if (!this.languageSelectionWasManual && storedLanguage && storedLanguage !== 'en') {
+            localStorage.setItem('witnessLanguage', 'en');
+        }
         const languageSelector = document.getElementById('language-selector');
         
         if (languageSelector) {
@@ -6501,30 +6497,38 @@ class WitnessReplayApp {
             // Handle language change
             languageSelector.addEventListener('change', (e) => {
                 const newLanguage = e.target.value;
-                this.setWitnessLanguage(newLanguage);
+                this.setWitnessLanguage(newLanguage, { manual: true });
             });
         }
+
+        this.updatePlaceholderForLanguage(this.selectedLanguage);
     }
     
     /**
      * Set the witness language and notify the server
      */
-    setWitnessLanguage(languageCode) {
-        this.selectedLanguage = languageCode;
-        localStorage.setItem('witnessLanguage', languageCode);
+    setWitnessLanguage(languageCode, options = {}) {
+        const { persist = true, manual = false } = options;
+        this.selectedLanguage = languageCode || 'en';
+        this.languageSelectionWasManual = !!manual;
+
+        if (persist) {
+            localStorage.setItem('witnessLanguage', this.selectedLanguage);
+            localStorage.setItem('witnessLanguageManual', String(this.languageSelectionWasManual));
+        }
         
         // Notify server via WebSocket if connected
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
                 type: 'set_language',
-                data: { language: languageCode }
+                data: { language: this.selectedLanguage }
             }));
         }
         
         // Update placeholder text based on language
-        this.updatePlaceholderForLanguage(languageCode);
+        this.updatePlaceholderForLanguage(this.selectedLanguage);
         
-        console.debug(`Language set to: ${languageCode}`);
+        console.debug(`Language set to: ${this.selectedLanguage}`);
     }
     
     /**

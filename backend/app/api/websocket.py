@@ -1056,10 +1056,20 @@ class WebSocketHandler:
             
             # Get current scene state from agent
             scene_summary = self.agent.get_scene_summary()
+            scene_description = (scene_summary.get("description") or "").strip()
+            scene_elements = scene_summary.get("elements") or []
+
+            if len(scene_description) < 80 or len(scene_elements) < 2:
+                logger.info(
+                    "Skipping scene image generation for session %s until more concrete scene detail is available",
+                    self.session_id,
+                )
+                await self._set_status("ready", "Gathering more scene detail before generating the image.")
+                return
             
             # Generate image
             image_bytes = await image_service.generate_scene_image(
-                scene_description=scene_summary["description"],
+                scene_description=scene_description,
                 elements=self.agent.current_elements
             )
             
@@ -1089,9 +1099,9 @@ class WebSocketHandler:
             self.version_counter += 1
             scene_version = SceneVersion(
                 version=self.version_counter,
-                description=scene_summary["description"],
+                description=scene_description,
                 image_url=image_url,
-                elements=[SceneElement(**e) for e in scene_summary["elements"]]
+                elements=[SceneElement(**e) for e in scene_elements]
             )
             
             # Save to session
@@ -1105,8 +1115,8 @@ class WebSocketHandler:
             await self.send_message("scene_update", {
                 "version": self.version_counter,
                 "image_url": image_url,
-                "description": scene_summary["description"],
-                "elements": scene_summary["elements"]
+                "description": scene_description,
+                "elements": scene_elements
             })
         
         except Exception as e:

@@ -580,12 +580,13 @@ class SceneReconstructionAgent:
             if len(self.conversation_history) > 16:
                 await self._summarize_history()
             
-            # Determine if we should generate an image
-            should_generate = self._should_generate_image(agent_response)
-            
-            # Extract scene information if we have enough detail
-            if should_generate or len(self.conversation_history) > 6:
+            should_generate_candidate = self._should_generate_image(agent_response)
+
+            # Extract scene information before deciding whether rendering is worthwhile.
+            if should_generate_candidate or len(self.conversation_history) > 6:
                 await self._extract_scene_information()
+
+            should_generate = should_generate_candidate and self._scene_has_renderable_detail()
             
             self._log_structured("statement_processed",
                                  model=current_model or "chat",
@@ -826,10 +827,12 @@ class SceneReconstructionAgent:
             if len(self.conversation_history) > 16:
                 await self._summarize_history()
             
-            should_generate = self._should_generate_image(full_response)
-            
-            if should_generate or len(self.conversation_history) > 6:
+            should_generate_candidate = self._should_generate_image(full_response)
+
+            if should_generate_candidate or len(self.conversation_history) > 6:
                 await self._extract_scene_information()
+
+            should_generate = should_generate_candidate and self._scene_has_renderable_detail()
             
             self._log_structured("statement_processed_streaming",
                                  model=current_model or "chat",
@@ -883,6 +886,34 @@ class SceneReconstructionAgent:
         periodic_trigger = len(user_messages) >= 3 and len(user_messages) % 3 == 0
         
         return keyword_match or periodic_trigger
+
+    def _scene_has_renderable_detail(self) -> bool:
+        """Return True when the extracted scene is detailed enough to render."""
+        description = (self.scene_description or "").strip()
+        if len(description) < 80:
+            return False
+
+        if len(self.current_elements) < 2:
+            return False
+
+        generic_markers = (
+            "witness described an incident",
+            "incident scene",
+            "reported incident",
+            "scene still unclear",
+            "limited detail",
+            "unknown location",
+        )
+        if any(marker in description.lower() for marker in generic_markers) and len(self.current_elements) < 4:
+            return False
+
+        high_confidence_elements = sum(
+            1
+            for element in self.current_elements
+            if float(getattr(element, "confidence", 0.0) or 0.0) >= max(0.45, settings.low_confidence_threshold)
+            and (element.description or "").strip()
+        )
+        return high_confidence_elements >= 2 or len(self.current_elements) >= 4
     
     async def _summarize_history(self):
         """Summarize conversation history to optimize token usage."""

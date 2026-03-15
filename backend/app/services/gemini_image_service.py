@@ -57,6 +57,18 @@ class GeminiImageService:
             "Generate a single high-quality image of this scene reconstruction."
         )
 
+    @staticmethod
+    def _iter_response_parts(result):
+        """Yield response parts across SDK response shapes."""
+        direct_parts = getattr(result, "parts", None) or []
+        for part in direct_parts:
+            yield part
+
+        for candidate in getattr(result, "candidates", None) or []:
+            content = getattr(candidate, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                yield part
+
     async def generate_image(self, description: str) -> Optional[bytes]:
         """Generate an image from a description using Gemini.
 
@@ -76,37 +88,45 @@ class GeminiImageService:
                     model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        response_modalities=["TEXT", "IMAGE"],
+                        response_modalities=["IMAGE"],
                     ),
                 )
 
                 # Extract image from response parts using the SDK helpers
-                if result and hasattr(result, 'parts') and result.parts:
-                    for part in result.parts:
-                        # Try SDK as_image() helper first (returns PIL Image)
-                        try:
-                            pil_image = part.as_image()
-                            if pil_image:
-                                import io
-                                buf = io.BytesIO()
-                                pil_image.save(buf, format="PNG")
-                                image_bytes = buf.getvalue()
-                                if image_bytes:
-                                    logger.info("Generated image with Gemini model %s (as_image)", model_name)
-                                    return image_bytes
-                        except Exception:
-                            pass
-                        # Fallback: check inline_data directly
-                        if hasattr(part, 'inline_data') and part.inline_data:
-                            if part.inline_data.mime_type and 'image' in part.inline_data.mime_type:
-                                image_bytes = part.inline_data.data
-                                if isinstance(image_bytes, str):
-                                    image_bytes = base64.b64decode(image_bytes)
-                                if image_bytes:
-                                    logger.info("Generated image with Gemini model %s (inline_data)", model_name)
-                                    return image_bytes
+                image_found = False
+                for part in self._iter_response_parts(result):
+                    # Try SDK as_image() helper first (returns PIL Image)
+                    try:
+                        pil_image = part.as_image()
+                        if pil_image:
+                            import io
+                            buf = io.BytesIO()
+                            pil_image.save(buf, format="PNG")
+                            image_bytes = buf.getvalue()
+                            if image_bytes:
+                                logger.info("Generated image with Gemini model %s (as_image)", model_name)
+                                return image_bytes
+                    except Exception:
+                        pass
 
-                logger.warning("No image data in response from %s", model_name)
+                    inline_data = getattr(part, "inline_data", None)
+                    if inline_data and getattr(inline_data, "data", None):
+                        mime_type = str(getattr(inline_data, "mime_type", "") or "")
+                        if "image" in mime_type:
+                            image_bytes = inline_data.data
+                            if isinstance(image_bytes, str):
+                                image_bytes = base64.b64decode(image_bytes)
+                            if image_bytes:
+                                logger.info("Generated image with Gemini model %s (inline_data)", model_name)
+                                return image_bytes
+                        image_found = True
+
+                logger.warning(
+                    "No usable image data in Gemini response from %s (has_candidates=%s, saw_inline_data=%s)",
+                    model_name,
+                    bool(getattr(result, "candidates", None)),
+                    image_found,
+                )
 
             except Exception as e:
                 error_str = str(e)

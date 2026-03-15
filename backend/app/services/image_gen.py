@@ -89,6 +89,36 @@ class ImageGenerationService:
     # Public API
     # ------------------------------------------------------------------
 
+    def _build_ai_scene_prompt(
+        self,
+        scene_description: str,
+        elements: List[SceneElement],
+    ) -> str:
+        """Build a richer prompt for Gemini/Imagen image generation."""
+        detail_lines = []
+        for index, element in enumerate(elements[:12], start=1):
+            parts = [f"{index}. {element.type}"]
+            if element.description:
+                parts.append(element.description)
+            if element.color:
+                parts.append(f"color: {element.color}")
+            if element.position:
+                parts.append(f"position: {element.position}")
+            if element.size:
+                parts.append(f"size: {element.size}")
+            detail_lines.append(" | ".join(parts))
+
+        details_block = "\n".join(detail_lines) if detail_lines else "- No structured elements extracted yet."
+        return (
+            "Create a realistic witness-scene reconstruction image. "
+            "Use only the details explicitly described by the witness. "
+            "Do not add template-style roads, generic intersections, empty plazas, or placeholder scenery unless the witness described them. "
+            "Show an oblique camera angle of the whole scene with realistic lighting and spatial relationships. "
+            "Do not include labels, legends, map markers, UI overlays, or text in the image.\n\n"
+            f"Scene summary:\n{scene_description}\n\n"
+            f"Structured scene elements:\n{details_block}"
+        )
+
     async def generate_scene_image(
         self,
         scene_description: str,
@@ -100,7 +130,8 @@ class ImageGenerationService:
         try:
             from app.services.imagen_service import imagen_service
 
-            imagen_bytes = await imagen_service.generate_scene(scene_description)
+            ai_prompt = self._build_ai_scene_prompt(scene_description, elements)
+            imagen_bytes = await imagen_service.generate_scene(ai_prompt)
             if imagen_bytes:
                 logger.info("Generated scene image via Imagen AI")
                 return imagen_bytes
