@@ -91,11 +91,13 @@ jobs:
         run: |
           echo "⏳ Waiting for container to be healthy (30s stability window)..."
           HEALTHY=false
-          # Wait up to 60 seconds for initial health
-          for i in $(seq 1 12); do
+          # Wait up to 90 seconds for initial health. On the Pi, cold starts can
+          # take longer than one 30s Docker health interval before the first
+          # successful /api/health probe lands.
+          for i in $(seq 1 18); do
             STATUS=$(sudo docker inspect --format='{{.State.Health.Status}}' witnessreplay 2>/dev/null || echo "unknown")
             RUNNING=$(sudo docker inspect --format='{{.State.Running}}' witnessreplay 2>/dev/null || echo "false")
-            echo "  Check $i/12: status=${STATUS}, running=${RUNNING}"
+            echo "  Check $i/18: status=${STATUS}, running=${RUNNING}"
             if [ "$STATUS" = "healthy" ] && [ "$RUNNING" = "true" ]; then
               HEALTHY=true
               break
