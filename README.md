@@ -13,11 +13,12 @@
 
 - [Problem Statement](#-problem-statement)
 - [Solution](#-solution)
+- [How It Works Today](#-how-it-works-today)
 - [Architecture](#-architecture)
 - [Key Features](#-key-features)
 - [Tech Stack](#-tech-stack)
-- [Gemini API Usage](#-gemini-api-usage)
-- [Google Cloud Services](#-google-cloud-services)
+- [AI Pipeline](#-ai-pipeline)
+- [Cloud & Storage Integrations](#-cloud--storage-integrations)
 - [Quick Start](#-quick-start)
 - [Environment Variables](#-environment-variables)
 - [API Endpoints](#-api-endpoints)
@@ -48,67 +49,65 @@ These problems lead to incomplete investigations, missed evidence, and delayed j
 
 ## 💡 Solution
 
-**WitnessReplay** is an AI-powered live agent that transforms how law enforcement gathers and analyzes witness testimony.
+**WitnessReplay** is a voice-first witness interview system built around **Detective Ray**, an AI interviewer that can greet a witness, listen hands-free, ask smarter follow-up questions, and turn the conversation into structured case data.
 
 It works by:
 
-1. **Conducting empathetic, structured interviews** as "Detective Ray" — an AI persona that guides witnesses through their account using proven interview techniques
-2. **Supporting multimodal input** — voice recording, text chat, phone transcription, and email intake
-3. **Automatically generating visual scene reconstructions** from testimony using Gemini's vision and generation capabilities
-4. **Grouping related reports into cases** using AI analysis of content, time, and location
-5. **Providing a law enforcement admin portal** with case management, report comparison, timeline visualization, and evidence export
+1. **Starting with a spoken Detective Ray greeting** so the witness immediately knows the app is ready.
+2. **Switching into automatic listening** with browser-side voice activity detection tuned for speech onset, speech end, and background-noise rejection.
+3. **Streaming Detective Ray's replies as text and audio** so the conversation feels faster and more natural.
+4. **Extracting structured incident details** like who, what, when, where, vehicles, clothing, injuries, and timeline clues.
+5. **Grouping related reports into cases** and generating case/report scene recreations when the testimony contains enough concrete detail.
+6. **Giving investigators a cleaner admin workspace** for reviewing cases, reports, summaries, exports, and scene previews.
 
-The result: investigators get structured, searchable, visual case files in minutes instead of hours.
+The result: investigators get a smoother witness interview flow up front and cleaner, more actionable case files on the back end.
+
+---
+
+## 🗣️ How It Works Today
+
+1. **Witness opens the app** and Detective Ray speaks first.
+2. **Auto-listen begins** so the witness can respond without pressing the mic again.
+3. **Smart VAD captures the full utterance** and waits for a real pause before triggering Ray's next turn.
+4. **Ray responds in chat and audio** using the live voice pipeline, with chat auto-scrolling to the latest turn.
+5. **The backend extracts evidence and incident structure** into a report that can later be grouped into a case.
+6. **Scene previews are generated only from real model output**. If no real image provider succeeds, WitnessReplay leaves the preview blank instead of saving a fake template image.
+7. **Admins review the result** through the case/report workspace with Google or GitHub OAuth plus manual username/password sign-in.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       WitnessReplay                         │
-├──────────────┬────────────────────────┬─────────────────────┤
-│   Frontend   │    FastAPI Backend     │   Google Cloud      │
-├──────────────┼────────────────────────┼─────────────────────┤
-│              │                        │                     │
-│  Witness     │  Scene Agent           │  Gemini AI          │
-│  Portal      │  (Detective Ray)       │  (GenAI SDK)        │
-│  ──────────  │  ──────────────        │  ──────────         │
-│  Voice Input │  Interview Logic       │  Chat Models        │
-│  Text Chat   │  Scene Extraction      │  Vision Models      │
-│  WebSocket   │  Contradiction Det.    │  Audio Transcribe   │
-│              │  Model Auto-Fallback   │                     │
-│              │                        │                     │
-│  Admin       │  Case Manager          │  Firestore          │
-│  Portal      │  ──────────────        │  (Database)         │
-│  ──────────  │  Auto-grouping         │                     │
-│  Cases View  │  AI Summaries          │  Cloud Storage      │
-│  Reports     │  Incident Classify     │  (Images)           │
-│  Analytics   │  Severity Scoring      │                     │
-│  Timeline    │                        │  Cloud Run          │
-│  Export      │  Services              │  (Hosting)          │
-│              │  ──────────            │                     │
-│              │  SQLite (fallback DB)  │  Cloud Build        │
-│              │  Image Generation      │  (CI/CD)            │
-│              │  Usage Tracking        │                     │
-│              │  Model Selection       │                     │
-│              │  API Key Rotation      │                     │
-│              │  Audit Logging         │                     │
-│              │                        │                     │
-└──────────────┴────────────────────────┴─────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                           WitnessReplay                         │
+├──────────────────┬──────────────────────────┬───────────────────┤
+│ Witness Frontend │ FastAPI Backend          │ AI & Integrations │
+├──────────────────┼──────────────────────────┼───────────────────┤
+│                  │                          │                   │
+│ Detective Ray UI │ Scene agent + prompts    │ Gemini Flash      │
+│ Auto-listen/VAD  │ Session + case services  │ Gemini Live audio │
+│ Chat transcript  │ Auth + admin API         │ Gemini TTS        │
+│ Native audio/TTS │ Scene extraction         │ Gemini image APIs │
+│ Wake lock        │ Image pipeline + storage │ Hugging Face SDXL │
+│ Admin workspace  │ Cleanup / audit logic    │ Firestore (opt.)  │
+│                  │ SQLite persistence       │ GCS (optional)    │
+│                  │ Docker-ready app         │ GitHub Actions    │
+│                  │                          │ self-hosted deploy│
+└──────────────────┴──────────────────────────┴───────────────────┘
 ```
 
 **Data Flow:**
 ```
-Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
-                                       ↓
-                              Scene Extraction (JSON)
-                                       ↓
-                              Image Generation → GCS
-                                       ↓
-                              Case Manager → Firestore/SQLite
-                                       ↓
-                              Admin Portal ← REST API
+Witness voice/text → Browser VAD + WebSocket → Detective Ray agent → Gemini models
+                                                   ↓
+                                   Structured report + evidence extraction
+                                                   ↓
+                                 Case matching / summaries / scene prompts
+                                                   ↓
+                     Scene image pipeline (Gemini/Imagen → HF fallback when needed)
+                                                   ↓
+                                 SQLite/Firestore storage → Admin REST workspace
 ```
 
 ---
@@ -117,23 +116,18 @@ Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
 
 | Feature | Description |
 |---------|-------------|
-| 🎙️ **Multimodal Input** | Voice recording, text chat, phone transcription, email intake |
-| 🤖 **AI Detective Interview** | Empathetic, structured questioning with Detective Ray persona |
-| 🎨 **Scene Reconstruction** | AI-generated visual scene diagrams from testimony |
-| 📁 **Automatic Case Grouping** | Gemini AI matches reports to cases by content, time, and location |
-| 📊 **Admin Dashboard** | Case management, timeline, report comparison, analytics, evidence export |
-| 🔒 **Security** | Bcrypt auth, rate limiting, CSP headers, path traversal protection, SQL injection hardening |
-| 🌐 **Multi-language** | Auto-detects and responds in witness's language |
-| 📱 **Mobile-First** | Optimized for iPhone/Android with responsive breakpoints down to 375px |
-| ♿ **Accessible** | Focus traps, keyboard navigation, skip-to-content, ARIA attributes, reduced-motion support |
-| ⚡ **Real-time** | WebSocket communication with heartbeat, auto-reconnection, and live scene updates |
-| 💾 **Dual Storage** | SQLite (local fallback) + Firestore (cloud) — always available |
-| 🔄 **Iterative Refinement** | Natural language corrections instantly update the scene |
-| 📄 **Evidence Export** | PDF reports, JSON export, bulk CSV, law enforcement evidence format |
-| 🎯 **Contradiction Detection** | AI identifies conflicting details across witness accounts |
-| 📈 **Confidence Scoring** | Witness reliability and scene completeness assessment |
-| 🔀 **Model Auto-Fallback** | Automatic fallback across Gemini models on rate limits |
-| 📋 **Audit Trail** | Full audit logging for chain-of-custody compliance |
+| 🎙️ **Hands-free witness interview** | Detective Ray greets first, then automatically listens for the witness response. |
+| 🧠 **Smart voice turn-taking** | Browser VAD is tuned to catch speech onset, detect end-of-turn pauses, and ignore common background noise. |
+| 🔊 **Natural live voice responses** | Faster text-to-audio flow with native streaming audio when available and Gemini TTS fallback when needed. |
+| 💬 **Chat + audio in sync** | Transcript updates immediately, auto-scroll stays pinned to the latest turn, and audio follows without manual refresh. |
+| 🎨 **Real scene recreations** | Case/report previews use real model output only; fake template placeholders are intentionally rejected. |
+| 📁 **Automatic case grouping** | Reports are matched into cases using incident content, timing, location, and shared details. |
+| 👮 **Cleaner admin workspace** | Focused case/report review UI with search, filters, workload tools, exports, and less dashboard noise. |
+| 🔐 **Flexible admin auth** | Google OAuth, GitHub OAuth, plus manual username/password fallback for admin access. |
+| 📱 **Mobile-first interviewing** | Responsive witness flow with wake lock support so the device stays awake during active voice conversation. |
+| 💾 **Practical persistence** | SQLite is the default durable store, with optional Firestore/GCS support when cloud services are configured. |
+| 📄 **Investigation outputs** | PDF/JSON/CSV exports, AI summaries, timelines, contradictions, and structured evidence metadata. |
+| 🔀 **Provider fallback chain** | Multi-key Gemini failover plus Hugging Face image fallback when Google image capacity is unavailable. |
 
 ---
 
@@ -141,51 +135,52 @@ Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
 
 | Component | Technology |
 |-----------|------------|
-| **AI Engine** | Google Gemini (GenAI SDK) — 2.5-pro, 2.5-flash, 2.0-flash with auto-fallback |
+| **AI Engine** | Google Gemini models for chat, live audio, extraction, and TTS; Hugging Face SDXL fallback for scene images |
 | **Backend** | Python 3.11 + FastAPI |
-| **Database** | Google Firestore + SQLite (dual backend) |
-| **Storage** | Google Cloud Storage |
-| **Real-time** | WebSocket (with heartbeat + exponential reconnection) |
-| **Frontend** | Vanilla JS / HTML / CSS (no framework dependencies) |
-| **Deployment** | Docker + Google Cloud Run |
-| **CI/CD** | Google Cloud Build |
-| **IaC** | Terraform |
-| **Security** | bcrypt, CORS, CSP (no unsafe-eval), rate limiting, path traversal protection, prompt injection defense, request timeouts |
+| **Database** | SQLite by default, with optional Firestore integration |
+| **Image Storage** | Local `/data/images` storage, with optional Google Cloud Storage support |
+| **Real-time** | WebSocket interview channel with heartbeat/reconnect handling |
+| **Frontend** | Vanilla JS / HTML / CSS |
+| **Deployment** | Docker Compose on self-hosted Linux / Raspberry Pi |
+| **CI/CD** | GitHub Actions (`.github/workflows/deploy-pi.yml`) |
+| **IaC** | Terraform assets remain available for cloud-oriented setups |
+| **Security** | bcrypt, OAuth, CORS, CSP (no `unsafe-eval`), rate limiting, path traversal protection, prompt-injection defense, request timeouts |
 
 ---
 
-## 🤖 Gemini API Usage
+## 🤖 AI Pipeline
 
-### Models Used
+### Live Models and Fallbacks
 
-| Task | Models (priority order) | Purpose |
-|------|------------------------|---------|
-| **Scene Reconstruction** | `gemini-2.5-pro` → `gemini-2.5-flash` → `gemini-2.0-flash-exp` → `gemini-2.0-flash` | High-quality scene analysis and extraction |
-| **Chat / Interview** | `gemini-2.5-flash-lite` → `gemini-2.0-flash-lite` → `gemini-2.5-flash` | Fast, conversational witness interviews |
-| **Vision / Audio** | `gemini-2.5-flash` | Audio transcription, image analysis |
+| Task | Current pipeline | Purpose |
+|------|------------------|---------|
+| **Live witness conversation** | Gemini live/native-audio model (`LIVE_MODEL`) | Low-latency Detective Ray audio turns and conversational flow |
+| **Fast chat + extraction** | Gemini Flash / Flash Lite family | Interview reasoning, follow-up questions, structured report extraction |
+| **TTS fallback** | Gemini TTS model (`TTS_MODEL`) | Spoken replies when native streaming audio is unavailable |
+| **Scene prompt extraction** | Gemini multimodal models | Convert witness testimony into scene-recreation prompts |
+| **Scene image rendering** | Google image providers first, then Hugging Face SDXL fallback | Keep real case/report previews available without storing fake template images |
 
-### Gemini Features Leveraged
+### What the AI layer does
 
-- **Multi-turn Chat Conversations** — Maintains interview context across the full witness session
-- **Audio Transcription (Multimodal)** — Transcribes voice recordings (webm, ogg, wav, mp4) via `Part.from_bytes()`
-- **Structured JSON Extraction** — Extracts scene elements, timeline, and metadata from unstructured testimony
-- **Text Analysis for Case Matching** — Compares new reports against existing cases for auto-grouping
-- **Incident Classification** — Categorizes incidents as accident, crime, incident, or other
-- **Summary Generation** — Creates comprehensive multi-witness case summaries
-- **Contradiction Detection** — Identifies conflicting details across multiple accounts
-- **Automatic Model Fallback** — Switches models on 429/RESOURCE_EXHAUSTED errors with 60s cooldown
+- **Maintains multi-turn Detective Ray context** across the witness session.
+- **Transcribes and interprets voice input** using multimodal Gemini capabilities.
+- **Extracts structured scene data** such as people, vehicles, timing, locations, and evidence.
+- **Suggests and asks follow-up questions** when key investigative details are still missing.
+- **Matches reports into cases** using content, time, and location similarity.
+- **Generates summaries and contradictions** for investigators reviewing multiple accounts.
+- **Falls back across providers** when keys hit quota or a scene image provider is unavailable.
 
 ---
 
-## ☁️ Google Cloud Services
+## ☁️ Cloud & Storage Integrations
 
 | Service | Usage |
 |---------|-------|
-| **Firestore** | Document database for sessions, cases, statements, and audit logs |
-| **Cloud Storage** | Hosting generated scene images |
-| **Cloud Run** | Containerized application hosting (2Gi memory, 2 CPU) |
-| **Cloud Build** | CI/CD pipeline for automated deployments |
-| **Secret Manager** | Secure storage for API keys and credentials |
+| **SQLite** | Default durable store for sessions, cases, statements, images, and background tasks |
+| **Firestore** | Optional cloud-backed document storage for synced session/case data |
+| **Local image storage** | Primary storage for generated case/report previews in self-hosted deployments |
+| **Google Cloud Storage** | Optional remote storage for generated images |
+| **GitHub Actions** | Push-to-deploy workflow for the self-hosted Raspberry Pi environment |
 
 ---
 
@@ -196,18 +191,20 @@ Witness (Voice/Text) → WebSocket → Scene Agent → Gemini AI
 - Python 3.11+
 - [Google Gemini API key](https://aistudio.google.com/apikey)
 - Docker (recommended) or Python venv
-- Google Cloud account (optional — for Firestore/GCS; SQLite works as fallback)
+- Hugging Face token *(optional but recommended for image fallback)*
+- Google Cloud account *(optional — only needed if you want Firestore/GCS integrations)*
 
 ### Option 1: Docker (Recommended)
 
 ```bash
 # Clone the repository
 git clone https://github.com/gil906/witnessreplay.git
-cd witnessreplay/project
+cd witnessreplay
 
 # Configure environment
 cp .env.example .env
-# Edit `.env` — at minimum set `GOOGLE_API_KEY` (or `GOOGLE_API_PRIMARY_KEY`) and `ADMIN_PASSWORD`
+# Edit `.env` — at minimum set a Gemini key and `ADMIN_PASSWORD`
+# Optional but recommended: set `HUGGINGFACE_API_TOKEN`
 
 # Run with Docker Compose
 docker compose up --build -d
@@ -223,7 +220,7 @@ docker compose up --build -d
 ```bash
 # Clone and navigate
 git clone https://github.com/gil906/witnessreplay.git
-cd witnessreplay/project
+cd witnessreplay
 
 # Set up Python environment
 cd backend
@@ -232,32 +229,32 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Configure environment
-cp ../.env.example .env
-# Edit .env with your credentials
+cd ..
+cp .env.example .env
+# Edit `.env` with your credentials
 
 # Run the server
+cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 # Open http://localhost:8080
 ```
 
-### Option 3: Cloud Deploy
+### Option 3: Self-hosted Production Deploy
 
 ```bash
-# Quick deploy to Cloud Run
-cd deploy
-export GCP_PROJECT_ID=your-project-id
-export GCP_REGION=us-central1
-./deploy.sh
+# Push to master to trigger the Raspberry Pi deploy workflow
+git push origin master
 
-# Or with Terraform
-cd deploy/terraform
-terraform init
-terraform apply -var="project_id=your-project-id" -var="gemini_api_key=your-key"
-
-# Or with Cloud Build
-gcloud builds submit --config deploy/cloudbuild.yaml .
+# The GitHub Actions workflow:
+# - syncs the repo to /mnt/media/witnessreplay
+# - preserves the existing private .env
+# - rebuilds the Docker image
+# - restarts the witnessreplay container
+# - waits for /api/health to stay healthy
 ```
+
+> The repository still contains cloud-oriented assets under `deploy/`, but the current live app is deployed through the self-hosted GitHub Actions workflow.
 
 ---
 
@@ -277,16 +274,25 @@ gcloud builds submit --config deploy/cloudbuild.yaml .
 | `GOOGLE_API_SECONDARY_PROJECT_ID` | Google project ID for secondary Gemini account | No | — |
 | `GOOGLE_API_TERTIARY_PROJECT_ID` | Google project ID for tertiary Gemini account | No | — |
 | `GOOGLE_API_ACCOUNTS_JSON` | Advanced JSON account config override | No | — |
-| `GCP_PROJECT_ID` | Google Cloud project ID | For cloud features | — |
-| `GCS_BUCKET` | Cloud Storage bucket for images | For cloud features | `witnessreplay-images` |
+| `HUGGINGFACE_API_TOKEN` | Enables the SDXL scene-image fallback when Google image generation is unavailable | No | — |
+| `GCP_PROJECT_ID` | Google Cloud project ID | For optional cloud features | — |
+| `GCS_BUCKET` | Cloud Storage bucket for images | For optional cloud features | `witnessreplay-images` |
 | `FIRESTORE_COLLECTION` | Firestore collection name | No | `reconstruction_sessions` |
-| `ADMIN_PASSWORD` | Admin portal password | **Yes** | — |
+| `ADMIN_PASSWORD` | Manual admin password | **Yes** | — |
+| `ADMIN_PUBLIC_BASE_URL` | Public base URL used for OAuth callback generation | Recommended in production | — |
+| `ADMIN_GOOGLE_CLIENT_ID` | Google OAuth client ID for admin login | No | — |
+| `ADMIN_GOOGLE_CLIENT_SECRET` | Google OAuth client secret for admin login | No | — |
+| `ADMIN_GITHUB_CLIENT_ID` | GitHub OAuth client ID for admin login | No | — |
+| `ADMIN_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret for admin login | No | — |
 | `ENVIRONMENT` | `development` or `production` | No | `production` |
 | `DEBUG` | Enable debug mode | No | `false` |
 | `PORT` | Server port | No | `8080` |
 | `HOST` | Server host | No | `0.0.0.0` |
-| `GEMINI_MODEL` | Default Gemini model | No | `gemini-2.5-flash` |
-| `GEMINI_VISION_MODEL` | Vision/audio model | No | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Default general-purpose Gemini model | No | `gemini-3-flash` |
+| `GEMINI_VISION_MODEL` | Vision/audio Gemini model | No | `gemini-3-flash` |
+| `GEMINI_LITE_MODEL` | Fast low-cost interview model | No | `gemini-2.5-flash-lite` |
+| `TTS_MODEL` | Gemini TTS fallback voice model | No | `gemini-2.5-flash-preview-tts` |
+| `LIVE_MODEL` | Gemini live/native-audio model | No | `gemini-2.5-flash-exp-native-audio-thinking` |
 | `ALLOWED_ORIGINS` | CORS allowed origins | No | `http://localhost:8088,http://localhost:3000` |
 | `ENFORCE_RATE_LIMITS` | Enable rate limiting | No | `true` |
 | `MAX_REQUESTS_PER_MINUTE` | Rate limit threshold | No | `60` |
@@ -303,9 +309,16 @@ gcloud builds submit --config deploy/cloudbuild.yaml .
 ### Authentication
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/auth/login` | Admin login |
+| `POST` | `/api/auth/login` | Manual admin login |
+| `POST` | `/api/auth/register` | Create an admin account |
+| `POST` | `/api/auth/forgot-password` | Start password reset flow |
+| `GET` | `/api/auth/oauth/providers` | Check which OAuth providers are configured |
+| `GET` | `/api/auth/oauth/{provider}/start` | Begin Google or GitHub OAuth |
+| `GET` | `/api/auth/oauth/{provider}/callback` | OAuth callback handler |
+| `POST` | `/api/auth/oauth` | Exchange verified OAuth profile for admin session |
 | `POST` | `/api/auth/logout` | Admin logout |
 | `GET` | `/api/auth/verify` | Verify authentication |
+| `GET` | `/api/auth/me` | Return the authenticated admin profile |
 
 ### Sessions (Witness Reports)
 | Method | Endpoint | Description |
@@ -365,7 +378,7 @@ gcloud builds submit --config deploy/cloudbuild.yaml .
 ## 📁 Project Structure
 
 ```
-project/
+witnessreplay/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI app, middleware, security
@@ -379,7 +392,9 @@ project/
 │   │   │   ├── database.py          # SQLite persistent storage
 │   │   │   ├── firestore.py         # Firestore cloud storage
 │   │   │   ├── storage.py           # Google Cloud Storage
-│   │   │   ├── image_gen.py         # Scene image generation
+│   │   │   ├── image_gen.py         # Scene image generation helpers
+│   │   │   ├── imagen_service.py    # Google scene-image orchestration
+│   │   │   ├── huggingface_image_service.py  # HF SDXL fallback for scene images
 │   │   │   ├── model_selector.py    # Automatic model fallback
 │   │   │   ├── api_key_manager.py   # API key rotation
 │   │   │   ├── usage_tracker.py     # Token & usage tracking
@@ -408,9 +423,12 @@ project/
 │       └── vad.js                   # Voice Activity Detection
 │   ├── sw.js                        # Service worker (offline, cache eviction)
 ├── deploy/
-│   ├── deploy.sh                    # Cloud Run deployment script
-│   ├── cloudbuild.yaml              # Cloud Build CI/CD pipeline
-│   └── terraform/                   # Infrastructure as Code
+│   ├── deploy.sh                    # Legacy/optional cloud deployment helper
+│   ├── cloudbuild.yaml              # Legacy/optional cloud build pipeline
+│   └── terraform/                   # Infrastructure as Code assets
+├── .github/
+│   └── workflows/
+│       └── deploy-pi.yml            # Self-hosted Raspberry Pi deploy workflow
 ├── tests/
 │   ├── test_websocket.py
 │   └── audio_fixtures/              # Test audio files
@@ -453,7 +471,7 @@ project/
 | Witness Portal | Admin Dashboard |
 |:---:|:---:|
 | ![Main Interface](docs/screenshots/main-interface.png) | ![Admin Portal](docs/screenshots/admin.png) |
-| *Voice & chat interview with Detective Ray* | *Case management and analytics* |
+| *Voice & chat interview with Detective Ray* | *Case and report review workspace* |
 
 > **Note**: Screenshots will be added before final submission. The UI is fully functional.
 
@@ -465,50 +483,41 @@ project/
 
 ## 🆕 Recent Improvements
 
-### Mobile & Layout (v2.1)
-- **iPhone-optimized layout** — Compact header (44px), collapsible voice dock, hidden power-user controls on small screens
-- **375px breakpoint** — Dedicated tiny-phone layout for iPhone SE and small Android devices
-- **Light theme polish** — Extended coverage to chat panel, voice dock, quick phrases, mobile menu, toasts, and connection popup
-- **Mic button loading state** — Visual "Starting mic..." feedback with pulsing animation during initialization
+### Voice conversation flow
+- **Detective Ray greets first** and the witness flow immediately rolls into hands-free listening.
+- **Speech onset capture is smoother** so the beginning of a witness response is less likely to be clipped.
+- **Native audio streaming is preferred** for faster, more natural Detective Ray replies, with Gemini TTS fallback still available.
+- **Chat auto-scroll is pinned to the latest turn** when new messages arrive and when playback starts.
+- **Wake lock support keeps the screen awake** during active voice conversation sessions.
 
-### Accessibility
-- **Modal focus traps** — Tab/Shift+Tab cycles through focusable elements; focus restores on close
-- **Keyboard navigation** — `:focus-visible` outlines, Enter/Space on interactive elements, `aria-hidden`/`aria-busy` attributes
-- **Prefers-reduced-motion** — Respects system animation preferences
+### Scene previews and case quality
+- **Fake template previews are blocked** — case/report images now use real model output only.
+- **Hugging Face SDXL fallback was added** so scene generation can still succeed when Google image quota is exhausted.
+- **Prompt cleanup improved** so generated scene descriptions are based on cleaner witness detail instead of transcript filler.
+- **Empty/noise sessions are removed from admin review** instead of cluttering the report list with `0 statements` entries.
 
-### iOS Safari Compatibility
-- **Microphone permission fix** — `getUserMedia` gated behind user gesture via `_micPermissionGranted` flag; prevents misleading "access denied" toast when auto-listen fires without a tap
-- **VAD (Voice Activity Detection)** — Restart gated behind the same permission flag
+### Admin experience
+- **Google and GitHub admin OAuth** now sit alongside manual username/password auth.
+- **The admin login flow is simpler** with social sign-in presented first.
+- **Top-level admin dashboard noise was removed** so the case/report workspace is easier to scan.
 
-### Performance & Reliability
-- **Chat scroll performance** — `will-change` + CSS `contain` on transcript and message elements
-- **AudioContext resilience** — Double-close guard, resume retry with backoff (3 attempts), auto-recreate if closed
-- **Memory leak fixes** — `durationTimer`, `_autoSaveInterval`, `_autoListenTimer` cleared on page close
-- **Service worker improvements** — Cache size eviction (100 max), skip API/WS caching, only cache 2xx, "Update available" banner on new SW activation
-
-### Security Hardening
-- **CSP** — Removed `unsafe-eval` from Content-Security-Policy
-- **Path traversal** — `os.path.realpath()` + prefix check on image-serving endpoint
-- **SQL injection** — Explicit column allowlist dict in user profile updates
-- **Prompt injection** — User input wrapped in `<witness_statement>` XML tags before AI processing
-- **CORS** — Production wildcard warning logged at startup
-
-### Backend
-- **Endpoint-specific timeouts** — 180s for AI/streaming/image generation, 60s for standard API, 10s for health checks
-- **Docker** — Added health check, resource limits (2 CPU / 2G RAM), log rotation to docker-compose.yml
+### Reliability and security
+- **Request validation and cleanup paths were hardened** around session closing, preview selection, and report listing.
+- **The Docker deployment flow includes health-gated restarts** through the Raspberry Pi GitHub Actions workflow.
+- **Core browser hardening remains in place**: CSP, path traversal protection, prompt-injection boundaries, and rate limiting.
 
 ---
 
 ## 🗺️ Future Roadmap
 
-- 🔴 **Gemini Live API Real-time Streaming** — True real-time voice conversation with interruption support
 - 📹 **Video Testimony Support** — Analyze video recordings for visual evidence
+- 🧑‍🤝‍🧑 **Speaker Diarization** — Separate multiple nearby speakers in challenging environments
 - 🔗 **Law Enforcement Database Integration** — Connect with NIBRS, RMS, and CAD systems
 - 👥 **Multi-agency Collaboration** — Share cases across departments with role-based access
 - 🗺️ **GIS Map Integration** — Plot incidents on interactive maps with heat mapping
 - 🧬 **Evidence Chain of Custody** — Full digital chain-of-custody tracking
 - 📱 **Native Mobile App** — Dedicated iOS/Android app for field interviews
-- 🔊 **Speaker Diarization** — Identify and separate multiple speakers in group interviews
+- 🔇 **Ambient noise classification** — Better separate true witness speech from road noise, wind, and crowd chatter
 
 ---
 

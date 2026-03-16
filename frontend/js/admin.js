@@ -388,19 +388,21 @@ class AdminPortal {
         }
         this.startAutoRefresh();
         this.fetchAndDisplayVersion();
-        this.loadQuotaDashboard();
-        this.startQuotaRefresh();
-        this.initSystemHealthPanel();
-        this.initAuditTimeline();
-        this.initInterviewAnalytics();
-        this._initNotificationCenter();
         this._initQuickActions();
-        this._initActivityHeatmap();
-        this._initDataRetention();
-        this._loadDataRetention();
-        this._initSessionViewer();
-        this._initActivityLog();
-        this._initCaseAnalytics();
+        if (legacyAdminPanelsEnabled()) {
+            this.loadQuotaDashboard();
+            this.startQuotaRefresh();
+            this.initSystemHealthPanel();
+            this.initAuditTimeline();
+            this.initInterviewAnalytics();
+            this._initNotificationCenter();
+            this._initActivityHeatmap();
+            this._initDataRetention();
+            this._loadDataRetention();
+            this._initSessionViewer();
+            this._initActivityLog();
+            this._initCaseAnalytics();
+        }
     }
     
     _initModalKeyboardNav() {
@@ -5701,6 +5703,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.adminPortal = new AdminPortal();
 });
 
+function legacyAdminPanelsEnabled() {
+    return Boolean(document.getElementById('admin-tabs') || document.getElementById('legacy-admin-panels'));
+}
+
+function queueLegacyAdminLoader(loader, delay) {
+    if (!legacyAdminPanelsEnabled()) return;
+    setTimeout(loader, delay);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // IMPROVEMENT 27: Admin Data Retention Panel
 // ═══════════════════════════════════════════════════════════════════
@@ -5961,7 +5972,7 @@ WitnessReplayAdmin.prototype._loadCaseAnalytics = async function() {
 (function() {
     const btn = document.getElementById('hd-refresh-btn');
     if (btn) btn.addEventListener('click', loadHealthDashboard);
-    setTimeout(loadHealthDashboard, 1200);
+    queueLegacyAdminLoader(loadHealthDashboard, 1200);
 })();
 
 async function loadHealthDashboard() {
@@ -6027,7 +6038,7 @@ async function doBulkExport() {
 (function() {
     const btn = document.getElementById('at-refresh-btn');
     if (btn) btn.addEventListener('click', loadAuditTrailCompact);
-    setTimeout(loadAuditTrailCompact, 1800);
+    queueLegacyAdminLoader(loadAuditTrailCompact, 1800);
 })();
 
 async function loadAuditTrailCompact() {
@@ -6070,7 +6081,7 @@ async function loadAuditTrailCompact() {
 (function() {
     const btn = document.getElementById('sr-refresh-btn');
     if (btn) btn.addEventListener('click', loadSessionReport);
-    setTimeout(loadSessionReport, 2200);
+    queueLegacyAdminLoader(loadSessionReport, 2200);
 })();
 
 async function loadSessionReport() {
@@ -6102,7 +6113,7 @@ async function loadSessionReport() {
 (function() {
     const btn = document.getElementById('sa-refresh-btn');
     if (btn) btn.addEventListener('click', loadSystemAlerts);
-    setTimeout(loadSystemAlerts, 2500);
+    queueLegacyAdminLoader(loadSystemAlerts, 2500);
 })();
 
 async function loadSystemAlerts() {
@@ -6260,7 +6271,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const perfRefreshBtn = document.getElementById('perf-refresh');
     if (perfRefreshBtn) perfRefreshBtn.addEventListener('click', loadPerfMetrics);
 
-    setTimeout(() => { loadApiUsage(); loadActiveSessions(); loadErrorLog(); loadPerfMetrics(); loadDataRetention(); loadSystemConfig(); }, 1500);
+    queueLegacyAdminLoader(() => { loadApiUsage(); loadActiveSessions(); loadErrorLog(); loadPerfMetrics(); loadDataRetention(); loadSystemConfig(); }, 1500);
 
     // ── Data Retention Manager ────────────────
     async function loadDataRetention() {
@@ -6849,7 +6860,7 @@ async function loadEnvConfig() {
     } catch(e) { console.error('Env config load error:', e); }
 }
 document.getElementById('env-config-refresh')?.addEventListener('click', loadEnvConfig);
-setTimeout(loadEnvConfig, 2200);
+queueLegacyAdminLoader(loadEnvConfig, 2200);
 
 // ============================================================
 // Admin: Session Analytics Dashboard
@@ -6893,7 +6904,7 @@ async function loadSessionAnalytics() {
     } catch(e) { console.error('Session analytics load error:', e); }
 }
 document.getElementById('session-analytics-refresh')?.addEventListener('click', loadSessionAnalytics);
-setTimeout(loadSessionAnalytics, 2400);
+queueLegacyAdminLoader(loadSessionAnalytics, 2400);
 
 // ============================================================
 // Admin Feature: Content Moderation
@@ -6930,7 +6941,7 @@ document.getElementById('content-moderation-clear')?.addEventListener('click', a
         loadContentModeration();
     } catch(e) { console.error('Content moderation clear error:', e); }
 });
-setTimeout(loadContentModeration, 2600);
+queueLegacyAdminLoader(loadContentModeration, 2600);
 
 // ============================================================
 // Admin Feature: Export Manager
@@ -6971,7 +6982,7 @@ document.getElementById('export-manager-clear')?.addEventListener('click', async
         loadExportManager();
     } catch(e) { console.error('Export manager clear error:', e); }
 });
-setTimeout(loadExportManager, 2800);
+queueLegacyAdminLoader(loadExportManager, 2800);
 
 // ============================================================
 // Admin Feature: Backup Manager (Create button)
@@ -7018,7 +7029,7 @@ async function loadRateLimitsPanel() {
     } catch(e) { console.error('Rate limits load error:', e); }
 }
 document.getElementById('rate-limits-refresh')?.addEventListener('click', loadRateLimitsPanel);
-setTimeout(loadRateLimitsPanel, 3200);
+queueLegacyAdminLoader(loadRateLimitsPanel, 3200);
 
 // ── Database Stats Panel ────────────────────────────────
 async function loadDbStatsPanel() {
@@ -7040,7 +7051,7 @@ async function loadDbStatsPanel() {
     } catch(e) { console.error('DB stats load error:', e); }
 }
 document.getElementById('db-stats-refresh')?.addEventListener('click', loadDbStatsPanel);
-setTimeout(loadDbStatsPanel, 3400);
+queueLegacyAdminLoader(loadDbStatsPanel, 3400);
 
 // ── System Notifications Panel ──────────────────────────
 async function loadSysNotifPanel() {
@@ -7080,7 +7091,7 @@ document.getElementById('sys-notif-add')?.addEventListener('click', async () => 
         loadSysNotifPanel();
     } catch(e) { console.error('Add notification error:', e); }
 });
-setTimeout(loadSysNotifPanel, 3600);
+queueLegacyAdminLoader(loadSysNotifPanel, 3600);
 
 // ── Audit Log Panel ─────────────────────────
 async function loadAuditLogPanel() {
@@ -7101,7 +7112,7 @@ async function loadAuditLogPanel() {
     } catch(e) { console.error('Audit log error:', e); }
 }
 document.getElementById('audit-log-refresh')?.addEventListener('click', loadAuditLogPanel);
-setTimeout(loadAuditLogPanel, 2400);
+queueLegacyAdminLoader(loadAuditLogPanel, 2400);
 
 // ── Infrastructure Monitor Panel ────────────────
 async function loadSysHealthPanel() {
@@ -7129,7 +7140,7 @@ async function loadSysHealthPanel() {
     } catch(e) { console.error('System health error:', e); }
 }
 document.getElementById('sys-health-refresh')?.addEventListener('click', loadSysHealthPanel);
-setTimeout(loadSysHealthPanel, 2600);
+queueLegacyAdminLoader(loadSysHealthPanel, 2600);
 
 // ── API Usage Analytics Panel ────────────────────
 async function loadApiAnalyticsPanel() {
@@ -7164,7 +7175,7 @@ async function loadApiAnalyticsPanel() {
     } catch(e) { console.error('API analytics error:', e); }
 }
 document.getElementById('api-analytics-refresh')?.addEventListener('click', loadApiAnalyticsPanel);
-setTimeout(loadApiAnalyticsPanel, 2800);
+queueLegacyAdminLoader(loadApiAnalyticsPanel, 2800);
 
 // ── User Activity Panel ──────────────────────────
 async function loadUserActivityPanel() {
@@ -7200,7 +7211,7 @@ async function loadUserActivityPanel() {
     } catch(e) { console.error('User activity error:', e); }
 }
 document.getElementById('user-activity-refresh')?.addEventListener('click', loadUserActivityPanel);
-setTimeout(loadUserActivityPanel, 3000);
+queueLegacyAdminLoader(loadUserActivityPanel, 3000);
 
 // ── Feature Usage Stats Panel (upgraded to analytics API) ───────────────────────
 // Defined below in the Feature Usage Analytics section
@@ -7238,7 +7249,7 @@ async function loadErrorTrackerPanel() {
     } catch(e) { console.error('Error tracker error:', e); }
 }
 document.getElementById('error-tracker-refresh')?.addEventListener('click', loadErrorTrackerPanel);
-setTimeout(loadErrorTrackerPanel, 4000);
+queueLegacyAdminLoader(loadErrorTrackerPanel, 4000);
 
 // ── Gemini AI Usage Panel ───────────────────────────
 async function loadGeminiUsagePanel() {
@@ -7264,7 +7275,7 @@ async function loadGeminiUsagePanel() {
     } catch(e) { console.error('Gemini usage error:', e); }
 }
 document.getElementById('gemini-usage-refresh')?.addEventListener('click', loadGeminiUsagePanel);
-setTimeout(loadGeminiUsagePanel, 4500);
+queueLegacyAdminLoader(loadGeminiUsagePanel, 4500);
 
 // ── Session Insights Panel ──────────────────────────
 async function loadSessionInsightsPanel() {
@@ -7295,7 +7306,7 @@ async function loadSessionInsightsPanel() {
     } catch(e) { console.error('Session insights error:', e); }
 }
 document.getElementById('session-insights-refresh')?.addEventListener('click', loadSessionInsightsPanel);
-setTimeout(loadSessionInsightsPanel, 5000);
+queueLegacyAdminLoader(loadSessionInsightsPanel, 5000);
 
 // ═══════════════════════════════════════════════════════════════
 // Admin: Model Performance Dashboard
@@ -7343,7 +7354,7 @@ async function loadModelPerformancePanel() {
     } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load model performance data.</p>'; console.error(e); }
 }
 document.getElementById('model-performance-refresh')?.addEventListener('click', loadModelPerformancePanel);
-setTimeout(loadModelPerformancePanel, 5500);
+queueLegacyAdminLoader(loadModelPerformancePanel, 5500);
 
 // ═══════════════════════════════════════════════════════════════
 // Admin: Witness Behavior Trends
@@ -7381,7 +7392,7 @@ async function loadWitnessTrendsPanel() {
     } catch(e) { if(el) el.innerHTML = '<p class="admin-error">Could not load witness trends.</p>'; console.error(e); }
 }
 document.getElementById('witness-trends-refresh')?.addEventListener('click', loadWitnessTrendsPanel);
-setTimeout(loadWitnessTrendsPanel, 6000);
+queueLegacyAdminLoader(loadWitnessTrendsPanel, 6000);
 
 // ─── Admin Case Complexity Dashboard ─────────────────────────────────────────
 async function loadCaseComplexity() {
@@ -7482,8 +7493,8 @@ async function loadInvestigationQualityPanel() {
 
 document.getElementById('case-complexity-refresh')?.addEventListener('click', loadCaseComplexityPanel);
 document.getElementById('investigation-quality-refresh')?.addEventListener('click', loadInvestigationQualityPanel);
-setTimeout(loadCaseComplexityPanel, 7000);
-setTimeout(loadInvestigationQualityPanel, 8500);
+queueLegacyAdminLoader(loadCaseComplexityPanel, 7000);
+queueLegacyAdminLoader(loadInvestigationQualityPanel, 8500);
 
 // ─── Testimony Length Distribution ────────────────────────────────────────────
 async function loadTestimonyDistribution() {
@@ -7533,7 +7544,7 @@ async function loadTestimonyDistributionPanel() {
 }
 
 document.getElementById('testimony-distribution-refresh')?.addEventListener('click', loadTestimonyDistributionPanel);
-setTimeout(loadTestimonyDistributionPanel, 10000);
+queueLegacyAdminLoader(loadTestimonyDistributionPanel, 10000);
 
 // ─── ADMIN TOKEN HELPER ────────────────────────────────────────────────────────
 function getAdminToken() {
@@ -7620,8 +7631,8 @@ async function loadResolutionForecastPanel() {
 
 document.getElementById('evidence-analytics-refresh')?.addEventListener('click', loadEvidenceAnalyticsPanel);
 document.getElementById('resolution-forecast-refresh')?.addEventListener('click', loadResolutionForecastPanel);
-setTimeout(loadEvidenceAnalyticsPanel, 13000);
-setTimeout(loadResolutionForecastPanel, 14500);
+queueLegacyAdminLoader(loadEvidenceAnalyticsPanel, 13000);
+queueLegacyAdminLoader(loadResolutionForecastPanel, 14500);
 
 // ─── ADMIN PLEA DEAL TRENDS ───────────────────────────────────────────────────
 async function loadPleaTrends() {
@@ -7715,8 +7726,8 @@ async function loadBackgroundRiskPanel() {
 
 document.getElementById('plea-trends-refresh')?.addEventListener('click', loadPleaTrendsPanel);
 document.getElementById('background-risk-refresh')?.addEventListener('click', loadBackgroundRiskPanel);
-setTimeout(loadPleaTrendsPanel, 16000);
-setTimeout(loadBackgroundRiskPanel, 17500);
+queueLegacyAdminLoader(loadPleaTrendsPanel, 16000);
+queueLegacyAdminLoader(loadBackgroundRiskPanel, 17500);
 
 // ─── GEMINI COST TRACKER PANEL ────────────────────────────────────────────────
 async function loadGeminiCostTrackerPanel() {
@@ -7805,8 +7816,8 @@ async function loadWitnessQualityIndexPanel() {
 
 document.getElementById('gemini-cost-tracker-refresh')?.addEventListener('click', loadGeminiCostTrackerPanel);
 document.getElementById('witness-quality-index-refresh')?.addEventListener('click', loadWitnessQualityIndexPanel);
-setTimeout(loadGeminiCostTrackerPanel, 19000);
-setTimeout(loadWitnessQualityIndexPanel, 20500);
+queueLegacyAdminLoader(loadGeminiCostTrackerPanel, 19000);
+queueLegacyAdminLoader(loadWitnessQualityIndexPanel, 20500);
 
 // ── Sentencing Analytics ─────────────────────────────────────────────────
 async function loadSentencingAnalyticsPanel() {
@@ -7898,8 +7909,8 @@ async function loadCorroborationHealthPanel() {
 
 document.getElementById('sentencing-analytics-refresh')?.addEventListener('click', loadSentencingAnalyticsPanel);
 document.getElementById('corroboration-health-refresh')?.addEventListener('click', loadCorroborationHealthPanel);
-setTimeout(loadSentencingAnalyticsPanel, 21500);
-setTimeout(loadCorroborationHealthPanel, 23000);
+queueLegacyAdminLoader(loadSentencingAnalyticsPanel, 21500);
+queueLegacyAdminLoader(loadCorroborationHealthPanel, 23000);
 
 // ── Trial Outcome Analytics ──────────────────────────────────────────────────
 async function loadTrialOutcomesPanel() {
@@ -8003,8 +8014,8 @@ async function loadCaseVelocityPanel() {
 
 document.getElementById('trial-outcomes-refresh')?.addEventListener('click', loadTrialOutcomesPanel);
 document.getElementById('case-velocity-refresh')?.addEventListener('click', loadCaseVelocityPanel);
-setTimeout(loadTrialOutcomesPanel, 24500);
-setTimeout(loadCaseVelocityPanel, 26000);
+queueLegacyAdminLoader(loadTrialOutcomesPanel, 24500);
+queueLegacyAdminLoader(loadCaseVelocityPanel, 26000);
 
 // ── Witness Network Analysis ─────────────────────────────────────────────────
 async function loadWitnessNetworkPanel() {
@@ -8109,8 +8120,8 @@ async function loadOutcomePredictorPanel() {
 
 document.getElementById('witness-network-refresh')?.addEventListener('click', loadWitnessNetworkPanel);
 document.getElementById('outcome-predictor-refresh')?.addEventListener('click', loadOutcomePredictorPanel);
-setTimeout(loadWitnessNetworkPanel, 27500);
-setTimeout(loadOutcomePredictorPanel, 29000);
+queueLegacyAdminLoader(loadWitnessNetworkPanel, 27500);
+queueLegacyAdminLoader(loadOutcomePredictorPanel, 29000);
 
 // ── Admin: Witness Reliability Trends ────────────────────────────────────────
 async function loadReliabilityTrendsPanel() {
@@ -8218,8 +8229,8 @@ async function loadEvidenceQualityPanel() {
 
 document.getElementById('reliability-trends-refresh')?.addEventListener('click', loadReliabilityTrendsPanel);
 document.getElementById('evidence-quality-refresh')?.addEventListener('click', loadEvidenceQualityPanel);
-setTimeout(loadReliabilityTrendsPanel, 30500);
-setTimeout(loadEvidenceQualityPanel, 32000);
+queueLegacyAdminLoader(loadReliabilityTrendsPanel, 30500);
+queueLegacyAdminLoader(loadEvidenceQualityPanel, 32000);
 
 // ── Settlement Analytics Panel ────────────────────────────────────────────────
 async function loadSettlementAnalyticsPanel() {
@@ -8329,8 +8340,8 @@ async function loadDepositionQualityPanel() {
 
 document.getElementById('settlement-analytics-refresh')?.addEventListener('click', loadSettlementAnalyticsPanel);
 document.getElementById('deposition-quality-refresh')?.addEventListener('click', loadDepositionQualityPanel);
-setTimeout(loadSettlementAnalyticsPanel, 34000);
-setTimeout(loadDepositionQualityPanel, 36000);
+queueLegacyAdminLoader(loadSettlementAnalyticsPanel, 34000);
+queueLegacyAdminLoader(loadDepositionQualityPanel, 36000);
 
 async function loadAppealTrendsPanel() {
     const el = document.getElementById('appeal-trends-content');
@@ -8431,8 +8442,8 @@ async function loadComplexityOverviewPanel() {
 
 document.getElementById('appeal-trends-refresh')?.addEventListener('click', loadAppealTrendsPanel);
 document.getElementById('complexity-overview-refresh')?.addEventListener('click', loadComplexityOverviewPanel);
-setTimeout(loadAppealTrendsPanel, 38000);
-setTimeout(loadComplexityOverviewPanel, 40000);
+queueLegacyAdminLoader(loadAppealTrendsPanel, 38000);
+queueLegacyAdminLoader(loadComplexityOverviewPanel, 40000);
 
 async function loadRecantationMonitorPanel() {
     const el = document.getElementById('recantation-monitor-content');
@@ -8494,8 +8505,8 @@ async function loadCrossExamAnalyticsPanel() {
 
 document.getElementById('recantation-monitor-refresh')?.addEventListener('click', loadRecantationMonitorPanel);
 document.getElementById('cross-exam-analytics-refresh')?.addEventListener('click', loadCrossExamAnalyticsPanel);
-setTimeout(loadRecantationMonitorPanel, 42000);
-setTimeout(loadCrossExamAnalyticsPanel, 44000);
+queueLegacyAdminLoader(loadRecantationMonitorPanel, 42000);
+queueLegacyAdminLoader(loadCrossExamAnalyticsPanel, 44000);
 
 // ── Attorney Performance Panel ──
 async function loadAttorneyPerformancePanel() {
@@ -8526,7 +8537,7 @@ async function loadAttorneyPerformancePanel() {
 }
 loadAttorneyPerformancePanel();
 document.getElementById('attorney-performance-refresh')?.addEventListener('click', loadAttorneyPerformancePanel);
-setTimeout(loadAttorneyPerformancePanel, 46000);
+queueLegacyAdminLoader(loadAttorneyPerformancePanel, 46000);
 
 // ── Witness Pool Analytics Panel ──
 async function loadWitnessPoolAnalyticsPanel() {
@@ -8563,7 +8574,7 @@ async function loadWitnessPoolAnalyticsPanel() {
 }
 loadWitnessPoolAnalyticsPanel();
 document.getElementById('witness-pool-analytics-refresh')?.addEventListener('click', loadWitnessPoolAnalyticsPanel);
-setTimeout(loadWitnessPoolAnalyticsPanel, 48000);
+queueLegacyAdminLoader(loadWitnessPoolAnalyticsPanel, 48000);
 
 // ── Jury Analytics Panel ──
 async function loadJuryAnalyticsPanel() {
@@ -8594,7 +8605,7 @@ async function loadJuryAnalyticsPanel() {
 }
 loadJuryAnalyticsPanel();
 document.getElementById('jury-analytics-refresh')?.addEventListener('click', loadJuryAnalyticsPanel);
-setTimeout(loadJuryAnalyticsPanel, 50000);
+queueLegacyAdminLoader(loadJuryAnalyticsPanel, 50000);
 
 // ── Evidence Completeness Panel ──
 async function loadEvidenceCompletenessPanel() {
@@ -8630,7 +8641,7 @@ async function loadEvidenceCompletenessPanel() {
 }
 loadEvidenceCompletenessPanel();
 document.getElementById('evidence-completeness-refresh')?.addEventListener('click', loadEvidenceCompletenessPanel);
-setTimeout(loadEvidenceCompletenessPanel, 52000);
+queueLegacyAdminLoader(loadEvidenceCompletenessPanel, 52000);
 
 // ── Coaching Detection Analytics Panel ──
 async function loadCoachingAnalyticsPanel() {
@@ -8661,7 +8672,7 @@ async function loadCoachingAnalyticsPanel() {
 }
 loadCoachingAnalyticsPanel();
 document.getElementById('coaching-analytics-refresh')?.addEventListener('click', loadCoachingAnalyticsPanel);
-setTimeout(loadCoachingAnalyticsPanel, 54000);
+queueLegacyAdminLoader(loadCoachingAnalyticsPanel, 54000);
 
 // ── Settlement Accuracy Tracker Panel ──
 async function loadSettlementAccuracyPanel() {
@@ -8692,7 +8703,7 @@ async function loadSettlementAccuracyPanel() {
 }
 loadSettlementAccuracyPanel();
 document.getElementById('settlement-accuracy-refresh')?.addEventListener('click', loadSettlementAccuracyPanel);
-setTimeout(loadSettlementAccuracyPanel, 56000);
+queueLegacyAdminLoader(loadSettlementAccuracyPanel, 56000);
 
 // ── Testimony Volume Analytics Panel ──
 async function loadTestimonyVolumePanel() {
@@ -8728,7 +8739,7 @@ async function loadTestimonyVolumePanel() {
 }
 loadTestimonyVolumePanel();
 document.getElementById('testimony-volume-refresh')?.addEventListener('click', loadTestimonyVolumePanel);
-setTimeout(loadTestimonyVolumePanel, 58000);
+queueLegacyAdminLoader(loadTestimonyVolumePanel, 58000);
 
 // ── Witness Credibility Trends Panel ──
 async function loadCredibilityTrendsPanel() {
@@ -8773,7 +8784,7 @@ async function loadCredibilityTrendsPanel() {
 }
 loadCredibilityTrendsPanel();
 document.getElementById('credibility-trends-refresh')?.addEventListener('click', loadCredibilityTrendsPanel);
-setTimeout(loadCredibilityTrendsPanel, 62000);
+queueLegacyAdminLoader(loadCredibilityTrendsPanel, 62000);
 
 // ── Deposition Risk Monitor Panel ──
 async function loadDepositionRiskMonitorPanel() {
@@ -8818,7 +8829,7 @@ async function loadDepositionRiskMonitorPanel() {
 }
 loadDepositionRiskMonitorPanel();
 document.getElementById('deposition-risk-monitor-refresh')?.addEventListener('click', loadDepositionRiskMonitorPanel);
-setTimeout(loadDepositionRiskMonitorPanel, 64000);
+queueLegacyAdminLoader(loadDepositionRiskMonitorPanel, 64000);
 
 // ─── Feature Usage Analytics Panel ───────────────────────────────────────────
 async function loadFeatureUsagePanel() {
@@ -8862,7 +8873,7 @@ async function loadFeatureUsagePanel() {
 }
 loadFeatureUsagePanel();
 document.getElementById('feature-usage-refresh')?.addEventListener('click', loadFeatureUsagePanel);
-setTimeout(loadFeatureUsagePanel, 65000);
+queueLegacyAdminLoader(loadFeatureUsagePanel, 65000);
 
 // ─── System Performance Dashboard Panel ──────────────────────────────────────
 async function loadSystemPerformancePanel() {
@@ -8912,7 +8923,7 @@ async function loadSystemPerformancePanel() {
 }
 loadSystemPerformancePanel();
 document.getElementById('system-performance-refresh')?.addEventListener('click', loadSystemPerformancePanel);
-setTimeout(loadSystemPerformancePanel, 66000);
+queueLegacyAdminLoader(loadSystemPerformancePanel, 66000);
 
 // ── Admin Case Outcome Tracker ───────────────────────────────────
 async function loadCaseOutcomeTrackerPanel() {
@@ -8958,7 +8969,7 @@ async function loadCaseOutcomeTrackerPanel() {
 }
 loadCaseOutcomeTrackerPanel();
 document.getElementById('case-outcome-tracker-refresh')?.addEventListener('click', loadCaseOutcomeTrackerPanel);
-setTimeout(loadCaseOutcomeTrackerPanel, 67000);
+queueLegacyAdminLoader(loadCaseOutcomeTrackerPanel, 67000);
 
 // ── Admin Gemini Cost Dashboard ──────────────────────────────────
 async function loadGeminiCostDashboardPanel() {
@@ -9007,7 +9018,7 @@ async function loadGeminiCostDashboardPanel() {
 }
 loadGeminiCostDashboardPanel();
 document.getElementById('gemini-cost-dashboard-refresh')?.addEventListener('click', loadGeminiCostDashboardPanel);
-setTimeout(loadGeminiCostDashboardPanel, 68000);
+queueLegacyAdminLoader(loadGeminiCostDashboardPanel, 68000);
 
 // ── Witness Demographics Dashboard ──────────────────────────────
 async function loadWitnessDemographicsPanel() {
@@ -9055,7 +9066,7 @@ async function loadWitnessDemographicsPanel() {
 }
 loadWitnessDemographicsPanel();
 document.getElementById('witness-demographics-refresh')?.addEventListener('click', loadWitnessDemographicsPanel);
-setTimeout(loadWitnessDemographicsPanel, 72000);
+queueLegacyAdminLoader(loadWitnessDemographicsPanel, 72000);
 
 // ── Analysis Quality Scorecard ──────────────────────────────────
 async function loadAnalysisQualityScorecardPanel() {
@@ -9106,7 +9117,7 @@ async function loadAnalysisQualityScorecardPanel() {
 }
 loadAnalysisQualityScorecardPanel();
 document.getElementById('analysis-quality-scorecard-refresh')?.addEventListener('click', loadAnalysisQualityScorecardPanel);
-setTimeout(loadAnalysisQualityScorecardPanel, 75000);
+queueLegacyAdminLoader(loadAnalysisQualityScorecardPanel, 75000);
 
 // ── Prompt Performance Panel ────────────────────────────────────
 async function loadPromptPerformancePanel() {
@@ -9148,7 +9159,7 @@ async function loadPromptPerformancePanel() {
 }
 loadPromptPerformancePanel();
 document.getElementById('prompt-performance-refresh')?.addEventListener('click', loadPromptPerformancePanel);
-setTimeout(loadPromptPerformancePanel, 80000);
+queueLegacyAdminLoader(loadPromptPerformancePanel, 80000);
 
 // ── Case Complexity Distribution Panel ──────────────────────────
 async function loadCaseComplexityDistPanel() {
@@ -9195,7 +9206,7 @@ async function loadCaseComplexityDistPanel() {
 }
 loadCaseComplexityDistPanel();
 document.getElementById('case-complexity-distribution-refresh')?.addEventListener('click', loadCaseComplexityDistPanel);
-setTimeout(loadCaseComplexityDistPanel, 85000);
+queueLegacyAdminLoader(loadCaseComplexityDistPanel, 85000);
 
 // ── Feature Adoption Dashboard Panel ────────────────────────────
 async function loadFeatureAdoptionPanel() {
@@ -9236,7 +9247,7 @@ async function loadFeatureAdoptionPanel() {
 }
 loadFeatureAdoptionPanel();
 document.getElementById('feature-adoption-refresh')?.addEventListener('click', loadFeatureAdoptionPanel);
-setTimeout(loadFeatureAdoptionPanel, 90000);
+queueLegacyAdminLoader(loadFeatureAdoptionPanel, 90000);
 
 // ── Error Rate Monitor Panel ────────────────────────────────────
 async function loadErrorRateMonitorPanel() {
@@ -9284,7 +9295,7 @@ async function loadErrorRateMonitorPanel() {
 }
 loadErrorRateMonitorPanel();
 document.getElementById('error-rate-monitor-refresh')?.addEventListener('click', loadErrorRateMonitorPanel);
-setTimeout(loadErrorRateMonitorPanel, 95000);
+queueLegacyAdminLoader(loadErrorRateMonitorPanel, 95000);
 
 // ── User Engagement Heatmap ───────────────────────────────────
 async function loadUserEngagementHeatmapPanel() {
@@ -9329,7 +9340,7 @@ async function loadUserEngagementHeatmapPanel() {
 }
 loadUserEngagementHeatmapPanel();
 document.getElementById('user-engagement-heatmap-refresh')?.addEventListener('click', loadUserEngagementHeatmapPanel);
-setTimeout(loadUserEngagementHeatmapPanel, 100000);
+queueLegacyAdminLoader(loadUserEngagementHeatmapPanel, 100000);
 
 // ── Case Resolution Metrics ───────────────────────────────────
 async function loadCaseResolutionMetricsPanel() {
@@ -9369,7 +9380,7 @@ async function loadCaseResolutionMetricsPanel() {
 }
 loadCaseResolutionMetricsPanel();
 document.getElementById('case-resolution-metrics-refresh')?.addEventListener('click', loadCaseResolutionMetricsPanel);
-setTimeout(loadCaseResolutionMetricsPanel, 105000);
+queueLegacyAdminLoader(loadCaseResolutionMetricsPanel, 105000);
 
 // ── AI Model Performance Panel ────────────────────────────────
 async function loadAiModelPerformancePanel() {
@@ -9408,7 +9419,7 @@ async function loadAiModelPerformancePanel() {
 }
 loadAiModelPerformancePanel();
 document.getElementById('ai-model-performance-refresh')?.addEventListener('click', loadAiModelPerformancePanel);
-setTimeout(loadAiModelPerformancePanel, 110000);
+queueLegacyAdminLoader(loadAiModelPerformancePanel, 110000);
 
 // ── Data Storage Analytics Panel ──────────────────────────────
 async function loadDataStorageAnalyticsPanel() {
@@ -9451,7 +9462,7 @@ async function loadDataStorageAnalyticsPanel() {
 }
 loadDataStorageAnalyticsPanel();
 document.getElementById('data-storage-analytics-refresh')?.addEventListener('click', loadDataStorageAnalyticsPanel);
-setTimeout(loadDataStorageAnalyticsPanel, 115000);
+queueLegacyAdminLoader(loadDataStorageAnalyticsPanel, 115000);
 
 // ── Client Satisfaction Tracker Panel ──────────────────────────
 async function loadClientSatisfactionTrackerPanel() {
@@ -9492,7 +9503,7 @@ async function loadClientSatisfactionTrackerPanel() {
 }
 loadClientSatisfactionTrackerPanel();
 document.getElementById('client-satisfaction-tracker-refresh')?.addEventListener('click', loadClientSatisfactionTrackerPanel);
-setTimeout(loadClientSatisfactionTrackerPanel, 120000);
+queueLegacyAdminLoader(loadClientSatisfactionTrackerPanel, 120000);
 
 // ── Compliance Monitor Panel ───────────────────────────────────
 async function loadComplianceMonitorPanel() {
@@ -9537,7 +9548,7 @@ async function loadComplianceMonitorPanel() {
 }
 loadComplianceMonitorPanel();
 document.getElementById('compliance-monitor-refresh')?.addEventListener('click', loadComplianceMonitorPanel);
-setTimeout(loadComplianceMonitorPanel, 125000);
+queueLegacyAdminLoader(loadComplianceMonitorPanel, 125000);
 
 // ============================================================
 // Feature Adoption Funnel
