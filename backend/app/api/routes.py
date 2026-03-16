@@ -717,6 +717,10 @@ async def _consume_oauth_state(state: Optional[str], provider: str) -> Optional[
 
 
 def _oauth_callback_redirect(request: Request, provider: str) -> str:
+    public_base_url = (settings.admin_public_base_url or "").strip().rstrip("/")
+    callback_path = str(request.url_for("oauth_provider_callback", provider=provider).path)
+    if public_base_url:
+        return f"{public_base_url}{callback_path}"
     return str(request.url_for("oauth_provider_callback", provider=provider))
 
 

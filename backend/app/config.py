@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     
     # Admin Configuration
     admin_password: str = "change_this_password_immediately"
+    admin_public_base_url: str = ""
     admin_google_client_id: str = ""
     admin_google_client_secret: str = ""
     admin_github_client_id: str = ""
