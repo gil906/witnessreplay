@@ -29,6 +29,21 @@ SCENE_FILLER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+SCENE_TRANSCRIPT_FILLERS = re.compile(
+    r"\b(?:um+|uh+|er+|ah+|mm+|hmm+|you know|kind of|sort of)\b",
+    re.IGNORECASE,
+)
+
+SCENE_TRANSCRIPT_LEAD_INS = re.compile(
+    r"^(?:so|and|well|like)\b[\s,.-]*",
+    re.IGNORECASE,
+)
+
+SCENE_DUPLICATE_WORDS = re.compile(
+    r"\b([a-z0-9']+)(?:\s+\1\b)+",
+    re.IGNORECASE,
+)
+
 
 class ImagenService:
     """Generates AI scene images using Google Imagen 4."""
@@ -63,6 +78,25 @@ class ImagenService:
     def _normalize_text(self, value: Any) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip()
 
+    def _compact_scene_fragment(self, value: Any, *, max_chars: int = 260) -> str:
+        text = self._normalize_text(value)
+        if not text:
+            return ""
+
+        text = SCENE_TRANSCRIPT_FILLERS.sub("", text)
+        text = SCENE_DUPLICATE_WORDS.sub(r"\1", text)
+        text = SCENE_TRANSCRIPT_LEAD_INS.sub("", text)
+        text = re.sub(r"\s([,.;:!?])", r"\1", text)
+        text = re.sub(r"([,.;:!?]){2,}", r"\1", text)
+        text = re.sub(r"\s+", " ", text).strip(" ,;-")
+
+        if len(text) > max_chars:
+            truncated = text[:max_chars].rsplit(" ", 1)[0].strip(" ,;-")
+            if truncated:
+                text = f"{truncated}..."
+
+        return text
+
     def _is_low_information_text(self, value: Any) -> bool:
         text = self._normalize_text(value)
         if not text:
@@ -83,7 +117,7 @@ class ImagenService:
         results: List[str] = []
         seen: set[str] = set()
         for raw in values:
-            text = self._normalize_text(raw)
+            text = self._compact_scene_fragment(raw)
             if not text:
                 continue
             normalized = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
@@ -114,7 +148,7 @@ class ImagenService:
         fragments: List[str] = []
         for element in self._normalize_elements(elements)[:limit]:
             parts = [self._normalize_text(element.get("type"))]
-            description = self._normalize_text(element.get("description"))
+            description = self._compact_scene_fragment(element.get("description"), max_chars=120)
             color = self._normalize_text(element.get("color"))
             position = element.get("position")
             size = self._normalize_text(element.get("size"))
@@ -201,7 +235,7 @@ class ImagenService:
         details_block = "\n".join(f"- {line}" for line in element_lines) if element_lines else "- No extra structured elements supplied."
         return (
             "Latest witness report reconstruction. "
-            "Generate a realistic, factual scene update using only the described details. "
+            "Generate a photorealistic, factual scene reconstruction using only the described details. "
             "Do not add generic intersections, placeholder storefronts, extra vehicles, or empty template scenery. "
             "If testimony is incomplete, keep unknown background areas neutral rather than inventing specifics.\n\n"
             f"Report details:\n{scene_description}\n\n"
@@ -221,7 +255,7 @@ class ImagenService:
             else "- Use only the corroborated witness details summarized above."
         )
         return (
-            "Comprehensive 3D reconstruction combining multiple witness accounts. "
+            "Create a photorealistic scene reconstruction combining multiple witness accounts. "
             "Preserve only the corroborated details and do not invent template roads, plazas, or buildings. "
             "If exact background context is missing, keep the unseen surroundings understated. "
             "Prioritize the corroborated people, vehicles, objects, positions, and lighting described by witnesses.\n\n"
@@ -315,8 +349,9 @@ class ImagenService:
         elements: Optional[List[Any]] = None,
         quality: str = "standard",
         prefix: str,
+        allow_pil_fallback: bool = True,
     ) -> Dict[str, Any]:
-        """Generate an AI scene image, then fall back to PIL only when detail is sufficient."""
+        """Generate an AI scene image and optionally fall back to PIL when detail is sufficient."""
         normalized_quality = self.normalize_quality(quality)
         normalized_elements = self._normalize_elements(elements or [])
 
@@ -357,6 +392,12 @@ class ImagenService:
                 "model_used": source or "ai_generated",
                 "status": "generated",
                 "reason": "generated",
+            })
+            return base_result
+
+        if not allow_pil_fallback:
+            base_result.update({
+                "reason": "ai_generation_failed",
             })
             return base_result
 
@@ -418,6 +459,7 @@ class ImagenService:
             elements=elements,
             quality=quality,
             prefix=f"report_{report_id}",
+            allow_pil_fallback=False,
         )
 
     async def generate_case_scene(
@@ -453,6 +495,7 @@ class ImagenService:
             elements=elements or [],
             quality=quality,
             prefix=f"case_{case_id}",
+            allow_pil_fallback=False,
         )
 
     async def regenerate_scene(
@@ -521,7 +564,7 @@ class ImagenService:
 
     def _build_scene_prompt(self, description: str) -> str:
         return (
-            "Create a detailed, realistic 3D reconstruction of a crime/accident scene from witness testimony. "
+            "Create a detailed, photorealistic eyewitness reconstruction of a crime/accident scene from witness testimony. "
             "Style: cinematic but factual, oblique camera angle (not top-down), natural lighting, high detail. "
             "Do NOT use template-like intersection diagrams, map symbols, color dots, labels, UI overlays, or legends. "
             "Do NOT invent generic roads, parking lots, storefronts, or extra vehicles that were not described. "

@@ -110,6 +110,8 @@ VOICE_QUICK_PHRASES = [
     "Repeat that slowly.",
 ]
 
+DISALLOWED_SCENE_MODELS = {"pil_fallback"}
+
 
 def _guard_limit(limit: int) -> int:
     """Clamp list limits to a safe range."""
@@ -137,13 +139,54 @@ def _statement_scene_fragments(session: ReconstructionSession, limit: Optional[i
     return fragments[:limit]
 
 
-async def _resolve_generated_image_path(entity_type: str, entity_id: str) -> Optional[str]:
+def _is_disallowed_scene_model(model_used: Any) -> bool:
+    return str(model_used or "").strip().lower() in DISALLOWED_SCENE_MODELS
+
+
+def _is_empty_session_noise(session: ReconstructionSession) -> bool:
+    if getattr(session, "case_id", None):
+        return False
+
+    if getattr(session, "witness_statements", None):
+        return False
+
+    if getattr(session, "scene_versions", None):
+        return False
+
+    if getattr(session, "current_scene_elements", None):
+        return False
+
+    if getattr(session, "evidence_tags", None):
+        return False
+
+    if getattr(session, "witness_sketches", None):
+        return False
+
+    return True
+
+
+async def _resolve_generated_image_record(
+    entity_type: str,
+    entity_id: str,
+) -> Tuple[Optional[str], Optional[str], set[str]]:
     image_rows = await firestore_service.list_images_for_entity(entity_type, entity_id)
+    disallowed_paths: set[str] = set()
+    selected_path: Optional[str] = None
+    selected_model: Optional[str] = None
+
     for row in image_rows:
         path = str(row.get("image_path", "") or "").strip()
-        if path:
-            return path
-    return None
+        if not path:
+            continue
+        model_used = str(row.get("model_used", "") or "").strip().lower()
+        if model_used in DISALLOWED_SCENE_MODELS:
+            disallowed_paths.add(path)
+            continue
+        if selected_path is None:
+            selected_path = path
+            selected_model = model_used or None
+
+    return selected_path, selected_model, disallowed_paths
 
 
 async def _resolve_report_image_candidate(
@@ -151,16 +194,12 @@ async def _resolve_report_image_candidate(
     session_metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     metadata = session_metadata if session_metadata is not None else dict(getattr(session, "metadata", {}) or {})
+    generated_path, _, disallowed_paths = await _resolve_generated_image_record("report", session.id)
+
     image_url = str(metadata.get("report_scene_image_url", "") or "").strip()
-    if image_url:
+    if image_url and not _is_disallowed_scene_model(metadata.get("report_scene_model")) and image_url not in disallowed_paths:
         return image_url, "metadata"
 
-    latest_scene = (getattr(session, "scene_versions", None) or [])[-1] if (getattr(session, "scene_versions", None) or []) else None
-    latest_image = str(getattr(latest_scene, "image_url", "") or "").strip() if latest_scene else ""
-    if latest_image:
-        return latest_image, "scene_version"
-
-    generated_path = await _resolve_generated_image_path("report", session.id)
     if generated_path:
         return generated_path, "generated_report"
 
@@ -176,11 +215,13 @@ async def _resolve_report_image_url(
 
 
 async def _resolve_case_image_candidate(case: Case) -> Tuple[Optional[str], Optional[str]]:
+    case_metadata = dict(getattr(case, "metadata", {}) or {})
+    generated_path, _, disallowed_paths = await _resolve_generated_image_record("case", case.id)
+
     image_url = str(getattr(case, "scene_image_url", "") or "").strip()
-    if image_url:
+    if image_url and not _is_disallowed_scene_model(case_metadata.get("case_scene_model")) and image_url not in disallowed_paths:
         return image_url, "case"
 
-    generated_path = await _resolve_generated_image_path("case", case.id)
     if generated_path:
         return generated_path, "generated_case"
 
@@ -1410,9 +1451,12 @@ async def get_scene_template(template_id: str):
 async def list_sessions(limit: int = 50):
     """List all reconstruction sessions."""
     try:
-        sessions = await firestore_service.list_sessions(limit=limit)
+        scan_limit = 0 if limit == 0 else max(_guard_limit(limit) * 4, 200)
+        sessions = await firestore_service.list_sessions(limit=scan_limit)
         sessions_list = []
         for session in sessions:
+            if _is_empty_session_noise(session):
+                continue
             session_metadata = dict(getattr(session, 'metadata', {}) or {})
             report_image_url = await _resolve_report_image_url(session, session_metadata)
             if report_image_url and not session_metadata.get("report_scene_image_url"):
@@ -1437,6 +1481,8 @@ async def list_sessions(limit: int = 50):
                 metadata=session_metadata
             )
             )
+            if limit > 0 and len(sessions_list) >= limit:
+                break
         # Return object with sessions key for admin portal
         return {"sessions": sessions_list}
     except Exception as e:
@@ -1467,6 +1513,7 @@ async def list_orphan_reports(limit: int = 50):
                 "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             }
             for session in orphan_sessions
+            if not _is_empty_session_noise(session)
         ]
 
         return {
@@ -4025,6 +4072,19 @@ async def close_session_on_client_exit(session_id: str, reason: str = "tab_close
         # Re-read before persisting so we don't clobber a concurrent case assignment
         # or other report updates that landed immediately before unload.
         latest_session = await firestore_service.get_session(session_id) or session
+
+        if _is_empty_session_noise(latest_session):
+            await firestore_service.delete_session(session_id)
+            await storage_service.delete_session_files(session_id)
+            remove_agent(session_id)
+            return {
+                "closed": True,
+                "deleted_empty_session": True,
+                "session_id": session_id,
+                "status": "deleted",
+                "case_id": None,
+            }
+
         metadata = dict(latest_session.metadata or {})
         metadata.update(close_metadata)
         latest_session.metadata = metadata
