@@ -164,6 +164,95 @@ class SceneReconstructionAgent:
         normalized = re.sub(r"^just\s+", "", normalized)
         return normalized.strip()
 
+    def _extract_report_intent_topic(self, statement: str) -> Optional[str]:
+        """Return a friendly incident label for short report-intent openings."""
+        normalized = self._normalize_text(statement)
+        if not normalized:
+            return None
+
+        report_intent_markers = (
+            r"\bi (?:want|would like|need|am here) to report\b",
+            r"\bcan you (?:collect|take|file|make)? ?(?:the |a )?report\b",
+            r"\bcould you (?:collect|take|file|make)? ?(?:the |a )?report\b",
+            r"\bwould you (?:collect|take|file|make)? ?(?:the |a )?report\b",
+            r"\bplease (?:collect|take|file|make)? ?(?:the |a )?report\b",
+            r"\b(?:collect|take|file|make) (?:the |a )?report\b",
+        )
+        if not any(re.search(pattern, normalized) for pattern in report_intent_markers):
+            return None
+
+        topic_patterns = (
+            ("hit-and-run", (r"\bhit and run\b",)),
+            ("car crash", (r"\bcar crash\b", r"\bcar accident\b", r"\btraffic accident\b", r"\bvehicle accident\b", r"\bcollision\b", r"\bfender bender\b")),
+            ("robbery", (r"\brobbery\b", r"\brobbed\b", r"\bmugging\b", r"\bhold up\b", r"\bstick up\b")),
+            ("assault", (r"\bassault\b", r"\battack\b", r"\bfight\b", r"\bbeating\b")),
+            ("theft", (r"\btheft\b", r"\bstole\b", r"\bstolen\b", r"\bstealing\b", r"\bburglary\b", r"\bbreak in\b")),
+            ("vandalism", (r"\bvandalism\b", r"\bgraffiti\b", r"\bproperty damage\b", r"\bdamage\b")),
+            ("suspicious activity", (r"\bsuspicious activity\b", r"\bsuspicious person\b", r"\bsuspicious vehicle\b")),
+            ("domestic incident", (r"\bdomestic incident\b", r"\bdomestic dispute\b", r"\bfamily dispute\b")),
+            ("crime", (r"\bcrime\b",)),
+            ("incident", (r"\bincident\b",)),
+        )
+        for label, patterns in topic_patterns:
+            if any(re.search(pattern, normalized) for pattern in patterns):
+                return label
+
+        if "crash" in normalized and ("car" in normalized or "vehicle" in normalized or "traffic" in normalized):
+            return "car crash"
+        if "accident" in normalized and ("car" in normalized or "vehicle" in normalized or "traffic" in normalized):
+            return "car crash"
+        return None
+
+    def _is_topic_only_report_intent(self, statement: str) -> bool:
+        """Detect early turns that only name the incident type instead of describing events."""
+        normalized = self._normalize_text(statement)
+        topic = self._extract_report_intent_topic(statement)
+        if not normalized or not topic:
+            return False
+
+        topic_only_patterns = (
+            r"^(?:i (?:want|would like|need|am here) to report|can you (?:collect|take|file|make)? ?(?:the |a )?report|could you (?:collect|take|file|make)? ?(?:the |a )?report|would you (?:collect|take|file|make)? ?(?:the |a )?report|please (?:collect|take|file|make)? ?(?:the |a )?report|(?:collect|take|file|make) (?:the |a )?report)(?: (?:against|about|for|of|on))? (?:a |an |the )?[a-z0-9\s-]+$",
+            r"^i want to report (?:a |an |the )?[a-z0-9\s-]+$",
+        )
+        if not any(re.search(pattern, normalized) for pattern in topic_only_patterns):
+            return False
+
+        detail_markers = (
+            "because",
+            "after",
+            "before",
+            "when",
+            "where",
+            "around",
+            "near",
+            "at ",
+            "on ",
+            "today",
+            "yesterday",
+            "tonight",
+            "this morning",
+            "this afternoon",
+            "this evening",
+            "there was",
+            "there were",
+            "it happened",
+            "i saw",
+            "i heard",
+            "someone",
+            "somebody",
+        )
+        return not any(marker in normalized for marker in detail_markers)
+
+    def _build_report_intent_follow_up(self, statement: str) -> Optional[str]:
+        """Create a contextual first question for topic-only report-intent openings."""
+        if not self._is_topic_only_report_intent(statement):
+            return None
+
+        topic = self._extract_report_intent_topic(statement)
+        if not topic:
+            return None
+        return f"Sure, tell me more details about that {topic}."
+
     def _dedupe_response_sentences(self, response: str) -> str:
         """Remove repeated sentences/questions from a single assistant turn."""
         base_response = (response or "").strip()
@@ -305,6 +394,7 @@ class SceneReconstructionAgent:
         normalized = self._normalize_text(response)
         generic_restart_markers = (
             "tell me what happened in your own words",
+            "tell me what happened",
             "please tell me what happened",
             "go ahead and tell me what happened",
             "can you tell me what happened",
@@ -312,6 +402,7 @@ class SceneReconstructionAgent:
         )
         intro_markers = (
             "im detective ray",
+            "i m detective ray",
             "i am detective ray",
             "thank you for coming in",
             "here to take your report",
@@ -338,6 +429,8 @@ class SceneReconstructionAgent:
         """Ignore trivial turns so required-timeline prompts do not fire too early."""
         normalized = self._normalize_text(statement)
         if not normalized:
+            return False
+        if self._is_topic_only_report_intent(statement):
             return False
 
         tokens = normalized.split()
@@ -474,6 +567,10 @@ class SceneReconstructionAgent:
 
     def _build_repaired_interview_response(self, statement: str) -> str:
         """Replace reset-like replies with a contextual follow-up."""
+        report_intent_follow_up = self._build_report_intent_follow_up(statement)
+        if report_intent_follow_up:
+            return report_intent_follow_up
+
         normalized = self._normalize_text(statement)
         tokens = set(normalized.split())
         if "report" in tokens and ({"crime", "incident", "accident"} & tokens):
@@ -492,6 +589,10 @@ class SceneReconstructionAgent:
 
     def _build_follow_up_question(self, statement: str) -> str:
         """Fallback question when the model fails to continue the interview."""
+        report_intent_follow_up = self._build_report_intent_follow_up(statement)
+        if report_intent_follow_up:
+            return report_intent_follow_up
+
         normalized = self._normalize_text(statement)
         tokens = set(normalized.split())
 

@@ -28,7 +28,32 @@ def test_first_turn_restart_like_response_is_repaired(agent):
 
     normalized = agent._normalize_text(repaired)
     assert "detective rav" not in normalized
-    assert normalized.count("tell me what happened") == 1
+    assert "crime" in normalized
+    assert "tell me more details" in normalized
+
+
+def test_car_crash_report_intent_gets_contextual_opening_follow_up(agent):
+    repaired = agent._ensure_follow_up_response(
+        "I want to report a car crash.",
+        "Please tell me what happened.",
+    )
+
+    normalized = agent._normalize_text(repaired)
+    assert "car crash" in normalized
+    assert "tell me more details" in normalized
+    assert "what day did this happen" not in normalized
+
+
+def test_collect_report_car_crash_intro_is_repaired_contextually(agent):
+    repaired = agent._ensure_follow_up_response(
+        "Can you collect the report against the car crash?",
+        "I'm Detective Ray. Please tell me what happened.",
+    )
+
+    normalized = agent._normalize_text(repaired)
+    assert "detective ray" not in normalized
+    assert "car crash" in normalized
+    assert "tell me more details" in normalized
 
 
 def test_missing_time_follow_up_is_enforced(agent):
@@ -38,7 +63,8 @@ def test_missing_time_follow_up_is_enforced(agent):
     )
 
     normalized = agent._normalize_text(repaired)
-    assert "about what time did this happen" in normalized
+    assert "what day did this happen" in normalized
+    assert "about what time" in normalized
     assert "describe the person" not in normalized
 
 
