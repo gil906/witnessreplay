@@ -853,6 +853,7 @@ img {
 /* Chat transcript — Modern messaging style */
 .chat-transcript {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: var(--spacing-lg) var(--spacing-xl);
     padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
@@ -4505,15 +4506,18 @@ body.compact-chat .msg-time {
     .main-content {
         grid-template-columns: 1fr;
         grid-template-rows: 1fr;
-        height: calc(100vh - 44px - var(--spacing-sm) * 2);
-        height: calc(100dvh - 44px - var(--spacing-sm) * 2);
+        flex: 1;
+        min-height: 0;
+        height: auto;
+        overflow: hidden;
     }
 
     /* Chat panel first, scene below - but on mobile we want chat to fill screen */
     .chat-panel {
         order: -1;
         min-height: 0;
-        height: 100%;
+        flex: 1;
+        height: auto;
         max-height: none;
         width: 100%;
         display: flex;
@@ -4564,6 +4568,9 @@ body.compact-chat .msg-time {
     .voice-dock {
         display: flex;
         order: 10;
+        position: relative;
+        bottom: auto;
+        z-index: 3;
     }
 
     .controls,
@@ -4643,6 +4650,8 @@ body.compact-chat .msg-time {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
+        padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom, 0px));
+        scroll-padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
     }
     
     /* Reduce height of other elements to maximize chat space */
@@ -4763,8 +4772,9 @@ body.compact-chat .msg-time {
 
     .main-content {
         gap: var(--spacing-xs);
-        height: calc(100vh - 44px - var(--spacing-xs) * 2);
-        height: calc(100dvh - 44px - var(--spacing-xs) * 2);
+        flex: 1;
+        min-height: 0;
+        height: auto;
     }
 
     /* Hide reporting steps and interview progress on small phones to save space */
@@ -4782,7 +4792,8 @@ body.compact-chat .msg-time {
 
     .chat-transcript {
         padding: var(--spacing-sm);
-        padding-bottom: calc(var(--spacing-sm) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom, 0px));
+        scroll-padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
     }
 
     .chat-message {
@@ -10669,8 +10680,10 @@ img.loaded,
 
     /* Fix main content height for slimmer header */
     .main-content {
-        height: calc(100vh - 44px - var(--spacing-md) * 2) !important;
-        height: calc(100dvh - 44px - var(--spacing-md) * 2) !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: hidden !important;
     }
 }
 

@@ -724,6 +724,7 @@ class WitnessReplayApp {
         this.rayListeningCue = document.getElementById('ray-listening-cue');
         this.mobileVoiceCoachmark = document.getElementById('mobile-voice-coachmark');
         this.mobileVoiceCoachmarkDismiss = document.getElementById('mobile-voice-coachmark-dismiss');
+        this._initChatLayoutObserver();
         
         // Stats elements
         this.versionCountEl = document.getElementById('version-count');
@@ -841,12 +842,17 @@ class WitnessReplayApp {
     initializeMobileVoiceUX() {
         const isMobileQuery = window.matchMedia('(max-width: 768px)');
         this.isMobileVoiceUI = isMobileQuery.matches;
+        if (this.isMobileVoiceUI) {
+            this._scheduleChatBottomSync();
+        }
         isMobileQuery.addEventListener('change', (e) => {
             this.isMobileVoiceUI = e.matches;
             if (!e.matches) {
                 this.closeMobileVoiceHelp();
                 this.voiceDock?.classList.remove('voice-dock-more-open');
                 this.dockMorePanel?.classList.add('hidden');
+            } else {
+                this._scheduleChatBottomSync();
             }
             this._updateMobileEmptyStateCopy();
             this._initSimplifiedControlMenus();
@@ -2278,6 +2284,34 @@ class WitnessReplayApp {
             childList: true,
             subtree: true,
             characterData: true,
+        });
+    }
+
+    _initChatLayoutObserver() {
+        if (typeof ResizeObserver === 'undefined') return;
+        this._chatLayoutObserver?.disconnect?.();
+        const observedElements = [
+            this.voiceDock,
+            this.tapInterruptAffordance,
+            document.getElementById('text-input-bar'),
+        ].filter(Boolean);
+        if (!observedElements.length) return;
+
+        this._chatLayoutObserver = new ResizeObserver(() => {
+            if (!this.isMobileVoiceUI || !this.autoScrollEnabled) return;
+            this._scheduleChatBottomSync();
+        });
+        observedElements.forEach((element) => this._chatLayoutObserver.observe(element));
+    }
+
+    _scheduleChatBottomSync() {
+        if (!this.chatTranscript || !this.autoScrollEnabled) return;
+        if (this._chatBottomSyncFrame) {
+            cancelAnimationFrame(this._chatBottomSyncFrame);
+        }
+        this._chatBottomSyncFrame = requestAnimationFrame(() => {
+            this._scrollChatToBottom('auto', true);
+            this._chatBottomSyncFrame = null;
         });
     }
 
