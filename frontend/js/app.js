@@ -102,6 +102,9 @@ class WitnessReplayApp {
         this._wsSessionId = null;
         this._reconnectCountdown = null;
         this._pendingStreamedSpeech = new Map();
+        this._chatScrollFrame = null;
+        this._chatScrollTimeout = null;
+        this._chatMutationObserver = null;
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -677,6 +680,7 @@ class WitnessReplayApp {
         this.sceneDisplay = document.getElementById('scene-display');
         this.sceneDescription = document.getElementById('scene-description');
         this.chatTranscript = document.getElementById('chat-transcript');
+        this._initChatAutoScrollObserver();
         this.timeline = document.getElementById('timeline');
         this.mainWorkspace = document.getElementById('main-workspace');
         this.sessionIdEl = document.getElementById('session-id');
@@ -2257,14 +2261,64 @@ class WitnessReplayApp {
         this.setAutoScroll(!this.autoScrollEnabled);
     }
 
+    _initChatAutoScrollObserver() {
+        if (!this.chatTranscript || typeof MutationObserver === 'undefined') return;
+        this._chatMutationObserver?.disconnect?.();
+        this._chatMutationObserver = new MutationObserver((mutations) => {
+            if (!this.autoScrollEnabled) return;
+            const hasRelevantMutation = mutations.some((mutation) => {
+                if (mutation.type === 'characterData') return true;
+                if (mutation.type !== 'childList') return false;
+                return mutation.addedNodes.length > 0;
+            });
+            if (!hasRelevantMutation) return;
+            this._scrollChatToBottom('auto');
+        });
+        this._chatMutationObserver.observe(this.chatTranscript, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+        });
+    }
+
     _scrollChatToBottom(behavior = 'smooth', force = false) {
         if (!this.chatTranscript || (!force && !this.autoScrollEnabled)) return;
         const target = this.chatTranscript;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                target.scrollTo({ top: target.scrollHeight, behavior });
+        const scrollToLatest = (scrollBehavior = 'auto') => {
+            const lastItem = target.lastElementChild;
+            if (lastItem?.scrollIntoView) {
+                try {
+                    lastItem.scrollIntoView({ block: 'end', inline: 'nearest', behavior: scrollBehavior });
+                } catch (_) {}
+            }
+            try {
+                target.scrollTo({ top: target.scrollHeight, behavior: scrollBehavior });
+            } catch (_) {
+                target.scrollTop = target.scrollHeight;
+            }
+        };
+
+        if (this._chatScrollFrame) {
+            cancelAnimationFrame(this._chatScrollFrame);
+            this._chatScrollFrame = null;
+        }
+        if (this._chatScrollTimeout) {
+            clearTimeout(this._chatScrollTimeout);
+            this._chatScrollTimeout = null;
+        }
+
+        this._chatScrollFrame = requestAnimationFrame(() => {
+            scrollToLatest(behavior);
+            this._chatScrollFrame = requestAnimationFrame(() => {
+                scrollToLatest('auto');
+                this._chatScrollFrame = null;
             });
         });
+
+        this._chatScrollTimeout = window.setTimeout(() => {
+            scrollToLatest('auto');
+            this._chatScrollTimeout = null;
+        }, behavior === 'smooth' ? 180 : 80);
     }
 
     setCompactMode(enabled, save = true) {
@@ -3531,6 +3585,7 @@ class WitnessReplayApp {
             
             // Update interview progress
             this.updateInterviewProgress();
+            this._scrollChatToBottom('smooth', true);
         }
     }
     
@@ -4175,7 +4230,6 @@ class WitnessReplayApp {
             this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
-        this._scrollChatToBottom('smooth', true);
         
         // Add timestamp & update phase progress
         this._addMessageTimestamp?.(messageDiv);
@@ -4192,6 +4246,7 @@ class WitnessReplayApp {
         // Update interview progress phases
         this.updateInterviewProgress();
         this._updateInterviewStatsBadge();
+        this._scrollChatToBottom('smooth', true);
     }
     
     /**
@@ -4271,7 +4326,6 @@ class WitnessReplayApp {
             this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
-        this._scrollChatToBottom('smooth', true);
         
         // Track statement count for user messages
         if (speaker === 'user') {
@@ -4283,6 +4337,7 @@ class WitnessReplayApp {
         // Update interview progress phases
         this.updateInterviewProgress();
         this._updateInterviewStatsBadge();
+        this._scrollChatToBottom('smooth', true);
     }
     
     _escapeHtml(text) {

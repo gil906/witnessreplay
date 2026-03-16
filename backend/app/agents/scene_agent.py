@@ -57,6 +57,7 @@ class SceneReconstructionAgent:
         self._current_prompt_level: str = "full"  # Track current prompt compression level
         self._pending_timeline_clarification: Optional[Dict[str, Any]] = None  # Timeline disambiguation
         self._timeline_events: List[Dict[str, Any]] = []  # Events for timeline building
+        self._pending_completion_after_required_detail: bool = False
         self.last_response_kind: str = "interview"
         self._initialize_model()
     
@@ -256,6 +257,155 @@ class SceneReconstructionAgent:
             return True
         return len(normalized.split()) <= 24
 
+    def _collect_user_text(self, current_statement: str = "") -> str:
+        """Combine user statements so required-detail heuristics can inspect the interview so far."""
+        parts = [
+            (message.get("content") or "").strip()
+            for message in self.conversation_history
+            if message.get("role") == "user" and (message.get("content") or "").strip()
+        ]
+        if current_statement and current_statement.strip():
+            parts.append(current_statement.strip())
+        return re.sub(r"\s+", " ", " ".join(parts)).strip()
+
+    def _statement_is_substantive(self, statement: str) -> bool:
+        """Ignore trivial turns so required-timeline prompts do not fire too early."""
+        normalized = self._normalize_text(statement)
+        if not normalized:
+            return False
+
+        tokens = normalized.split()
+        token_set = set(tokens)
+        if len(tokens) < 3:
+            return False
+        if token_set <= {"yes", "yeah", "yep", "no", "nope", "nah", "ok", "okay", "maybe"}:
+            return False
+        if "report" in token_set and ({"crime", "incident", "accident"} & token_set) and len(tokens) <= 7:
+            return False
+
+        event_words = {
+            "happened", "happen", "saw", "seen", "heard", "noticed", "hit", "crash",
+            "crashed", "stole", "stolen", "grabbed", "ran", "running", "drove", "driving",
+            "walked", "walking", "came", "approached", "started", "yelled", "said", "told",
+        }
+        return bool(token_set & event_words) or len(tokens) >= 6
+
+    @staticmethod
+    def _incident_day_status(text: str) -> str:
+        """Return whether the interview already contains a usable incident day/date."""
+        lowered = (text or "").lower()
+        if not lowered:
+            return "missing"
+
+        unknown_patterns = (
+            r"\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\b[^.?!]{0,40}\b(?:day|date)\b",
+            r"\b(?:day|date)\b[^.?!]{0,40}\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\b",
+            r"\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\s+when\s+(?:it|this|that)\s+happened\b",
+        )
+        if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in unknown_patterns):
+            return "unknown"
+
+        known_patterns = (
+            r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            r"\b(?:today|yesterday|tonight|last night|this morning|this afternoon|this evening|earlier today|yesterday morning|yesterday afternoon|yesterday evening|last week)\b",
+            r"\b(?:a couple of days ago|a couple days ago|a few days ago|a few days back|the other day|earlier this week|sometime last week|last weekend|recently)\b",
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?\b",
+            r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})\b",
+            r"\b\d{4}-\d{2}-\d{2}\b",
+        )
+        if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in known_patterns):
+            return "known"
+        return "missing"
+
+    @staticmethod
+    def _incident_time_status(text: str) -> str:
+        """Return whether the interview already contains a usable incident time."""
+        lowered = (text or "").lower()
+        if not lowered:
+            return "missing"
+
+        unknown_patterns = (
+            r"\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\b[^.?!]{0,40}\b(?:time|hour)\b",
+            r"\b(?:time|hour)\b[^.?!]{0,40}\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\b",
+            r"\b(?:don'?t know|do not know|not sure|can'?t remember|cannot remember|no idea|unsure)\s+when\s+(?:it|this|that)\s+happened\b",
+        )
+        if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in unknown_patterns):
+            return "unknown"
+
+        known_patterns = (
+            r"\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?\b",
+            r"\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?|o'?clock)\b",
+            r"\b(?:morning|afternoon|evening|night|midnight|noon|sunrise|sunset|dawn|dusk)\b",
+            r"\b(?:last night|this morning|this afternoon|this evening|tonight|yesterday morning|yesterday afternoon|yesterday evening)\b",
+        )
+        if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in known_patterns):
+            return "known"
+        return "missing"
+
+    def _build_required_incident_timing_question(self, statement: str, *, closing: bool = False) -> Optional[str]:
+        """Ask for incident day/time whenever that critical detail is still missing."""
+        prior_user_turns = len([m for m in self.conversation_history if m.get("role") == "user"])
+        if not closing and not self._statement_is_substantive(statement) and prior_user_turns < 1:
+            return None
+
+        conversation_text = self._collect_user_text(statement)
+        if not conversation_text:
+            return None
+
+        day_status = self._incident_day_status(conversation_text)
+        time_status = self._incident_time_status(conversation_text)
+        if day_status != "missing" and time_status != "missing":
+            return None
+
+        prefix = "Before I finish the report, " if closing else "I want to make sure I capture the timeline accurately. "
+        if day_status == "missing" and time_status == "missing":
+            return f"{prefix}What day did this happen, and about what time was it?"
+        if day_status == "missing":
+            return f"{prefix}What day did this happen?"
+        return f"{prefix}About what time did this happen?"
+
+    def _response_asks_for_incident_timing(self, response: str) -> bool:
+        """Detect whether the model already asked for day/date/time details."""
+        normalized = self._normalize_text(response)
+        prompt_markers = (
+            "what day did this happen",
+            "what date did this happen",
+            "what day was this",
+            "what day was it",
+            "what date was it",
+            "what day and about what time",
+            "about what time did this happen",
+            "what time did this happen",
+            "what time did this start",
+            "what time was it",
+            "when did this happen",
+            "when did it happen",
+        )
+        return any(marker in normalized for marker in prompt_markers)
+
+    @staticmethod
+    def _replace_follow_up_question(response: str, replacement_question: str) -> str:
+        """Keep any short acknowledgment but replace unrelated question text."""
+        base_response = (response or "").strip()
+        if not base_response:
+            return replacement_question
+
+        prefix_parts = []
+        for sentence in re.split(r"(?<=[.!?])\s+", base_response):
+            cleaned = sentence.strip()
+            if not cleaned:
+                continue
+            if "?" in cleaned:
+                break
+            prefix_parts.append(cleaned)
+
+        prefix = " ".join(prefix_parts).strip()
+        if not prefix:
+            return replacement_question
+        if prefix.endswith((".", "!", "?")):
+            return f"{prefix} {replacement_question}"
+        return f"{prefix}. {replacement_question}"
+
     def _build_repaired_interview_response(self, statement: str) -> str:
         """Replace reset-like replies with a contextual follow-up."""
         normalized = self._normalize_text(statement)
@@ -302,11 +452,17 @@ class SceneReconstructionAgent:
         base_response = (response or "").strip()
         if not base_response:
             self.last_response_kind = "interview"
-            return self._build_follow_up_question(statement)
+            required_timing_question = self._build_required_incident_timing_question(statement)
+            return required_timing_question or self._build_follow_up_question(statement)
 
         if self._should_skip_follow_up_repair(base_response):
             self.last_response_kind = "error"
             return base_response
+
+        required_timing_question = self._build_required_incident_timing_question(statement)
+        if required_timing_question and not self._response_asks_for_incident_timing(base_response):
+            self.last_response_kind = "interview"
+            return self._replace_follow_up_question(base_response, required_timing_question)
 
         if self._response_restarts_interview(base_response):
             self.last_response_kind = "interview"
@@ -468,9 +624,37 @@ class SceneReconstructionAgent:
             self.last_response_kind = "error"
             return "I'm sorry, I'm having technical difficulties. Please try again later.", False, None
 
+        if self._pending_completion_after_required_detail:
+            agent_response = self._build_required_incident_timing_question(statement, closing=True)
+            if agent_response:
+                self.last_response_kind = "interview"
+            else:
+                agent_response = self._build_completion_response(report_number)
+                self.last_response_kind = "completion"
+                self._pending_completion_after_required_detail = False
+            self.conversation_history.append({
+                "role": "user",
+                "content": statement,
+                "timestamp": datetime.utcnow().isoformat(),
+                "detected_topics": [],
+            })
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": agent_response,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            return agent_response, False, None
+
         if self._witness_signaled_completion(statement):
-            agent_response = self._build_completion_response(report_number)
-            self.last_response_kind = "completion"
+            required_timing_question = self._build_required_incident_timing_question(statement, closing=True)
+            if required_timing_question:
+                agent_response = required_timing_question
+                self.last_response_kind = "interview"
+                self._pending_completion_after_required_detail = True
+            else:
+                agent_response = self._build_completion_response(report_number)
+                self.last_response_kind = "completion"
+                self._pending_completion_after_required_detail = False
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -700,9 +884,39 @@ class SceneReconstructionAgent:
             yield "I'm sorry, I'm having technical difficulties. Please try again later.", True, False, None
             return
 
+        if self._pending_completion_after_required_detail:
+            completion_response = self._build_required_incident_timing_question(statement, closing=True)
+            if completion_response:
+                self.last_response_kind = "interview"
+            else:
+                completion_response = self._build_completion_response(report_number)
+                self.last_response_kind = "completion"
+                self._pending_completion_after_required_detail = False
+            self.conversation_history.append({
+                "role": "user",
+                "content": statement,
+                "timestamp": datetime.utcnow().isoformat(),
+                "detected_topics": [],
+            })
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": completion_response,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+            yield completion_response, False, False, None
+            yield "", True, False, None
+            return
+
         if self._witness_signaled_completion(statement):
-            completion_response = self._build_completion_response(report_number)
-            self.last_response_kind = "completion"
+            required_timing_question = self._build_required_incident_timing_question(statement, closing=True)
+            if required_timing_question:
+                completion_response = required_timing_question
+                self.last_response_kind = "interview"
+                self._pending_completion_after_required_detail = True
+            else:
+                completion_response = self._build_completion_response(report_number)
+                self.last_response_kind = "completion"
+                self._pending_completion_after_required_detail = False
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -1462,6 +1676,7 @@ Items with confidence below 0.7 will be flagged for review."""
         self.active_witness_id = None
         self.last_response_kind = "interview"
         self.chat = None
+        self._pending_completion_after_required_detail = False
         # Reset branching state for this session
         interview_branching.reset_session(self.session_id)
         # Reset timeline disambiguation state
