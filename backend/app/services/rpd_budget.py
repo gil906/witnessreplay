@@ -16,7 +16,22 @@ from enum import Enum
 from collections import defaultdict
 import os
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
+
+
+def _persistent_state_dir() -> Path:
+    """Return a directory suitable for local budget state."""
+    configured_path = Path(settings.database_path).expanduser()
+    candidate = configured_path.resolve().parent
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except OSError:
+        fallback = Path("/tmp/witnessreplay_data")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 class BudgetAction(str, Enum):
@@ -138,8 +153,7 @@ class RPDBudgetAllocator:
         if persistence_file:
             self._persistence_file = Path(persistence_file)
         else:
-            data_dir = Path("/tmp/witnessreplay_data")
-            data_dir.mkdir(exist_ok=True)
+            data_dir = _persistent_state_dir()
             self._persistence_file = data_dir / "rpd_budget.json"
         
         # Load configuration from environment
@@ -497,6 +511,7 @@ class RPDBudgetAllocator:
                 }
             
             def _write_file():
+                self._persistence_file.parent.mkdir(parents=True, exist_ok=True)
                 temp_file = self._persistence_file.with_suffix('.tmp')
                 with open(temp_file, 'w') as f:
                     json.dump(data, f, indent=2)

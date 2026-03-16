@@ -16,6 +16,7 @@ import threading
 import asyncio
 from zoneinfo import ZoneInfo
 
+from app.config import settings
 from app.services.model_selector import MODEL_QUOTAS
 from app.services.token_estimator import (
     token_estimator,
@@ -25,6 +26,19 @@ from app.services.token_estimator import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _persistent_state_dir() -> Path:
+    """Return a directory suitable for local quota state."""
+    configured_path = Path(settings.database_path).expanduser()
+    candidate = configured_path.resolve().parent
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except OSError:
+        fallback = Path("/tmp/witnessreplay_data")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 class UsageTracker:
@@ -84,9 +98,7 @@ class UsageTracker:
         if persistence_file:
             self._persistence_file = Path(persistence_file)
         else:
-            # Default to a file in /tmp or project data directory
-            data_dir = Path("/tmp/witnessreplay_data")
-            data_dir.mkdir(exist_ok=True)
+            data_dir = _persistent_state_dir()
             self._persistence_file = data_dir / "usage_tracker.json"
         
         self._load_from_disk()
@@ -331,6 +343,7 @@ class UsageTracker:
                 }
             
             def _write_file():
+                self._persistence_file.parent.mkdir(parents=True, exist_ok=True)
                 temp_file = self._persistence_file.with_suffix('.tmp')
                 with open(temp_file, 'w') as f:
                     json.dump(data, f, indent=2)
@@ -351,6 +364,7 @@ class UsageTracker:
                 "saved_at": datetime.now(timezone.utc).isoformat()
             }
             
+            self._persistence_file.parent.mkdir(parents=True, exist_ok=True)
             temp_file = self._persistence_file.with_suffix('.tmp')
             with open(temp_file, 'w') as f:
                 json.dump(data, f, indent=2)
