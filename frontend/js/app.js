@@ -38,6 +38,12 @@ class WitnessReplayApp {
         this.hasReceivedGreeting = false;
         this.lastUserMessage = '';
         this.autoScrollEnabled = localStorage.getItem('witnessreplay-auto-scroll') !== 'false';
+        const shouldResetLegacyAutoScroll = localStorage.getItem('witnessreplayAutoScrollReset') !== 'true';
+        if (shouldResetLegacyAutoScroll) {
+            this.autoScrollEnabled = true;
+            localStorage.removeItem('witnessreplay-auto-scroll');
+            localStorage.setItem('witnessreplayAutoScrollReset', 'true');
+        }
         this.compactMode = localStorage.getItem('witnessreplay-compact-chat') === 'true';
         this.fetchTimeout = 10000; // 10 second timeout for API calls
         const shouldResetLegacyAudioMute = localStorage.getItem('witnessreplayVoiceFirstAudioReset') !== 'true';
@@ -105,6 +111,10 @@ class WitnessReplayApp {
         this._chatScrollFrame = null;
         this._chatScrollTimeout = null;
         this._chatMutationObserver = null;
+        this._boundChatScrollHandler = null;
+        this._chatPinnedToBottom = true;
+        this._chatAutoScrollThreshold = 96;
+        this._chatBottomSentinel = null;
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -680,6 +690,8 @@ class WitnessReplayApp {
         this.sceneDisplay = document.getElementById('scene-display');
         this.sceneDescription = document.getElementById('scene-description');
         this.chatTranscript = document.getElementById('chat-transcript');
+        this._ensureChatBottomSentinel();
+        this._initChatScrollTracking();
         this._initChatAutoScrollObserver();
         this.timeline = document.getElementById('timeline');
         this.mainWorkspace = document.getElementById('main-workspace');
@@ -953,6 +965,67 @@ class WitnessReplayApp {
         const workspace = this.mainWorkspace || document.getElementById('main-workspace');
         if (!workspace) return;
         workspace.classList.toggle('voice-first-home', (this.statementCount || 0) === 0);
+    }
+
+    _ensureChatBottomSentinel() {
+        if (!this.chatTranscript) return null;
+        if (this._chatBottomSentinel?.parentElement === this.chatTranscript) {
+            return this._chatBottomSentinel;
+        }
+        const sentinel = document.createElement('div');
+        sentinel.className = 'chat-bottom-sentinel';
+        sentinel.setAttribute('aria-hidden', 'true');
+        this.chatTranscript.appendChild(sentinel);
+        this._chatBottomSentinel = sentinel;
+        return sentinel;
+    }
+
+    _appendChatNode(node) {
+        if (!this.chatTranscript || !node) return null;
+        const sentinel = this._ensureChatBottomSentinel();
+        if (sentinel && sentinel.parentElement === this.chatTranscript) {
+            this.chatTranscript.insertBefore(node, sentinel);
+        } else {
+            this.chatTranscript.appendChild(node);
+        }
+        return node;
+    }
+
+    _resetChatTranscript(contentHtml = '') {
+        if (!this.chatTranscript) return;
+        this.chatTranscript.innerHTML = contentHtml;
+        this._chatBottomSentinel = null;
+        this._ensureChatBottomSentinel();
+        this._chatPinnedToBottom = true;
+    }
+
+    _getChatBottomDistance() {
+        if (!this.chatTranscript) return 0;
+        return Math.max(
+            0,
+            this.chatTranscript.scrollHeight - this.chatTranscript.clientHeight - this.chatTranscript.scrollTop
+        );
+    }
+
+    _isChatNearBottom(threshold = this._chatAutoScrollThreshold) {
+        return this._getChatBottomDistance() <= threshold;
+    }
+
+    _updateChatPinnedState() {
+        this._chatPinnedToBottom = this._isChatNearBottom();
+        return this._chatPinnedToBottom;
+    }
+
+    _initChatScrollTracking() {
+        if (!this.chatTranscript) return;
+        if (!this._boundChatScrollHandler) {
+            this._boundChatScrollHandler = () => {
+                this._updateChatPinnedState();
+            };
+        }
+        this.chatTranscript.removeEventListener('scroll', this._boundChatScrollHandler);
+        this.chatTranscript.addEventListener('scroll', this._boundChatScrollHandler, { passive: true });
+        this._updateChatPinnedState();
     }
 
     openMobileVoiceHelp() {
@@ -1743,7 +1816,7 @@ class WitnessReplayApp {
             this.ttsPlayer.onPlaybackStart = () => {
                 this._isSpeakingResponse = true;
                 this._setMicSpeakingState(true);
-                this._scrollChatToBottom('smooth', true);
+                this._scheduleChatBottomSync();
                 void this._syncWakeLock();
             };
             this.ttsPlayer.onPlaybackEnd = () => {
@@ -2263,6 +2336,10 @@ class WitnessReplayApp {
         if (this.chatTranscript) {
             this.chatTranscript.classList.toggle('auto-scroll-off', !this.autoScrollEnabled);
         }
+        if (this.autoScrollEnabled) {
+            this._chatPinnedToBottom = true;
+            this._scrollChatToBottom('auto', true);
+        }
         this._syncTextToolsMenu();
     }
 
@@ -2274,14 +2351,14 @@ class WitnessReplayApp {
         if (!this.chatTranscript || typeof MutationObserver === 'undefined') return;
         this._chatMutationObserver?.disconnect?.();
         this._chatMutationObserver = new MutationObserver((mutations) => {
-            if (!this.autoScrollEnabled) return;
+            if (!this.autoScrollEnabled || !this._chatPinnedToBottom) return;
             const hasRelevantMutation = mutations.some((mutation) => {
                 if (mutation.type === 'characterData') return true;
                 if (mutation.type !== 'childList') return false;
                 return mutation.addedNodes.length > 0;
             });
             if (!hasRelevantMutation) return;
-            this._scrollChatToBottom('auto');
+            this._scheduleChatBottomSync();
         });
         this._chatMutationObserver.observe(this.chatTranscript, {
             childList: true,
@@ -2307,21 +2384,34 @@ class WitnessReplayApp {
         observedElements.forEach((element) => this._chatLayoutObserver.observe(element));
     }
 
-    _scheduleChatBottomSync() {
-        if (!this.chatTranscript || !this.autoScrollEnabled) return;
+    _scheduleChatBottomSync(force = false, behavior = 'auto') {
+        if (!this.chatTranscript) return;
+        if (!force && (!this.autoScrollEnabled || !this._chatPinnedToBottom)) return;
         if (this._chatBottomSyncFrame) {
             cancelAnimationFrame(this._chatBottomSyncFrame);
         }
         this._chatBottomSyncFrame = requestAnimationFrame(() => {
-            this._scrollChatToBottom('auto', true);
+            this._scrollChatToBottom(behavior, force);
             this._chatBottomSyncFrame = null;
         });
     }
 
     _scrollChatToBottom(behavior = 'smooth', force = false) {
-        if (!this.chatTranscript || (!force && !this.autoScrollEnabled)) return;
+        if (!this.chatTranscript) return;
+        if (!force && (!this.autoScrollEnabled || !this._chatPinnedToBottom)) return;
         const target = this.chatTranscript;
+        const bottomSentinel = this._ensureChatBottomSentinel();
+        const effectiveBehavior = behavior === 'smooth' ? 'auto' : behavior;
         const scrollToLatest = (scrollBehavior = 'auto') => {
+            this._chatPinnedToBottom = true;
+            if (bottomSentinel && typeof bottomSentinel.scrollIntoView === 'function') {
+                try {
+                    bottomSentinel.scrollIntoView({ block: 'end', inline: 'nearest', behavior: scrollBehavior });
+                    return;
+                } catch (_) {
+                    // Fall back to direct scrolling below.
+                }
+            }
             const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
             try {
                 target.scrollTo({ top: maxTop, behavior: scrollBehavior });
@@ -2340,7 +2430,7 @@ class WitnessReplayApp {
         }
 
         this._chatScrollFrame = requestAnimationFrame(() => {
-            scrollToLatest(behavior);
+            scrollToLatest(effectiveBehavior);
             this._chatScrollFrame = requestAnimationFrame(() => {
                 scrollToLatest('auto');
                 this._chatScrollFrame = null;
@@ -2350,7 +2440,7 @@ class WitnessReplayApp {
         this._chatScrollTimeout = window.setTimeout(() => {
             scrollToLatest('auto');
             this._chatScrollTimeout = null;
-        }, behavior === 'smooth' ? 180 : 80);
+        }, effectiveBehavior === 'smooth' ? 180 : 80);
     }
 
     setCompactMode(enabled, save = true) {
@@ -2929,7 +3019,7 @@ class WitnessReplayApp {
             const emptyCopy = this.isMobileVoiceUI
                 ? 'After Detective Ray greets you, just start talking. You can also type below if that is easier.'
                 : 'After Detective Ray greets you, start speaking when you are ready. You can also type below at any time.';
-            this.chatTranscript.innerHTML = `<p class="empty-state">${this._escapeHtml(emptyCopy)}</p>`;
+            this._resetChatTranscript(`<p class="empty-state">${this._escapeHtml(emptyCopy)}</p>`);
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
             this._syncWorkspaceLayout();
             
@@ -3537,7 +3627,7 @@ class WitnessReplayApp {
             if (!this.streamingMessages[message_id]) {
                 // Create new message element for this stream
                 if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
-                    this.chatTranscript.innerHTML = '';
+                    this._resetChatTranscript('');
                 }
             
             const messageDiv = document.createElement('div');
@@ -3552,12 +3642,12 @@ class WitnessReplayApp {
             
             messageDiv.innerHTML = `<span class="msg-avatar">${avatar}</span><strong>${labelText}</strong><span class="msg-time">${timeStr}</span><br><span class="stream-content"></span><span class="stream-cursor">▋</span>`;
             
-            this.chatTranscript.appendChild(messageDiv);
+            this._appendChatNode(messageDiv);
             this.streamingMessages[message_id] = {
                 element: messageDiv,
                 content: ''
             };
-            this._scrollChatToBottom('auto', true);
+            this._scheduleChatBottomSync();
         }
         
         const streamData = this.streamingMessages[message_id];
@@ -3570,7 +3660,7 @@ class WitnessReplayApp {
                 contentSpan.textContent = streamData.content;
             }
             // Scroll to show new content
-            this._scrollChatToBottom('smooth', true);
+            this._scheduleChatBottomSync();
         }
         
         if (is_final) {
@@ -3621,7 +3711,7 @@ class WitnessReplayApp {
             
             // Update interview progress
             this.updateInterviewProgress();
-            this._scrollChatToBottom('smooth', true);
+            this._scheduleChatBottomSync();
         }
     }
     
@@ -4125,7 +4215,7 @@ class WitnessReplayApp {
                 this.ws.send(JSON.stringify(messageData));
                 this.setStatus('Detective Ray is thinking...');
                 this._setConversationState('thinking');
-                this._scrollChatToBottom('smooth', true);
+                this._scheduleChatBottomSync();
             };
             reader.onerror = (err) => {
                 console.error('[Audio] FileReader error:', err);
@@ -4226,7 +4316,7 @@ class WitnessReplayApp {
     
     displayMessage(text, speaker) {
         if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
-            this.chatTranscript.innerHTML = '';
+            this._resetChatTranscript('');
         }
         
         // Hide typing indicator
@@ -4265,7 +4355,7 @@ class WitnessReplayApp {
         if (speaker === 'user') {
             this._addPinButton?.(messageDiv, text, speaker);
         }
-        this.chatTranscript.appendChild(messageDiv);
+        this._appendChatNode(messageDiv);
         
         // Add timestamp & update phase progress
         this._addMessageTimestamp?.(messageDiv);
@@ -4282,7 +4372,7 @@ class WitnessReplayApp {
         // Update interview progress phases
         this.updateInterviewProgress();
         this._updateInterviewStatsBadge();
-        this._scrollChatToBottom('smooth', true);
+        this._scrollChatToBottom('auto', speaker === 'user');
     }
     
     /**
@@ -4290,7 +4380,7 @@ class WitnessReplayApp {
      */
     displayMessageWithTranslation(text, speaker, originalText = null, language = null) {
         if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
-            this.chatTranscript.innerHTML = '';
+            this._resetChatTranscript('');
         }
         
         // Hide typing indicator
@@ -4361,7 +4451,7 @@ class WitnessReplayApp {
         if (speaker === 'user') {
             this._addPinButton?.(messageDiv, text, speaker);
         }
-        this.chatTranscript.appendChild(messageDiv);
+        this._appendChatNode(messageDiv);
         
         // Track statement count for user messages
         if (speaker === 'user') {
@@ -4373,7 +4463,7 @@ class WitnessReplayApp {
         // Update interview progress phases
         this.updateInterviewProgress();
         this._updateInterviewStatsBadge();
-        this._scrollChatToBottom('smooth', true);
+        this._scrollChatToBottom('auto', speaker === 'user');
     }
     
     _escapeHtml(text) {
@@ -4415,7 +4505,7 @@ class WitnessReplayApp {
                 }, 3000);
             }
         }
-        this._scrollChatToBottom('smooth', true);
+        this._scheduleChatBottomSync();
     }
     
     _hideTyping() {
@@ -5428,14 +5518,14 @@ class WitnessReplayApp {
     
     displaySystemMessage(text) {
         if (this.chatTranscript.querySelector('.empty-state')) {
-            this.chatTranscript.innerHTML = '';
+            this._resetChatTranscript('');
         }
         
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message message-system';
         messageDiv.textContent = text;
         
-        this.chatTranscript.appendChild(messageDiv);
+        this._appendChatNode(messageDiv);
         this._scrollChatToBottom('auto');
     }
     
@@ -5475,7 +5565,7 @@ class WitnessReplayApp {
         if (!imageUrl && !data.description) return;
         
         if (this.chatTranscript.querySelector('.empty-state')) {
-            this.chatTranscript.innerHTML = '';
+            this._resetChatTranscript('');
         }
         
         const card = document.createElement('div');
@@ -5507,7 +5597,7 @@ class WitnessReplayApp {
             thumb.addEventListener('click', () => this._showFullscreenImage(imageUrl, version));
         }
         
-        this.chatTranscript.appendChild(card);
+        this._appendChatNode(card);
         this._scrollChatToBottom();
     }
     
@@ -5620,7 +5710,7 @@ class WitnessReplayApp {
         });
         
         messageDiv.innerHTML = html;
-        this.chatTranscript.appendChild(messageDiv);
+        this._appendChatNode(messageDiv);
         this._scrollChatToBottom('auto');
     }
     
@@ -7495,7 +7585,7 @@ Corrections: ${reliability.correction_count || 0}`;
 
             // Display thumbnail in chat
             if (this.chatTranscript.querySelector('.empty-state')) {
-                this.chatTranscript.innerHTML = '';
+                this._resetChatTranscript('');
             }
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message message-user';
@@ -7503,8 +7593,8 @@ Corrections: ${reliability.correction_count || 0}`;
             const now = new Date();
             const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             msgDiv.innerHTML = `<span class="msg-avatar">👤</span><strong>You</strong><span class="msg-time">${timeStr}</span><br>📎 Evidence photo attached<br><img src="${base64Data}" alt="Evidence photo uploaded by witness" class="evidence-thumbnail">`;
-            this.chatTranscript.appendChild(msgDiv);
-            this._scrollChatToBottom();
+            this._appendChatNode(msgDiv);
+            this._scrollChatToBottom('auto', true);
 
             // Send via WebSocket if connected
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -7588,7 +7678,7 @@ Corrections: ${reliability.correction_count || 0}`;
 
             // Display in chat
             if (this.chatTranscript.querySelector('.empty-state')) {
-                this.chatTranscript.innerHTML = '';
+                this._resetChatTranscript('');
             }
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message message-user';
@@ -7610,8 +7700,8 @@ Corrections: ${reliability.correction_count || 0}`;
                 <br><img src="${sketch.image_url}" alt="Hand-drawn sketch uploaded by witness" class="sketch-thumbnail" style="max-width: 200px; border: 2px solid var(--accent-primary); border-radius: 8px; margin-top: 8px;">
                 ${interpretationHtml}
             `;
-            this.chatTranscript.appendChild(msgDiv);
-            this._scrollChatToBottom();
+            this._appendChatNode(msgDiv);
+            this._scrollChatToBottom('auto', true);
 
             // Add to sketches gallery
             this.addSketchToGallery(sketch);
@@ -8565,8 +8655,7 @@ WitnessReplayApp.prototype._handleSlashCommand = function(text) {
             const transcript = document.getElementById('chat-transcript');
             if (transcript) {
                 const empty = transcript.querySelector('.empty-state');
-                transcript.innerHTML = '';
-                if (empty) transcript.appendChild(empty);
+                this._resetChatTranscript(empty ? empty.outerHTML : '');
             }
             this.displaySystemMessage('🧹 Chat display cleared. Session data is preserved.');
         },
@@ -9157,7 +9246,7 @@ WitnessReplayApp.prototype._showQuickReplies = function(agentText) {
         container.appendChild(chip);
     });
     
-    this.chatTranscript.appendChild(container);
+    this._appendChatNode(container);
     this._scrollChatToBottom();
 };
 
@@ -9890,7 +9979,7 @@ WitnessReplayApp.prototype._showContextualFollowUps = function(commandType) {
         container.appendChild(btn);
     });
     
-    this.chatTranscript.appendChild(container);
+    this._appendChatNode(container);
     this._scrollChatToBottom();
 };
 
