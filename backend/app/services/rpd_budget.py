@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
 import os
+import tempfile
 
 from app.config import settings
 
@@ -512,9 +513,15 @@ class RPDBudgetAllocator:
             
             def _write_file():
                 self._persistence_file.parent.mkdir(parents=True, exist_ok=True)
-                temp_file = self._persistence_file.with_suffix('.tmp')
-                with open(temp_file, 'w') as f:
+                with tempfile.NamedTemporaryFile(
+                    mode='w',
+                    dir=self._persistence_file.parent,
+                    prefix=f"{self._persistence_file.stem}-",
+                    suffix='.tmp',
+                    delete=False,
+                ) as f:
                     json.dump(data, f, indent=2)
+                    temp_file = Path(f.name)
                 temp_file.replace(self._persistence_file)
             
             await asyncio.to_thread(_write_file)
