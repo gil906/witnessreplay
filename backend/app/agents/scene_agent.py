@@ -59,6 +59,7 @@ class SceneReconstructionAgent:
         self._timeline_events: List[Dict[str, Any]] = []  # Events for timeline building
         self._pending_completion_after_required_detail: bool = False
         self.last_response_kind: str = "interview"
+        self.last_response_text: str = ""
         self._initialize_model()
     
     def _log_structured(self, event: str, **kwargs):
@@ -149,6 +150,42 @@ class SceneReconstructionAgent:
         normalized = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower())
         return re.sub(r"\s+", " ", normalized).strip()
 
+    def _normalize_sentence_for_dedupe(self, sentence: str) -> str:
+        """Normalize a sentence so minor phrasing differences still dedupe cleanly."""
+        normalized = self._normalize_text(sentence)
+        normalized = re.sub(r"^please\s+", "", normalized)
+        normalized = re.sub(
+            r"^(?:okay|ok|alright|well|thanks|thank you|got it|understood)\s+",
+            "",
+            normalized,
+        )
+        normalized = re.sub(r"^(?:please\s+)?(?:can|could|would|will)\s+you\s+", "", normalized)
+        normalized = re.sub(r"^go ahead and\s+", "", normalized)
+        normalized = re.sub(r"^just\s+", "", normalized)
+        return normalized.strip()
+
+    def _dedupe_response_sentences(self, response: str) -> str:
+        """Remove repeated sentences/questions from a single assistant turn."""
+        base_response = (response or "").strip()
+        if not base_response:
+            return ""
+
+        sentences = re.split(r"(?<=[.!?])\s+", base_response)
+        deduped: List[str] = []
+        seen_keys = set()
+        for sentence in sentences:
+            cleaned = sentence.strip()
+            if not cleaned:
+                continue
+            dedupe_key = self._normalize_sentence_for_dedupe(cleaned)
+            if dedupe_key and dedupe_key in seen_keys:
+                continue
+            if dedupe_key:
+                seen_keys.add(dedupe_key)
+            deduped.append(cleaned)
+
+        return " ".join(deduped).strip() or base_response
+
     def _last_assistant_prompted_for_more(self) -> bool:
         """Check whether the previous assistant turn asked if the witness had more to add."""
         prompt_markers = (
@@ -174,10 +211,41 @@ class SceneReconstructionAgent:
         if not normalized:
             return False
 
+        limited_observation_patterns = (
+            r"\bthat(?:s| is)? all i (?:can|could) (?:see|remember|recall|make out|tell)\b",
+            r"\bthat(?:s| is)? all i (?:noticed|saw|heard)\b",
+            r"\bi can(?:not| t)? remember anything else\b",
+            r"\bi can(?:not| t)? see anything else\b",
+        )
+        if any(re.search(pattern, normalized) for pattern in limited_observation_patterns):
+            return False
+
         explicit_phrases = (
             "im done",
             "i am done",
             "done talking",
+            "thats everything",
+            "that s everything",
+            "that is everything",
+            "i have nothing else",
+            "i have nothing else to add",
+            "i dont have anything else to add",
+            "i do not have anything else to add",
+            "there is nothing else to add",
+            "thats all i have to add",
+            "that s all i have to add",
+            "that is all i have to add",
+            "all set",
+            "im finished",
+            "i am finished",
+        )
+        if any(phrase in normalized for phrase in explicit_phrases):
+            return True
+
+        if normalized in {"done", "finished"}:
+            return True
+
+        prompted_completion_phrases = {
             "thats all",
             "that s all",
             "that is all",
@@ -188,16 +256,12 @@ class SceneReconstructionAgent:
             "no more details",
             "thats everything",
             "that s everything",
-            "i have nothing else",
-            "all set",
-            "im finished",
-            "i am finished",
-        )
-        if any(phrase in normalized for phrase in explicit_phrases):
-            return True
-
-        if normalized in {"done", "finished", "nothing else", "no more"}:
-            return True
+            "that is everything",
+        }
+        if self._last_assistant_prompted_for_more():
+            prompted_normalized = re.sub(r"^(?:no|nope|nah)\s+", "", normalized).strip()
+            if normalized in prompted_completion_phrases or prompted_normalized in prompted_completion_phrases:
+                return True
 
         return normalized in {"no", "nope", "nah"} and self._last_assistant_prompted_for_more()
 
@@ -230,9 +294,11 @@ class SceneReconstructionAgent:
         )
         return any(marker in normalized for marker in skip_markers)
 
-    def _response_restarts_interview(self, response: str) -> bool:
+    def _response_restarts_interview(self, response: str, current_statement: str = "") -> bool:
         """Detect generic re-intros after the witness has already started the interview."""
         prior_user_turns = len([m for m in self.conversation_history if m.get("role") == "user"])
+        if current_statement and current_statement.strip():
+            prior_user_turns += 1
         if prior_user_turns < 1:
             return False
 
@@ -410,13 +476,19 @@ class SceneReconstructionAgent:
         """Replace reset-like replies with a contextual follow-up."""
         normalized = self._normalize_text(statement)
         tokens = set(normalized.split())
-        if tokens & {"car", "truck", "vehicle", "driver", "plate", "license"}:
+        if "report" in tokens and ({"crime", "incident", "accident"} & tokens):
+            acknowledgment = ""
+        elif tokens & {"car", "truck", "vehicle", "driver", "plate", "license"}:
             acknowledgment = "Got it."
         elif tokens & {"gun", "knife", "weapon", "injured", "hurt", "bleeding"}:
             acknowledgment = "Understood."
         else:
             acknowledgment = "Thanks, that's helpful."
-        return f"{acknowledgment} {self._build_follow_up_question(statement)}"
+
+        next_question = self._build_required_incident_timing_question(statement) or self._build_follow_up_question(statement)
+        if not acknowledgment:
+            return next_question
+        return f"{acknowledgment} {next_question}"
 
     def _build_follow_up_question(self, statement: str) -> str:
         """Fallback question when the model fails to continue the interview."""
@@ -449,7 +521,7 @@ class SceneReconstructionAgent:
 
     def _ensure_follow_up_response(self, statement: str, response: str) -> str:
         """Make sure the agent keeps the interview moving after each witness turn."""
-        base_response = (response or "").strip()
+        base_response = self._dedupe_response_sentences(response)
         if not base_response:
             self.last_response_kind = "interview"
             required_timing_question = self._build_required_incident_timing_question(statement)
@@ -462,9 +534,9 @@ class SceneReconstructionAgent:
         required_timing_question = self._build_required_incident_timing_question(statement)
         if required_timing_question and not self._response_asks_for_incident_timing(base_response):
             self.last_response_kind = "interview"
-            return self._replace_follow_up_question(base_response, required_timing_question)
+            base_response = self._replace_follow_up_question(base_response, required_timing_question)
 
-        if self._response_restarts_interview(base_response):
+        if self._response_restarts_interview(base_response, current_statement=statement):
             self.last_response_kind = "interview"
             return self._build_repaired_interview_response(statement)
 
@@ -622,7 +694,8 @@ class SceneReconstructionAgent:
         """
         if not self.client:
             self.last_response_kind = "error"
-            return "I'm sorry, I'm having technical difficulties. Please try again later.", False, None
+            self.last_response_text = "I'm sorry, I'm having technical difficulties. Please try again later."
+            return self.last_response_text, False, None
 
         if self._pending_completion_after_required_detail:
             agent_response = self._build_required_incident_timing_question(statement, closing=True)
@@ -632,6 +705,7 @@ class SceneReconstructionAgent:
                 agent_response = self._build_completion_response(report_number)
                 self.last_response_kind = "completion"
                 self._pending_completion_after_required_detail = False
+            self.last_response_text = agent_response
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -655,6 +729,7 @@ class SceneReconstructionAgent:
                 agent_response = self._build_completion_response(report_number)
                 self.last_response_kind = "completion"
                 self._pending_completion_after_required_detail = False
+            self.last_response_text = agent_response
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -725,12 +800,11 @@ class SceneReconstructionAgent:
             # Reject if quota exceeded and enforcement is on
             if not quota_check.allowed:
                 self.last_response_kind = "error"
-                return (
+                self.last_response_text = (
                     f"I'm sorry, I'm currently at my daily limit. {quota_check.rejection_reason} "
-                    "Please try again tomorrow or use a lighter request.",
-                    False,
-                    token_info,
+                    "Please try again tomorrow or use a lighter request."
                 )
+                return (self.last_response_text, False, token_info)
             
             # Send to Gemini with automatic model fallback on rate limit
             response = None
@@ -778,9 +852,11 @@ class SceneReconstructionAgent:
             
             if not response:
                 self.last_response_kind = "error"
-                return "I'm temporarily rate limited. Please wait a moment and try again.", False, token_info
+                self.last_response_text = "I'm temporarily rate limited. Please wait a moment and try again."
+                return self.last_response_text, False, token_info
             
             agent_response = self._ensure_follow_up_response(statement, getattr(response, "text", "") or "")
+            self.last_response_text = agent_response
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', current_model)
             
             # Track usage with actual token counts
@@ -852,14 +928,16 @@ class SceneReconstructionAgent:
             if self._is_retryable_model_error(e):
                 self.last_response_kind = "error"
                 self._log_structured("error_rate_limited", error=str(e)[:200])
-                return ("I'm experiencing high demand right now. Could you please "
-                        "repeat that in a moment? Your testimony is important.",
-                        False, None)
+                self.last_response_text = (
+                    "I'm experiencing high demand right now. Could you please "
+                    "repeat that in a moment? Your testimony is important."
+                )
+                return (self.last_response_text, False, None)
             elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):
                 self.last_response_kind = "error"
                 self._log_structured("error_invalid_request", error=str(e)[:200])
-                return ("I had trouble processing that. Could you rephrase?",
-                        False, None)
+                self.last_response_text = "I had trouble processing that. Could you rephrase?"
+                return (self.last_response_text, False, None)
             else:
                 self.last_response_kind = "error"
                 self._log_structured("error_unexpected", error=str(e)[:200])
@@ -881,7 +959,8 @@ class SceneReconstructionAgent:
         """
         if not self.client:
             self.last_response_kind = "error"
-            yield "I'm sorry, I'm having technical difficulties. Please try again later.", True, False, None
+            self.last_response_text = "I'm sorry, I'm having technical difficulties. Please try again later."
+            yield self.last_response_text, True, False, None
             return
 
         if self._pending_completion_after_required_detail:
@@ -892,6 +971,7 @@ class SceneReconstructionAgent:
                 completion_response = self._build_completion_response(report_number)
                 self.last_response_kind = "completion"
                 self._pending_completion_after_required_detail = False
+            self.last_response_text = completion_response
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -917,6 +997,7 @@ class SceneReconstructionAgent:
                 completion_response = self._build_completion_response(report_number)
                 self.last_response_kind = "completion"
                 self._pending_completion_after_required_detail = False
+            self.last_response_text = completion_response
             self.conversation_history.append({
                 "role": "user",
                 "content": statement,
@@ -974,11 +1055,11 @@ class SceneReconstructionAgent:
             # Reject if quota exceeded and enforcement is on
             if not quota_check.allowed:
                 self.last_response_kind = "error"
-                yield (
+                self.last_response_text = (
                     f"I'm sorry, I'm currently at my daily limit. {quota_check.rejection_reason} "
-                    "Please try again tomorrow or use a lighter request.",
-                    True, False, token_info
+                    "Please try again tomorrow or use a lighter request."
                 )
+                yield (self.last_response_text, True, False, token_info)
                 return
             
             # Use streaming with Gemini
@@ -1038,18 +1119,13 @@ class SceneReconstructionAgent:
             
             if not full_response:
                 self.last_response_kind = "error"
-                yield "I'm temporarily rate limited. Please wait a moment and try again.", True, False, token_info
+                self.last_response_text = "I'm temporarily rate limited. Please wait a moment and try again."
+                yield self.last_response_text, True, False, token_info
                 return
 
             repaired_response = self._ensure_follow_up_response(statement, full_response)
-            if repaired_response != full_response:
-                if repaired_response.startswith(full_response):
-                    suffix = repaired_response[len(full_response):]
-                else:
-                    suffix = repaired_response
-                if suffix:
-                    yield suffix, False, False, None
-                full_response = repaired_response
+            full_response = repaired_response
+            self.last_response_text = full_response
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', current_model)
             
             # Track usage with actual token counts
@@ -1114,16 +1190,19 @@ class SceneReconstructionAgent:
             if self._is_retryable_model_error(e):
                 self.last_response_kind = "error"
                 self._log_structured("error_rate_limited", error=str(e)[:200])
-                yield "I'm experiencing high demand right now. Could you please repeat that in a moment?", True, False, None
+                self.last_response_text = "I'm experiencing high demand right now. Could you please repeat that in a moment?"
+                yield self.last_response_text, True, False, None
             elif "400" in str(e) or "INVALID_ARGUMENT" in str(e):
                 self.last_response_kind = "error"
                 self._log_structured("error_invalid_request", error=str(e)[:200])
-                yield "I had trouble processing that. Could you rephrase?", True, False, None
+                self.last_response_text = "I had trouble processing that. Could you rephrase?"
+                yield self.last_response_text, True, False, None
             else:
                 self.last_response_kind = "error"
                 self._log_structured("error_unexpected", error=str(e)[:200])
                 logger.error(f"Unexpected error processing statement: {e}", exc_info=True)
-                yield f"An error occurred: {str(e)}", True, False, None
+                self.last_response_text = f"An error occurred: {str(e)}"
+                yield self.last_response_text, True, False, None
     
     def _should_generate_image(self, response: str) -> bool:
         """

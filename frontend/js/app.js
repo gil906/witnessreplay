@@ -2285,16 +2285,11 @@ class WitnessReplayApp {
         if (!this.chatTranscript || (!force && !this.autoScrollEnabled)) return;
         const target = this.chatTranscript;
         const scrollToLatest = (scrollBehavior = 'auto') => {
-            const lastItem = target.lastElementChild;
-            if (lastItem?.scrollIntoView) {
-                try {
-                    lastItem.scrollIntoView({ block: 'end', inline: 'nearest', behavior: scrollBehavior });
-                } catch (_) {}
-            }
+            const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
             try {
-                target.scrollTo({ top: target.scrollHeight, behavior: scrollBehavior });
+                target.scrollTo({ top: maxTop, behavior: scrollBehavior });
             } catch (_) {
-                target.scrollTop = target.scrollHeight;
+                target.scrollTop = maxTop;
             }
         };
 
@@ -3497,7 +3492,7 @@ class WitnessReplayApp {
     }
     
     handleStreamingText(data) {
-        const { chunk, is_final, speaker, message_id, response_kind, tts_mode } = data;
+        const { chunk, is_final, speaker, message_id, response_kind, tts_mode, full_text } = data;
         
         // Hide typing indicator when streaming starts
         this._hideTyping();
@@ -3542,6 +3537,14 @@ class WitnessReplayApp {
         }
         
         if (is_final) {
+            if (typeof full_text === 'string' && full_text && full_text !== streamData.content) {
+                streamData.content = full_text;
+                const contentSpan = streamData.element.querySelector('.stream-content');
+                if (contentSpan) {
+                    contentSpan.textContent = streamData.content;
+                }
+            }
+
             // Remove streaming class and cursor
             streamData.element.classList.remove('streaming');
             const cursor = streamData.element.querySelector('.stream-cursor');

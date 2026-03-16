@@ -855,10 +855,13 @@ img {
     flex: 1;
     overflow-y: auto;
     padding: var(--spacing-lg) var(--spacing-xl);
+    padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
     scroll-behavior: smooth;
+    scroll-padding-bottom: calc(var(--spacing-xl) + env(safe-area-inset-bottom, 0px));
+    overscroll-behavior-y: contain;
     position: relative;
     z-index: 2;
 }
@@ -4779,6 +4782,7 @@ body.compact-chat .msg-time {
 
     .chat-transcript {
         padding: var(--spacing-sm);
+        padding-bottom: calc(var(--spacing-sm) + env(safe-area-inset-bottom, 0px));
     }
 
     .chat-message {

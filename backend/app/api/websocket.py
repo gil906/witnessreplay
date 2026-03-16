@@ -427,6 +427,7 @@ class WebSocketHandler:
         token_info: dict = None,
         response_kind: Optional[str] = None,
         tts_mode: Optional[str] = None,
+        full_text: Optional[str] = None,
     ):
         """Send a streaming text chunk to the client."""
         if not self.is_connected:
@@ -446,6 +447,8 @@ class WebSocketHandler:
                 data["response_kind"] = response_kind
             if is_final and tts_mode:
                 data["tts_mode"] = tts_mode
+            if is_final and full_text is not None:
+                data["full_text"] = full_text
             message = WebSocketMessage(type="text_stream", data=data)
             await self.websocket.send_json(message.model_dump(mode='json'))
         except Exception as e:
@@ -775,11 +778,12 @@ class WebSocketHandler:
                         should_generate_image = should_gen
                         token_info = tok_info
                 is_completion_response = self.agent.last_response_kind == "completion"
+                spoken_response = (self.agent.last_response_text or full_response or "").strip()
                 
                 # Translate full response if witness language is not English
-                if self.witness_language != "en" and full_response:
+                if self.witness_language != "en" and spoken_response:
                     translation_result = await translation_service.translate_for_witness(
-                        agent_response=full_response,
+                        agent_response=spoken_response,
                         witness_language=self.witness_language,
                     )
                     spoken_response = translation_result["translated"]
@@ -803,6 +807,7 @@ class WebSocketHandler:
                         token_info=token_info,
                         response_kind=self.agent.last_response_kind,
                         tts_mode=tts_mode,
+                        full_text=spoken_response,
                     )
                 if tts_mode and spoken_response:
                     await self._stream_agent_tts(
