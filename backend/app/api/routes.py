@@ -4008,6 +4008,10 @@ async def update_session(session_id: str, update_data: SessionUpdate):
 async def close_session_on_client_exit(session_id: str, reason: str = "tab_close"):
     """Mark a session completed when the client tab/app is closed."""
     try:
+        from app.api.websocket import shutdown_active_session_handler
+
+        await shutdown_active_session_handler(session_id, reason=reason or "tab_close")
+
         session = await firestore_service.get_session(session_id)
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -4027,14 +4031,6 @@ async def close_session_on_client_exit(session_id: str, reason: str = "tab_close
 
         if latest_session.status == "active":
             latest_session.status = "completed"
-
-        if latest_session.witness_statements:
-            try:
-                assigned_case_id = await case_manager.assign_report_to_case(latest_session)
-                latest_session = await firestore_service.get_session(session_id) or latest_session
-                latest_session.case_id = assigned_case_id
-            except Exception as case_error:
-                logger.warning("Close-session case assignment skipped for %s: %s", session_id, case_error)
 
         latest_session.updated_at = datetime.utcnow()
 
@@ -8616,6 +8612,7 @@ class TTSRequest(BaseModel):
     """Request model for TTS generation."""
     text: str
     voice: str = "Charon"
+    context: str = "response"
 
 
 class TTSResponse(BaseModel):
@@ -8663,6 +8660,7 @@ async def generate_tts(
     audio_base64 = await tts_service.generate_speech_base64(
         text=request.text,
         voice=request.voice,
+        context=request.context,
     )
     
     if not audio_base64:

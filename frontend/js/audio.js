@@ -191,6 +191,27 @@ class AudioRecorder {
 
         return this.stopPromise;
     }
+
+    abort() {
+        if (!this.mediaRecorder && !this.stream && !this.processedStream) {
+            return;
+        }
+
+        const recorder = this.mediaRecorder;
+        if (recorder) {
+            recorder.ondataavailable = null;
+            recorder.onstop = null;
+            recorder.onerror = null;
+            try {
+                if (recorder.state !== 'inactive') {
+                    recorder.stop();
+                }
+            } catch (_) {}
+        }
+
+        this.audioChunks = [];
+        this._cleanupMediaResources();
+    }
     
     getSupportedMimeType() {
         // Try different mime types in order of preference
@@ -479,7 +500,7 @@ class TTSPlayer {
      * @param {string} text - Text to speak
      * @param {boolean} immediate - If true, interrupt current playback
      */
-    async speak(text, immediate = false) {
+    async speak(text, immediate = false, options = {}) {
         if (!this.enabled || !text || !text.trim()) {
             return false;
         }
@@ -493,7 +514,7 @@ class TTSPlayer {
         }
 
         return new Promise((resolve) => {
-            this.queue.push({ text: cleanText, resolve });
+            this.queue.push({ text: cleanText, options, resolve });
             void this._processQueue();
         });
     }
@@ -508,9 +529,10 @@ class TTSPlayer {
         while (this.queue.length > 0) {
             const item = this.queue.shift();
             const text = item?.text;
+            const options = item?.options || {};
             let result = { played: false, interrupted: false };
             try {
-                result = await this._playText(text);
+                result = await this._playText(text, options);
             } catch (error) {
                 console.error('TTS playback error:', error);
             } finally {
@@ -535,7 +557,59 @@ class TTSPlayer {
         this.onPlaybackStart?.();
     }
 
-    async _requestGeneratedAudio(text, signal) {
+    _normalizeSpeechContext(context) {
+        return String(context || 'response').toLowerCase() === 'greeting' ? 'greeting' : 'response';
+    }
+
+    _getSpeechProfile(text, context) {
+        const normalizedContext = this._normalizeSpeechContext(context);
+        const isGreeting = normalizedContext === 'greeting'
+            || /(^|\b)(hi|hello)\b[\s,!.]{0,6}i'?m detective ray\b/i.test(text || '');
+        return isGreeting
+            ? {
+                context: 'greeting',
+                rate: Math.max(0.86, Math.min(1.08, this.playbackSpeed * 0.94)),
+                pitch: 0.84,
+                volume: 1,
+            }
+            : {
+                context: 'response',
+                rate: Math.max(0.9, Math.min(1.15, this.playbackSpeed * 0.98)),
+                pitch: 0.9,
+                volume: 1,
+            };
+    }
+
+    _scoreWebSpeechVoice(voice) {
+        if (!voice) return Number.NEGATIVE_INFINITY;
+        const name = String(voice.name || '').toLowerCase();
+        const lang = String(voice.lang || '').toLowerCase();
+        let score = 0;
+
+        if (lang.startsWith('en')) score += 30;
+        if (lang.startsWith('en-us')) score += 12;
+        if (voice.localService) score += 8;
+        if (/natural|neural|premium|enhanced/.test(name)) score += 10;
+        if (/male|daniel|alex|fred|aaron|arthur|david|james|oliver|reed|guy|ryan|matthew|microsoft david|google us english/.test(name)) score += 18;
+        if (/female|zira|samantha|victoria|karen|allison|ava|serena|tessa|veena|monica|joana|anna|moira/.test(name)) score -= 10;
+        if (this.voice && name.includes(String(this.voice).toLowerCase())) score += 40;
+
+        return score;
+    }
+
+    _getPreferredWebSpeechVoice() {
+        if (!this.webSpeechSupported || !window.speechSynthesis?.getVoices) return null;
+        const voices = window.speechSynthesis.getVoices() || [];
+        if (!voices.length) return null;
+
+        const rankedVoices = [...voices]
+            .map((voice) => ({ voice, score: this._scoreWebSpeechVoice(voice) }))
+            .sort((a, b) => b.score - a.score);
+
+        return rankedVoices[0]?.voice || voices.find((voice) => String(voice.lang || '').toLowerCase().startsWith('en')) || voices[0] || null;
+    }
+
+    async _requestGeneratedAudio(text, signal, options = {}) {
         const response = await fetch('/api/tts/generate', {
             method: 'POST',
             headers: {
@@ -544,6 +618,7 @@ class TTSPlayer {
             body: JSON.stringify({
                 text: text,
                 voice: this.voice,
+                context: this._normalizeSpeechContext(options?.context),
             }),
             signal,
         });
@@ -567,7 +642,7 @@ class TTSPlayer {
         };
     }
     
-    async _playText(text) {
+    async _playText(text, options = {}) {
         let controller = null;
         try {
             const playbackPrime = this.primePlayback().catch(() => false);
@@ -575,7 +650,7 @@ class TTSPlayer {
             if (this.webSpeechSupported && this.fastStartFallbackMs > 0) {
                 controller = new AbortController();
                 this._generationController = controller;
-                const audioRequest = this._requestGeneratedAudio(text, controller.signal);
+                const audioRequest = this._requestGeneratedAudio(text, controller.signal, options);
                 audioRequest.catch(() => null);
                 audioPayload = await Promise.race([
                     audioRequest,
@@ -588,19 +663,19 @@ class TTSPlayer {
                         this._generationController = null;
                     }
 
-                    const fallbackPlayed = await this._playWithWebSpeech(text);
+                    const fallbackPlayed = await this._playWithWebSpeech(text, options);
                     if (fallbackPlayed) {
                         return { played: true, interrupted: false };
                     }
 
                     controller = new AbortController();
                     this._generationController = controller;
-                    audioPayload = await this._requestGeneratedAudio(text, controller.signal);
+                    audioPayload = await this._requestGeneratedAudio(text, controller.signal, options);
                 }
             } else {
                 controller = new AbortController();
                 this._generationController = controller;
-                audioPayload = await this._requestGeneratedAudio(text, controller.signal);
+                audioPayload = await this._requestGeneratedAudio(text, controller.signal, options);
             }
 
             if (this._generationController === controller) {
@@ -615,7 +690,7 @@ class TTSPlayer {
                 return { played: false, interrupted: true };
             }
             console.error('TTS generation failed:', error);
-            const fallbackPlayed = await this._playWithWebSpeech(text);
+            const fallbackPlayed = await this._playWithWebSpeech(text, options);
             if (!fallbackPlayed && (String(error.message || '').includes('429') || String(error.message || '').toLowerCase().includes('quota'))) {
                 console.warn('TTS quota reached and browser speech fallback unavailable');
             }
@@ -732,7 +807,7 @@ class TTSPlayer {
         });
     }
 
-    async _playWithWebSpeech(text) {
+    async _playWithWebSpeech(text, options = {}) {
         if (!this.webSpeechSupported || !text) return false;
         return new Promise((resolve) => {
             let settled = false;
@@ -754,15 +829,17 @@ class TTSPlayer {
                 const synth = window.speechSynthesis;
                 synth.cancel();
                 const utterance = new window.SpeechSynthesisUtterance(text);
-                utterance.rate = this.playbackSpeed;
-                utterance.pitch = 1.0;
+                const profile = this._getSpeechProfile(text, options?.context);
+                utterance.rate = profile.rate;
+                utterance.pitch = profile.pitch;
+                utterance.volume = profile.volume;
 
-                const voices = synth.getVoices ? synth.getVoices() : [];
-                const preferredVoice = voices.find((voice) =>
-                    this.voice && voice.name && voice.name.toLowerCase().includes(this.voice.toLowerCase())
-                );
+                const preferredVoice = this._getPreferredWebSpeechVoice();
                 if (preferredVoice) {
                     utterance.voice = preferredVoice;
+                    utterance.lang = preferredVoice.lang || 'en-US';
+                } else {
+                    utterance.lang = 'en-US';
                 }
 
                 this.currentUtterance = utterance;
@@ -783,7 +860,7 @@ class TTSPlayer {
 
                 const estimatedDurationMs = Math.max(
                     5000,
-                    Math.min(30000, Math.round((text.length * 65) / Math.max(this.playbackSpeed, 0.1))),
+                    Math.min(30000, Math.round((text.length * 70) / Math.max(profile.rate, 0.1))),
                 );
                 speechTimeout = setTimeout(() => {
                     try {

@@ -97,6 +97,8 @@ class WitnessReplayApp {
         this.lastCallMetrics = null;
         this._isPageClosing = false;
         this._pageLifecycleHandler = null;
+        this._wakeLockVisibilityHandler = null;
+        this._wakeLockSentinel = null;
         this._wsSessionId = null;
         this._reconnectCountdown = null;
         
@@ -213,14 +215,95 @@ class WitnessReplayApp {
         this._pageLifecycleHandler = () => this._handlePageClose();
         window.addEventListener('pagehide', this._pageLifecycleHandler);
         window.addEventListener('beforeunload', this._pageLifecycleHandler);
+        this._wakeLockVisibilityHandler = () => {
+            if (document.visibilityState === 'visible') {
+                void this._syncWakeLock();
+            } else {
+                void this._releaseWakeLock();
+            }
+        };
+        document.addEventListener('visibilitychange', this._wakeLockVisibilityHandler);
     }
 
     _handlePageClose() {
         if (this._isPageClosing) return;
         this._isPageClosing = true;
 
-        // Clean up all intervals to prevent memory leaks
+        this._shutdownConversationRuntime();
+
+        if (this.sessionId) {
+            const closeUrl = `/api/sessions/${this.sessionId}/close?reason=tab_close`;
+            let beaconSent = false;
+
+            try {
+                if (navigator.sendBeacon) {
+                    const payload = new Blob([], { type: 'application/json' });
+                    beaconSent = navigator.sendBeacon(closeUrl, payload);
+                }
+            } catch (error) {
+                console.debug('Session close beacon failed:', error);
+            }
+
+            if (!beaconSent) {
+                fetch(closeUrl, { method: 'POST', keepalive: true }).catch(() => {});
+            }
+        }
+
+        this._disposeWebSocket(this.ws, 'tab closing');
+    }
+
+    _shouldKeepScreenAwake() {
+        if (this._isPageClosing) return false;
+        if (document.visibilityState !== 'visible') return false;
+        const hasLiveConversation = !!this.sessionId && !!this.ws && this.ws.readyState === WebSocket.OPEN;
+        return hasLiveConversation && (
+            this.isRecording
+            || this._isSpeakingResponse
+            || this.autoListenEnabled
+            || ['listening', 'thinking', 'speaking'].includes(this.conversationState)
+        );
+    }
+
+    async _syncWakeLock() {
+        if (!navigator.wakeLock?.request) return false;
+        if (!this._shouldKeepScreenAwake()) {
+            await this._releaseWakeLock();
+            return false;
+        }
+        if (this._wakeLockSentinel) {
+            return true;
+        }
+
+        try {
+            const sentinel = await navigator.wakeLock.request('screen');
+            this._wakeLockSentinel = sentinel;
+            sentinel.addEventListener('release', () => {
+                if (this._wakeLockSentinel === sentinel) {
+                    this._wakeLockSentinel = null;
+                }
+                if (document.visibilityState === 'visible' && this._shouldKeepScreenAwake()) {
+                    void this._syncWakeLock();
+                }
+            });
+            return true;
+        } catch (error) {
+            console.debug('Wake lock unavailable:', error);
+            return false;
+        }
+    }
+
+    async _releaseWakeLock() {
+        if (!this._wakeLockSentinel) return;
+        const sentinel = this._wakeLockSentinel;
+        this._wakeLockSentinel = null;
+        try {
+            await sentinel.release();
+        } catch (_) {}
+    }
+
+    _shutdownConversationRuntime() {
         this._clearReconnectState();
+
         if (this.durationTimer) {
             clearInterval(this.durationTimer);
             this.durationTimer = null;
@@ -233,23 +316,65 @@ class WitnessReplayApp {
             clearTimeout(this._autoListenTimer);
             this._autoListenTimer = null;
         }
-
-        this._disposeWebSocket(this.ws, 'tab closing');
-
-        if (!this.sessionId) return;
-        const closeUrl = `/api/sessions/${this.sessionId}/close?reason=tab_close`;
-
-        try {
-            if (navigator.sendBeacon) {
-                const payload = new Blob([], { type: 'application/json' });
-                navigator.sendBeacon(closeUrl, payload);
-                return;
-            }
-        } catch (error) {
-            console.debug('Session close beacon failed:', error);
+        if (this._sceneUpdatePulseTimer) {
+            clearTimeout(this._sceneUpdatePulseTimer);
+            this._sceneUpdatePulseTimer = null;
+        }
+        if (this._rayListeningCueTimer) {
+            clearTimeout(this._rayListeningCueTimer);
+            this._rayListeningCueTimer = null;
         }
 
-        fetch(closeUrl, { method: 'POST', keepalive: true }).catch(() => {});
+        this._hideTyping();
+        this._hideRayListeningCue();
+        this._stopRecordingSilenceDetection();
+        this.stopVADListening({ keepConversationState: true });
+
+        if (this.audioQualityAnalyzer) {
+            this.audioQualityAnalyzer.stop();
+        }
+        if (this.audioQualityIndicator) {
+            this.audioQualityIndicator.hide();
+            this.audioQualityIndicator.reset();
+        }
+
+        this.audioRecorder?.abort?.();
+        this.ttsPlayer?.interrupt?.('page_close');
+        this.audioVisualizer?.stop?.();
+
+        this.isRecording = false;
+        this.vadAutoRecording = false;
+        this._recordingStartedAt = 0;
+        this._stopRecordingPromise = null;
+        this._isSpeakingResponse = false;
+
+        if (this.micBtn) {
+            this.micBtn.classList.remove('processing', 'recording', 'ai-speaking');
+            this.micBtn.removeAttribute('aria-busy');
+            const btnText = this.micBtn.querySelector('.btn-text');
+            if (btnText) btnText.textContent = 'Tap to Report';
+        }
+        if (this.chatMicBtn) {
+            this.chatMicBtn.classList.remove('recording');
+            this.chatMicBtn.textContent = '🎤';
+        }
+        if (this.stopBtn) {
+            this.stopBtn.style.display = 'none';
+        }
+
+        const voiceControls = document.getElementById('voice-controls');
+        if (voiceControls) voiceControls.classList.remove('expanded');
+
+        const detectiveAvatar = document.querySelector('.detective-avatar');
+        if (detectiveAvatar) detectiveAvatar.classList.remove('listening');
+
+        if (this.vadIndicator) {
+            this.vadIndicator.classList.remove('listening', 'speech-detected', 'recording');
+        }
+
+        this._setConversationState('ready', { silent: true });
+        this._syncVoiceDockMicLabel();
+        void this._releaseWakeLock();
     }
 
     _queueOfflineMessage(data) {
@@ -1090,7 +1215,7 @@ class WitnessReplayApp {
     }
 
     syncVoicePreferencesToSession() {
-        if (!this.sessionId) return;
+        if (!this.sessionId || this._isPageClosing) return;
         const payload = this._collectVoicePreferencesPayload();
         fetch(`/api/sessions/${this.sessionId}/voice/preferences`, {
             method: 'PATCH',
@@ -1102,7 +1227,7 @@ class WitnessReplayApp {
     }
 
     recordCallEvent(eventType, payload = {}) {
-        if (!this.sessionId) return;
+        if (!this.sessionId || this._isPageClosing) return;
         fetch(`/api/sessions/${this.sessionId}/call-event`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1115,7 +1240,7 @@ class WitnessReplayApp {
     }
 
     recordBargeIn(reason = 'tap_interrupt') {
-        if (!this.sessionId) return;
+        if (!this.sessionId || this._isPageClosing) return;
         fetch(`/api/sessions/${this.sessionId}/barge-in`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1168,6 +1293,7 @@ class WitnessReplayApp {
         }
 
         this._syncVoiceDockMicLabel();
+        void this._syncWakeLock();
 
         if (!changed || options.silent) return;
         this.recordCallEvent('conversation_state', { state: validState });
@@ -1588,6 +1714,7 @@ class WitnessReplayApp {
         if (!this.autoListenEnabled) {
             this.stopVADListening();
         }
+        void this._syncWakeLock();
         this.syncVoicePreferencesToSession();
     }
     
@@ -1604,10 +1731,13 @@ class WitnessReplayApp {
             this.ttsPlayer.onPlaybackStart = () => {
                 this._isSpeakingResponse = true;
                 this._setMicSpeakingState(true);
+                this._scrollChatToBottom('smooth', true);
+                void this._syncWakeLock();
             };
             this.ttsPlayer.onPlaybackEnd = () => {
                 this._isSpeakingResponse = false;
                 this._setMicSpeakingState(false);
+                void this._syncWakeLock();
                 this._triggerAutoListen();
             };
             this.ttsPlayer.onPlaybackUnavailable = () => {
@@ -1619,6 +1749,7 @@ class WitnessReplayApp {
                         this._triggerAutoListen();
                     }
                 }
+                void this._syncWakeLock();
             };
         }
     }
@@ -1806,7 +1937,8 @@ class WitnessReplayApp {
     }
     
     // Speak AI response using TTS (called when agent responds)
-    speakAIResponse(text) {
+    speakAIResponse(text, options = {}) {
+        if (this._isPageClosing) return;
         if (this.audioOutputDisabled) {
             if (this.autoListenEnabled) this._triggerAutoListen();
             return;
@@ -1817,7 +1949,7 @@ class WitnessReplayApp {
         if (this._canPlayAgentAudio()) {
             void this.ttsPlayer?.primePlayback?.();
             // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
-            void this.ttsPlayer.speak(text);
+            void this.ttsPlayer.speak(text, false, { context: options?.context || 'response' });
         } else if (this.autoListenEnabled) {
             // No TTS — still trigger auto-listen after a brief pause
             this._triggerAutoListen();
@@ -2060,9 +2192,14 @@ class WitnessReplayApp {
         this.setAutoScroll(!this.autoScrollEnabled);
     }
 
-    _scrollChatToBottom(behavior = 'smooth') {
-        if (!this.chatTranscript || !this.autoScrollEnabled) return;
-        this.chatTranscript.scrollTo({ top: this.chatTranscript.scrollHeight, behavior });
+    _scrollChatToBottom(behavior = 'smooth', force = false) {
+        if (!this.chatTranscript || (!force && !this.autoScrollEnabled)) return;
+        const target = this.chatTranscript;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                target.scrollTo({ top: target.scrollHeight, behavior });
+            });
+        });
     }
 
     setCompactMode(enabled, save = true) {
@@ -2835,6 +2972,7 @@ class WitnessReplayApp {
             }
             
             this.ui.showToast('🔌 Connected to Detective Ray', 'success', 2000);
+            void this._syncWakeLock();
         };
         
         socket.onmessage = (event) => {
@@ -2860,6 +2998,7 @@ class WitnessReplayApp {
             if (this.ws !== socket) return;
             this.ws = null;
             this._wsSessionId = null;
+            void this._releaseWakeLock();
             if (this._isPageClosing) {
                 return;
             }
@@ -3021,6 +3160,9 @@ class WitnessReplayApp {
     }
     
     handleWebSocketMessage(message) {
+        if (this._isPageClosing && message?.type !== 'pong') {
+            return;
+        }
         switch (message.type) {
             case 'text':
                 const speaker = message.data.speaker || 'agent';
@@ -3039,7 +3181,7 @@ class WitnessReplayApp {
                     this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                     this.ui.playSound('notification');
                     // TTS: Speak agent response for accessibility
-                    this.speakAIResponse(message.data.text);
+                    this.speakAIResponse(message.data.text, { context: 'greeting' });
                 } else if (speaker === 'agent' && this.hasReceivedGreeting) {
                     // Check if this is the same greeting text (duplicate from reconnect)
                     const isGreeting = message.data.text && message.data.text.includes("I'm Detective Ray");
@@ -3047,7 +3189,7 @@ class WitnessReplayApp {
                         this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                         this.ui.playSound('notification');
                         // TTS: Speak agent response for accessibility
-                        this.speakAIResponse(message.data.text);
+                        this.speakAIResponse(message.data.text, { context: 'response' });
                     }
                 } else {
                     this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
@@ -3213,11 +3355,11 @@ class WitnessReplayApp {
         // Hide typing indicator when streaming starts
         this._hideTyping();
         
-        if (!this.streamingMessages[message_id]) {
-            // Create new message element for this stream
-            if (this.chatTranscript.querySelector('.empty-state')) {
-                this.chatTranscript.innerHTML = '';
-            }
+            if (!this.streamingMessages[message_id]) {
+                // Create new message element for this stream
+                if (this.chatTranscript.querySelector('.empty-state') || this.chatTranscript.querySelector('.welcome-prompt')) {
+                    this.chatTranscript.innerHTML = '';
+                }
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message message-${speaker} streaming`;
@@ -3236,6 +3378,7 @@ class WitnessReplayApp {
                 element: messageDiv,
                 content: ''
             };
+            this._scrollChatToBottom('auto', true);
         }
         
         const streamData = this.streamingMessages[message_id];
@@ -3248,7 +3391,7 @@ class WitnessReplayApp {
                 contentSpan.textContent = streamData.content;
             }
             // Scroll to show new content
-            this._scrollChatToBottom();
+            this._scrollChatToBottom('smooth', true);
         }
         
         if (is_final) {
@@ -3271,7 +3414,7 @@ class WitnessReplayApp {
             if (speaker === 'agent' && finalContent) {
                 this.lastAgentMessage = finalContent;
                 this._handleAgentResponseKind(response_kind);
-                this.speakAIResponse(finalContent);
+                this.speakAIResponse(finalContent, { context: 'response' });
                 if (!this._canPlayAgentAudio()) {
                     setTimeout(() => {
                         if (!this.isRecording && !this._isSpeakingResponse) {
@@ -3339,6 +3482,9 @@ class WitnessReplayApp {
     
     async startRecording(options = {}) {
         if (this.isRecording || this._stopRecordingPromise) {
+            return;
+        }
+        if (this._isPageClosing) {
             return;
         }
 
@@ -3470,6 +3616,7 @@ class WitnessReplayApp {
                     auto_listen: this.autoListenEnabled,
                     trigger: this._recordingTrigger,
                 });
+                void this._syncWakeLock();
                 this._syncVoiceDockMicLabel();
                 
                 // Play recording start sound
@@ -3579,6 +3726,7 @@ class WitnessReplayApp {
                     has_quality_metrics: !!qualityMetrics,
                     stop_reason: stopReason,
                 });
+                void this._syncWakeLock();
 
                 // Restart VAD listening if enabled
                 if (this.vadEnabled && !this.autoListenEnabled && !this.vadListening && this._micPermissionGranted) {
@@ -3592,6 +3740,7 @@ class WitnessReplayApp {
             } finally {
                 this._recordingStartedAt = 0;
                 this._stopRecordingPromise = null;
+                void this._syncWakeLock();
             }
         })();
 
@@ -3740,9 +3889,11 @@ class WitnessReplayApp {
     }
     
     async sendAudioMessage(audioBlob, qualityMetrics = null) {
+        if (this._isPageClosing) return;
         try {
             const reader = new FileReader();
             reader.onloadend = () => {
+                if (this._isPageClosing) return;
                 const base64Audio = reader.result.split(',')[1];
                 const audioFormat = this._detectAudioFormat(audioBlob);
                 
@@ -3779,6 +3930,7 @@ class WitnessReplayApp {
                 this.ws.send(JSON.stringify(messageData));
                 this.setStatus('Detective Ray is thinking...');
                 this._setConversationState('thinking');
+                this._scrollChatToBottom('smooth', true);
             };
             reader.onerror = (err) => {
                 console.error('[Audio] FileReader error:', err);
@@ -3919,7 +4071,7 @@ class WitnessReplayApp {
             this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
-        this._scrollChatToBottom();
+        this._scrollChatToBottom('smooth', true);
         
         // Add timestamp & update phase progress
         this._addMessageTimestamp?.(messageDiv);
@@ -4015,7 +4167,7 @@ class WitnessReplayApp {
             this._addPinButton?.(messageDiv, text, speaker);
         }
         this.chatTranscript.appendChild(messageDiv);
-        this._scrollChatToBottom();
+        this._scrollChatToBottom('smooth', true);
         
         // Track statement count for user messages
         if (speaker === 'user') {
@@ -4044,6 +4196,10 @@ class WitnessReplayApp {
     
     _showTyping() {
         const el = document.getElementById('typing-indicator');
+        if (this._typingMsgInterval) {
+            clearInterval(this._typingMsgInterval);
+            this._typingMsgInterval = null;
+        }
         if (el) {
             el.classList.remove('hidden');
             // Cycle through contextual thinking messages
@@ -4064,7 +4220,7 @@ class WitnessReplayApp {
                 }, 3000);
             }
         }
-        this._scrollChatToBottom();
+        this._scrollChatToBottom('smooth', true);
     }
     
     _hideTyping() {

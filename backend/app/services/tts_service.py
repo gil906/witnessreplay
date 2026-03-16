@@ -215,11 +215,33 @@ class TTSService:
             )
         )
 
+    @staticmethod
+    def _normalize_context(context: Optional[str]) -> str:
+        value = (context or "response").strip().lower()
+        return "greeting" if value == "greeting" else "response"
+
+    def _build_read_instruction(self, text: str, context: Optional[str] = None) -> str:
+        normalized_context = self._normalize_context(context)
+        if normalized_context == "greeting":
+            delivery_instruction = (
+                "Use a warm, calm, reassuring detective tone with natural pauses at punctuation, "
+                "steady pacing, and no extra words."
+            )
+        else:
+            delivery_instruction = (
+                "Use a natural, conversational, professional detective tone with smooth pacing, "
+                "clear phrasing, and no extra words."
+            )
+        return (
+            f"{delivery_instruction} Read the following text aloud exactly as written:\n\n{text}"
+        )
+
     async def _generate_native_audio_live(
         self,
         model: str,
         text: str,
         voice: str,
+        context: str = "response",
     ) -> Optional[bytes]:
         """Generate audio using Gemini Native Audio via Live API."""
         config = types.LiveConnectConfig(
@@ -231,7 +253,7 @@ class TTSService:
         mime_type: Optional[str] = None
 
         # Wrap text so the model reads it verbatim instead of treating it as a prompt
-        read_instruction = f"Read the following text aloud exactly as written:\n\n{text}"
+        read_instruction = self._build_read_instruction(text, context)
         async with self.client.aio.live.connect(model=model, config=config) as session:
             await session.send(input=read_instruction, end_of_turn=True)
             async for message in session.receive():
@@ -264,10 +286,11 @@ class TTSService:
         model: str,
         text: str,
         voice: str,
+        context: str = "response",
     ) -> Optional[bytes]:
         """Generate audio with standard generate_content TTS models."""
         # Wrap text so the model reads it verbatim
-        read_instruction = f"Read the following text aloud exactly as written:\n\n{text}"
+        read_instruction = self._build_read_instruction(text, context)
         response = await asyncio.to_thread(
             self.client.models.generate_content,
             model=model,
@@ -284,6 +307,7 @@ class TTSService:
         self,
         text: str,
         voice: str = DEFAULT_VOICE,
+        context: str = "response",
     ) -> Optional[bytes]:
         """Generate speech audio from text."""
         if not self.client:
@@ -314,9 +338,19 @@ class TTSService:
 
             try:
                 if self._is_native_audio_model(model):
-                    audio_data = await self._generate_native_audio_live(model=model, text=text, voice=voice)
+                    audio_data = await self._generate_native_audio_live(
+                        model=model,
+                        text=text,
+                        voice=voice,
+                        context=context,
+                    )
                 else:
-                    audio_data = await self._generate_preview_tts(model=model, text=text, voice=voice)
+                    audio_data = await self._generate_preview_tts(
+                        model=model,
+                        text=text,
+                        voice=voice,
+                        context=context,
+                    )
 
                 if not audio_data:
                     logger.warning("TTS response contained no audio data for %s", model)
@@ -351,9 +385,10 @@ class TTSService:
         self,
         text: str,
         voice: str = DEFAULT_VOICE,
+        context: str = "response",
     ) -> Optional[str]:
         """Generate speech and return as base64-encoded string."""
-        audio_bytes = await self.generate_speech(text, voice)
+        audio_bytes = await self.generate_speech(text, voice, context=context)
         if audio_bytes:
             return base64.b64encode(audio_bytes).decode("utf-8")
         return None
