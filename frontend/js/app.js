@@ -101,6 +101,7 @@ class WitnessReplayApp {
         this._wakeLockSentinel = null;
         this._wsSessionId = null;
         this._reconnectCountdown = null;
+        this._pendingStreamedSpeech = new Map();
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -341,6 +342,7 @@ class WitnessReplayApp {
         this.audioRecorder?.abort?.();
         this.ttsPlayer?.interrupt?.('page_close');
         this.audioVisualizer?.stop?.();
+        this._pendingStreamedSpeech?.clear?.();
 
         this.isRecording = false;
         this.vadAutoRecording = false;
@@ -1955,6 +1957,69 @@ class WitnessReplayApp {
             this._triggerAutoListen();
         }
     }
+
+    _fallbackAgentSpeech(messageId, fallback = null) {
+        const pending = (messageId && this._pendingStreamedSpeech?.get(messageId)) || null;
+        if (messageId) {
+            this._pendingStreamedSpeech?.delete?.(messageId);
+        }
+
+        const candidate = fallback || pending;
+        if (candidate?.text && this._canPlayAgentAudio()) {
+            this.speakAIResponse(candidate.text, { context: candidate.context || 'response' });
+            return;
+        }
+
+        if (this.autoListenEnabled) {
+            this._triggerAutoListen();
+        }
+    }
+
+    async _handleNativeTTSStreamStart(data = {}) {
+        const messageId = data.message_id;
+        if (!messageId) return;
+        if (!this._canPlayAgentAudio()) {
+            this._fallbackAgentSpeech(messageId);
+            return;
+        }
+
+        try {
+            const started = await this.ttsPlayer?.beginNativeStream(messageId, {
+                sampleRate: data.sample_rate,
+                context: data.context || 'response',
+            });
+            if (!started) {
+                this._fallbackAgentSpeech(messageId);
+            }
+        } catch (error) {
+            console.warn('Native TTS stream start failed:', error);
+            this._fallbackAgentSpeech(messageId);
+        }
+    }
+
+    async _handleNativeTTSStreamChunk(data = {}) {
+        if (!this._canPlayAgentAudio()) return;
+        try {
+            await this.ttsPlayer?.appendNativeStreamChunk(data.message_id, data.audio_base64);
+        } catch (error) {
+            console.warn('Native TTS stream chunk failed:', error);
+        }
+    }
+
+    _handleNativeTTSStreamEnd(data = {}) {
+        if (data.message_id) {
+            this._pendingStreamedSpeech?.delete?.(data.message_id);
+        }
+        this.ttsPlayer?.endNativeStream?.(data.message_id);
+    }
+
+    _handleNativeTTSStreamError(data = {}) {
+        this.ttsPlayer?.interrupt?.('native_stream_error');
+        this._fallbackAgentSpeech(data.message_id, {
+            text: data.text,
+            context: data.context || 'response',
+        });
+    }
     
     toggleSound() {
         if (this.audioOutputDisabled) {
@@ -3169,6 +3234,8 @@ class WitnessReplayApp {
                 const originalText = message.data.original_text;
                 const language = message.data.language;
                 const responseKind = message.data.response_kind;
+                const ttsMode = message.data.tts_mode;
+                const messageId = message.data.message_id;
                 if (speaker === 'agent' && message.data.text) {
                     this.lastAgentMessage = message.data.text;
                     this._handleAgentResponseKind(responseKind);
@@ -3181,7 +3248,14 @@ class WitnessReplayApp {
                     this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                     this.ui.playSound('notification');
                     // TTS: Speak agent response for accessibility
-                    this.speakAIResponse(message.data.text, { context: 'greeting' });
+                    if (ttsMode === 'native_stream' && messageId) {
+                        this._pendingStreamedSpeech.set(messageId, { text: message.data.text, context: 'greeting' });
+                        if (!this._canPlayAgentAudio() && this.autoListenEnabled) {
+                            this._triggerAutoListen();
+                        }
+                    } else {
+                        this.speakAIResponse(message.data.text, { context: 'greeting' });
+                    }
                 } else if (speaker === 'agent' && this.hasReceivedGreeting) {
                     // Check if this is the same greeting text (duplicate from reconnect)
                     const isGreeting = message.data.text && message.data.text.includes("I'm Detective Ray");
@@ -3189,7 +3263,14 @@ class WitnessReplayApp {
                         this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                         this.ui.playSound('notification');
                         // TTS: Speak agent response for accessibility
-                        this.speakAIResponse(message.data.text, { context: 'response' });
+                        if (ttsMode === 'native_stream' && messageId) {
+                            this._pendingStreamedSpeech.set(messageId, { text: message.data.text, context: 'response' });
+                            if (!this._canPlayAgentAudio() && this.autoListenEnabled) {
+                                this._triggerAutoListen();
+                            }
+                        } else {
+                            this.speakAIResponse(message.data.text, { context: 'response' });
+                        }
                     }
                 } else {
                     this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
@@ -3331,6 +3412,22 @@ class WitnessReplayApp {
             case 'text_stream':
                 this.handleStreamingText(message.data);
                 break;
+
+            case 'tts_stream_start':
+                void this._handleNativeTTSStreamStart(message.data);
+                break;
+
+            case 'tts_stream_chunk':
+                void this._handleNativeTTSStreamChunk(message.data);
+                break;
+
+            case 'tts_stream_end':
+                this._handleNativeTTSStreamEnd(message.data);
+                break;
+
+            case 'tts_stream_error':
+                this._handleNativeTTSStreamError(message.data);
+                break;
             
             case 'language_changed':
                 this.handleLanguageChanged(message.data);
@@ -3350,7 +3447,7 @@ class WitnessReplayApp {
     }
     
     handleStreamingText(data) {
-        const { chunk, is_final, speaker, message_id, response_kind } = data;
+        const { chunk, is_final, speaker, message_id, response_kind, tts_mode } = data;
         
         // Hide typing indicator when streaming starts
         this._hideTyping();
@@ -3414,8 +3511,15 @@ class WitnessReplayApp {
             if (speaker === 'agent' && finalContent) {
                 this.lastAgentMessage = finalContent;
                 this._handleAgentResponseKind(response_kind);
-                this.speakAIResponse(finalContent, { context: 'response' });
-                if (!this._canPlayAgentAudio()) {
+                if (tts_mode === 'native_stream' && message_id) {
+                    this._pendingStreamedSpeech.set(message_id, { text: finalContent, context: 'response' });
+                    if (!this._canPlayAgentAudio() && this.autoListenEnabled) {
+                        this._triggerAutoListen();
+                    }
+                } else {
+                    this.speakAIResponse(finalContent, { context: 'response' });
+                }
+                if (!this._canPlayAgentAudio() && tts_mode !== 'native_stream') {
                     setTimeout(() => {
                         if (!this.isRecording && !this._isSpeakingResponse) {
                             this._setConversationState('ready');

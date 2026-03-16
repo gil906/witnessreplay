@@ -374,6 +374,7 @@ class TTSPlayer {
         this.onPlaybackEnd = null;
         this.onPlaybackUnavailable = null;
         this._generationController = null;
+        this._streamState = null;
         // Prefer Detective Ray's configured voice when it arrives quickly, but
         // avoid long dead air by falling back to browser speech if generation stalls.
         this.fastStartFallbackMs = 900;
@@ -466,7 +467,8 @@ class TTSPlayer {
             || this.queue.length > 0
             || !!this.currentSource
             || !!this.currentUtterance
-            || !!this._generationController;
+            || !!this._generationController
+            || !!this._streamState;
     }
 
     _abortActiveGeneration() {
@@ -545,16 +547,148 @@ class TTSPlayer {
         }
         
         this.isProcessing = false;
-        if (this._playbackCallbackActive) {
-            this._playbackCallbackActive = false;
-            this.onPlaybackEnd?.();
-        }
+        this._notifyPlaybackEnd();
     }
 
     _notifyPlaybackStart() {
         if (this._playbackCallbackActive) return;
         this._playbackCallbackActive = true;
         this.onPlaybackStart?.();
+    }
+
+    _notifyPlaybackEnd() {
+        if (!this._playbackCallbackActive) return;
+        this._playbackCallbackActive = false;
+        this.onPlaybackEnd?.();
+    }
+
+    _clearNativeStreamState(notifyEnd = false) {
+        const state = this._streamState;
+        this._streamState = null;
+        if (!state) {
+            if (notifyEnd) this._notifyPlaybackEnd();
+            return;
+        }
+
+        for (const source of state.activeSources || []) {
+            try {
+                source.onended = null;
+                source.stop();
+            } catch (_) {}
+        }
+        state.activeSources?.clear?.();
+        this.currentSource = null;
+        this.isPlaying = false;
+        if (notifyEnd && state.started) {
+            this._notifyPlaybackEnd();
+        }
+    }
+
+    async beginNativeStream(messageId, options = {}) {
+        if (!this.enabled || !messageId) {
+            return false;
+        }
+
+        if (this._streamState?.messageId === messageId) {
+            return true;
+        }
+
+        this.interrupt('native_stream');
+        const primed = await this.primePlayback();
+        if (!primed || !this.audioContext || this.audioContext.state !== 'running') {
+            return false;
+        }
+
+        this._streamState = {
+            messageId,
+            sampleRate: Number(options.sampleRate) || 24000,
+            nextStartTime: 0,
+            activeSources: new Set(),
+            endRequested: false,
+            started: false,
+        };
+        return true;
+    }
+
+    _decodeBase64ToBytes(base64Data) {
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
+    }
+
+    async appendNativeStreamChunk(messageId, audioBase64) {
+        const state = this._streamState;
+        if (!state || state.messageId !== messageId || !audioBase64) {
+            return false;
+        }
+
+        const primed = await this.primePlayback();
+        if (!primed || !this.audioContext || this.audioContext.state !== 'running') {
+            return false;
+        }
+
+        const bytes = this._decodeBase64ToBytes(audioBase64);
+        const sampleCount = Math.floor(bytes.byteLength / 2);
+        if (sampleCount <= 0) {
+            return false;
+        }
+
+        const samples = new Float32Array(sampleCount);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (let i = 0; i < sampleCount; i++) {
+            samples[i] = view.getInt16(i * 2, true) / 32768;
+        }
+
+        const audioBuffer = this.audioContext.createBuffer(1, sampleCount, state.sampleRate);
+        audioBuffer.copyToChannel(samples, 0);
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.playbackRate.value = this.playbackSpeed;
+        source.connect(this.audioContext.destination);
+
+        const lookaheadSec = 0.05;
+        const now = this.audioContext.currentTime;
+        const startTime = Math.max(state.nextStartTime || 0, now + lookaheadSec);
+        const scaledDuration = audioBuffer.duration / Math.max(this.playbackSpeed, 0.1);
+        state.nextStartTime = startTime + scaledDuration;
+        state.activeSources.add(source);
+        this.currentSource = source;
+
+        source.onended = () => {
+            state.activeSources.delete(source);
+            if (this.currentSource === source) {
+                this.currentSource = null;
+            }
+            if (this._streamState === state && state.endRequested && state.activeSources.size === 0) {
+                this._clearNativeStreamState(true);
+            }
+        };
+
+        if (!state.started) {
+            state.started = true;
+            this.isPlaying = true;
+            this._notifyPlaybackStart();
+        }
+
+        source.start(startTime);
+        return true;
+    }
+
+    endNativeStream(messageId) {
+        const state = this._streamState;
+        if (!state || state.messageId !== messageId) {
+            return false;
+        }
+
+        state.endRequested = true;
+        if (state.activeSources.size === 0) {
+            this._clearNativeStreamState(true);
+        }
+        return true;
     }
 
     _normalizeSpeechContext(context) {
@@ -742,11 +876,7 @@ class TTSPlayer {
             try {
                 
                 // Decode base64 to array buffer
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
+                const bytes = this._decodeBase64ToBytes(base64Data);
                 
                 // Decode audio data
                 this.audioContext.decodeAudioData(
@@ -902,6 +1032,7 @@ class TTSPlayer {
     
     stop() {
         this._abortActiveGeneration();
+        this._clearNativeStreamState(false);
         if (this.currentSource) {
             try {
                 this.currentSource.stop();

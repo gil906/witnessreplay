@@ -3,6 +3,7 @@ import logging
 import json
 import re
 import asyncio
+import base64
 from typing import Optional
 from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
@@ -23,6 +24,7 @@ from app.services.embedding_service import embedding_service
 from app.services.translation_service import translation_service
 from app.services.case_manager import case_manager
 from app.services.api_key_manager import get_genai_client
+from app.services.tts_service import tts_service
 from app.agents.scene_agent import get_agent, remove_agent
 from app.config import settings
 
@@ -92,6 +94,27 @@ class WebSocketHandler:
         payload = await self._build_call_state_payload(status=status, session=session)
         await self.send_message("call_state", payload)
 
+    def _get_session_voice_preferences(self, session=None) -> dict:
+        """Read lightweight voice preferences stored in session metadata."""
+        metadata = dict(getattr(session, "metadata", {}) or {})
+        raw_preferences = metadata.get("voice_preferences") if isinstance(metadata.get("voice_preferences"), dict) else {}
+        available_voices = {voice["id"] for voice in tts_service.get_available_voices()}
+        selected_voice = raw_preferences.get("voice")
+        voice = selected_voice if isinstance(selected_voice, str) and selected_voice in available_voices else "Charon"
+        return {
+            "tts_enabled": raw_preferences.get("tts_enabled") is not False,
+            "voice": voice,
+        }
+
+    def _agent_tts_mode(self, session=None) -> Optional[str]:
+        """Return the playback mode that should be used for agent speech."""
+        preferences = self._get_session_voice_preferences(session=session)
+        if not preferences.get("tts_enabled"):
+            return None
+        if not self.is_connected or not tts_service.health_check():
+            return None
+        return "native_stream"
+
     async def _build_call_metrics_payload(self, model_availability_count: int = 0) -> dict:
         """Build periodic call metrics payload."""
         return {
@@ -149,10 +172,24 @@ class WebSocketHandler:
 
             if len(session.witness_statements) == 0 and not greeting_sent:
                 greeting = await self.agent.start_interview()
+                message_id = str(uuid.uuid4())
+                tts_mode = self._agent_tts_mode(session=session)
+                voice_preferences = self._get_session_voice_preferences(session=session)
                 await self._set_speaking(True)
                 try:
                     # Translate greeting if witness language is not English
-                    await self._send_translated_agent_message(greeting)
+                    spoken_greeting = await self._send_translated_agent_message(
+                        greeting,
+                        message_id=message_id,
+                        tts_mode=tts_mode,
+                    )
+                    if tts_mode:
+                        await self._stream_agent_tts(
+                            spoken_greeting,
+                            context="greeting",
+                            message_id=message_id,
+                            voice=voice_preferences["voice"],
+                        )
                 finally:
                     await self._set_speaking(False)
 
@@ -183,26 +220,44 @@ class WebSocketHandler:
                     return
         self.witness_language = "en"
     
-    async def _send_translated_agent_message(self, text: str, message_id: str = None):
-        """Send an agent message, translating if necessary."""
+    async def _send_translated_agent_message(
+        self,
+        text: str,
+        message_id: str = None,
+        tts_mode: Optional[str] = None,
+        response_kind: Optional[str] = None,
+    ) -> str:
+        """Send an agent message, translating if necessary, and return displayed text."""
         if self.witness_language != "en":
             translation_result = await translation_service.translate_for_witness(
                 agent_response=text,
                 witness_language=self.witness_language,
             )
-            await self.send_message("text", {
+            payload = {
                 "text": translation_result["translated"],
                 "original_text": translation_result["original"],
                 "speaker": "agent",
                 "language": self.witness_language,
-                "message_id": message_id or str(uuid.uuid4())
-            })
+                "message_id": message_id or str(uuid.uuid4()),
+            }
+            if tts_mode:
+                payload["tts_mode"] = tts_mode
+            if response_kind:
+                payload["response_kind"] = response_kind
+            await self.send_message("text", payload)
+            return translation_result["translated"]
         else:
-            await self.send_message("text", {
+            payload = {
                 "text": text,
                 "speaker": "agent",
-                "message_id": message_id or str(uuid.uuid4())
-            })
+                "message_id": message_id or str(uuid.uuid4()),
+            }
+            if tts_mode:
+                payload["tts_mode"] = tts_mode
+            if response_kind:
+                payload["response_kind"] = response_kind
+            await self.send_message("text", payload)
+            return text
     
     async def disconnect(self):
         """Close the WebSocket connection and auto-generate report."""
@@ -371,6 +426,7 @@ class WebSocketHandler:
         message_id: str = None,
         token_info: dict = None,
         response_kind: Optional[str] = None,
+        tts_mode: Optional[str] = None,
     ):
         """Send a streaming text chunk to the client."""
         if not self.is_connected:
@@ -388,10 +444,72 @@ class WebSocketHandler:
                 data["token_info"] = token_info
             if is_final and response_kind:
                 data["response_kind"] = response_kind
+            if is_final and tts_mode:
+                data["tts_mode"] = tts_mode
             message = WebSocketMessage(type="text_stream", data=data)
             await self.websocket.send_json(message.model_dump(mode='json'))
         except Exception as e:
             logger.error(f"Error sending streaming chunk: {e}")
+
+    async def _stream_agent_tts(
+        self,
+        text: str,
+        *,
+        context: str,
+        message_id: str,
+        voice: str,
+    ) -> bool:
+        """Stream Detective Ray audio to the client over websocket."""
+        if not self.is_connected or not text or not text.strip():
+            return False
+
+        stream_started = False
+        try:
+            async for chunk_bytes, mime_type, sample_rate in tts_service.stream_native_audio(
+                text=text,
+                voice=voice,
+                context=context,
+            ):
+                if not self.is_connected:
+                    return False
+
+                if not stream_started:
+                    await self.send_message("tts_stream_start", {
+                        "message_id": message_id,
+                        "mime_type": mime_type,
+                        "sample_rate": sample_rate,
+                        "context": context,
+                    })
+                    stream_started = True
+
+                await self.send_message("tts_stream_chunk", {
+                    "message_id": message_id,
+                    "audio_base64": base64.b64encode(chunk_bytes).decode("ascii"),
+                })
+
+            if stream_started:
+                await self.send_message("tts_stream_end", {
+                    "message_id": message_id,
+                    "context": context,
+                })
+                return True
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning("Native TTS stream failed for session %s: %s", self.session_id, error)
+            if stream_started:
+                await self.send_message("tts_stream_end", {
+                    "message_id": message_id,
+                    "context": context,
+                })
+                return False
+
+        await self.send_message("tts_stream_error", {
+            "message_id": message_id,
+            "text": text,
+            "context": context,
+        })
+        return False
     
     async def handle_message(self, message: dict):
         """Handle incoming WebSocket messages."""
@@ -638,6 +756,8 @@ class WebSocketHandler:
             token_info = None
             full_response = ""
             is_completion_response = False
+            tts_mode = self._agent_tts_mode(session=session)
+            voice_preferences = self._get_session_voice_preferences(session=session)
             await self._set_speaking(True)
             try:
                 # Stream the response (now returns 4-tuple with token_info)
@@ -662,16 +782,19 @@ class WebSocketHandler:
                         agent_response=full_response,
                         witness_language=self.witness_language,
                     )
+                    spoken_response = translation_result["translated"]
                     # Send translated response
                     await self.send_message("text", {
-                        "text": translation_result["translated"],
+                        "text": spoken_response,
                         "original_text": translation_result["original"],
                         "speaker": "agent",
                         "language": self.witness_language,
                         "message_id": message_id,
                         "response_kind": self.agent.last_response_kind,
+                        "tts_mode": tts_mode,
                     })
                 else:
+                    spoken_response = full_response
                     # Send final marker for English responses
                     await self.send_streaming_chunk(
                         "",
@@ -679,6 +802,14 @@ class WebSocketHandler:
                         message_id=message_id,
                         token_info=token_info,
                         response_kind=self.agent.last_response_kind,
+                        tts_mode=tts_mode,
+                    )
+                if tts_mode and spoken_response:
+                    await self._stream_agent_tts(
+                        spoken_response,
+                        context="response",
+                        message_id=message_id,
+                        voice=voice_preferences["voice"],
                     )
             finally:
                 await self._set_speaking(False, emit_ready_hint=not is_completion_response)

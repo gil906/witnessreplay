@@ -5,7 +5,7 @@ import base64
 import io
 import re
 import wave
-from typing import Optional, List
+from typing import Optional, List, AsyncIterator
 from datetime import datetime, timezone
 
 from google.genai import types
@@ -95,32 +95,36 @@ class TTSService:
             return model
         return cls.MODEL_ALIASES.get(model, model)
 
-    def _get_model_chain(self) -> List[str]:
-        """Build deduplicated model chain for TTS generation.
-        
-        Prioritises dedicated TTS models (preview-tts) which faithfully read
-        text verbatim.  Native-audio models are conversational LLMs and may
-        improvise or hallucinate content, so they are used only as a
-        last-resort fallback.
-        """
-        chain = [
-            # Dedicated TTS models first — they read text faithfully
-            *self.FALLBACK_MODELS,
-            # Then try configured models (may be native-audio)
-            settings.tts_model,
-            settings.live_model or self.PRIMARY_MODEL,
-            self.PRIMARY_MODEL,
-            *self.NATIVE_FALLBACK_MODELS,
-        ]
+    def _dedupe_models(self, models: List[Optional[str]]) -> List[str]:
         deduped = []
         seen = set()
-        for model in chain:
+        for model in models:
             model = self._normalize_model_alias(model)
             if not model or model in seen:
                 continue
             seen.add(model)
             deduped.append(model)
-        return deduped or self.FALLBACK_MODELS or [self.PRIMARY_MODEL]
+        return deduped
+
+    def _get_native_model_chain(self) -> List[str]:
+        """Build deduplicated native-audio model chain."""
+        return self._dedupe_models([
+            settings.live_model or self.PRIMARY_MODEL,
+            self.PRIMARY_MODEL,
+            *self.NATIVE_FALLBACK_MODELS,
+        ]) or [self.PRIMARY_MODEL]
+
+    def _get_model_chain(self) -> List[str]:
+        """Build deduplicated model chain for Detective Ray TTS.
+
+        Prefer Native Audio first for conversational playback, then fall back
+        to dedicated preview-TTS if native streaming/generation is unavailable.
+        """
+        return self._dedupe_models([
+            *self._get_native_model_chain(),
+            settings.tts_model,
+            *self.FALLBACK_MODELS,
+        ]) or [self.PRIMARY_MODEL]
 
     def _get_limits(self, model: str) -> tuple[int, int]:
         """Return rpm/rpd limits for model (0 = unlimited)."""
@@ -236,6 +240,27 @@ class TTSService:
             f"{delivery_instruction} Read the following text aloud exactly as written:\n\n{text}"
         )
 
+    def _prepare_text(self, text: str, voice: str) -> tuple[Optional[str], str]:
+        """Normalize and validate text/voice for TTS requests."""
+        if not self.client:
+            logger.warning("TTS client not initialized")
+            return None, voice
+
+        if not text or not text.strip():
+            logger.warning("Empty text provided for TTS")
+            return None, voice
+
+        max_chars = 8000
+        if len(text) > max_chars:
+            text = text[:max_chars] + "..."
+            logger.info("TTS text truncated to %d characters", max_chars)
+
+        valid_voices = [v["id"] for v in AVAILABLE_VOICES]
+        if voice not in valid_voices:
+            voice = DEFAULT_VOICE
+
+        return text, voice
+
     async def _generate_native_audio_live(
         self,
         model: str,
@@ -281,6 +306,41 @@ class TTSService:
             return self._pcm_to_wav(audio_data, self._pcm_sample_rate(mime_type))
         return audio_data
 
+    async def _stream_native_audio_live(
+        self,
+        model: str,
+        text: str,
+        voice: str,
+        context: str = "response",
+    ) -> AsyncIterator[tuple[bytes, str]]:
+        """Yield raw native-audio PCM chunks from the Live API."""
+        config = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            system_instruction=TTS_SYSTEM_INSTRUCTION,
+            speech_config=self._build_speech_config(voice),
+        )
+        read_instruction = self._build_read_instruction(text, context)
+        current_mime_type = "audio/pcm;rate=24000"
+
+        async with self.client.aio.live.connect(model=model, config=config) as session:
+            await session.send(input=read_instruction, end_of_turn=True)
+            async for message in session.receive():
+                server_content = getattr(message, "server_content", None)
+                if not server_content:
+                    continue
+
+                model_turn = getattr(server_content, "model_turn", None)
+                if model_turn and getattr(model_turn, "parts", None):
+                    for part in model_turn.parts:
+                        inline_data = getattr(part, "inline_data", None)
+                        if inline_data and getattr(inline_data, "data", None):
+                            if getattr(inline_data, "mime_type", None):
+                                current_mime_type = inline_data.mime_type
+                            yield inline_data.data, current_mime_type
+
+                if getattr(server_content, "turn_complete", False):
+                    break
+
     async def _generate_preview_tts(
         self,
         model: str,
@@ -310,24 +370,9 @@ class TTSService:
         context: str = "response",
     ) -> Optional[bytes]:
         """Generate speech audio from text."""
-        if not self.client:
-            logger.warning("TTS client not initialized")
+        text, voice = self._prepare_text(text, voice)
+        if not text:
             return None
-
-        if not text or not text.strip():
-            logger.warning("Empty text provided for TTS")
-            return None
-
-        # Truncate very long text to stay within token limits
-        max_chars = 8000
-        if len(text) > max_chars:
-            text = text[:max_chars] + "..."
-            logger.info("TTS text truncated to %d characters", max_chars)
-
-        # Validate voice
-        valid_voices = [v["id"] for v in AVAILABLE_VOICES]
-        if voice not in valid_voices:
-            voice = DEFAULT_VOICE
 
         last_error: Optional[Exception] = None
         for model in self._get_model_chain():
@@ -380,6 +425,72 @@ class TTSService:
         if last_error:
             logger.error("All TTS models failed. Last error: %s", last_error)
         return None
+
+    async def stream_native_audio(
+        self,
+        text: str,
+        voice: str = DEFAULT_VOICE,
+        context: str = "response",
+    ) -> AsyncIterator[tuple[bytes, str, int]]:
+        """Yield native-audio chunks for low-latency Detective Ray playback."""
+        text, voice = self._prepare_text(text, voice)
+        if not text:
+            return
+
+        last_error: Optional[Exception] = None
+        for model in self._get_native_model_chain():
+            allowed, reason = self._can_make_request(model)
+            if not allowed:
+                logger.warning("Native TTS stream blocked for %s: %s", model, reason)
+                continue
+
+            chunk_count = 0
+            last_mime_type = "audio/pcm;rate=24000"
+            try:
+                async for chunk_bytes, mime_type in self._stream_native_audio_live(
+                    model=model,
+                    text=text,
+                    voice=voice,
+                    context=context,
+                ):
+                    last_mime_type = mime_type or last_mime_type
+                    chunk_count += 1
+                    yield chunk_bytes, last_mime_type, self._pcm_sample_rate(last_mime_type)
+
+                if chunk_count > 0:
+                    self._record_request(model)
+                    logger.info(
+                        "Streamed native TTS audio with %s (%d chunks), voice=%s",
+                        model,
+                        chunk_count,
+                        voice,
+                    )
+                    return
+                logger.warning("Native TTS stream contained no audio data for %s", model)
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                if chunk_count > 0:
+                    self._record_request(model)
+                    logger.warning(
+                        "Native TTS stream interrupted after %d chunks with %s: %s",
+                        chunk_count,
+                        model,
+                        error_str[:200],
+                    )
+                    return
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    logger.warning("Native TTS stream rate limited by API for %s: %s", model, error_str[:200])
+                    self._mark_model_exhausted(model)
+                    continue
+                if is_retryable_model_error(e):
+                    logger.warning("Native TTS stream fallback from %s due to retryable error: %s", model, error_str[:160])
+                    continue
+                logger.error("Native TTS stream error with %s: %s", model, e)
+                continue
+
+        if last_error:
+            logger.error("All native TTS stream models failed. Last error: %s", last_error)
 
     async def generate_speech_base64(
         self,
