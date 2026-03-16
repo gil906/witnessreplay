@@ -327,6 +327,7 @@ class WitnessReplayApp {
             return false;
         }
         if (this._micPermissionGranted) {
+            void this._primeAutoListenRecorder();
             return true;
         }
         if (this._autoListenMicWarmup) {
@@ -338,6 +339,7 @@ class WitnessReplayApp {
 
         const permissionGranted = await this._refreshMicrophonePermissionState();
         if (permissionGranted) {
+            void this._primeAutoListenRecorder();
             return true;
         }
         if (this._micPermissionStatus?.state === 'denied') {
@@ -354,6 +356,7 @@ class WitnessReplayApp {
                 const stream = await navigator.mediaDevices.getUserMedia(this._getPreferredMicrophoneConstraints());
                 stream.getTracks().forEach((track) => track.stop());
                 this._setMicPermissionGranted(true);
+                await this._primeAutoListenRecorder();
                 return true;
             } catch (error) {
                 if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
@@ -372,6 +375,22 @@ class WitnessReplayApp {
             this._triggerAutoListen();
         }
         return warmed;
+    }
+
+    async _primeAutoListenRecorder() {
+        if (!this.audioRecorder || typeof this.audioRecorder.prime !== 'function') {
+            return false;
+        }
+        if (!this._micPermissionGranted) {
+            return false;
+        }
+        try {
+            await this.audioRecorder.prime();
+            return true;
+        } catch (error) {
+            console.debug('[AutoListen] Recorder prime skipped:', error);
+            return false;
+        }
     }
 
     async _autoCreateSession() {
@@ -1641,23 +1660,26 @@ class WitnessReplayApp {
             if (!permissionGranted) return;
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-            if (window.VoiceActivityDetector) {
-                if (!this.vadListening) {
-                    console.debug('[VoiceConversation] Auto-listen: arming passive VAD');
-                    await this.startVADListening();
-                }
+            const recorderPrimed = await this._primeAutoListenRecorder();
+            if (this.isRecording || this._isSpeakingResponse) return;
+
+            if (this.audioRecorder) {
+                console.debug('[VoiceConversation] Auto-listen: starting capture', { primed: recorderPrimed });
+                this.startRecording({ trigger: 'auto_listen' });
                 return;
             }
 
-            console.debug('[VoiceConversation] Auto-listen: starting recording');
-            this.startRecording({ trigger: 'auto_listen' });
+            if (window.VoiceActivityDetector && !this.vadListening) {
+                console.debug('[VoiceConversation] Auto-listen: falling back to passive VAD');
+                await this.startVADListening();
+            }
         };
 
         if (this._autoListenTimer) clearTimeout(this._autoListenTimer);
         this._autoListenTimer = setTimeout(() => {
             this._autoListenTimer = null;
             void armAutoListen();
-        }, 320);
+        }, 120);
     }
 
     _isLikelySilentAutoCapture(qualityMetrics, audioBlob) {
@@ -1789,7 +1811,11 @@ class WitnessReplayApp {
             if (this.autoListenEnabled) this._triggerAutoListen();
             return;
         }
+        if (this.autoListenEnabled && this._micPermissionGranted) {
+            void this._primeAutoListenRecorder();
+        }
         if (this._canPlayAgentAudio()) {
+            void this.ttsPlayer?.primePlayback?.();
             // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
             void this.ttsPlayer.speak(text);
         } else if (this.autoListenEnabled) {
@@ -3555,7 +3581,7 @@ class WitnessReplayApp {
                 });
 
                 // Restart VAD listening if enabled
-                if (this.vadEnabled && !this.vadListening && this._micPermissionGranted) {
+                if (this.vadEnabled && !this.autoListenEnabled && !this.vadListening && this._micPermissionGranted) {
                     setTimeout(() => this.startVADListening(), 500);
                 }
             } catch (error) {
@@ -3585,9 +3611,10 @@ class WitnessReplayApp {
         if (!canUseProcessorStats && !stream) return;
 
         const BASE_THRESHOLD = 0.009;
-        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 2100 : 2400;
+        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 1900 : 2400;
         const CHECK_INTERVAL = 100;
-        const MIN_SPEECH_MS = 380;
+        const MIN_SPEECH_MS = this._recordingTrigger === 'auto_listen' ? 220 : 380;
+        const NO_SPEECH_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 7000 : 0;
         const MAX_RECORDING_MS = this._recordingTrigger === 'auto_listen' ? 30000 : 90000;
 
         try {
@@ -3678,6 +3705,13 @@ class WitnessReplayApp {
                 }
 
                 const startedAt = this._recordingStartedAt || now;
+                if (!hasSpeechOccurred && NO_SPEECH_TIMEOUT_MS > 0 && now - startedAt >= NO_SPEECH_TIMEOUT_MS) {
+                    console.debug('[SilenceDetect] No witness speech detected → rearming hands-free capture');
+                    this._stopRecordingSilenceDetection();
+                    this.stopRecording({ reason: 'no_speech_timeout' });
+                    return;
+                }
+
                 if (MAX_RECORDING_MS > 0 && now - startedAt >= MAX_RECORDING_MS) {
                     console.warn('[SilenceDetect] Max recording duration reached → stopping capture');
                     this._stopRecordingSilenceDetection();

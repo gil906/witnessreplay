@@ -13,15 +13,18 @@ class AudioRecorder {
         this.isRecording = false;
         this.stopPromise = null;
         this.mimeType = 'audio/webm';
+        this._streamSetupPromise = null;
     }
-    
-    async start() {
-        try {
-            if (this.isRecording && this.stream) {
-                return this.stream;
-            }
 
-            // Request microphone access (raw stream)
+    async _ensureCaptureStream() {
+        if (this.stream && this.processedStream) {
+            return this.stream;
+        }
+        if (this._streamSetupPromise) {
+            return this._streamSetupPromise;
+        }
+
+        this._streamSetupPromise = (async () => {
             this.stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -31,14 +34,41 @@ class AudioRecorder {
                     sampleRate: 48000
                 }
             });
-            
-            // Apply dynamic audio processing (AGC + noise cancellation)
+
             if (window.DynamicAudioProcessor) {
                 this.processor = new DynamicAudioProcessor();
                 this.processedStream = await this.processor.start(this.stream);
             } else {
                 this.processedStream = this.stream;
             }
+
+            return this.stream;
+        })();
+
+        try {
+            return await this._streamSetupPromise;
+        } catch (error) {
+            this._cleanupMediaResources();
+            throw error;
+        } finally {
+            this._streamSetupPromise = null;
+        }
+    }
+
+    async prime() {
+        if (this.isRecording && this.stream) {
+            return this.stream;
+        }
+        return this._ensureCaptureStream();
+    }
+
+    async start() {
+        try {
+            if (this.isRecording && this.stream) {
+                return this.stream;
+            }
+
+            const rawStream = await this._ensureCaptureStream();
             
             // Create MediaRecorder on the PROCESSED stream
             const mimeType = this.getSupportedMimeType();
@@ -62,7 +92,7 @@ class AudioRecorder {
             this.isRecording = true;
             
             // Return the RAW stream for quality visualization (green bar)
-            return this.stream;
+            return rawStream;
             
         } catch (error) {
             console.error('Error accessing microphone:', error);
@@ -93,6 +123,7 @@ class AudioRecorder {
         this.mediaRecorder = null;
         this.isRecording = false;
         this.stopPromise = null;
+        this._streamSetupPromise = null;
     }
     
     async stop() {
@@ -322,10 +353,9 @@ class TTSPlayer {
         this.onPlaybackEnd = null;
         this.onPlaybackUnavailable = null;
         this._generationController = null;
-        // Keep Detective Ray on the configured Gemini voice during the main
-        // conversation. Browser speech remains a last-resort fallback only if
-        // generated audio actually fails.
-        this.fastStartFallbackMs = 0;
+        // Prefer Detective Ray's configured voice when it arrives quickly, but
+        // avoid long dead air by falling back to browser speech if generation stalls.
+        this.fastStartFallbackMs = 900;
         
         // Fetch available voices on init
         this.fetchVoices();
@@ -540,6 +570,7 @@ class TTSPlayer {
     async _playText(text) {
         let controller = null;
         try {
+            const playbackPrime = this.primePlayback().catch(() => false);
             let audioPayload = null;
             if (this.webSpeechSupported && this.fastStartFallbackMs > 0) {
                 controller = new AbortController();
@@ -576,6 +607,7 @@ class TTSPlayer {
                 this._generationController = null;
             }
 
+            await playbackPrime;
             await this._playAudioBase64(audioPayload.audio_base64, audioPayload.mime_type);
             return { played: true, interrupted: false };
         } catch (error) {
