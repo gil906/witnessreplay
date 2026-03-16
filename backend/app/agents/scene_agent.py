@@ -100,6 +100,48 @@ class SceneReconstructionAgent:
         )
         return truncated
 
+    def _build_selected_prompt(self, model_name: Optional[str] = None) -> str:
+        """Build the current system prompt, including memory context when available."""
+        if model_name:
+            self._current_prompt_level = self._get_prompt_level_for_model(model_name)
+
+        selected_prompt = get_system_prompt(self._current_prompt_level)
+        if self.memory_context:
+            selected_prompt = f"{selected_prompt}\n{self.memory_context}"
+        return selected_prompt
+
+    def _extract_chat_history(self) -> List[Any]:
+        """Read the SDK chat history so rebuilt chats keep prior witness context."""
+        if not self.chat:
+            return []
+
+        for attr_name in ("_current_history", "get_history"):
+            history_getter = getattr(self.chat, attr_name, None)
+            if callable(history_getter):
+                history = history_getter()
+                if history:
+                    return list(history)
+
+        curated_history = getattr(self.chat, "_curated_history", None)
+        if curated_history:
+            return list(curated_history)
+        return []
+
+    def _create_chat_session(self, model_name: str):
+        """Create a chat session with the right prompt and any existing history."""
+        create_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "config": {
+                "system_instruction": self._build_selected_prompt(model_name),
+                "temperature": 0.4,
+            },
+        }
+        history = self._extract_chat_history()
+        if history:
+            create_kwargs["history"] = history
+        self.chat = self.client.chats.create(**create_kwargs)
+        return self.chat
+
     @staticmethod
     def _normalize_text(text: str) -> str:
         """Lowercase and normalize text for lightweight turn heuristics."""
@@ -187,6 +229,45 @@ class SceneReconstructionAgent:
         )
         return any(marker in normalized for marker in skip_markers)
 
+    def _response_restarts_interview(self, response: str) -> bool:
+        """Detect generic re-intros after the witness has already started the interview."""
+        prior_user_turns = len([m for m in self.conversation_history if m.get("role") == "user"])
+        if prior_user_turns < 1:
+            return False
+
+        normalized = self._normalize_text(response)
+        generic_restart_markers = (
+            "tell me what happened in your own words",
+            "please tell me what happened",
+            "go ahead and tell me what happened",
+            "can you tell me what happened",
+            "what can you help me with today",
+        )
+        intro_markers = (
+            "im detective ray",
+            "i am detective ray",
+            "thank you for coming in",
+            "here to take your report",
+        )
+
+        if not any(marker in normalized for marker in generic_restart_markers):
+            return False
+        if any(marker in normalized for marker in intro_markers):
+            return True
+        return len(normalized.split()) <= 24
+
+    def _build_repaired_interview_response(self, statement: str) -> str:
+        """Replace reset-like replies with a contextual follow-up."""
+        normalized = self._normalize_text(statement)
+        tokens = set(normalized.split())
+        if tokens & {"car", "truck", "vehicle", "driver", "plate", "license"}:
+            acknowledgment = "Got it."
+        elif tokens & {"gun", "knife", "weapon", "injured", "hurt", "bleeding"}:
+            acknowledgment = "Understood."
+        else:
+            acknowledgment = "Thanks, that's helpful."
+        return f"{acknowledgment} {self._build_follow_up_question(statement)}"
+
     def _build_follow_up_question(self, statement: str) -> str:
         """Fallback question when the model fails to continue the interview."""
         normalized = self._normalize_text(statement)
@@ -226,6 +307,10 @@ class SceneReconstructionAgent:
         if self._should_skip_follow_up_repair(base_response):
             self.last_response_kind = "error"
             return base_response
+
+        if self._response_restarts_interview(base_response):
+            self.last_response_kind = "interview"
+            return self._build_repaired_interview_response(statement)
 
         if "?" in base_response:
             self.last_response_kind = "interview"
@@ -403,16 +488,7 @@ class SceneReconstructionAgent:
             # Initialize chat if not already done (lazy init with best model)
             if not self.chat:
                 chat_model = await model_selector.get_best_model_for_task("chat")
-                # Select prompt level based on model
-                self._current_prompt_level = self._get_prompt_level_for_model(chat_model)
-                selected_prompt = get_system_prompt(self._current_prompt_level)
-                self.chat = self.client.chats.create(
-                    model=chat_model,
-                    config={
-                        "system_instruction": selected_prompt,
-                        "temperature": 0.4,
-                    }
-                )
+                self._create_chat_session(chat_model)
                 self._log_structured("chat_initialized", 
                                      model=chat_model,
                                      prompt_level=self._current_prompt_level)
@@ -427,7 +503,7 @@ class SceneReconstructionAgent:
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
             
             # Get current prompt for quota estimation
-            current_prompt = get_system_prompt(self._current_prompt_level)
+            current_prompt = self._build_selected_prompt(current_model)
             
             # Optimize history if needed (compress older messages)
             optimized_history = self.conversation_history
@@ -501,20 +577,12 @@ class SceneReconstructionAgent:
                         # Try a different model
                         new_model = await model_selector.get_best_model_for_task("chat")
                         if new_model != current_model:
-                            # Select appropriate prompt level for new model
-                            self._current_prompt_level = self._get_prompt_level_for_model(new_model)
-                            new_prompt = get_system_prompt(self._current_prompt_level)
+                            self._create_chat_session(new_model)
                             self._log_structured("model_switched",
                                                  old_model=current_model,
                                                  new_model=new_model,
                                                  prompt_level=self._current_prompt_level)
-                            self.chat = self.client.chats.create(
-                                model=new_model,
-                                config={
-                                    "system_instruction": new_prompt,
-                                    "temperature": 0.4,
-                                }
-                            )
+                            current_model = new_model
                             continue
                         
                         # If same model (all are rate limited), wait and retry
@@ -529,6 +597,7 @@ class SceneReconstructionAgent:
                 return "I'm temporarily rate limited. Please wait a moment and try again.", False, token_info
             
             agent_response = self._ensure_follow_up_response(statement, getattr(response, "text", "") or "")
+            current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', current_model)
             
             # Track usage with actual token counts
             input_tokens = self._estimate_tokens(statement_for_model)
@@ -653,20 +722,7 @@ class SceneReconstructionAgent:
             # Initialize chat if not already done
             if not self.chat:
                 chat_model = await model_selector.get_best_model_for_task("chat")
-                self._current_prompt_level = self._get_prompt_level_for_model(chat_model)
-                selected_prompt = get_system_prompt(self._current_prompt_level)
-                
-                # Append memory context if available
-                if self.memory_context:
-                    selected_prompt = selected_prompt + "\n" + self.memory_context
-                
-                self.chat = self.client.chats.create(
-                    model=chat_model,
-                    config={
-                        "system_instruction": selected_prompt,
-                        "temperature": 0.4,
-                    }
-                )
+                self._create_chat_session(chat_model)
                 self._log_structured("chat_initialized", 
                                      model=chat_model,
                                      has_memory_context=bool(self.memory_context))
@@ -678,12 +734,13 @@ class SceneReconstructionAgent:
             
             # Get current model for pre-check
             current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', settings.gemini_model)
+            current_prompt = self._build_selected_prompt(current_model)
             
             # Pre-check token quota before sending request
             quota_check, token_estimate = usage_tracker.precheck_request(
                 model_name=current_model,
                 prompt=statement_for_model,
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=current_prompt,
                 history=self.conversation_history,
                 task_type="chat",
                 enforce=settings.enforce_rate_limits,
@@ -755,13 +812,8 @@ class SceneReconstructionAgent:
                             self._log_structured("model_switched",
                                                  old_model=current_model,
                                                  new_model=new_model)
-                            self.chat = self.client.chats.create(
-                                model=new_model,
-                                config={
-                                    "system_instruction": SYSTEM_PROMPT,
-                                    "temperature": 0.4,
-                                }
-                            )
+                            self._create_chat_session(new_model)
+                            current_model = new_model
                             continue
                         
                         wait_time = (attempt + 1) * 10
@@ -784,6 +836,7 @@ class SceneReconstructionAgent:
                 if suffix:
                     yield suffix, False, False, None
                 full_response = repaired_response
+            current_model = getattr(self.chat, '_model', None) or getattr(self.chat, 'model', current_model)
             
             # Track usage with actual token counts
             input_tokens = self._estimate_tokens(statement_for_model)

@@ -482,7 +482,15 @@ class WebSocketHandler:
                     logger.info("Transcription succeeded with Gemini model %s", transcription_model)
 
                     transcribed_text = transcription_response.text.strip() if transcription_response.text else ""
-                    cleaned_text = self._sanitize_transcribed_text(transcribed_text)
+                    if self._looks_like_instructional_transcript(transcribed_text):
+                        logger.warning(
+                            "Discarding instruction-like transcription for session %s: %s",
+                            self.session_id,
+                            transcribed_text[:120],
+                        )
+                        cleaned_text = ""
+                    else:
+                        cleaned_text = self._sanitize_transcribed_text(transcribed_text)
 
                     if cleaned_text:
                         if capture_mode == "auto_listen" and self._is_low_signal_auto_transcript(cleaned_text):
@@ -763,6 +771,36 @@ class WebSocketHandler:
         if not re.search(r"[A-Za-z0-9]", cleaned):
             return ""
         return cleaned
+
+    @staticmethod
+    def _looks_like_instructional_transcript(text: str) -> bool:
+        """Detect model meta-responses that ask for audio instead of transcribing it."""
+        normalized = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        if not normalized:
+            return False
+
+        audio_markers = (
+            "audio file",
+            "audio clip",
+            "audio recording",
+            "recording",
+            "voice note",
+            "link to it",
+        )
+        request_markers = (
+            "please provide",
+            "please upload",
+            "please send",
+            "share the audio",
+            "send me the audio",
+            "i will transcribe",
+            "to transcribe it",
+            "exactly as requested",
+        )
+        return any(marker in normalized for marker in audio_markers) and any(
+            marker in normalized for marker in request_markers
+        )
 
     @staticmethod
     def _is_low_signal_auto_transcript(text: str) -> bool:
