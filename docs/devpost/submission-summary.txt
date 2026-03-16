@@ -1,0 +1,59 @@
+WitnessReplay Devpost Submission Summary
+=======================================
+
+One-line pitch
+--------------
+WitnessReplay is a live multimodal investigation agent that interviews witnesses in natural voice, asks better follow-up questions, and turns testimony into structured reports, scene reconstructions, and exportable case artifacts.
+
+What the project does
+---------------------
+WitnessReplay is built around Detective Ray, a voice-first AI investigator. A witness opens the app, hears Detective Ray greet them first, and can then speak naturally instead of filling out a rigid form. The system listens, transcribes, asks clarifying questions, keeps track of missing required details such as time and location, and updates the transcript and audio reply in real time.
+
+As the interview continues, WitnessReplay extracts structured information about the incident, groups related reports into cases, highlights contradictions, generates summaries, and can create scene reconstructions from the testimony and uploaded evidence. The result is a smoother witness experience up front and a more actionable investigative record on the back end.
+
+Key features and functionality
+------------------------------
+- Live voice conversation with interruption support.
+- Multimodal inputs: voice, typed testimony, uploaded evidence photos, and hand-drawn sketches.
+- Multimodal outputs: spoken replies, live transcript updates, scene previews, structured evidence metadata, and investigator exports.
+- Investigation-specific guardrails for missing required details and safer conversation completion.
+- Case and admin workflows including contradictions, summaries, timelines, review tools, and export endpoints.
+- Mobile-first conversation UX with auto-listen, bottom-pinned transcript behavior, and consistent media-audio playback.
+
+Technologies used
+-----------------
+- Google GenAI SDK (google-genai) for Gemini-powered conversation, transcription, reasoning, TTS, and image-generation flows.
+- Gemini Live / native-audio path for real-time interaction.
+- FastAPI + Python 3.11 backend with REST + WebSocket communication.
+- Vanilla JavaScript / HTML / CSS frontend optimized for mobile voice interviewing.
+- SQLite for default local durability.
+- Google Cloud Firestore and Google Cloud Storage integrations when configured.
+- Cloud Build + Cloud Run + Terraform assets for Google Cloud deployment workflows.
+- Docker Compose for reproducible local and self-hosted environments.
+
+Data sources used
+-----------------
+WitnessReplay does not rely on a bundled external dataset for the core interview flow. Its primary data sources are:
+- user-provided witness testimony captured through live voice or typed text,
+- user-uploaded evidence files such as images and sketches,
+- structured metadata extracted from the conversation during the active session,
+- optional cloud persistence layers such as Firestore and GCS when deployment settings enable them.
+
+Findings and learnings
+----------------------
+- A strong live-agent experience needs more than a good prompt; it also needs deterministic product guardrails.
+- Required investigative details like incident time need explicit enforcement.
+- Mobile transcript behavior should match familiar chat apps and stay pinned to the latest turn unless the user intentionally scrolls away.
+- Mixed browser-audio routes can create inconsistent volume on phones, so Detective Ray now stays on a single media-audio path.
+- Human-sounding acknowledgments and follow-ups matter as much as raw model quality.
+
+Why this fits the Gemini Live Agent Challenge
+---------------------------------------------
+WitnessReplay is a Live Agent project because it hears spoken testimony, speaks back in a live conversational style, handles interruptions and follow-up questioning in real time, uses multimodal evidence inputs, generates visual scene outputs, and connects the live conversation to a real investigative workflow.
+
+Submission asset links
+----------------------
+Repository: https://github.com/gil906/witnessreplay
+Architecture diagram: docs/devpost/architecture-diagram.svg
+Google Cloud proof doc: docs/devpost/google-cloud-proof.md
+Submission checklist: docs/devpost/submission-checklist.md

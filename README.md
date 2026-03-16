@@ -537,6 +537,42 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 | **Repository** | [github.com/gil906/witnessreplay](https://github.com/gil906/witnessreplay) |
 | **Author** | [@gil906](https://github.com/gil906) |
 
+### Devpost-ready submission files
+
+| Submission need | File | How to use it |
+|---|---|---|
+| **Text description** | [`docs/devpost/submission-summary.txt`](docs/devpost/submission-summary.txt) | Paste into the Devpost text-description field |
+| **Formatted project summary** | [`docs/devpost/submission-summary.md`](docs/devpost/submission-summary.md) | Repo-friendly version of the same submission summary |
+| **Google Cloud proof** | [`docs/devpost/google-cloud-proof.md`](docs/devpost/google-cloud-proof.md) | Use this file's GitHub URL in the Devpost proof field |
+| **Architecture diagram** | [`docs/devpost/architecture-diagram.svg`](docs/devpost/architecture-diagram.svg) | Upload to the file upload or image carousel |
+| **Submission checklist** | [`docs/devpost/submission-checklist.md`](docs/devpost/submission-checklist.md) | Final pass before you click submit |
+| **One-command bundle export** | [`tools/export_devpost_bundle.py`](tools/export_devpost_bundle.py) | Builds a zip bundle with the submission assets |
+
+### Export a single Devpost bundle
+
+```bash
+python3 tools/export_devpost_bundle.py
+```
+
+Generated output:
+
+- `dist/devpost/witnessreplay-devpost-submission/`
+- `dist/devpost/witnessreplay-devpost-submission.zip`
+
+The bundle includes the README, submission summary, architecture diagram, Google Cloud proof doc, and the core reference files that back up the challenge submission.
+
+### Google Cloud references for judges
+
+If you want judges to verify the Google Cloud path directly in the repository, start with:
+
+- [`docs/devpost/google-cloud-proof.md`](docs/devpost/google-cloud-proof.md)
+- [`deploy/cloudbuild.yaml`](deploy/cloudbuild.yaml)
+- [`deploy/terraform/main.tf`](deploy/terraform/main.tf)
+- [`backend/app/services/firestore.py`](backend/app/services/firestore.py)
+- [`backend/app/services/storage.py`](backend/app/services/storage.py)
+
+The repo also contains a self-hosted Docker/GitHub Actions deployment path for day-to-day iteration, but the files above are the Google Cloud-specific references to highlight for the challenge.
+
 ### What Makes This a Live Agent?
 
 WitnessReplay is a **live AI agent** because it:
