@@ -27,7 +27,8 @@ class AudioRecorder {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 44100
+                    channelCount: 1,
+                    sampleRate: 48000
                 }
             });
             

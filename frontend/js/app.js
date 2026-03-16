@@ -75,11 +75,15 @@ class WitnessReplayApp {
         this._autoListenTimer = null;
         this._recordingTrigger = 'manual';
         this._autoListenPausedUntilManual = false;
+        this._autoListenNoiseStrikeCount = 0;
+        this._lastAutoListenNoiseAt = 0;
         this._lastVoiceHintState = null;
         this._lastVoiceHintToastAt = 0;
         this._micPermissionGranted = localStorage.getItem('witnessreplayMicPermissionGranted') === 'true';
         this._micPermissionProbe = null;
         this._micPermissionStatus = null;
+        this._autoListenMicWarmup = null;
+        this._autoListenMicPrompted = false;
         this.conversationState = 'ready';
         this.lastAgentMessage = '';
         this._stopRecordingPromise = null;
@@ -278,6 +282,18 @@ class WitnessReplayApp {
         } catch (_) {}
     }
 
+    _getPreferredMicrophoneConstraints() {
+        return {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+                sampleRate: 48000,
+            }
+        };
+    }
+
     async _refreshMicrophonePermissionState() {
         if (this._micPermissionProbe) {
             return this._micPermissionProbe;
@@ -300,6 +316,62 @@ class WitnessReplayApp {
         });
 
         return this._micPermissionProbe;
+    }
+
+    async _prepareAutoListenMicrophone(options = {}) {
+        const prompt = options?.prompt === true;
+        if (!this.autoListenEnabled || this._autoListenPausedUntilManual) {
+            return false;
+        }
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            return false;
+        }
+        if (this._micPermissionGranted) {
+            return true;
+        }
+        if (this._autoListenMicWarmup) {
+            return this._autoListenMicWarmup;
+        }
+        if (prompt && this._autoListenMicPrompted && !this._micPermissionGranted) {
+            return false;
+        }
+
+        const permissionGranted = await this._refreshMicrophonePermissionState();
+        if (permissionGranted) {
+            return true;
+        }
+        if (this._micPermissionStatus?.state === 'denied') {
+            this._setMicPermissionGranted(false);
+            return false;
+        }
+        if (!prompt) {
+            return false;
+        }
+
+        this._autoListenMicPrompted = true;
+        this._autoListenMicWarmup = (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(this._getPreferredMicrophoneConstraints());
+                stream.getTracks().forEach((track) => track.stop());
+                this._setMicPermissionGranted(true);
+                return true;
+            } catch (error) {
+                if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+                    this._setMicPermissionGranted(false);
+                    this.ui?.showToast('🎤 Allow microphone access to enable hands-free listening.', 'info', 3600);
+                }
+                console.debug('[AutoListen] Microphone warmup skipped:', error);
+                return false;
+            } finally {
+                this._autoListenMicWarmup = null;
+            }
+        })();
+
+        const warmed = await this._autoListenMicWarmup;
+        if (warmed && this.hasReceivedGreeting && !this.isRecording && !this._isSpeakingResponse) {
+            this._triggerAutoListen();
+        }
+        return warmed;
     }
 
     async _autoCreateSession() {
@@ -717,7 +789,7 @@ class WitnessReplayApp {
         if (!this.isMobileVoiceUI || !this.chatTranscript) return;
         const empty = this.chatTranscript.querySelector('.empty-state');
         if (empty) {
-            empty.textContent = 'Tap the microphone to start your report, or type below if that is easier.';
+            empty.textContent = 'After Detective Ray greets you, just start talking. You can also type below if that is easier.';
         }
     }
 
@@ -1480,7 +1552,11 @@ class WitnessReplayApp {
         );
         if (this.autoListenEnabled) {
             this._autoListenPausedUntilManual = false;
+            void this._prepareAutoListenMicrophone({ prompt: true });
             this._triggerAutoListen();
+        } else {
+            this._autoListenNoiseStrikeCount = 0;
+            this._lastAutoListenNoiseAt = 0;
         }
         this._syncAutoListenButtonState();
         this._vibrate(this.autoListenEnabled ? [10, 20, 10] : [18]);
@@ -1581,7 +1657,7 @@ class WitnessReplayApp {
         this._autoListenTimer = setTimeout(() => {
             this._autoListenTimer = null;
             void armAutoListen();
-        }, 700);
+        }, 320);
     }
 
     _isLikelySilentAutoCapture(qualityMetrics, audioBlob) {
@@ -1621,8 +1697,56 @@ class WitnessReplayApp {
         this._setConversationState('ready');
         this.ui?.setStatus('Waiting for witness input...', 'default');
         this._syncAutoListenButtonState();
-        this.ui?.showToast('⏸️ Auto-listen paused. Tap the mic when ready.', 'info', 2800);
+        this.ui?.showToast('⏸️ Auto-listen paused after repeated background noise. Tap the mic when ready.', 'info', 3200);
         this.recordCallEvent('auto_listen_paused', { reason });
+    }
+
+    _resetAutoListenNoiseStrikes() {
+        this._autoListenNoiseStrikeCount = 0;
+        this._lastAutoListenNoiseAt = 0;
+    }
+
+    _recoverFromSilentAutoCapture(metadata = {}) {
+        if (!this.autoListenEnabled) return;
+
+        const now = Date.now();
+        if (!this._lastAutoListenNoiseAt || now - this._lastAutoListenNoiseAt > 45000) {
+            this._autoListenNoiseStrikeCount = 0;
+        }
+        this._lastAutoListenNoiseAt = now;
+        this._autoListenNoiseStrikeCount += 1;
+
+        const strikeCount = this._autoListenNoiseStrikeCount;
+        this.recordCallEvent('auto_listen_silence', {
+            strike_count: strikeCount,
+            ...metadata,
+        });
+
+        if (strikeCount >= 4) {
+            this._pauseAutoListenUntilManual('repeated_silent_auto_capture');
+            return;
+        }
+
+        const cooldownMs = strikeCount === 1 ? 1400 : strikeCount === 2 ? 2800 : 4200;
+        if (this._autoListenTimer) {
+            clearTimeout(this._autoListenTimer);
+            this._autoListenTimer = null;
+        }
+        this.stopVADListening({ keepConversationState: true });
+        this._setConversationState('ready');
+        this.ui?.setStatus('Listening for your voice...', 'default');
+
+        this._autoListenTimer = setTimeout(() => {
+            this._autoListenTimer = null;
+            if (!this.autoListenEnabled || this._autoListenPausedUntilManual || this.isRecording || this._isSpeakingResponse) {
+                return;
+            }
+            void this._prepareAutoListenMicrophone({ prompt: false }).then((ready) => {
+                if (ready) {
+                    this._triggerAutoListen();
+                }
+            });
+        }, cooldownMs);
     }
     
     toggleTTS() {
@@ -2062,9 +2186,13 @@ class WitnessReplayApp {
         
         if (savedSensitivity && this.vadSensitivity) {
             this.vadSensitivity.value = savedSensitivity;
+        } else if (this.vadSensitivity) {
+            this.vadSensitivity.value = '0.018';
         }
         if (savedSilence && this.vadSilence) {
             this.vadSilence.value = savedSilence;
+        } else if (this.vadSilence) {
+            this.vadSilence.value = '2.2';
         }
         
         // Update displayed values
@@ -2139,15 +2267,26 @@ class WitnessReplayApp {
         if (this.vadListening || this.isRecording) return;
         
         try {
-            const sensitivity = this.vadSensitivity ? parseFloat(this.vadSensitivity.value) : 0.015;
-            const silenceThreshold = this.vadSilence ? parseFloat(this.vadSilence.value) : 2.0;
+            const sensitivity = this.vadSensitivity ? parseFloat(this.vadSensitivity.value) : 0.018;
+            const silenceThreshold = this.vadSilence ? parseFloat(this.vadSilence.value) : 2.2;
             
             this.vad = new VoiceActivityDetector({
                 sensitivity: sensitivity,
                 silenceThreshold: silenceThreshold,
+                minSpeechDuration: 0.4,
+                checkInterval: 60,
+                smoothingFactor: 0.86,
+                calibrationDurationMs: 700,
+                minSignalToNoise: 2.2,
+                noiseFloorMargin: 2.35,
+                minPeakLevel: 0.026,
+                minSpeechBandRatio: 0.28,
+                maxLowBandRatio: 0.6,
+                startTriggerFrames: 4,
+                endTriggerFrames: 5,
                 onSpeechStart: () => this.onVADSpeechStart(),
                 onSpeechEnd: (silenceDuration) => this.onVADSpeechEnd(silenceDuration),
-                onVolumeChange: (smoothed, raw) => this.onVADVolumeChange(smoothed, raw)
+                onVolumeChange: (smoothed, raw, stats) => this.onVADVolumeChange(smoothed, raw, stats)
             });
             
             await this.vad.start();
@@ -2160,7 +2299,7 @@ class WitnessReplayApp {
                 this.vadIndicator.classList.remove('speech-detected', 'recording');
             }
             
-            this.setStatus('Listening for voice...');
+            this.setStatus('Listening for your voice...');
             this._setConversationState('listening');
             console.debug('[VAD] Started listening');
             
@@ -2235,10 +2374,11 @@ class WitnessReplayApp {
         this.stopRecording({ reason: 'vad_silence' });
     }
     
-    onVADVolumeChange(smoothed, raw) {
+    onVADVolumeChange(smoothed, raw, stats = null) {
         // Update visual indicator based on volume
         if (this.vadIndicator && this.vadListening && !this.isRecording) {
-            const hasVoice = smoothed > (this.vad?.config.sensitivity || 0.015);
+            const dynamicThreshold = stats?.dynamicThreshold || this.vad?.config?.sensitivity || 0.018;
+            const hasVoice = Boolean(stats?.isSpeechCandidate) || smoothed > dynamicThreshold;
             if (hasVoice) {
                 this.vadIndicator.classList.add('speech-detected');
                 this.vadIndicator.classList.remove('listening');
@@ -2458,6 +2598,7 @@ class WitnessReplayApp {
             this._reconnectAttempt = 0;
             this.hasReceivedGreeting = false;
             this.lastUserMessage = '';
+            this._resetAutoListenNoiseStrikes();
             this.selectedTemplateId = null;
             this._clearAutoSave();
             this._updateRetryButton();
@@ -2472,8 +2613,8 @@ class WitnessReplayApp {
             
             // Clear UI
             const emptyCopy = this.isMobileVoiceUI
-                ? 'Tap the microphone to start your report, or type below if that is easier.'
-                : 'Use the microphone to begin your report. You can also type below at any time.';
+                ? 'After Detective Ray greets you, just start talking. You can also type below if that is easier.'
+                : 'After Detective Ray greets you, start speaking when you are ready. You can also type below at any time.';
             this.chatTranscript.innerHTML = `<p class="empty-state">${this._escapeHtml(emptyCopy)}</p>`;
             this.timeline.innerHTML = '<p class="empty-state">No versions yet</p>';
             this._syncWorkspaceLayout();
@@ -2646,7 +2787,7 @@ class WitnessReplayApp {
             this._reconnectAttempt = 0;
             this.connectionError = null;
             this._addConnectionStep('✅ Connected!');
-            this.ui.setStatus('Ready — Press Space to speak', 'default');
+            this.ui.setStatus('Detective Ray is ready', 'default');
             this.micBtn.disabled = false;
             if (this.chatMicBtn) this.chatMicBtn.disabled = false;
             this.textInput.disabled = false;
@@ -2868,6 +3009,7 @@ class WitnessReplayApp {
                 // Prevent duplicate greetings on reconnect
                 if (speaker === 'agent' && !this.hasReceivedGreeting) {
                     this.hasReceivedGreeting = true;
+                    void this._prepareAutoListenMicrophone({ prompt: true });
                     this.displayMessageWithTranslation(message.data.text, speaker, originalText, language);
                     this.ui.playSound('notification');
                     // TTS: Speak agent response for accessibility
@@ -3220,7 +3362,7 @@ class WitnessReplayApp {
             // Request permission explicitly the first time so future turns can reuse it
             if (!this._micPermissionGranted) {
                 try {
-                    const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const testStream = await navigator.mediaDevices.getUserMedia(this._getPreferredMicrophoneConstraints());
                     testStream.getTracks().forEach(t => t.stop());
                     this._setMicPermissionGranted(true);
                 } catch (permErr) {
@@ -3395,20 +3537,15 @@ class WitnessReplayApp {
                 const audioBlob = await this.audioRecorder.stop();
                 const wasAutoListen = recordingTrigger === 'auto_listen';
                 if (wasAutoListen && this._isLikelySilentAutoCapture(qualityMetrics, audioBlob)) {
-                    this._pauseAutoListenUntilManual('silent_auto_capture');
-                    this.recordCallEvent('auto_listen_silence', {
+                    this._recoverFromSilentAutoCapture({
                         audio_bytes: audioBlob?.size || 0,
                         quality_score: qualityMetrics?.qualityScore ?? null,
                         stop_reason: stopReason,
                     });
-
-                    // Restart VAD listening if enabled
-                    if (this.vadEnabled && !this.vadListening && this._micPermissionGranted) {
-                        setTimeout(() => this.startVADListening(), 500);
-                    }
                     return;
                 }
 
+                this._resetAutoListenNoiseStrikes();
                 // Convert to base64 and send with quality metrics
                 this.sendAudioMessage(audioBlob, qualityMetrics);
                 this._setConversationState('thinking');
@@ -3447,10 +3584,10 @@ class WitnessReplayApp {
         const canUseProcessorStats = processor && typeof processor.getStats === 'function';
         if (!canUseProcessorStats && !stream) return;
 
-        const BASE_THRESHOLD = 0.008;
-        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 1500 : 1900;
-        const CHECK_INTERVAL = 90;
-        const MIN_SPEECH_MS = 320;
+        const BASE_THRESHOLD = 0.009;
+        const SILENCE_TIMEOUT_MS = this._recordingTrigger === 'auto_listen' ? 2100 : 2400;
+        const CHECK_INTERVAL = 100;
+        const MIN_SPEECH_MS = 380;
         const MAX_RECORDING_MS = this._recordingTrigger === 'auto_listen' ? 30000 : 90000;
 
         try {
@@ -3476,7 +3613,7 @@ class WitnessReplayApp {
             let lastSpeechTime = 0;
             let hasSpeechOccurred = false;
             let smoothedRMS = 0;
-            let fallbackNoiseFloor = 0.003;
+            let fallbackNoiseFloor = 0.0035;
 
             const intervalId = setInterval(() => {
                 if (!this.isRecording || this._stopRecordingPromise) {
@@ -3497,7 +3634,7 @@ class WitnessReplayApp {
                     peakLevel = Number(stats?.peakLevel || 0);
                     isNoiseGated = Boolean(stats?.isNoiseGated);
                     const noiseFloor = Math.max(0.003, Number(stats?.noiseFloor || 0.003));
-                    speechThreshold = Math.min(0.08, Math.max(BASE_THRESHOLD, noiseFloor * 2.6));
+                    speechThreshold = Math.min(0.08, Math.max(BASE_THRESHOLD, noiseFloor * 2.9));
                 } else if (analyser && buf) {
                     if (ctx?.state === 'suspended' && typeof ctx.resume === 'function') {
                         ctx.resume().catch(() => {});
@@ -3509,13 +3646,13 @@ class WitnessReplayApp {
                     if (rms > 0 && rms < fallbackNoiseFloor) {
                         fallbackNoiseFloor = 0.8 * fallbackNoiseFloor + 0.2 * rms;
                     }
-                    speechThreshold = Math.max(BASE_THRESHOLD, fallbackNoiseFloor * 2.4);
+                    speechThreshold = Math.max(BASE_THRESHOLD, fallbackNoiseFloor * 2.8);
                 }
 
                 smoothedRMS = smoothedRMS === 0 ? rms : (0.75 * smoothedRMS + 0.25 * rms);
                 const isSpeech = canUseProcessorStats
-                    ? (!isNoiseGated && (smoothedRMS >= speechThreshold || peakLevel >= speechThreshold * 2.6))
-                    : smoothedRMS >= speechThreshold;
+                    ? (!isNoiseGated && (smoothedRMS >= speechThreshold || peakLevel >= speechThreshold * 2.9))
+                    : (smoothedRMS >= speechThreshold && rms >= fallbackNoiseFloor * 1.45);
 
                 if (isSpeech) {
                     if (!speechCandidateSince) {
@@ -7663,7 +7800,7 @@ WitnessReplayApp.prototype._showOnboardingTour = function() {
     // Skip on mobile — voice-first, no overlays
     if (window.innerWidth <= 768) { localStorage.setItem('wr_tour_done', 'true'); return; }
     const steps = [
-        { target: '.mic-main-btn', text: '🎤 Tap the microphone to start recording your witness statement' },
+        { target: '.mic-main-btn', text: '🎤 Detective Ray starts listening after the greeting, and you can still use the microphone button anytime' },
         { target: '.chat-input', text: '⌨️ Or type your description here' },
         { target: '#scene-canvas-container', text: '🎬 Watch your scene come to life as you describe it' },
     ];

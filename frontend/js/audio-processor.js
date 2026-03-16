@@ -64,16 +64,16 @@ class DynamicAudioProcessor {
         // Source from raw mic
         this.sourceNode = this.audioContext.createMediaStreamSource(rawStream);
 
-        // 1. High-pass filter — removes low-frequency rumble/hum (below 80Hz)
+        // 1. High-pass filter — removes low-frequency rumble/hum (below 120Hz)
         this.highpassFilter = this.audioContext.createBiquadFilter();
         this.highpassFilter.type = 'highpass';
-        this.highpassFilter.frequency.value = 80;
+        this.highpassFilter.frequency.value = 120;
         this.highpassFilter.Q.value = 0.7;
 
-        // 2. Low-pass filter — removes high-frequency hiss (above 8kHz for speech)
+        // 2. Low-pass filter — keeps the near-field speech band and reduces hiss
         this.lowpassFilter = this.audioContext.createBiquadFilter();
         this.lowpassFilter.type = 'lowpass';
-        this.lowpassFilter.frequency.value = 12000;
+        this.lowpassFilter.frequency.value = 8000;
         this.lowpassFilter.Q.value = 0.7;
 
         // 3. Dynamic gain node — AGC adjusts this in real-time
@@ -150,7 +150,7 @@ class DynamicAudioProcessor {
         this.noiseFloor = sortedHistory[noiseIdx] || 0.005;
 
         // Determine if this frame is just noise (below noise floor + margin)
-        const isNoise = rms < this.noiseFloor * 2.5;
+        const isNoise = rms < Math.max(this.noiseFloor * 3.0, 0.006);
 
         // Only adjust gain when there's actual speech (not noise)
         if (!isNoise && rms > 0.001) {
