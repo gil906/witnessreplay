@@ -375,8 +375,8 @@ class TTSPlayer {
         this.onPlaybackUnavailable = null;
         this._generationController = null;
         this._streamState = null;
-        // Prefer Detective Ray's configured voice when it arrives quickly, but
-        // avoid long dead air by falling back to browser speech if generation stalls.
+        // Browser speech uses a different device volume path on some phones, so
+        // Detective Ray responses should prefer a single generated-audio route.
         this.fastStartFallbackMs = 900;
         
         // Fetch available voices on init
@@ -778,10 +778,11 @@ class TTSPlayer {
     
     async _playText(text, options = {}) {
         let controller = null;
+        const allowBrowserFallback = options?.allowBrowserFallback !== false;
         try {
             const playbackPrime = this.primePlayback().catch(() => false);
             let audioPayload = null;
-            if (this.webSpeechSupported && this.fastStartFallbackMs > 0) {
+            if (allowBrowserFallback && this.webSpeechSupported && this.fastStartFallbackMs > 0) {
                 controller = new AbortController();
                 this._generationController = controller;
                 const audioRequest = this._requestGeneratedAudio(text, controller.signal, options);
@@ -824,6 +825,9 @@ class TTSPlayer {
                 return { played: false, interrupted: true };
             }
             console.error('TTS generation failed:', error);
+            if (!allowBrowserFallback) {
+                return { played: false, interrupted: false };
+            }
             const fallbackPlayed = await this._playWithWebSpeech(text, options);
             if (!fallbackPlayed && (String(error.message || '').includes('429') || String(error.message || '').toLowerCase().includes('quota'))) {
                 console.warn('TTS quota reached and browser speech fallback unavailable');

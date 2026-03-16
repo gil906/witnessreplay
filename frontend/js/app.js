@@ -1961,7 +1961,10 @@ class WitnessReplayApp {
         if (this._canPlayAgentAudio()) {
             void this.ttsPlayer?.primePlayback?.();
             // TTS will manage mic state via onPlaybackStart/onPlaybackEnd callbacks
-            void this.ttsPlayer.speak(text, false, { context: options?.context || 'response' });
+            void this.ttsPlayer.speak(text, false, {
+                context: options?.context || 'response',
+                allowBrowserFallback: false,
+            });
         } else if (this.autoListenEnabled) {
             // No TTS — still trigger auto-listen after a brief pause
             this._triggerAutoListen();
