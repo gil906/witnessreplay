@@ -29,7 +29,7 @@ def test_first_turn_restart_like_response_is_repaired(agent):
     normalized = agent._normalize_text(repaired)
     assert "detective rav" not in normalized
     assert "crime" in normalized
-    assert "tell me more details" in normalized
+    assert "tell me a little more" in normalized
 
 
 def test_car_crash_report_intent_gets_contextual_opening_follow_up(agent):
@@ -40,7 +40,7 @@ def test_car_crash_report_intent_gets_contextual_opening_follow_up(agent):
 
     normalized = agent._normalize_text(repaired)
     assert "car crash" in normalized
-    assert "tell me more details" in normalized
+    assert "tell me a little more" in normalized
     assert "what day did this happen" not in normalized
 
 
@@ -53,7 +53,7 @@ def test_collect_report_car_crash_intro_is_repaired_contextually(agent):
     normalized = agent._normalize_text(repaired)
     assert "detective ray" not in normalized
     assert "car crash" in normalized
-    assert "tell me more details" in normalized
+    assert "tell me a little more" in normalized
 
 
 def test_missing_time_follow_up_is_enforced(agent):
@@ -63,9 +63,20 @@ def test_missing_time_follow_up_is_enforced(agent):
     )
 
     normalized = agent._normalize_text(repaired)
+    assert "thank you for reporting this" not in normalized
     assert "what day did this happen" in normalized
-    assert "about what time" in normalized
+    assert "about what time was it" in normalized
     assert "describe the person" not in normalized
+
+
+def test_template_greeting_is_plain_and_conversational(agent):
+    agent.set_template({"name": "Traffic Accident", "initial_questions": ["Can you describe what happened?"]})
+
+    greeting = agent._generate_template_greeting()
+
+    assert "**" not in greeting
+    assert "Start wherever it makes sense" in greeting
+    assert "traffic accident" in greeting.lower()
 
 
 def test_limited_visibility_phrase_does_not_end_interview(agent):

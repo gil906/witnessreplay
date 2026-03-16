@@ -251,7 +251,38 @@ class SceneReconstructionAgent:
         topic = self._extract_report_intent_topic(statement)
         if not topic:
             return None
-        return f"Sure, tell me more details about that {topic}."
+        return f"Okay. Tell me a little more about that {topic}."
+
+    def _polish_response_style(self, response: str) -> str:
+        """Light-touch cleanup so repaired and model responses stay conversational."""
+        polished = (response or "").strip()
+        if not polished:
+            return ""
+
+        polished = re.sub(r"\*\*(.*?)\*\*", r"\1", polished)
+        polished = re.sub(r"\s+", " ", polished).strip()
+        polished = re.sub(r"^thank you for reporting this[.!]?\s+", "Okay. ", polished, flags=re.IGNORECASE)
+        polished = re.sub(r"^thanks for reporting this[.!]?\s+", "Okay. ", polished, flags=re.IGNORECASE)
+        polished = re.sub(
+            r"\bI want to make sure I capture the timeline accurately\.\s*",
+            "",
+            polished,
+            flags=re.IGNORECASE,
+        )
+        polished = re.sub(
+            r"\bBefore I finish the report,\s*",
+            "Before I wrap this up, ",
+            polished,
+            flags=re.IGNORECASE,
+        )
+        polished = re.sub(
+            r"^(Okay\.|Got it\.|All right\.|Alright\.|Understood\.)\s+(Okay\.|Got it\.|All right\.|Alright\.|Understood\.)\s+",
+            r"\1 ",
+            polished,
+        )
+        if polished and polished[0].islower():
+            polished = polished[0].upper() + polished[1:]
+        return polished.strip()
 
     def _dedupe_response_sentences(self, response: str) -> str:
         """Remove repeated sentences/questions from a single assistant turn."""
@@ -516,12 +547,12 @@ class SceneReconstructionAgent:
         if day_status != "missing" and time_status != "missing":
             return None
 
-        prefix = "Before I finish the report, " if closing else "I want to make sure I capture the timeline accurately. "
+        prefix = "Before I wrap this up, " if closing else ""
         if day_status == "missing" and time_status == "missing":
             return f"{prefix}What day did this happen, and about what time was it?"
         if day_status == "missing":
             return f"{prefix}What day did this happen?"
-        return f"{prefix}About what time did this happen?"
+        return f"{prefix}About what time was this?"
 
     def _response_asks_for_incident_timing(self, response: str) -> bool:
         """Detect whether the model already asked for day/date/time details."""
@@ -575,12 +606,8 @@ class SceneReconstructionAgent:
         tokens = set(normalized.split())
         if "report" in tokens and ({"crime", "incident", "accident"} & tokens):
             acknowledgment = ""
-        elif tokens & {"car", "truck", "vehicle", "driver", "plate", "license"}:
-            acknowledgment = "Got it."
-        elif tokens & {"gun", "knife", "weapon", "injured", "hurt", "bleeding"}:
-            acknowledgment = "Understood."
         else:
-            acknowledgment = "Thanks, that's helpful."
+            acknowledgment = "Okay."
 
         next_question = self._build_required_incident_timing_question(statement) or self._build_follow_up_question(statement)
         if not acknowledgment:
@@ -597,10 +624,10 @@ class SceneReconstructionAgent:
         tokens = set(normalized.split())
 
         if not tokens or tokens <= {"yes", "yeah", "yep", "ok", "okay"}:
-            return "What else can you tell me about what happened?"
+            return "Tell me a little more about what happened."
 
         if "report" in tokens and ({"crime", "incident", "accident"} & tokens):
-            return "Tell me what happened."
+            return "Tell me a little more about what happened."
 
         weapon_words = {"gun", "knife", "weapon", "shot", "stabbed", "injured", "injury", "bleeding", "hurt"}
         vehicle_words = {"car", "truck", "van", "vehicle", "plate", "license", "motorcycle", "bike", "suv", "sedan"}
@@ -609,24 +636,24 @@ class SceneReconstructionAgent:
         time_words = {"before", "after", "later", "then", "when", "minute", "hour", "morning", "night"}
 
         if tokens & weapon_words:
-            return "Can you tell me more about the weapon or any injuries you noticed?"
+            return "What do you remember about the weapon or any injuries?"
         if tokens & vehicle_words:
-            return "What else do you remember about the vehicle or the direction it went?"
+            return "What do you remember about the vehicle or where it went?"
         if tokens & person_words:
-            return "What else do you remember about the person's appearance or what they did next?"
+            return "What do you remember about the person?"
         if tokens & location_words:
-            return "Where exactly did that happen in relation to you or nearby landmarks?"
+            return "Where exactly was that?"
         if tokens & time_words:
-            return "What happened just before or just after that?"
-        return "What else do you remember that stands out?"
+            return "What happened right before that?"
+        return "What else stands out to you about that?"
 
     def _ensure_follow_up_response(self, statement: str, response: str) -> str:
         """Make sure the agent keeps the interview moving after each witness turn."""
-        base_response = self._dedupe_response_sentences(response)
+        base_response = self._polish_response_style(self._dedupe_response_sentences(response))
         if not base_response:
             self.last_response_kind = "interview"
             required_timing_question = self._build_required_incident_timing_question(statement)
-            return required_timing_question or self._build_follow_up_question(statement)
+            return self._polish_response_style(required_timing_question or self._build_follow_up_question(statement))
 
         if self._should_skip_follow_up_repair(base_response):
             self.last_response_kind = "error"
@@ -636,14 +663,15 @@ class SceneReconstructionAgent:
         if required_timing_question and not self._response_asks_for_incident_timing(base_response):
             self.last_response_kind = "interview"
             base_response = self._replace_follow_up_question(base_response, required_timing_question)
+            base_response = self._polish_response_style(base_response)
 
         if self._response_restarts_interview(base_response, current_statement=statement):
             self.last_response_kind = "interview"
-            return self._build_repaired_interview_response(statement)
+            return self._polish_response_style(self._build_repaired_interview_response(statement))
 
         if "?" in base_response:
             self.last_response_kind = "interview"
-            return base_response
+            return self._polish_response_style(base_response)
 
         follow_up = self._build_follow_up_question(statement)
         if base_response.endswith((".", "!", "?")):
@@ -651,7 +679,7 @@ class SceneReconstructionAgent:
         else:
             repaired = f"{base_response}. {follow_up}"
         self.last_response_kind = "interview"
-        return repaired
+        return self._polish_response_style(repaired)
 
     def _initialize_model(self):
         """Initialize the Gemini model for conversation."""
@@ -691,12 +719,11 @@ class SceneReconstructionAgent:
         if not self.template:
             return INITIAL_GREETING
         
-        template_name = self.template.get("name", "incident")
-        first_question = self.template.get("initial_questions", [INITIAL_GREETING])[0]
-        
-        greeting = f"""Hi, I'm Detective Ray. I understand you'd like to report a **{template_name}**. Go ahead and tell me what happened — {first_question}"""
-        
-        return greeting
+        template_name = str(self.template.get("name", "incident")).strip().lower()
+        return (
+            f"Hi, I'm Detective Ray. I understand you'd like to report a {template_name}. "
+            "Start wherever it makes sense, and tell me what happened."
+        )
     
     async def load_witness_memories(self, witness_id: str, context_hint: str = "") -> str:
         """
