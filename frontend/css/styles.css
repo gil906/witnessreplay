@@ -10760,8 +10760,6 @@ img.loaded,
     outline-offset: 2px;
 }
 
-.evidence-tag { display:inline-block; padding:2px 8px; background:rgba(251,191,36,0.15); color:#fbbf24; border-radius:12px; font-size:0.78rem; margin:2px; }
-
 /* ===== Feature 46: Onboarding Tour ===== */
 .tour-overlay { position: fixed; inset: 0; z-index: 99000; }
 .tour-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.7); }

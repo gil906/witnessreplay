@@ -3488,11 +3488,7 @@ class WitnessReplayApp {
                 break;
             
             case 'evidence_tags':
-                const tags = message.data?.tags || [];
-                if (tags.length) {
-                    const tagHtml = tags.map(t => `<span class="evidence-tag">${t}</span>`).join(' ');
-                    this.displaySystemMessage(`🏷️ Evidence detected: ${tagHtml}`);
-                }
+                // Evidence details stay on the Evidence Board; don't spam the chat transcript.
                 break;
             
             default:
