@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     google_api_primary_project_id: str = ""
     google_api_secondary_project_id: str = ""
     google_api_tertiary_project_id: str = ""
+    huggingface_api_token: str = ""
     
     # Google Cloud Project Configuration
     gcp_project_id: str = ""

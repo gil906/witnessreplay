@@ -285,7 +285,21 @@ class ImagenService:
                 logger.info("Generated scene image via Gemini native image generation")
                 return gemini_bytes, "gemini"
         except Exception as e:
-            logger.warning("Gemini image generation unavailable, falling back to Imagen: %s", e)
+            logger.warning("Gemini image generation unavailable, falling back to other providers: %s", e)
+
+        # --- Try Hugging Face image inference before paid-only Imagen ---
+        try:
+            from app.services.huggingface_image_service import huggingface_image_service
+
+            hf_bytes, hf_model = await huggingface_image_service.generate_image(
+                prompt,
+                quality=normalized_quality,
+            )
+            if hf_bytes:
+                logger.info("Generated scene image via Hugging Face fallback")
+                return hf_bytes, hf_model or "huggingface"
+        except Exception as e:
+            logger.warning("Hugging Face image generation unavailable, falling back to Imagen: %s", e)
 
         # --- Fallback to Imagen 4 ---
         if not self.client:
