@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     
     # Admin Configuration
     admin_password: str = "change_this_password_immediately"
+    admin_google_client_id: str = ""
+    admin_google_client_secret: str = ""
+    admin_github_client_id: str = ""
+    admin_github_client_secret: str = ""
     
     # Database Configuration
     database_path: str = "/app/data/witnessreplay.db"

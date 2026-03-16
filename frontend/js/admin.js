@@ -31,6 +31,7 @@ class AdminPortal {
         this.investigators = [];
         this.workloadData = null;
         this.currentUser = null;
+        this.oauthProviders = { google: false, github: false };
         this.lastSelectedCaseIndex = null;
         this.pinnedCaseIds = new Set();
         this.watchlistCaseIds = new Set();
@@ -147,6 +148,8 @@ class AdminPortal {
             githubBtn._wired = true;
             githubBtn.addEventListener('click', () => this.handleOAuthLogin('github'));
         }
+        this.consumeOAuthMessageFromUrl();
+        void this.refreshOAuthProviders();
     }
     
     hideLogin() {
@@ -287,11 +290,64 @@ class AdminPortal {
         }
     }
     
-    handleOAuthLogin(provider) {
+    async refreshOAuthProviders() {
+        try {
+            const response = await fetch('/api/auth/oauth/providers');
+            if (!response.ok) {
+                throw new Error('Failed to load OAuth providers');
+            }
+            this.oauthProviders = await response.json();
+        } catch (error) {
+            this.oauthProviders = { google: false, github: false };
+        }
+
+        const providerButtons = {
+            google: document.getElementById('google-login-btn'),
+            github: document.getElementById('github-login-btn'),
+        };
+        Object.entries(providerButtons).forEach(([provider, button]) => {
+            if (!button) return;
+            const enabled = !!this.oauthProviders?.[provider];
+            button.disabled = !enabled;
+            button.setAttribute('aria-disabled', String(!enabled));
+            button.title = enabled
+                ? `Continue with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`
+                : `${provider.charAt(0).toUpperCase() + provider.slice(1)} OAuth is not configured yet`;
+        });
+    }
+
+    consumeOAuthMessageFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const oauthError = params.get('oauth_error');
+        const oauthInfo = params.get('oauth_info');
+        if (!oauthError && !oauthInfo) {
+            return;
+        }
+
         const errorEl = document.getElementById('login-error');
-        errorEl.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} login requires OAuth configuration. Contact your administrator.`;
-        errorEl.style.display = 'block';
-        errorEl.className = 'login-error login-info';
+        if (errorEl) {
+            errorEl.textContent = oauthError || oauthInfo || '';
+            errorEl.style.display = 'block';
+            errorEl.className = oauthError ? 'login-error' : 'login-error login-info';
+        }
+
+        params.delete('oauth_error');
+        params.delete('oauth_info');
+        const newQuery = params.toString();
+        const newUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+
+    handleOAuthLogin(provider) {
+        if (!this.oauthProviders?.[provider]) {
+            const errorEl = document.getElementById('login-error');
+            errorEl.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} login is not configured yet. Add the OAuth client ID and client secret on the server first.`;
+            errorEl.style.display = 'block';
+            errorEl.className = 'login-error login-info';
+            return;
+        }
+
+        window.location.assign(`/api/auth/oauth/${encodeURIComponent(provider)}/start?next=${encodeURIComponent('/admin')}`);
     }
     
     async logout() {

@@ -6,12 +6,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request, status, Depends
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 import io
 import asyncio
 import json
 import os
+import secrets
+from urllib.parse import urlencode, quote
+import httpx
 
 from app.models.schemas import (
     ReconstructionSession,
@@ -645,6 +648,274 @@ class LoginResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     token: str
+
+
+_oauth_state_store: Dict[str, Dict[str, Any]] = {}
+_oauth_state_lock = asyncio.Lock()
+_OAUTH_STATE_TTL_SECONDS = 600
+
+
+def _oauth_provider_settings(provider: str) -> Dict[str, str]:
+    if provider == "google":
+        return {
+            "client_id": settings.admin_google_client_id.strip(),
+            "client_secret": settings.admin_google_client_secret.strip(),
+        }
+    if provider == "github":
+        return {
+            "client_id": settings.admin_github_client_id.strip(),
+            "client_secret": settings.admin_github_client_secret.strip(),
+        }
+    return {"client_id": "", "client_secret": ""}
+
+
+def _oauth_provider_enabled(provider: str) -> bool:
+    provider_settings = _oauth_provider_settings(provider)
+    return bool(provider_settings["client_id"] and provider_settings["client_secret"])
+
+
+def _normalize_oauth_next(next_path: Optional[str]) -> str:
+    candidate = (next_path or "/admin").strip()
+    if not candidate.startswith("/") or candidate.startswith("//"):
+        return "/admin"
+    return candidate
+
+
+def _append_query_param(url: str, key: str, value: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{key}={quote(value)}"
+
+
+async def _store_oauth_state(state: str, provider: str, next_path: str):
+    now = datetime.now(timezone.utc)
+    async with _oauth_state_lock:
+        expired = [
+            existing_state
+            for existing_state, payload in _oauth_state_store.items()
+            if (now - payload["created_at"]).total_seconds() > _OAUTH_STATE_TTL_SECONDS
+        ]
+        for existing_state in expired:
+            _oauth_state_store.pop(existing_state, None)
+        _oauth_state_store[state] = {
+            "provider": provider,
+            "next_path": next_path,
+            "created_at": now,
+        }
+
+
+async def _consume_oauth_state(state: Optional[str], provider: str) -> Optional[Dict[str, Any]]:
+    if not state:
+        return None
+    async with _oauth_state_lock:
+        payload = _oauth_state_store.pop(state, None)
+    if not payload or payload.get("provider") != provider:
+        return None
+    age = datetime.now(timezone.utc) - payload["created_at"]
+    if age.total_seconds() > _OAUTH_STATE_TTL_SECONDS:
+        return None
+    return payload
+
+
+def _oauth_callback_redirect(request: Request, provider: str) -> str:
+    return str(request.url_for("oauth_provider_callback", provider=provider))
+
+
+def _oauth_completion_response(next_path: str, token: Optional[str] = None, user: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> HTMLResponse:
+    target = _normalize_oauth_next(next_path)
+    if error:
+        target = _append_query_param(target, "oauth_error", error)
+        script = f"""
+            try {{
+                sessionStorage.removeItem('admin_token');
+                sessionStorage.removeItem('admin_user');
+            }} catch (_err) {{}}
+            window.location.replace({json.dumps(target)});
+        """
+    else:
+        script = f"""
+            try {{
+                sessionStorage.setItem('admin_token', {json.dumps(token or '')});
+                sessionStorage.setItem('admin_user', {json.dumps(json.dumps(user or {}))});
+            }} catch (_err) {{}}
+            window.location.replace({json.dumps(target)});
+        """
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Completing sign-in…</title>
+</head>
+<body>
+  <p>Completing sign-in…</p>
+  <script>{script}</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/auth/oauth/providers")
+async def oauth_provider_status():
+    """Return which admin OAuth providers are configured."""
+    return {
+        "google": _oauth_provider_enabled("google"),
+        "github": _oauth_provider_enabled("github"),
+    }
+
+
+@router.get("/auth/oauth/{provider}/start")
+async def oauth_provider_start(provider: str, request: Request, next: str = "/admin"):
+    """Start the OAuth authorization-code flow for an admin provider."""
+    if provider not in ("google", "github"):
+        raise HTTPException(status_code=400, detail="Unsupported OAuth provider")
+
+    if not _oauth_provider_enabled(provider):
+        return _oauth_completion_response(
+            next_path=next,
+            error=f"{provider.capitalize()} OAuth is not configured on this server yet.",
+        )
+
+    next_path = _normalize_oauth_next(next)
+    state = secrets.token_urlsafe(32)
+    await _store_oauth_state(state, provider, next_path)
+    redirect_uri = _oauth_callback_redirect(request, provider)
+    provider_settings = _oauth_provider_settings(provider)
+
+    if provider == "google":
+        auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+        params = {
+            "client_id": provider_settings["client_id"],
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "access_type": "online",
+            "prompt": "select_account",
+        }
+    else:
+        auth_url = "https://github.com/login/oauth/authorize"
+        params = {
+            "client_id": provider_settings["client_id"],
+            "redirect_uri": redirect_uri,
+            "scope": "read:user user:email",
+            "state": state,
+        }
+
+    return RedirectResponse(url=f"{auth_url}?{urlencode(params)}")
+
+
+@router.get("/auth/oauth/{provider}/callback", name="oauth_provider_callback")
+async def oauth_provider_callback(
+    provider: str,
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """Complete the OAuth authorization-code flow for an admin provider."""
+    if provider not in ("google", "github"):
+        raise HTTPException(status_code=400, detail="Unsupported OAuth provider")
+
+    state_payload = await _consume_oauth_state(state, provider)
+    next_path = state_payload["next_path"] if state_payload else "/admin"
+    if error:
+        return _oauth_completion_response(next_path=next_path, error=f"{provider.capitalize()} sign-in was cancelled or denied.")
+    if not state_payload:
+        return _oauth_completion_response(next_path=next_path, error="OAuth session expired or was invalid. Please try again.")
+    if not code:
+        return _oauth_completion_response(next_path=next_path, error="OAuth provider did not return an authorization code.")
+
+    provider_settings = _oauth_provider_settings(provider)
+    redirect_uri = _oauth_callback_redirect(request, provider)
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            if provider == "google":
+                token_response = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "code": code,
+                        "client_id": provider_settings["client_id"],
+                        "client_secret": provider_settings["client_secret"],
+                        "redirect_uri": redirect_uri,
+                        "grant_type": "authorization_code",
+                    },
+                )
+                token_response.raise_for_status()
+                token_data = token_response.json()
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    raise ValueError("Google token response did not include an access token.")
+
+                profile_response = await client.get(
+                    "https://openidconnect.googleapis.com/v1/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                profile_response.raise_for_status()
+                profile = profile_response.json()
+                provider_id = str(profile.get("sub") or "")
+                email = str(profile.get("email") or "").strip().lower()
+                full_name = str(profile.get("name") or email.split("@")[0] if email else "Google User")
+                avatar_url = profile.get("picture")
+            else:
+                token_response = await client.post(
+                    "https://github.com/login/oauth/access_token",
+                    headers={"Accept": "application/json"},
+                    data={
+                        "code": code,
+                        "client_id": provider_settings["client_id"],
+                        "client_secret": provider_settings["client_secret"],
+                        "redirect_uri": redirect_uri,
+                        "state": state,
+                    },
+                )
+                token_response.raise_for_status()
+                token_data = token_response.json()
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    raise ValueError(token_data.get("error_description") or "GitHub token response did not include an access token.")
+
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.github+json",
+                }
+                profile_response = await client.get("https://api.github.com/user", headers=headers)
+                profile_response.raise_for_status()
+                profile = profile_response.json()
+                provider_id = str(profile.get("id") or "")
+                email = str(profile.get("email") or "").strip().lower()
+                if not email:
+                    email_response = await client.get("https://api.github.com/user/emails", headers=headers)
+                    email_response.raise_for_status()
+                    email_candidates = email_response.json()
+                    primary = next((entry for entry in email_candidates if entry.get("primary") and entry.get("verified")), None)
+                    fallback = next((entry for entry in email_candidates if entry.get("verified")), None)
+                    selected = primary or fallback
+                    email = str((selected or {}).get("email") or "").strip().lower()
+                full_name = str(profile.get("name") or profile.get("login") or email.split("@")[0] if email else "GitHub User")
+                avatar_url = profile.get("avatar_url")
+
+        if not provider_id:
+            raise ValueError(f"{provider.capitalize()} did not return a stable user identifier.")
+        if not email:
+            raise ValueError(
+                "The OAuth provider did not return an email address. "
+                "For GitHub, make sure the account has a verified email and the app can read email addresses."
+            )
+
+        user = await user_service.find_or_create_oauth_user(
+            provider=provider,
+            provider_id=provider_id,
+            email=email,
+            full_name=full_name,
+            avatar_url=avatar_url,
+        )
+        token = await create_auth_session(user_id=user["id"], username=user["username"], role=user["role"])
+        return _oauth_completion_response(next_path=next_path, token=token, user=user)
+    except Exception as exc:
+        logger.error("OAuth callback failed for %s: %s", provider, exc, exc_info=True)
+        return _oauth_completion_response(next_path=next_path, error=f"{provider.capitalize()} sign-in failed: {str(exc)}")
 
 
 @router.post("/auth/login", response_model=LoginResponse)
