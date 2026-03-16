@@ -27,17 +27,44 @@
                 <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Sign In</button>
                 <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">Create Account</button>
             </div>
+
+            <section class="auth-methods-card" id="oauth-section" aria-label="Recommended sign-in methods">
+                <p class="auth-eyebrow" id="auth-primary-eyebrow">Recommended</p>
+                <h3 class="auth-section-title" id="auth-primary-title">Continue with Google or GitHub</h3>
+                <p class="auth-section-copy" id="auth-primary-copy">Use the fastest sign-in option first. It skips manual password entry and drops you straight into the dashboard.</p>
+
+                <div class="oauth-buttons oauth-buttons-primary" id="oauth-buttons">
+                    <button type="button" class="oauth-btn google-btn" id="google-login-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                        Continue with Google
+                    </button>
+                    <button type="button" class="oauth-btn github-btn" id="github-login-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        Continue with GitHub
+                    </button>
+                </div>
+            </section>
+
+            <div class="oauth-divider" id="oauth-divider">
+                <span id="auth-divider-text">Or use username and password</span>
+            </div>
+
+            <div class="manual-auth-intro" id="manual-auth-intro">
+                <h3 class="auth-section-title auth-section-title-small" id="manual-auth-title">Sign in with your WitnessReplay account</h3>
+                <p class="auth-section-copy auth-section-copy-small" id="manual-auth-copy">Use your existing username and password if you prefer not to use Google or GitHub.</p>
+            </div>
             
             <!-- Login Form -->
             <form id="login-form" class="auth-form" autocomplete="on" aria-label="Sign in form">
                 <div class="form-group">
                     <label for="login-username">Username</label>
-                    <input type="text" id="login-username" name="username" class="login-input" placeholder="Enter username" required autofocus autocomplete="username">
+                    <input type="text" id="login-username" name="username" class="login-input" placeholder="Enter username" autofocus autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Password</label>
                     <input type="password" id="login-password" name="password" class="login-input" placeholder="Enter password" required autocomplete="current-password">
                 </div>
+                <p class="form-helper-text">If you still use the older admin-password-only login, leave username blank and enter the password.</p>
                 <button type="submit" class="btn btn-primary btn-login">🔓 Sign In</button>
                 <div id="login-error" class="login-error" style="display: none;"></div>
                 <button type="button" class="forgot-link" onclick="switchAuthTab('forgot')">Forgot password?</button>
@@ -85,23 +112,6 @@
                 <button type="button" class="forgot-link" onclick="switchAuthTab('login')">← Back to Sign In</button>
             </form>
             
-            <!-- OAuth Divider -->
-            <div class="oauth-divider" id="oauth-divider">
-                <span>or continue with</span>
-            </div>
-            
-            <!-- OAuth Buttons -->
-            <div class="oauth-buttons" id="oauth-buttons">
-                <button type="button" class="oauth-btn google-btn" id="google-login-btn">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                    Google
-                </button>
-                <button type="button" class="oauth-btn github-btn" id="github-login-btn">
-                    <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                    GitHub
-                </button>
-            </div>
-            
             <div class="login-footer">
                 <a href="/" class="back-link">← Back to Witness View</a>
             </div>
@@ -109,6 +119,38 @@
     </div>
 
     <script>
+    function updateAuthCopy(tab) {
+        const configs = {
+            login: {
+                eyebrow: 'Recommended',
+                title: 'Continue with Google or GitHub',
+                primaryCopy: 'Use the fastest sign-in option first. It skips manual password entry and drops you straight into the dashboard.',
+                divider: 'Or use username and password',
+                manualTitle: 'Sign in with your WitnessReplay account',
+                manualCopy: 'Use your existing username and password if you prefer not to use Google or GitHub.',
+            },
+            register: {
+                eyebrow: 'Fastest setup',
+                title: 'Create your account with Google or GitHub',
+                primaryCopy: 'Start with a provider if you want the quickest path. Your account will be created the first time you sign in.',
+                divider: 'Or create an account manually',
+                manualTitle: 'Create an account with email, username, and password',
+                manualCopy: 'Use the manual form below if you want separate WitnessReplay credentials.',
+            },
+        };
+        const config = configs[tab] || configs.login;
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('auth-primary-eyebrow', config.eyebrow);
+        setText('auth-primary-title', config.title);
+        setText('auth-primary-copy', config.primaryCopy);
+        setText('auth-divider-text', config.divider);
+        setText('manual-auth-title', config.manualTitle);
+        setText('manual-auth-copy', config.manualCopy);
+    }
+
     function switchAuthTab(tab) {
         // Tabs
         document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
@@ -117,10 +159,16 @@
         document.getElementById('register-form').style.display = tab === 'register' ? '' : 'none';
         document.getElementById('forgot-form').style.display = tab === 'forgot' ? '' : 'none';
         // OAuth buttons show for login and register, hide for forgot
+        const oauthSection = document.getElementById('oauth-section');
         const oauthDiv = document.getElementById('oauth-divider');
+        const manualIntro = document.getElementById('manual-auth-intro');
         const oauthBtns = document.getElementById('oauth-buttons');
-        if (oauthDiv) oauthDiv.style.display = tab === 'forgot' ? 'none' : '';
-        if (oauthBtns) oauthBtns.style.display = tab === 'forgot' ? 'none' : '';
+        const showAuthOptions = tab !== 'forgot';
+        if (oauthSection) oauthSection.style.display = showAuthOptions ? '' : 'none';
+        if (oauthDiv) oauthDiv.style.display = showAuthOptions ? '' : 'none';
+        if (manualIntro) manualIntro.style.display = showAuthOptions ? '' : 'none';
+        if (oauthBtns) oauthBtns.style.display = showAuthOptions ? '' : 'none';
+        updateAuthCopy(tab === 'forgot' ? 'login' : tab);
     }
 
     function switchAdminTab(tabId) {
