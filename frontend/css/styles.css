@@ -10990,8 +10990,8 @@ textarea:disabled {
     .text-input-container input { font-size: 13px; }
 
     .main-content {
-        height: calc(100vh - 40px - 8px);
-        height: calc(100dvh - 40px - 8px);
+        min-height: 0 !important;
+        height: auto !important;
     }
 
     .mobile-menu-dropdown { font-size: 0.78rem; }
@@ -16506,5 +16506,61 @@ textarea:disabled {
     }
     .mobile-call-title {
         font-size: 0.88rem;
+    }
+}
+
+/* =========================================================
+   MOBILE CHAT SCROLL SAFETY — Final override
+   Keep the page itself fixed and let only the transcript scroll.
+   ========================================================= */
+@media (max-width: 768px) {
+    html,
+    body {
+        height: 100%;
+    }
+
+    body {
+        overflow: hidden;
+        overscroll-behavior-y: none;
+    }
+
+    .container {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        overflow: hidden;
+    }
+
+    .main-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: hidden !important;
+    }
+
+    .chat-panel {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+        max-height: none;
+        overflow: hidden;
+    }
+
+    .chat-transcript {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+    }
+
+    .voice-dock,
+    .text-input,
+    #text-input-bar {
+        flex-shrink: 0;
     }
 }

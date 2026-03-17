@@ -108,13 +108,11 @@ class WitnessReplayApp {
         this._wsSessionId = null;
         this._reconnectCountdown = null;
         this._pendingStreamedSpeech = new Map();
-        this._chatScrollFrame = null;
-        this._chatScrollTimeout = null;
+        this._chatBottomSyncFrame = null;
         this._chatMutationObserver = null;
         this._boundChatScrollHandler = null;
         this._chatPinnedToBottom = true;
-        this._chatAutoScrollThreshold = 96;
-        this._chatBottomSentinel = null;
+        this._chatAutoScrollThreshold = 48;
         
         // Interview Comfort Manager
         this.comfortManager = null;
@@ -690,7 +688,6 @@ class WitnessReplayApp {
         this.sceneDisplay = document.getElementById('scene-display');
         this.sceneDescription = document.getElementById('scene-description');
         this.chatTranscript = document.getElementById('chat-transcript');
-        this._ensureChatBottomSentinel();
         this._initChatScrollTracking();
         this._initChatAutoScrollObserver();
         this.timeline = document.getElementById('timeline');
@@ -967,35 +964,15 @@ class WitnessReplayApp {
         workspace.classList.toggle('voice-first-home', (this.statementCount || 0) === 0);
     }
 
-    _ensureChatBottomSentinel() {
-        if (!this.chatTranscript) return null;
-        if (this._chatBottomSentinel?.parentElement === this.chatTranscript) {
-            return this._chatBottomSentinel;
-        }
-        const sentinel = document.createElement('div');
-        sentinel.className = 'chat-bottom-sentinel';
-        sentinel.setAttribute('aria-hidden', 'true');
-        this.chatTranscript.appendChild(sentinel);
-        this._chatBottomSentinel = sentinel;
-        return sentinel;
-    }
-
     _appendChatNode(node) {
         if (!this.chatTranscript || !node) return null;
-        const sentinel = this._ensureChatBottomSentinel();
-        if (sentinel && sentinel.parentElement === this.chatTranscript) {
-            this.chatTranscript.insertBefore(node, sentinel);
-        } else {
-            this.chatTranscript.appendChild(node);
-        }
+        this.chatTranscript.appendChild(node);
         return node;
     }
 
     _resetChatTranscript(contentHtml = '') {
         if (!this.chatTranscript) return;
         this.chatTranscript.innerHTML = contentHtml;
-        this._chatBottomSentinel = null;
-        this._ensureChatBottomSentinel();
         this._chatPinnedToBottom = true;
     }
 
@@ -2348,23 +2325,8 @@ class WitnessReplayApp {
     }
 
     _initChatAutoScrollObserver() {
-        if (!this.chatTranscript || typeof MutationObserver === 'undefined') return;
         this._chatMutationObserver?.disconnect?.();
-        this._chatMutationObserver = new MutationObserver((mutations) => {
-            if (!this.autoScrollEnabled || !this._chatPinnedToBottom) return;
-            const hasRelevantMutation = mutations.some((mutation) => {
-                if (mutation.type === 'characterData') return true;
-                if (mutation.type !== 'childList') return false;
-                return mutation.addedNodes.length > 0;
-            });
-            if (!hasRelevantMutation) return;
-            this._scheduleChatBottomSync();
-        });
-        this._chatMutationObserver.observe(this.chatTranscript, {
-            childList: true,
-            subtree: true,
-            characterData: true,
-        });
+        this._chatMutationObserver = null;
     }
 
     _initChatLayoutObserver() {
@@ -2396,42 +2358,18 @@ class WitnessReplayApp {
         });
     }
 
-    _scrollChatToBottom(behavior = 'smooth', force = false) {
+    _scrollChatToBottom(behavior = 'auto', force = false) {
         if (!this.chatTranscript) return;
         if (!force && (!this.autoScrollEnabled || !this._chatPinnedToBottom)) return;
         const target = this.chatTranscript;
-        const effectiveBehavior = behavior === 'smooth' ? 'auto' : behavior;
-        const scrollToLatest = (scrollBehavior = 'auto') => {
-            this._chatPinnedToBottom = true;
-            const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
-            try {
-                target.scrollTo({ top: maxTop, behavior: scrollBehavior });
-            } catch (_) {
-                target.scrollTop = maxTop;
-            }
-        };
-
-        if (this._chatScrollFrame) {
-            cancelAnimationFrame(this._chatScrollFrame);
-            this._chatScrollFrame = null;
+        const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
+        const scrollBehavior = behavior === 'smooth' ? 'smooth' : 'auto';
+        this._chatPinnedToBottom = true;
+        try {
+            target.scrollTo({ top: maxTop, behavior: scrollBehavior });
+        } catch (_) {
+            target.scrollTop = maxTop;
         }
-        if (this._chatScrollTimeout) {
-            clearTimeout(this._chatScrollTimeout);
-            this._chatScrollTimeout = null;
-        }
-
-        this._chatScrollFrame = requestAnimationFrame(() => {
-            scrollToLatest(effectiveBehavior);
-            this._chatScrollFrame = requestAnimationFrame(() => {
-                scrollToLatest('auto');
-                this._chatScrollFrame = null;
-            });
-        });
-
-        this._chatScrollTimeout = window.setTimeout(() => {
-            scrollToLatest('auto');
-            this._chatScrollTimeout = null;
-        }, effectiveBehavior === 'smooth' ? 180 : 80);
     }
 
     setCompactMode(enabled, save = true) {
