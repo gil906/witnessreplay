@@ -855,6 +855,7 @@ img {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: var(--spacing-lg) var(--spacing-xl);
     padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
     display: flex;

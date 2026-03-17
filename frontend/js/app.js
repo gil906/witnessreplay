@@ -2400,18 +2400,9 @@ class WitnessReplayApp {
         if (!this.chatTranscript) return;
         if (!force && (!this.autoScrollEnabled || !this._chatPinnedToBottom)) return;
         const target = this.chatTranscript;
-        const bottomSentinel = this._ensureChatBottomSentinel();
         const effectiveBehavior = behavior === 'smooth' ? 'auto' : behavior;
         const scrollToLatest = (scrollBehavior = 'auto') => {
             this._chatPinnedToBottom = true;
-            if (bottomSentinel && typeof bottomSentinel.scrollIntoView === 'function') {
-                try {
-                    bottomSentinel.scrollIntoView({ block: 'end', inline: 'nearest', behavior: scrollBehavior });
-                    return;
-                } catch (_) {
-                    // Fall back to direct scrolling below.
-                }
-            }
             const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
             try {
                 target.scrollTo({ top: maxTop, behavior: scrollBehavior });
